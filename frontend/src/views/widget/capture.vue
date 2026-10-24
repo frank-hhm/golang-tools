@@ -1,8 +1,9 @@
 <template>
     <div v-if="!ready" class="cap-loading"></div>
     <div v-else class="cap" :class="{ 'cap-draw': tool !== 'none' }" @mousedown="onDown" @contextmenu.prevent="onCancel">
-        <!-- 冻结帧：整屏背景。浮层不透明，所以不需要 Wails 的透明窗口支持 -->
-        <div class="cap-bg" :style="{ backgroundImage: `url(${imgUrl})` }"></div>
+        <!-- 冻结帧：整屏背景。Go 侧多核并行时按水平带分张下发，这里按序上下拼接；
+             浮层不透明，所以不需要 Wails 的透明窗口支持 -->
+        <div v-for="(u, i) in bgUrls" :key="i" class="cap-bg" :style="bgStyle(i, u)"></div>
 
         <!-- 压暗层：用一个 box-shadow 在「镂空矩形」外圈铺满全屏，比切四块矩形省事且无缝 -->
         <div v-if="!hole" class="cap-dim"></div>
@@ -44,7 +45,7 @@
         <div v-if="sel && !toolbarHidden" ref="barRef" class="cap-bar" :style="barStyle" @mousedown.stop>
             <div class="cap-main">
                 <a-tooltip v-for="t in TOOLS" :key="t.tool" :content="t.tip" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" @click="pickTool(t.tool)">
+                    <a-button size="small" type="text" @click="pickTool(t.tool)">
                         <component :is="t.icon" v-if="t.icon" />
                         <!-- Arco 没有空心矩形/椭圆/T 字，按其 48 网格 + 4px 圆头描边补齐 -->
                         <svg v-else class="cap-svg" viewBox="0 0 48 48">
@@ -56,26 +57,26 @@
                 </a-tooltip>
                 <i class="cap-sep"></i>
                 <a-tooltip content="撤销 (Ctrl+Z)" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" :disabled="!shapes.length" @click="undo"><icon-undo /></a-button>
+                    <a-button size="small" type="text" :disabled="!shapes.length" @click="undo"><icon-undo /></a-button>
                 </a-tooltip>
                 <a-tooltip content="保存 PNG 文件" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" @click="saveFile"><icon-save /></a-button>
+                    <a-button size="small" type="text" @click="saveFile"><icon-save /></a-button>
                 </a-tooltip>
                 <a-tooltip content="打开预览窗口" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" @click="finish(true)"><icon-eye /></a-button>
+                    <a-button size="small" type="text" @click="finish(true)"><icon-eye /></a-button>
                 </a-tooltip>
                 <a-tooltip content="图钉置顶" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" @click="pinIt"><icon-pushpin /></a-button>
+                    <a-button size="small" type="text" @click="pinIt"><icon-pushpin /></a-button>
                 </a-tooltip>
                 <a-tooltip content="提取文字" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" :loading="ocrLoading" @click="runOcr"><icon-translate /></a-button>
+                    <a-button size="small" type="text" :loading="ocrLoading" @click="runOcr"><icon-translate /></a-button>
                 </a-tooltip>
                 <i class="cap-sep"></i>
                 <a-tooltip content="取消截图 (Esc)" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" status="danger" @click="onCancel"><icon-close /></a-button>
+                    <a-button size="small" type="text" status="danger" @click="onCancel"><icon-close /></a-button>
                 </a-tooltip>
                 <a-tooltip content="复制并关闭 (Enter)" :mouse-enter-delay="600">
-                    <a-button size="mini" type="text" status="success" @click="finish(false)"><icon-check /></a-button>
+                    <a-button size="small" type="text" status="success" @click="finish(false)"><icon-check /></a-button>
                 </a-tooltip>
             </div>
 
@@ -147,6 +148,10 @@ const STORAGE_KEY = "tool:screenshot";
 
 interface Frame {
     image: string;
+    /** 分带并行编码时给出：同一帧自上而下的 PNG data URL */
+    bands?: string[];
+    /** 每条带的物理高度；Go 侧保证 bandH * bands.length === h */
+    bandH?: number;
     w: number;
     h: number;
     dpr: number;
@@ -159,7 +164,9 @@ interface Frame {
 const frame = ref<Frame | null>(null);
 const ready = ref(false);
 const dpr = ref(1);
-const imgUrl = ref("");
+const bgUrls = ref<string[]>([]);
+/** bandImgs 已解码的带图（自上而下），整屏源画布由它们拼出；非响应式，只供绘图取样 */
+let bandImgs: HTMLImageElement[] = [];
 const srcCanvas = ref<HTMLCanvasElement | null>(null);
 const annotRef = ref<HTMLCanvasElement | null>(null);
 const magRef = ref<HTMLCanvasElement | null>(null);
@@ -224,6 +231,22 @@ const selStyle = computed(() => {
     const r = cssRect(sel.value as Rect);
     return { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" };
 });
+
+/** 带高（物理像素）：单张时就是整屏高，分带时为 Go 给的等分高度 */
+function bandPhysH(f: Frame) {
+    return f.bands && f.bands.length > 1 ? (f.bandH || Math.round(f.h / f.bands.length)) : f.h;
+}
+/** 逐带铺位置：上下相接不重叠无缝隙；background-size 拉满本框，所以不会错位 */
+function bgStyle(i: number, url: string) {
+    const f = frame.value;
+    if (!f) return {};
+    const bh = bandPhysH(f);
+    return {
+        top: toCss(i * bh) + "px",
+        height: toCss(Math.min(bh, f.h - i * bh)) + "px",
+        backgroundImage: `url(${url})`,
+    };
+}
 const hoverTitle = computed(() => hover.value?.title || "");
 const winNameStyle = computed(() => {
     const f = frame.value;
@@ -353,18 +376,31 @@ function installErrorReport() {
 let offNewFrame: any = null;
 /** starting 防止冷挂载与 newframe 事件几乎同时触发时重复初始化 */
 let starting = false;
+/** pending 上一轮还没跑完就又来了新帧时攒下的帧，跑完立刻按它重来一遍 */
+let pending: Frame | null = null;
 
 onMounted(async () => {
     installErrorReport();
     // 事件与鼠标/键盘绑定只做一次：复用浮层时页面不会重新 mount，
     // 若放进 beginCapture 会随每次截图累积重复监听器。
     bindEvents();
-    offNewFrame = Events.On("capture:newframe", () => {
-        void beginCapture();
+    offNewFrame = Events.On("capture:newframe", (ev: any) => {
+        // 复用路径下 Go 把新帧直接放在事件负载里，省一趟 GetCaptureFrame 往返；
+        // 负载形状不对（旧后端/未注册类型）时退回自己取帧。
+        let d = ev?.data ?? ev;
+        if (Array.isArray(d)) d = d[0];
+        void beginCapture(isFrame(d) ? d : null);
     });
     // 冷建路径：后端在开窗前已备好冻结帧，首挂载直接取帧即可。
     await beginCapture();
 });
+
+function isFrame(v: any): v is Frame {
+    if (!v || typeof v.w !== "number" || typeof v.h !== "number") return false;
+    // 分带并行编码时 image 是空的，两种形状都要认下来
+    return (typeof v.image === "string" && v.image.length > 0)
+        || (Array.isArray(v.bands) && v.bands.length > 0);
+}
 
 /**
  * 取回后端准备好的冻结帧并初始化一次截图会话。
@@ -374,37 +410,58 @@ onMounted(async () => {
  * 否则旧框会残留到新画面上。取不到帧（隐藏待命 / 帧未就绪）时静默返回，
  * 交给看门狗在超时后销毁坏窗口，不弹错误也不自行收场。
  */
-async function beginCapture() {
-    if (starting) return;
+async function beginCapture(pre?: Frame | null) {
+    if (starting) {
+        // 直接丢弃新帧会让画面停在上一轮，攒起来等这轮结束再刷
+        if (isFrame(pre)) pending = pre;
+        return;
+    }
     starting = true;
+    const t0 = performance.now();
     try {
         resetSession();
-        let f: Frame | null = null;
-        try {
-            f = await $GoTools.GetCaptureFrame();
-        } catch (e: any) {
-            report(`GetCaptureFrame 异常: ${e?.message || e}`);
-            f = null;
+        // 复用路径下帧体已经在事件负载里，省一趟 IPC 往返；冷建（首挂载）时才回后端取
+        let f: Frame | null = isFrame(pre) ? pre : null;
+        if (!f) {
+            try {
+                f = await $GoTools.GetCaptureFrame();
+            } catch (e: any) {
+                report(`GetCaptureFrame 异常: ${e?.message || e}`);
+                f = null;
+            }
         }
-        if (!f || !f.image) {
+        if (!f || !(f.bands?.length || f.image)) {
             report("无可用冻结帧，等待 capture:newframe");
             return;
         }
         frame.value = f;
-        imgUrl.value = f.image;
+        bgUrls.value = f.bands && f.bands.length ? f.bands : [f.image];
         measureDpr();
         ready.value = true;
+        let imgs: HTMLImageElement[];
         try {
-            await loadImage(f);
+            // 各带并行解码，比整张串行解码快；解完只拿到 Image 对象，还没铺画布
+            imgs = await Promise.all(bgUrls.value.map(decodeImage));
         } catch (e: any) {
             report(`画面解码失败: ${e?.message || e}`);
             return;
         }
+        bandImgs = imgs;
+        const bands = imgs.length;
+        f = frame.value!;
         cursor.value = { x: toCss(f.cursorX), y: toCss(f.cursorY) };
         hover.value = hitWindow(f.cursorX, f.cursorY, f.windows || []);
         await nextTick();
-        drawMagnifier();
+        // 点亮浮层排在铺整屏源画布之前：bgUrls 已让画面可见，而源画布要分配
+        // 整屏位图并逐带 drawImage（实测几十毫秒），挪到首帧合成之后再补
         $GoTools.CaptureReady();
+        const tReady = performance.now();
+        raf2().then(() => {
+            buildSrcCanvas();
+            drawMagnifier();
+            redraw();
+            report(`源画布就绪 +${(performance.now() - t0).toFixed(0)}ms`);
+        });
         // 显示与 Fullscreen() 之后视口才定型，再测一次 dpr，
         // 否则创建时的尺寸会被当成换算基准，整层布局都会偏
         await raf();
@@ -415,10 +472,16 @@ async function beginCapture() {
             redraw();
             drawMagnifier();
         }
-        report(`就绪 视口${window.innerWidth}x${window.innerHeight} 帧${f.w}x${f.h} `
+        report(`就绪 +${(tReady - t0).toFixed(0)}ms 解码+首帧 ${(performance.now() - tReady).toFixed(0)}ms `
+            + `视口${window.innerWidth}x${window.innerHeight} 帧${f.w}x${f.h} 带${bands} `
             + `dpr ${before.toFixed(3)}→${dpr.value.toFixed(3)} 可截窗口${f.windows?.length ?? 0}`);
     } finally {
         starting = false;
+        if (pending) {
+            const p = pending;
+            pending = null;
+            void beginCapture(p);
+        }
     }
 }
 
@@ -426,7 +489,8 @@ async function beginCapture() {
 function resetSession() {
     frame.value = null;
     ready.value = false;
-    imgUrl.value = "";
+    bgUrls.value = [];
+    bandImgs = [];
     srcCanvas.value = null;
     sel.value = null;
     hover.value = null;
@@ -454,6 +518,12 @@ function raf() {
     return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+/** 等两帧：第一帧让刚改的 DOM 真正上屏，第二帧之后再动重活儿，用户已经看不见空档 */
+function raf2() {
+    return new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
 /**
  * dpr 实测：图片宽 ÷ 视口宽。
  * 窗口尚未显示时 innerWidth 可能还是 0，此时退回后端给的 DPI，等就绪后再测一次。
@@ -465,24 +535,43 @@ function measureDpr() {
     dpr.value = vw > 0 && f.w > 0 ? f.w / vw : f.dpr || 1;
 }
 
-/** 把冻结帧解到一张 1:1 物理像素画布上：放大镜取色与马赛克取样都要读它的原始像素 */
-function loadImage(f: Frame) {
-    return new Promise<void>((resolve, reject) => {
+/** 把一张 data URL 交给 Image 解码（浏览器自己并行跑），只等 onload/onerror */
+function decodeImage(url: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
         const img = new Image();
-        img.onload = () => {
-            const c = document.createElement("canvas");
-            c.width = f.w;
-            c.height = f.h;
-            const ctx = c.getContext("2d");
-            if (!ctx) return reject(new Error("canvas 2d 上下文不可用"));
-            ctx.drawImage(img, 0, 0);
-            srcCanvas.value = c;
-            scratch = document.createElement("canvas");
-            resolve();
-        };
+        img.onload = () => resolve(img);
         img.onerror = () => reject(new Error("PNG 解码失败"));
-        img.src = f.image;
+        img.src = url;
     });
+}
+
+/**
+ * 把已解码的各带拼成一张 1:1 物理像素画布：放大镜取色与马赛克取样都要读它的原始像素。
+ * 整屏位图（实测 3440x1440 约 20MB）分配加逐带 drawImage 是本阶段最贵的一笔，
+ * 所以它只在首帧上屏之后（或真的有人要取样时）才建一次。
+ */
+function buildSrcCanvas() {
+    const f = frame.value;
+    if (!f || !bandImgs.length) return;
+    const c = document.createElement("canvas");
+    c.width = f.w;
+    c.height = f.h;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const bh = bandPhysH(f);
+    for (let i = 0; i < bandImgs.length; i++) {
+        ctx.drawImage(bandImgs[i], 0, i * bh);
+    }
+    srcCanvas.value = c;
+    scratch = document.createElement("canvas");
+}
+
+/** 确保源画布已建好（首帧合成后的延迟建布还没跑完时被导出/画笔用到） */
+function ensureSrc(): boolean {
+    if (srcCanvas.value && scratch) return true;
+    if (!bandImgs.length) return false;
+    buildSrcCanvas();
+    return !!srcCanvas.value;
 }
 
 onBeforeUnmount(() => {
@@ -536,6 +625,8 @@ function onDown(e: MouseEvent) {
     const p = clampToScreen(evPt(e), f.w, f.h);
     // 定框后选中了绘图工具：在选区内按下就是作图
     if (phase.value === "edit" && tool.value !== "none" && inSel(p)) {
+        // 画笔/马赛克要从源画布取样，万一延迟建布还没跑完就在此当场补上
+        if (!ensureSrc()) return;
         if (tool.value === "text") {
             startBox(p);
             return;
@@ -680,11 +771,36 @@ function onKey(e: KeyboardEvent) {
 }
 
 function onCancel() {
-    try {
-        $GoTools.CaptureCancel();
-    } catch {
-        /* 后端已收场时忽略 */
-    }
+    void (async () => {
+        await blankOverlay();
+        try {
+            $GoTools.CaptureCancel();
+        } catch {
+            /* 后端已收场时忽略 */
+        }
+    })();
+}
+
+/**
+ * 收场前把浮层擦成全透明，并等它真正合成上屏。
+ *
+ * 浮层窗口只是隐藏、留着下次复用，而合成器会保留这个窗口最后呈现的那一帧：
+ * 不先擦干净，下次 Show 的那一瞬间就先闪出上一次的选区绿框和标注（新的冻结帧
+ * 还没被 WebView2 呈现出来，页面里 sel 已清空也没用，闪的是那张旧画面）。
+ * 擦成透明后留档的就是真实桌面，与下一次冻结帧几乎一致，看不出过渡。
+ * 顺带把 .cap 整棵树卸掉，下次 mount 拿到的标注画布是全新的，不会残留旧笔迹。
+ */
+async function blankOverlay() {
+    ready.value = false;
+    sel.value = null;
+    hover.value = null;
+    live.value = null;
+    editBox.value = null;
+    ocrVisible.value = false;
+    toolbarHidden.value = false;
+    await nextTick();
+    // 两帧：第一帧提交透明画面，第二帧确保这次提交已经递给合成器
+    await raf2();
 }
 
 /* ---------------- 文字标注框（可拖动 / 可缩放） ---------------- */
@@ -884,6 +1000,7 @@ function drawMagnifier() {
 /* ---------------- 导出 ---------------- */
 function exportPNG(): string | null {
     commitBox();
+    if (!ensureSrc()) return null;
     if (!sel.value || !srcCanvas.value || !annotRef.value) return null;
     const out = composeExport(srcCanvas.value, annotRef.value, normalizeRect(sel.value));
     return canvasToPngDataURL(out);
@@ -905,6 +1022,8 @@ async function finish(openPreview: boolean) {
     } catch {
         /* 超配额时忽略，仅影响预览窗回显 */
     }
+    // 先擦再关，否则下次调起会闪出这次的选区框（见 blankOverlay）
+    await blankOverlay();
     try {
         await $GoTools.CaptureFinish(data, openPreview);
     } catch (e: any) {
@@ -1030,7 +1149,10 @@ function blurAll() {
 
 .cap-bg {
     position: absolute;
-    inset: 0;
+    /* 分带时每条带的 top/height 由 bgStyle 按物理像素换算后内联给出，
+       这里只横向铺满，不能再写 inset: 0，否则每条带都会拉成整屏 */
+    left: 0;
+    right: 0;
     background-size: 100% 100%;
     background-repeat: no-repeat;
 }
@@ -1222,7 +1344,6 @@ function blurAll() {
     padding: 0 5px;
     /* 背景/文字走 Arco 语义变量，随 body[arco-theme] 自动跟随浅/暗主题；无边框 */
     background: var(--color-bg-2);
-    color: var(--color-text-1);
     border-radius: 5px;
     box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
 }
@@ -1235,7 +1356,6 @@ function blurAll() {
     padding: 0 6px;
     /* 子栏用高一级的 bg，两种主题下都比主栏深一档；无边框 */
     background: var(--color-bg-3);
-    color: var(--color-text-2);
     border-radius: 5px;
     box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
 }

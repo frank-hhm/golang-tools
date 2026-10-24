@@ -825,6 +825,27 @@ export function NpmPackageManagers(): $CancellablePromise<npm$0.PackageManager[]
 }
 
 /**
+ * NpmPathBind 把选定 Node 目录前置到 PATH 并移除其它 Node 目录；system=true 改系统 PATH（需管理员），否则改用户 PATH
+ */
+export function NpmPathBind(entryDir: string, system: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3196084010, entryDir, system);
+}
+
+/**
+ * NpmPathStatus 读取当前用户 PATH 的 Node 绑定情况（强制切换本地 npm 命令）
+ */
+export function NpmPathStatus(): $CancellablePromise<npm$0.NpmPathBind | null> {
+    return $Call.ByID(385855987);
+}
+
+/**
+ * NpmPathUnbind 恢复绑定前备份的用户 PATH
+ */
+export function NpmPathUnbind(): $CancellablePromise<string> {
+    return $Call.ByID(3399228325);
+}
+
+/**
  * NpmSaveConfigText 保存托管 .npmrc
  */
 export function NpmSaveConfigText(text: string): $CancellablePromise<void> {
@@ -900,6 +921,13 @@ export function NpmSrvLogs(id: string, lines: number): $CancellablePromise<strin
  */
 export function NpmSrvPluginsDir(): $CancellablePromise<string> {
     return $Call.ByID(2917304932);
+}
+
+/**
+ * NpmSrvPortTaken 报告端口是否已被占用（其它站点登记或进程监听），返回占用原因，空串表示可用
+ */
+export function NpmSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
+    return $Call.ByID(2822795775, port, excludeId);
 }
 
 /**
@@ -1297,6 +1325,16 @@ export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
 }
 
 /**
+ * PrewarmCaptureOverlay 预建隐藏的浮层窗口（不抓屏），把“新建 WebView2 窗口 +
+ * 页面 bootstrap”这笔最贵的开销从第一次截图的体验里挪到启动阶段。
+ * 隐藏窗口不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），也不会被枚举成
+ * 可截窗口（本进程窗口已过滤），所以预热不污染冻结帧。
+ */
+export function PrewarmCaptureOverlay(): $CancellablePromise<void> {
+    return $Call.ByID(1081378001);
+}
+
+/**
  * RealQuit 真正退出程序：置退出标志（使关闭钩子不再拦截）、销毁托盘，再终止应用。
  */
 export function RealQuit(): $CancellablePromise<void> {
@@ -1654,6 +1692,16 @@ export function StopSnifferProxy(): $CancellablePromise<void> {
  */
 export function ToastClose(): $CancellablePromise<void> {
     return $Call.ByID(2466416140);
+}
+
+/**
+ * TryActivateNativeTool 供 Go 原生入口（全局热键、浮动球菜单）直接触发工具事件：
+ * 走前端要多付一趟「热键线程 → 主窗口 JS → 绑定调用 → Go」的往返，实测十几毫秒，
+ * 而截图浮层本来就是 Go 自己开的窗口；顺带也让主窗口已关闭时热键照样能截图。
+ * 返回 true 表示已在 Go 侧处理完毕，调用方不必再广播给前端。
+ */
+export function TryActivateNativeTool(toolID: string): $CancellablePromise<boolean> {
+    return $Call.ByID(1678381310, toolID);
 }
 
 /**

@@ -242,6 +242,58 @@ export interface NpmPackage {
 }
 
 /**
+ * NpmPathBind 用户 PATH 绑定状态（强制切换本地 npm 命令）
+ */
+export interface NpmPathBind {
+    /**
+     * 用户 PATH 最前是否为某 Node 目录
+     */
+    "bound": boolean;
+
+    /**
+     * 当前绑定（最前）的 Node 目录
+     */
+    "boundDir": string;
+
+    /**
+     * 该目录 Node 版本
+     */
+    "boundVersion": string;
+
+    /**
+     * 该目录生效 npm 版本
+     */
+    "boundNpm": string;
+
+    /**
+     * 生效绑定所在作用域：system | user
+     */
+    "boundScope": string;
+
+    /**
+     * 用户 PATH 里其它 Node 目录（绑定时移除）
+     */
+    "otherNodeDirs": string[] | null;
+
+    /**
+     * 系统 PATH 里存在 Node 目录（会盖过用户 PATH，仅告警不改）
+     */
+    "systemHasNode": boolean;
+
+    /**
+     * 是否存在原始 PATH 备份
+     */
+    "canUndo": boolean;
+
+    /**
+     * 备份时间说明
+     */
+    "undoNote": string;
+    "platform": string;
+    "note": string;
+}
+
+/**
  * NpmRelease 一个可切换的 npm 版本
  */
 export interface NpmRelease {

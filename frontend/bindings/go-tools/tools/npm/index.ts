@@ -10,6 +10,7 @@ export type {
     NpmEntry,
     NpmLayer,
     NpmPackage,
+    NpmPathBind,
     NpmRelease,
     NpmReleaseList,
     PackageManager,

@@ -119,8 +119,7 @@
                 </a-radio-group>
               </template>
               <div class="svc-cards" v-if="filteredServices.length">
-                <div v-for="(s, i) in filteredServices" :key="i" class="svc-card" title="点击查看实例详情"
-                  @click="openServiceDetail(s)">
+                <div v-for="(s, i) in filteredServices" :key="i" class="svc-card" @click="openServiceDetail(s)">
                   <div class="svc-card-top">
                     <div class="svc-logo" :class="'logo-' + s.type">
                       <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />

@@ -1,0 +1,1651 @@
+﻿//go:build windows
+
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"image"
+	"image/png"
+	"math"
+	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+// ============================================================
+// 妗岄潰娴姩鐞?鈥斺€?绾?Go 鍘熺敓 Win32 瀹炵幇锛堜笉鍐嶇敤 WebView 灏忕獥锛?//
+// 褰㈡€侊細涓€涓?WS_EX_LAYERED 鍒嗗眰绐楀彛锛岀敤 UpdateLayeredWindow 鎻愪氦
+// 銆岄€愬儚绱?alpha銆嶇殑鍦嗗舰浣嶅浘 鈥斺€?鍦嗗舰搴曟澘 + 灞呬腑 logo + 鏌斿拰鎶曞奖锛?// 鑳屾櫙涓庨槾褰卞潎涓哄儚绱犵骇 alpha锛屾棤鐏板簳鏂规銆?// 浜や簰锛氭寜浣忔嫋鍔ㄧ敤 SetCapture + SetWindowPos 鍘熺敓绉诲姩锛堟棤 IPC 寰€杩旓紝涓嶉棯鍔級锛?// 鎷栧姩鑼冨洿浠ャ€屽渾褰㈠簳鏉裤€嶄负鍑嗭紙闃村奖鍍忕礌鍙帰鍑哄睆骞曪級锛岄紶鏍囧彲鎶婄悆鍋滃埌灞忓箷涓婁换鎰忎綅缃紱
+// 鏉炬墜鏃剁珛鍗虫妸绐楀彛鍧愭爣鍐欏叆閰嶇疆锛屼笅娆℃樉绀猴紙鍚噸鍚?閲嶆柊鎵撳紑锛夌敱 ballInitPos 鍘熸牱鎭㈠銆?// 鍗曞嚮锛堟湭鎷栧姩锛変笌鍙抽敭閮藉湪鍏夋爣澶勫脊鍑哄揩鎹疯彍鍗曪細鍘熺敓 Win32 TrackPopupMenu锛堜笌鎵樼洏鍙抽敭鍚屾簮锛學indows 鍘熺敓缁樺埗銆佽嚜鍔ㄨ窡闅忕郴缁熸繁娴呰壊锛夛紱
+// 鑿滃崟椤瑰姩鎬佸彇鑷厤缃?Quick=true 鐨勫伐鍏凤紙ballQuickItems锛夛紝
+// 閫変腑椤圭粡 handleBallAction 鈫?"ball:action" 浜嬩欢浜ゅ洖涓荤獥鍙ｅ鐢ㄥ墠绔紑绐?鎴浘閫昏緫锛堝叧闂诞鍔ㄧ悆鐩存帴鍋滅悆锛夈€?// 缃《 WS_EX_TOPMOST銆佷笉鍗犱换鍔℃爮 WS_EX_TOOLWINDOW锛岄粯璁よ创灞忓箷宸ヤ綔鍖哄彸涓嬭銆?//
+// 娑堟伅寰幆瀹夊叏锛堟部鐢ㄦ湰浠撳簱鏃㈡湁绾﹀畾锛夛細
+//   - 涓撶敤 goroutine + runtime.LockOSThread锛岄€€鍑烘椂涓?UnlockOSThread锛?//     绾跨▼闅忎箣閿€姣侊紝鍏堕槦鍒楁畫鐣欎竴骞跺甫璧帮紝缁濅笉姣掑寲澶嶇敤绾跨▼锛?//   - 鍏ㄧ▼涓?PostQuitMessage锛岄€€鍑洪潬 WM_DESTROY 缃?done 鏍囧織锛?//   - 鍏抽棴鐢?stopNativeBall 浠庡叾瀹?goroutine PostMessage(WM_CLOSE) 瑙﹀彂銆?// ============================================================
+
+// ---------------- Win32 甯搁噺 ----------------
+
+const (
+	ballWS_POPUP      = 0x80000000
+	ballWS_EX_LAYERED = 0x00080000
+	ballWS_EX_TOPMOST = 0x00000008
+	ballWS_EX_TOOLWIN = 0x00000080
+
+	ballWS_EX_NOACTIVATE = 0x08000000 // 鑿滃崟绐楀彛锛氫笉婵€娲汇€佷笉鎶㈠墠鍙扮劍鐐?
+	ballSW_SHOWNOACTIVATE = 4
+
+	ballWM_DESTROY     = 0x0002
+	ballWM_PAINT       = 0x000F
+	ballWM_CLOSE       = 0x0010
+	ballWM_SETCURSOR   = 0x0020
+	ballWM_MOUSEMOVE   = 0x0200
+	ballWM_LBUTTONDOWN = 0x0201
+	ballWM_LBUTTONUP   = 0x0202
+	ballWM_RBUTTONUP   = 0x0205
+	ballWM_CAPTURECHG  = 0x0215
+
+	// 鑿滃崟妯℃€佸惊鐜細PeekMessage 鎶藉彇 + GetAsyncKeyState 杞鈥滆彍鍗曞鐐瑰嚮鈥濆厹搴?	ballPM_REMOVE   = 0x0001
+	ballVK_LBUTTON  = 0x01
+	ballVK_RBUTTON  = 0x02
+	ballQS_ALLINPUT = 0x04FF
+
+	ballIDC_ARROW   = 32512
+	ballIDC_HAND    = 32649
+	ballIDC_SIZEALL = 32646
+
+	ballSWP_NOSIZE     = 0x0001
+	ballSWP_NOZORDER   = 0x0004
+	ballSWP_NOACTIVATE = 0x0010
+
+	ballULW_ALPHA = 0x00000002
+	ballAC_SRC_OVER_ALPHA
+
+	ballMF_STRING       = 0x0000
+	ballMF_SEPARATOR    = 0x0800
+	ballMF_OWNERDRAW    = 0x0100
+	ballTPM_RETURNCMD   = 0x0100
+	ballTPM_RIGHTBUTTON = 0x0002
+
+	// 鑷粯鑿滃崟椤癸紙owner-draw锛夛細涓鸿彍鍗曢」鍔犱笂涓嬬暀鐧斤紝闇€澶勭悊杩欎袱鏉℃秷鎭?	ballWM_DRAWITEM    = 0x002B
+	ballWM_MEASUREITEM = 0x002C
+	ballODT_MENU       = 1
+	ballODS_SELECTED   = 0x0001
+	ballODS_GRAYED     = 0x0002
+	ballODS_DISABLED   = 0x0004
+	ballTRANSPARENT    = 1
+
+	// 鑷畾涔夋秷鎭細WM_APP 璧风偣銆傚悗鍙版湇鍔℃暟鍙樺寲鏃堕€氱煡鐞冪嚎绋嬮噸缁樿鏍囷紱璁剧疆/涓婚/鍥炬爣鍙樻洿鏃堕噸杞界悆蹇冨浘鏍?	ballWM_APP    = 0x8000
+	ballWM_BADGE  = ballWM_APP + 1
+	ballWM_RELOAD = ballWM_APP + 2
+
+	// GetSysColor 绱㈠紩
+	ballCOLOR_MENU          = 3
+	ballCOLOR_MENUTEXT      = 7
+	ballCOLOR_HIGHLIGHTTEXT = 14
+	ballCOLOR_GRAYTEXT      = 17
+	ballCOLOR_MENUHILIGHT   = 29
+
+	// GetStockObject / DrawTextW 鏍囧織
+	ballDEFAULT_GUI_FONT = 17
+	ballNULL_PEN         = 8 // GetStockObject锛氱┖鐢荤瑪锛屽渾瑙掗珮浜潯鍙～鑹蹭笉鎻忚竟
+	ballDT_LEFT          = 0x00000000
+	ballDT_VCENTER       = 0x00000004
+	ballDT_SINGLELINE    = 0x00000020
+	ballDT_NOPREFIX      = 0x00000800
+
+	// 鑷粯鑿滃崟缇庡寲锛氳彍鍗曢」绂佺敤鎬併€佸瓧浣撱€佽彍鍗曞簳鑹?	ballMF_GRAYED           = 0x0001
+	ballMF_DISABLED         = 0x0002
+	ballFW_NORMAL           = 400
+	ballDEFAULT_CHARSET     = 1
+	ballCLEARTYPE_QUALITY   = 5
+	ballANTIALIASED_QUALITY = 3          // 鐏板害鎶楅敮榻匡細鍒嗗眰绐楀彛 DIB 閲岀殑鏂囧瓧蹇呴』鐢ㄥ畠锛孋learType 瀛愬儚绱犳覆鏌撲細鐣欎笅褰╄壊鎻忚竟锛堢湅璧锋潵鍍忊€滈娇杞€濓級
+	ballMIIM_BACKGROUND     = 0x00000002 // SetMenuInfo锛氳嚜瀹氫箟鑿滃崟鑳屾櫙鐢诲埛
+
+	// 娉ㄥ唽琛細auto 涓婚涓嬭鍙栫郴缁熸槸鍚︿娇鐢ㄦ繁鑹插簲鐢ㄦā寮?	ballHKEY_CURRENT_USER = 0x80000001
+	ballKEY_QUERY_VALUE   = 0x0001
+
+	ballSPI_GETWORKAREA = 0x0030
+
+	// GetSystemMetrics锛氳櫄鎷熷睆骞曪紙鎵€鏈夋樉绀哄櫒骞堕泦锛夎寖鍥达紝鐢ㄤ簬璺ㄥ睆閽冲埗
+	ballSMXVirtualScreen  = 76
+	ballSMYVirtualScreen  = 77
+	ballSMCXVirtualScreen = 78
+	ballSMCYVirtualScreen = 79
+)
+
+// 娴姩鐞冭瑙夊弬鏁帮紙鍗曚綅 DIP锛岃繍琛屾椂鎸夌郴缁?DPI 鏀惧ぇ锛?const (
+	ballDiameterDIP  = 36.0 // 鍦嗗舰搴曟澘鐩村緞锛堜笉鍚槾褰辩暀鐧斤級锛屾瘮鍘?48 DIP logo 鏇村皬
+	ballShadowPadDIP = 14.0 // 鍥涘懆闃村奖鐣欑櫧锛堝绾冲ぇ鍗婂緞鏌斿拰鎶曞奖锛岄伩鍏嶈绐楀彛杈圭紭鎴柇锛?	ballLogoRatio    = 0.56 // logo 鍐呭鍗犲簳鏉跨洿寰勭殑姣斾緥
+)
+
+// ---------------- Win32 缁撴瀯浣?----------------
+
+type ballPoint struct{ X, Y int32 }
+type ballSize struct{ CX, CY int32 }
+type ballRect struct {
+	Left, Top, Right, Bottom int32
+}
+
+// MEASUREITEMSTRUCT / DRAWITEMSTRUCT锛堜粎鑿滃崟 owner-draw 鐢ㄥ埌鐨勫瓧娈靛竷灞€锛宎md64 瀵归綈涓?C 涓€鑷达級
+type ballMeasureItem struct {
+	CtlType    uint32
+	CtlID      uint32
+	ItemID     uint32
+	ItemWidth  uint32
+	ItemHeight uint32
+	ItemData   uintptr
+}
+type ballDrawItem struct {
+	CtlType    uint32
+	CtlID      uint32
+	ItemID     uint32
+	ItemAction uint32
+	ItemState  uint32
+	HwndItem   uintptr
+	HDC        uintptr
+	RcItem     ballRect
+	ItemData   uintptr
+}
+
+// MENUINFO锛圫etMenuInfo 鐢紝浠呭彇鑳屾櫙鐢诲埛瀛楁锛沘md64 瀵归綈涓?C 涓€鑷达紝size=40锛?type ballMenuInfo struct {
+	CbSize    uint32
+	FMask     uint32
+	DwStyle   uint32
+	CyMin     uint32
+	HbrBack   uintptr
+	DwContext uint32
+	DwMenuID  uintptr
+}
+type ballBlend struct {
+	BlendOp             byte
+	BlendFlags          byte
+	SourceConstantAlpha byte
+	AlphaFormat         byte
+}
+type ballMsg struct {
+	Hwnd    uintptr
+	Message uint32
+	WParam  uintptr
+	LParam  uintptr
+	Time    uint32
+	Pt      ballPoint
+}
+
+// PAINTSTRUCT锛圔eginPaint/EndPaint 鐢紝amd64 甯冨眬涓?C 涓€鑷达級
+type ballPaintStruct struct {
+	HDC         uintptr
+	FErase      int32
+	RcPaint     ballRect
+	FRestore    int32
+	FIncUpdate  int32
+	RgbReserved [32]byte
+}
+type ballWndClass struct {
+	Style         uint32
+	LpfnWndProc   uintptr
+	CbClsExtra    int32
+	CbWndExtra    int32
+	HInstance     uintptr
+	HIcon         uintptr
+	HCursor       uintptr
+	HbrBackground uintptr
+	LpszMenuName  *uint16
+	LpszClassName *uint16
+}
+type ballBmih struct {
+	BiSize          uint32
+	BiWidth         int32
+	BiHeight        int32
+	BiPlanes        uint16
+	BiBitCount      uint16
+	BiCompression   uint32
+	BiSizeImage     uint32
+	BiXPelsPerMeter int32
+	BiYPelsPerMeter int32
+	BiClrUsed       uint32
+	BiClrImportant  uint32
+}
+type ballBitmapInfo struct {
+	Header ballBmih
+	Colors uintptr
+	_      [0]byte
+	pad    [0]byte
+	// Colors 鍗犱綅锛涘疄闄呴鑹茶〃绱ч殢鍏跺悗锛?2bpp BI_RGB 鏃犻渶璋冭壊鏉匡級
+	_unused [0]uint32
+}
+
+// ---------------- Win32 杩囩▼ ----------------
+
+var (
+	ballUser32   = windows.NewLazySystemDLL("user32.dll")
+	ballGdi32    = windows.NewLazySystemDLL("gdi32.dll")
+	ballKern32   = windows.NewLazySystemDLL("kernel32.dll")
+	ballNewClass = ballUser32.NewProc("RegisterClassW")
+	ballCreate   = ballUser32.NewProc("CreateWindowExW")
+	ballShow     = ballUser32.NewProc("ShowWindow")
+	ballGetMsg   = ballUser32.NewProc("GetMessageW")
+	ballPeekMsg  = ballUser32.NewProc("PeekMessageW")
+	ballMsgWait  = ballUser32.NewProc("MsgWaitForMultipleObjects")
+	ballAsyncKey = ballUser32.NewProc("GetAsyncKeyState")
+	ballTrans    = ballUser32.NewProc("TranslateMessage")
+	ballDispatch = ballUser32.NewProc("DispatchMessageW")
+	ballDefProc  = ballUser32.NewProc("DefWindowProcW")
+	ballDestroy  = ballUser32.NewProc("DestroyWindow")
+	ballPostMsg  = ballUser32.NewProc("PostMessageW")
+	ballSetCap   = ballUser32.NewProc("SetCapture")
+	ballRelCap   = ballUser32.NewProc("ReleaseCapture")
+	ballGetCur   = ballUser32.NewProc("GetCursorPos")
+	ballSetCur   = ballUser32.NewProc("SetCursor")
+	ballGetRect  = ballUser32.NewProc("GetWindowRect")
+	ballSetPos   = ballUser32.NewProc("SetWindowPos")
+	ballLoadCur  = ballUser32.NewProc("LoadCursorW")
+	ballSetFore  = ballUser32.NewProc("SetForegroundWindow")
+	ballGetDC    = ballUser32.NewProc("GetDC")
+	ballRelDC    = ballUser32.NewProc("ReleaseDC")
+	ballSysInfo  = ballUser32.NewProc("SystemParametersInfoW")
+	ballMetrics  = ballUser32.NewProc("GetSystemMetrics")
+	ballGetDpi   = ballUser32.NewProc("GetDpiForSystem")
+	ballCreatePM = ballUser32.NewProc("CreatePopupMenu")
+	ballAppendM  = ballUser32.NewProc("AppendMenuW")
+	ballTrackPM  = ballUser32.NewProc("TrackPopupMenuEx")
+	ballDestroyM = ballUser32.NewProc("DestroyMenu")
+
+	// 鑷粯鑿滃崟鐢ㄥ埌鐨?GDI/User32
+	ballGetSysColor   = ballUser32.NewProc("GetSysColor")
+	ballFillRect      = ballUser32.NewProc("FillRect")
+	ballDrawText      = ballUser32.NewProc("DrawTextW")
+	ballGetStockObj   = ballGdi32.NewProc("GetStockObject")
+	ballCreateBrush   = ballGdi32.NewProc("CreateSolidBrush")
+	ballSetBkMode     = ballGdi32.NewProc("SetBkMode")
+	ballSetTextColor  = ballGdi32.NewProc("SetTextColor")
+	ballGetTextExtent = ballGdi32.NewProc("GetTextExtentPoint32W")
+	ballCreateFont    = ballGdi32.NewProc("CreateFontW")
+	ballRoundRect     = ballGdi32.NewProc("RoundRect")
+	ballSetMenuInfo   = ballUser32.NewProc("SetMenuInfo")
+
+	// 鑷粯鑿滃崟绐楀彛锛堢嫭绔嬫棤杈规鍦嗚绐楋級鐢?	ballBeginPaint    = ballUser32.NewProc("BeginPaint")
+	ballEndPaint      = ballUser32.NewProc("EndPaint")
+	ballInvalRect     = ballUser32.NewProc("InvalidateRect")
+	ballSetWinRgn     = ballUser32.NewProc("SetWindowRgn")
+	ballRoundRgn      = ballGdi32.NewProc("CreateRoundRectRgn")
+	ballOffsetVpOrg   = ballGdi32.NewProc("OffsetViewportOrgEx")
+	ballAdv32         = windows.NewLazySystemDLL("advapi32.dll")
+	ballRegOpenKey    = ballAdv32.NewProc("RegOpenKeyExW")
+	ballRegQueryValue = ballAdv32.NewProc("RegQueryValueExW")
+	ballRegCloseKey   = ballAdv32.NewProc("RegCloseKey")
+	ballCompatDC      = ballGdi32.NewProc("CreateCompatibleDC")
+	ballDeleteDC      = ballGdi32.NewProc("DeleteDC")
+	ballDIB           = ballGdi32.NewProc("CreateDIBSection")
+	ballSelObj        = ballGdi32.NewProc("SelectObject")
+	ballDelObj        = ballGdi32.NewProc("DeleteObject")
+	ballULW           = ballUser32.NewProc("UpdateLayeredWindow")
+	ballModHdr        = ballKern32.NewProc("GetModuleHandleW")
+)
+
+// ---------------- 杩愯鏈熺姸鎬侊紙浠呭湪鐞冪嚎绋嬭闂殑鎷栨嫿鏍囧織鏃犻渶鍔犻攣锛?----------------
+
+var (
+	ballMu        sync.Mutex
+	ballRunning   bool
+	ballApp       *App
+	ballHwnd      uintptr
+	ballDone      bool
+	ballClassOnce sync.Once
+	ballClassName *uint16
+	ballClassAtom uint16
+
+	ballSizePx     int // 鐞冪獥鍙ｈ竟闀匡紙鐗╃悊鍍忕礌锛屽惈闃村奖鐣欑櫧锛?	ballDiameterPx int // 鍦嗙悆鏈綋鐩村緞锛堢墿鐞嗗儚绱狅級
+	ballShadowPad  int // 鍥涘懆涓洪槾褰遍鐣欑殑杈硅窛锛堢墿鐞嗗儚绱狅級
+	ballRadiusF    float64
+	ballLogoImg    image.Image     // 娴姩鐞冧腑蹇?logo 鍥惧儚锛坣il 鍒欏洖閫€闂數锛?	ballLogoRect   image.Rectangle // logo 闈為€忔槑鍐呭鍖呭洿鐩掞紙鍘绘簮鍥剧暀鐧斤級
+	ballLogoTint   bool            // 鐞冨績鍥炬爣涓哄崟鑹查伄缃╋細浠呭彇 alpha锛屾寜涓婚鏂囧瓧鑹诧紙text-1锛夌潃鑹?	ballCx, ballCy float64
+
+	// 瑙掓爣锛?0 鏃跺湪鐞冮潰鍙充笂鐢荤孩鐐癸紝琛ㄧず鏈夊悗鍙版湇鍔″湪杩愯锛坅tomic锛岃法绾跨▼璇诲啓锛?	ballBadgeCount int32
+
+	// 鎷栨嫿锛堜粎鐞冪嚎绋嬭鍐欙級
+	ballCaptured bool
+	ballDragging bool
+	ballDownPt   ballPoint
+	ballOrigLeft int32
+	ballOrigTop  int32
+	ballDragPx   int32 // 鍒ゅ畾涓烘嫋鍔ㄧ殑鏈€灏忎綅绉伙紙鐗╃悊鍍忕礌锛岄殢 DPI 鏀惧ぇ锛?
+	// 鍏夋爣锛堜粎鐞冪嚎绋嬩娇鐢級锛氶粯璁ょ澶?/ 鎮仠鎵嬪瀷 / 鎷栧姩涓洓鍚戠Щ鍔?	ballCursorArrow uintptr
+	ballCursorHand  uintptr
+	ballCursorMove  uintptr
+
+	// 鐞冪嚎绋嬩娇鐢ㄧ殑 DPI 缂╂斁锛堢暀鐧?灏哄 DIP鈫旂墿鐞嗗儚绱犳崲绠楋級
+	ballScale float64
+)
+
+func ballUtf16(s string) *uint16 {
+	p, _ := syscall.UTF16PtrFromString(s)
+	return p
+}
+
+// ballLogf 娴姩鐞冧笓鐢ㄦ棩蹇楄緟鍔╋紙娌跨敤 selector 鐨?selLogf 绾﹀畾锛夛細
+// 鍏抽敭鐢熷懡鍛ㄦ湡/鐢ㄦ埛绂绘暎鎿嶄綔/寮傚父缁熶竴璧板叏灞€鍙厤缃棩蹇楋紙logger.go锛夈€?func ballLogf(format string, args ...any) {
+	appLogf(logInfo, "ball", format, args...)
+}
+
+// ballBadgeLoop 姣?3s 鎶婂悗鍙拌繍琛屾湇鍔℃暟鍚屾鍒扮悆闈㈣鏍囷紱鏈嶅姟鍚仠鏈€杩?3s 鍐呭弽鏄犲埌 Badge銆?func ballBadgeLoop(hwnd uintptr, stop <-chan struct{}) {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	for {
+		ballRefreshBadge(hwnd)
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// ballRefreshBadge 閲嶇畻鍚庡彴杩愯鏁帮紱鍙湪鏁板€煎彉鍖栨椂 PostMessage 閫氱煡鐞冪嚎绋嬮噸缁橈紝閬垮厤鏃犺皳鍒峰睆銆?// PostMessage 璺ㄧ嚎绋嬭Е鍙?WM_PAINT 绫婚噸缁樻槸鏈獥鍙ｆ棦鏈夌害瀹氾紙stopNativeBall 鍚屾牱濡傛锛夈€?func ballRefreshBadge(hwnd uintptr) {
+	if ballApp == nil {
+		return
+	}
+	n := int32(ballApp.activeBackgroundCount())
+	if atomic.SwapInt32(&ballBadgeCount, n) == n {
+		return
+	}
+	ballPostMsg.Call(hwnd, ballWM_BADGE, 0, 0)
+}
+
+// startNativeBall 鍚姩妗岄潰娴姩鐞冿紙骞傜瓑锛夈€?func startNativeBall(a *App) error {
+	if a == nil {
+		return fmt.Errorf("app 涓虹┖")
+	}
+	ballMu.Lock()
+	if ballRunning {
+		ballMu.Unlock()
+		return nil
+	}
+	ballApp = a
+	ballRunning = true
+	ballDone = false
+	ballMu.Unlock()
+
+	go ballThread()
+	return nil
+}
+
+// ballReloadIcon 閫氱煡娴姩鐞冪嚎绋嬮噸璇荤悆蹇冨浘鏍囧苟鎸夊綋鍓嶄富棰橀噸缁橈紙璁剧疆/涓婚/鍥炬爣鍙樻洿鍚庝粠浠绘剰 goroutine 璋冪敤锛夈€?// 鍥炬爣鍔犺浇缁熶竴鏀舵暃鍒扮悆绾跨▼鎵ц锛圵M_RELOAD锛夛紝閬垮厤涓?ballRender 鐨勫儚绱犺鍙栫珵鎬併€?func ballReloadIcon() {
+	ballMu.Lock()
+	h, running := ballHwnd, ballRunning
+	ballMu.Unlock()
+	if running && h != 0 {
+		ballPostMsg.Call(h, ballWM_RELOAD, 0, 0)
+	}
+}
+
+// stopNativeBall 璇锋眰鍏抽棴娴姩鐞冿紙浠庝换鎰?goroutine 璋冪敤锛夈€?func stopNativeBall() {
+	ballMu.Lock()
+	h := ballHwnd
+	ballMu.Unlock()
+	if h != 0 {
+		ballPostMsg.Call(h, ballWM_CLOSE, 0, 0)
+	}
+}
+
+// ballLoadLogo 鍔犺浇鐞冨績鍥炬爣鍒?ballLogoImg锛堜粎鐞冪嚎绋嬭皟鐢級锛?// 浼樺厛鑷畾涔夌悆鍥炬爣锛堝墠绔覆鏌撶殑榛戣壊 alpha 閬僵锛屾寜涓婚 text-1 鐫€鑹诧級> 搴旂敤 Logo > 鍐呯疆榛樿銆?func ballLoadLogo() {
+	ballLogoImg = nil
+	ballLogoRect = image.Rectangle{}
+	ballLogoTint = false
+	var data []byte
+	if p, err := ballIconMaskPath(); err == nil {
+		if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
+			data = b
+			ballLogoTint = true
+		}
+	}
+	if len(data) == 0 {
+		cfg := CurrentConfig()
+		if cfg.General.AppLogo != "" {
+			if b, err := os.ReadFile(cfg.General.AppLogo); err == nil {
+				data = b
+			}
+		}
+		if len(data) == 0 && ballApp != nil {
+			data = ballApp.defaultLogo
+		}
+	}
+	if len(data) == 0 {
+		ballLogoTint = false
+		return
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		ballLogf("logo PNG 瑙ｇ爜澶辫触: %v", err)
+		ballLogoTint = false
+		return
+	}
+	ballLogoImg = img
+	ballLogoRect = ballOpaqueBounds(img)
+	if ballLogoRect.Empty() {
+		ballLogoRect = img.Bounds()
+	}
+}
+
+// ballOpaqueBounds 璁＄畻鍥惧儚闈為€忔槑鍐呭鐨勫寘鍥寸洅锛坅lpha 杩囦綆瑙嗕负绌虹櫧锛夛紝
+// 閬垮厤 logo 婧愬浘鑷甫鐣欑櫧瀵艰嚧缂╁皬鍚庤瑙夎繃灏忋€?func ballOpaqueBounds(img image.Image) image.Rectangle {
+	b := img.Bounds()
+	minX, minY := b.Max.X, b.Max.Y
+	maxX, maxY := b.Min.X-1, b.Min.Y-1
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			if a < 0x1000 {
+				continue
+			}
+			if x < minX {
+				minX = x
+			}
+			if y < minY {
+				minY = y
+			}
+			if x > maxX {
+				maxX = x
+			}
+			if y > maxY {
+				maxY = y
+			}
+		}
+	}
+	if maxX < b.Min.X || maxY < b.Min.Y {
+		return image.Rectangle{}
+	}
+	return image.Rect(minX, minY, maxX+1, maxY+1)
+}
+
+// ballThread 鍦ㄤ笓鐢?OS 绾跨▼涓婂缓绐楀苟娉垫秷鎭紝鐩村埌鏀跺埌鍏抽棴銆?func ballThread() {
+	runtime.LockOSThread()
+	// 鏁呮剰涓?UnlockOSThread锛氱嚎绋嬮殢 goroutine 閫€鍑鸿€岄攢姣侊紝闃熷垪娈嬬暀涓€骞舵竻闄ゃ€?	defer func() {
+		ballMu.Lock()
+		ballRunning = false
+		ballHwnd = 0
+		ballMu.Unlock()
+	}()
+
+	ballClassOnce.Do(ballRegisterClass)
+	if ballClassAtom == 0 {
+		ballLogf("娉ㄥ唽绐楀彛绫诲け璐ワ紝鏀惧純")
+		return
+	}
+
+	// 璁＄畻灏哄涓庡垵濮嬩綅缃紙鐗╃悊鍍忕礌锛涙寜绯荤粺 DPI 鏀惧ぇ浠ュ湪楂樺垎灞忎繚鎸佽瑙夊ぇ灏忥級
+	dpi := uintptr(96)
+	if r, _, _ := ballGetDpi.Call(); r > 0 {
+		dpi = r
+	}
+	scale := float64(dpi) / 96.0
+	if scale < 1 {
+		scale = 1
+	}
+	ballScale = scale // 鑷粯鑿滃崟鐣欑櫧鎸夊悓涓€ DPI 鏀惧ぇ
+	// 缁熶竴褰㈡€侊細鍦嗗舰搴曟澘 + 灞呬腑 logo + 鏌斿拰鎶曞奖锛堥槾褰辩暀鐧藉彧鐢ㄤ簬缁樺埗锛屼笉鍙備笌鐐瑰嚮锛?	ballDiameterPx = int(math.Round(ballDiameterDIP * scale))
+	if ballDiameterPx < 24 {
+		ballDiameterPx = 24
+	}
+	ballShadowPad = int(math.Round(ballShadowPadDIP * scale))
+	if ballShadowPad < 6 {
+		ballShadowPad = 6
+	}
+	ballSizePx = ballDiameterPx + 2*ballShadowPad
+	ballCx = float64(ballSizePx-1) / 2
+	ballCy = ballCx
+	ballRadiusF = float64(ballDiameterPx) / 2
+	// 鎷栧姩闃堝€煎悓鏍烽殢 DPI 鏀惧ぇ锛堥珮 DPI 涓?4 鐗╃悊鍍忕礌杩囧皬锛屽鏄撹瑙︽嫋鍔級
+	ballDragPx = int32(math.Max(3, math.Round(4*scale)))
+
+	left, top := ballInitPos()
+
+	hInst, _, _ := ballModHdr.Call(0)
+	hwnd, _, _ := ballCreate.Call(
+		uintptr(ballWS_EX_LAYERED|ballWS_EX_TOPMOST|ballWS_EX_TOOLWIN),
+		uintptr(unsafe.Pointer(ballClassName)),
+		uintptr(unsafe.Pointer(ballUtf16("go-tools 娴姩鐞?))),
+		uintptr(ballWS_POPUP),
+		uintptr(left), uintptr(top), uintptr(ballSizePx), uintptr(ballSizePx),
+		0, 0, hInst, 0,
+	)
+	if hwnd == 0 {
+		ballLogf("CreateWindowEx 澶辫触: %v", windows.GetLastError())
+		return
+	}
+	ballMu.Lock()
+	ballHwnd = hwnd
+	ballMu.Unlock()
+
+	ballLoadLogo()
+	ballPaint(hwnd)
+	ballShow.Call(hwnd, ballSW_SHOWNOACTIVATE)
+
+	// 瑙掓爣鍚屾寰幆锛氬畾鏈熸妸銆屽悗鍙拌繍琛屾湇鍔℃暟銆嶅弽鏄犲埌鐞冮潰锛堟湁鍙樺寲鎵嶉噸缁橈級
+	badgeStop := make(chan struct{})
+	defer close(badgeStop)
+	go ballBadgeLoop(hwnd, badgeStop)
+
+	var msg ballMsg
+	for {
+		ret, _, _ := ballGetMsg.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		if int32(ret) == 0 {
+			break // 鎰忓 WM_QUIT锛氭湰绾跨▼鍗冲皢閿€姣侊紝瀹夊叏閫€鍑?		}
+		ballTrans.Call(uintptr(unsafe.Pointer(&msg)))
+		ballDispatch.Call(uintptr(unsafe.Pointer(&msg)))
+		ballMu.Lock()
+		done := ballDone
+		ballMu.Unlock()
+		if done {
+			break
+		}
+	}
+}
+
+// ballInitPos 鍒濆浣嶇疆锛氫紭鍏堟部鐢ㄤ笂娆℃嫋鍔ㄤ繚瀛樼殑浣嶇疆锛堥挸鍒跺埌鍙鍖哄煙锛夛紝
+// 鍚﹀垯鍋滈潬涓诲睆宸ヤ綔鍖哄彸涓嬭銆?func ballInitPos() (int32, int32) {
+	cfg := CurrentConfig()
+	if cfg.Ball.HasPos {
+		l, t := ballClampToScreen(int32(cfg.Ball.X), int32(cfg.Ball.Y))
+		if l != int32(cfg.Ball.X) || t != int32(cfg.Ball.Y) {
+			ballLogf("涓婃浣嶇疆 (%d, %d) 涓嶅湪鍙鍖哄煙锛屽凡淇涓?(%d, %d)", cfg.Ball.X, cfg.Ball.Y, l, t)
+		} else {
+			ballLogf("鎭㈠涓婃浣嶇疆: (%d, %d)", l, t)
+		}
+		return l, t
+	}
+	return ballDefaultPos()
+}
+
+// ballDefaultPos 宸ヤ綔鍖哄彸涓嬭锛堢墿鐞嗗儚绱狅級锛岃鐞冮潰锛堜笉鍚槾褰憋級璺濆睆骞曡竟缂?14 DIP銆?func ballDefaultPos() (int32, int32) {
+	var rc ballRect
+	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&rc)), 0)
+	margin := int32(14)
+	right := rc.Right - int32(ballDiameterPx) - margin - int32(ballShadowPad)
+	bottom := rc.Bottom - int32(ballDiameterPx) - margin - int32(ballShadowPad)
+	if right < rc.Left {
+		right = rc.Left
+	}
+	if bottom < rc.Top {
+		bottom = rc.Top
+	}
+	return right, bottom
+}
+
+func ballRegisterClass() {
+	ballClassName = ballUtf16("GoToolsFloatBallCls")
+	ballCursorArrow = ballLoadCursor(ballIDC_ARROW)
+	ballCursorHand = ballLoadCursor(ballIDC_HAND)
+	ballCursorMove = ballLoadCursor(ballIDC_SIZEALL)
+	hInst, _, _ := ballModHdr.Call(0)
+	wc := ballWndClass{
+		LpfnWndProc:   syscall.NewCallback(ballWndProc),
+		HInstance:     hInst,
+		HCursor:       ballCursorArrow,
+		LpszClassName: ballClassName,
+	}
+	atom, _, err := ballNewClass.Call(uintptr(unsafe.Pointer(&wc)))
+	if atom == 0 {
+		ballLogf("RegisterClassW 澶辫触: %v", err)
+		return
+	}
+	ballClassAtom = uint16(atom)
+}
+
+// ballLoadCursor 鍔犺浇绯荤粺鍏夋爣锛坕d 涓?IDC_* 甯搁噺锛夈€?func ballLoadCursor(id uintptr) uintptr {
+	r, _, _ := ballLoadCur.Call(0, id)
+	return r
+}
+
+// ballWndProc 绐楀彛杩囩▼锛堜粎鍦ㄧ悆绾跨▼琚皟鐢級銆?func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+	switch msg {
+	case ballWM_LBUTTONDOWN:
+		x := int32(int16(uint16(lParam & 0xFFFF)))
+		y := int32(int16(uint16((lParam >> 16) & 0xFFFF)))
+		if !ballInsideCircle(float64(x), float64(y)) {
+			break // 鍦嗗閫忔槑鍖轰笉鍝嶅簲
+		}
+		ballCaptured = true
+		ballDragging = false
+		ballGetCur.Call(uintptr(unsafe.Pointer(&ballDownPt)))
+		var rc ballRect
+		ballGetRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+		ballOrigLeft, ballOrigTop = rc.Left, rc.Top
+		ballSetCap.Call(hwnd)
+		return 0
+
+	case ballWM_MOUSEMOVE:
+		if !ballCaptured {
+			break
+		}
+		var p ballPoint
+		ballGetCur.Call(uintptr(unsafe.Pointer(&p)))
+		dx := p.X - ballDownPt.X
+		dy := p.Y - ballDownPt.Y
+		if !ballDragging && (abs32(dx) >= ballDragPx || abs32(dy) >= ballDragPx) {
+			ballDragging = true
+			ballSetCur.Call(ballCursorMove) // 鎹曡幏鏈熼棿涓嶄細鏀跺埌 WM_SETCURSOR锛岃繖閲屼富鍔ㄥ垏鍏夋爣
+		}
+		if ballDragging {
+			nl, nt := ballClampToScreen(ballOrigLeft+dx, ballOrigTop+dy)
+			// SetWindowPos(hwnd, hWndInsertAfter, X, Y, cx, cy, flags)锛?			// 绗?2 鍙傚繀椤讳紶 0锛堥厤鍚?SWP_NOZORDER 琚拷鐣ワ級锛涜嫢璇妸 X 浼犲湪绗?2 鍙傦紝
+			// 浼氳褰撴垚鎻掑叆鍙ユ焺鑰屽鑷寸Щ鍔ㄩ潤榛樺け璐ワ紙琛ㄧ幇涓烘嫋涓嶅姩锛夈€?			ballSetPos.Call(hwnd, 0, uintptr(nl), uintptr(nt), 0, 0,
+				ballSWP_NOSIZE|ballSWP_NOZORDER|ballSWP_NOACTIVATE)
+		}
+		return 0
+
+	case ballWM_LBUTTONUP:
+		if ballCaptured {
+			wasDragging := ballDragging
+			if wasDragging {
+				// 鍏滃簳锛氭寜鏉炬墜鏃剁殑鍏夋爣鍋氭渶鍚庝竴娆″畾浣嶏紝閬垮厤蹇€熸澗鎵嬫紡鎺夋渶鍚庝竴娆?MOUSEMOVE
+				var p ballPoint
+				ballGetCur.Call(uintptr(unsafe.Pointer(&p)))
+				nl, nt := ballClampToScreen(
+					ballOrigLeft+(p.X-ballDownPt.X),
+					ballOrigTop+(p.Y-ballDownPt.Y),
+				)
+				ballSetPos.Call(hwnd, 0, uintptr(nl), uintptr(nt), 0, 0,
+					ballSWP_NOSIZE|ballSWP_NOZORDER|ballSWP_NOACTIVATE)
+			}
+			// 鍏堝浣嶆爣蹇楀啀閲婃斁鎹曡幏锛歊eleaseCapture 浼氬悓姝ユ淳鍙?WM_CAPTURECHANGED锛?			// 鑻ヤ笉鍏堝浣嶄細琚畠娓呮垚鈥滄湭鎷栧姩鈥濓紝瀵艰嚧鍒氭嫋瀹岀殑浣嶇疆涓嶈惤鐩樸€?			ballCaptured = false
+			ballDragging = false
+			ballRelCap.Call()
+			if wasDragging {
+				ballSavePos(hwnd) // 鎷栧姩缁撴潫锛氬悓姝ヨ蹇嗕綅缃紝绔嬪嵆钀界洏
+				ballApplyCursor(hwnd)
+			} else if app := ballApp; app != nil {
+				// 鍗曞嚮锛堟湭鎷栧姩锛夛細鐩存帴鎵撳紑/鑱氱劍涓荤晫闈紝涓嶅啀寮硅彍鍗曪紙蹇嵎鑿滃崟浠呬繚鐣欏彸閿級
+				go app.showMainWindow()
+			}
+		}
+		return 0
+
+	case ballWM_CAPTURECHG:
+		// 鎹曡幏琚郴缁?鍏朵粬绐楀彛鎶㈣蛋鏃跺浣嶆嫋鎷界姸鎬侊紝閬垮厤鍗″湪鈥滄寜浣忊€濈姸鎬?		ballCaptured = false
+		ballDragging = false
+		return 0
+
+	case ballWM_SETCURSOR:
+		ballApplyCursor(hwnd)
+		return 1
+
+	case ballWM_RBUTTONUP:
+		if ballMenuHwnd != 0 {
+			// 鑿滃崟宸插紑锛氬啀娆″彸閿啋鏀惰捣锛堝垏鎹級銆傝彍鍗曟ā鎬佸惊鐜細鎶婄悆绐楁秷鎭竴骞舵淳鍙戯紝
+			// 鑻ヤ笉鎷︽埅浼氶噸鍏?ballShowMenu 寮瑰嚭绗簩灞傝彍鍗曘€?			ballMenuClosing = true
+			return 0
+		}
+		ballShowMenu(hwnd)
+		return 0
+
+	case ballWM_BADGE:
+		// 瑙掓爣鍙樺寲锛氶噸璇?ballBadgeCount 閲嶇粯鏁寸悆
+		ballPaint(hwnd)
+		return 0
+
+	case ballWM_RELOAD:
+		// 璁剧疆/涓婚/鍥炬爣鍙樻洿锛氱悆绾跨▼鍐呴噸璇荤悆蹇冨浘鏍囧苟閲嶇粯
+		ballLoadLogo()
+		ballPaint(hwnd)
+		return 0
+
+	case ballWM_CLOSE:
+		ballDestroy.Call(hwnd)
+		return 0
+
+	case ballWM_DESTROY:
+		ballMu.Lock()
+		ballDone = true
+		ballMu.Unlock()
+		return 0
+	}
+	r, _, _ := ballDefProc.Call(hwnd, uintptr(msg), wParam, lParam)
+	return r
+}
+
+func abs32(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// ballApplyCursor 鎮仠鍦ㄥ渾鐞冧笂鏄剧ず鎵嬪瀷銆佹嫋鍔ㄤ腑鏄剧ず鍥涘悜绉诲姩鍏夋爣锛屾彁绀衡€滃彲鎸変綇鎷栧姩鈥濄€?func ballApplyCursor(hwnd uintptr) {
+	cur := ballCursorArrow
+	switch {
+	case ballDragging || ballCaptured:
+		cur = ballCursorMove
+	default:
+		var p ballPoint
+		ballGetCur.Call(uintptr(unsafe.Pointer(&p)))
+		var rc ballRect
+		ballGetRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+		if ballInsideCircle(float64(p.X-rc.Left), float64(p.Y-rc.Top)) {
+			cur = ballCursorHand
+		}
+	}
+	if cur != 0 {
+		ballSetCur.Call(cur)
+	}
+}
+
+func ballInsideCircle(x, y float64) bool {
+	dx, dy := x-ballCx, y-ballCy
+	r := ballRadiusF + 2 // 澶氱暀 2px 瀹瑰樊锛屾寜浣忚竟缂樹篃鑳芥嫋鍔?	return dx*dx+dy*dy <= r*r
+}
+
+// ballClampToScreen 鎶婄獥鍙ｅ乏涓婅閽冲埗鍒板厑璁告斁缃殑鑼冨洿锛?// 浠ャ€屽渾褰㈠簳鏉裤€嶄负鍑嗭紙闃村奖鍍忕礌鍏佽鎺㈠嚭灞忓箷杈圭紭锛夛紝鎵€浠ョ悆浣撹兘璐翠綇浠绘剰涓€杈?瑙掕惤锛?// 灞忓箷涓婁换鎰忎綅缃兘鑳藉仠锛涙樉绀哄櫒鎷旀彃鍚庢仮澶嶆棫浣嶇疆涔熶細琚媺鍥炲彲瑙佸尯鍩熴€?func ballClampToScreen(l, t int32) (int32, int32) {
+	vxRaw, _, _ := ballMetrics.Call(ballSMXVirtualScreen)
+	vyRaw, _, _ := ballMetrics.Call(ballSMYVirtualScreen)
+	vwRaw, _, _ := ballMetrics.Call(ballSMCXVirtualScreen)
+	vhRaw, _, _ := ballMetrics.Call(ballSMCYVirtualScreen)
+	vx, vy := int32(vxRaw), int32(vyRaw)
+	vw, vh := int32(vwRaw), int32(vhRaw)
+	if vw <= 0 || vh <= 0 {
+		return l, t
+	}
+	pad := int32(ballShadowPad)
+	dia := int32(ballDiameterPx)
+	// 绐楀彛宸︿笂瑙掔殑鍚堟硶鍖洪棿锛氬渾鐞冨湪宸?涓婅竟璐撮綈灞忓箷鏃朵负灞忓箷鍧愭爣鍑忛槾褰辩暀鐧?	minL, maxL := vx-pad, vx+vw-pad-dia
+	minT, maxT := vy-pad, vy+vh-pad-dia
+	if maxL < minL {
+		maxL = minL
+	}
+	if maxT < minT {
+		maxT = minT
+	}
+	if l < minL {
+		l = minL
+	} else if l > maxL {
+		l = maxL
+	}
+	if t < minT {
+		t = minT
+	} else if t > maxT {
+		t = maxT
+	}
+	return l, t
+}
+
+// ballSavePos 鎷栧姩缁撴潫鍚庢妸绐楀彛鍧愭爣绔嬪嵆鍐欏洖閰嶇疆锛堝悓姝ュ啓锛岄伩鍏嶉€€鍑烘椂寮傛钀界洏鏈畬鎴愶級锛?// 涓嬫鍚姩/閲嶅紑娴姩鐞冩椂鐢?ballInitPos 鍘熸牱鎭㈠銆?func ballSavePos(hwnd uintptr) {
+	l, t := ballCurPos(hwnd)
+	if err := SaveBallPos(int(l), int(t)); err != nil {
+		ballLogf("淇濆瓨浣嶇疆澶辫触: (%d, %d) %v", l, t, err)
+		return
+	}
+	ballLogf("宸茶浣忎綅缃? (%d, %d)", l, t)
+}
+
+// ballQuickItems 浠庡綋鍓嶉厤缃鍙栨爣璁颁负蹇嵎锛圦uick=true锛夌殑宸ュ叿锛屼綔涓鸿彍鍗曢」锛圛D 鈫?鏄剧ず鍚嶏級銆?func ballQuickItems() []ballMenuItem {
+	var out []ballMenuItem
+	for _, t := range CurrentConfig().Tools {
+		if !t.Quick {
+			continue
+		}
+		id := t.ID
+		if id == "" {
+			id = t.Key
+		}
+		label := t.Name
+		if label == "" {
+			label = t.Key
+		}
+		out = append(out, ballMenuItem{ID: id, Label: label})
+	}
+	return out
+}
+
+// ---------------- 鑷粯蹇嵎鑿滃崟锛堢嫭绔嬫棤杈规鍦嗚绐楀彛锛夎繍琛屾湡鐘舵€?----------------
+// 浠呭湪鐞冪嚎绋嬨€佽彍鍗曟ā鎬佸惊鐜湡闂磋鍐欙紝鏃犲苟鍙戯紝鏃犻渶鍔犻攣銆?var (
+	ballMenuHwnd    uintptr        // 鑿滃崟绐楀彛鍙ユ焺
+	ballMenuItems   []ballMenuItem // 宸ュ叿椤?+ 鏈熬鈥滃叧闂诞鍔ㄧ悆鈥?	ballMenuRects   []ballRect     // 姣忛」瀹㈡埛鍖虹煩褰紙鐗╃悊鍍忕礌锛夛紝涓?items 瀵归綈
+	ballMenuHover   int            // 褰撳墠鎮仠椤圭储寮曪紝-1 鏃?	ballMenuResult  int            // 閫変腑椤圭储寮曪紝-1 鍙栨秷
+	ballMenuClosing bool           // 璇锋眰缁撴潫妯℃€佸惊鐜?	ballMenuW       int32          // 绐楀彛瀹斤紙鐗╃悊鍍忕礌锛?	ballMenuH       int32          // 绐楀彛楂橈紙鐗╃悊鍍忕礌锛?	ballMenuX       int32          // 鍐呭鍖哄睆骞曞乏涓?x锛堢墿鐞嗗儚绱狅紝鍛戒腑/鐐瑰鍒ゅ畾鐢級
+	ballMenuY       int32          // 鍐呭鍖哄睆骞曞乏涓?y锛堢墿鐞嗗儚绱狅級
+	ballMenuMargin  int32          // 鎶曞奖杈硅窛锛堢墿鐞嗗儚绱狅級锛氱獥鍙ｅ乏涓?= 鍐呭宸︿笂 - margin
+	ballMenuSepY    int32          // 鍏抽棴椤逛笂鏂瑰垎闅旂嚎 y锛堢墿鐞嗗儚绱狅級锛? 琛ㄧず鏃?	ballMenuTextX   int32          // 鏂囧瓧宸﹁捣鐐癸紙鐗╃悊鍍忕礌锛?	ballMenuPillInX int32          // 楂樹寒鏉″乏鍙冲唴缂╋紙鐗╃悊鍍忕礌锛?	ballMenuPillInY int32          // 楂樹寒鏉′笂涓嬪唴缂╋紙鐗╃悊鍍忕礌锛?	ballMenuFont    uintptr        // 鏈鑿滃崟 GDI 瀛椾綋锛堝脊鍑哄墠鍒涘缓銆佸脊瀹屽垹闄わ級
+	ballMenuDark    bool           // 鏈鑿滃崟娣?娴呴厤鑹?
+	ballMenuClassOnce sync.Once
+	ballMenuClassName *uint16
+	ballMenuClassAtom uint16
+)
+
+// 鑿滃崟甯冨眬甯搁噺锛圖IP锛岃繍琛屾椂鎸?ballScale 鏀惧ぇ涓虹墿鐞嗗儚绱狅級
+const (
+	bmPadX    = 8   // 鑿滃崟宸﹀彸鍐呰竟璺?	bmTextIn  = 16  // 鏂囧瓧鐩稿椤瑰乏缂╄繘
+	bmRowH    = 40  // 琛岄珮锛堝鏉撅紝鍥?闂磋窛锛?	bmVGap    = 6   // 涓婁笅鐣欑櫧
+	bmMinW    = 172 // 鑿滃崟鏈€灏忓
+	bmRad     = 8   // 绐楀彛鍦嗚鍗婂緞
+	bmPillInX = 4   // 楂樹寒鏉″乏鍙冲唴缂?	bmPillInY = 3   // 楂樹寒鏉′笂涓嬪唴缂?	bmPillRad = 4   // 楂樹寒鏉″渾瑙?	bmShadow  = 14  // 鍥涘懆鎶曞奖鐣欑櫧锛堢獥鍙ｆ瘮鍐呭澶х殑杈硅窛锛?	bmShOffY  = 2   // 鎶曞奖涓嬬Щ閲忥紙鍏夋簮鍋忎笂锛?)
+
+// bmPx 鎶?DIP 鍊兼寜褰撳墠 DPI 缂╂斁涓虹墿鐞嗗儚绱狅紙鑷冲皯 1锛夈€?func bmPx(dip int) int32 {
+	v := int32(math.Round(float64(dip) * ballScale))
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
+
+// ballShowMenu 鍦ㄦ诞鍔ㄧ悆鍙充笂瑙掑脊鍑鸿嚜缁樺揩鎹疯彍鍗曪紙鐙珛鏃犺竟妗嗗渾瑙掑垎灞傜獥鍙ｏ級锛?// 鐢?WS_EX_LAYERED + UpdateLayeredWindow 閫愬儚绱?alpha 鎻愪氦锛屽疄鐜扮湡姝ｆ姉閿娇鍦嗚銆侀浂杈规锛?// 骞朵粠鏍逛笂娑堥櫎鍖哄煙瑁佸壀/owner-draw 鐨勯娇杞畫褰憋紙瑙掑鍍忕礌 alpha=0 鐩存帴閫忔闈級銆?// 浣嶇疆鍥哄畾閿氬畾鐞冨彸涓婅骞剁揣璐寸悆浣擄紝閽撳埌宸ヤ綔鍖恒€傚湪鐞冪嚎绋嬩互宓屽娑堟伅寰幆杩愯锛?// 鎮仠楂樹寒銆佺偣閫?鐐硅彍鍗曞/鍐嶆鍙抽敭鏀惰捣锛岄€変腑椤逛氦鍥?handleBallAction銆?func ballShowMenu(ballHwnd uintptr) {
+	ballMenuDark = ballEffectiveDark()
+
+	// 缁勮鑿滃崟椤癸細quick 宸ュ叿 + 鏈熬鈥滃叧闂诞鍔ㄧ悆鈥?	items := append(ballQuickItems(), ballMenuItem{ID: "close", Label: "鍏抽棴娴姩鐞?})
+	ballMenuItems = items
+
+	// 鑿滃崟瀛椾綋锛堢幇浠ｆ棤琛岀嚎锛夛紱澶辫触鍒欑粯鍒舵椂鍥為€€绯荤粺 GUI 瀛椾綋
+	face := ballUtf16("Microsoft YaHei UI")
+	fontH := -int32(math.Round(13 * ballScale))
+	if fontH > -13 {
+		fontH = -13
+	}
+	ballMenuFont, _, _ = ballCreateFont.Call(
+		uintptr(fontH), 0, 0, 0, ballFW_NORMAL, 0, 0, 0,
+		ballDEFAULT_CHARSET, 0, 0, ballANTIALIASED_QUALITY, 0,
+		uintptr(unsafe.Pointer(face)))
+	if ballMenuFont != 0 {
+		defer func() { ballDelObj.Call(ballMenuFont); ballMenuFont = 0 }()
+	}
+
+	// 甯冨眬锛氬疄娴嬫枃鏈 鈫?绐楀彛灏哄 + 姣忛」鐭╁舰
+	if !ballMenuLayout() {
+		return
+	}
+
+	// 浣嶇疆锛氶敋瀹氱悆鍙充笂瑙掞紝鑿滃崟鏁翠綋缃簬鐞冧笂鏂瑰苟鐣欏嚭闂撮殭锛堜笉鍘嬩綇鐞冧綋锛夆€斺€?	// 鑿滃崟鍥涘懆 14px 鎶曞奖杈硅窛鏄崐閫忔槑鐨勶紝鑻ョ揣璐?鍘嬩綇鐞冧綋锛岀悆 logo 浼氶€忚繃
+	// 鍦嗚/鎶曞奖闇插嚭锛堚€滈娇杞€濇畫褰憋紝鍘嗗彶涓婂嚭鐜拌繃涓ゆ锛夛紱鍐嶉挀鍒跺埌宸ヤ綔鍖恒€?	var br, wa ballRect
+	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
+	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
+	sp := int32(ballShadowPad)
+	menuX := br.Right - sp - bmPx(4)
+	menuY := br.Top + sp - ballMenuH - bmPx(10) // 鑿滃崟搴曡竟鍦ㄧ悆鍙鍦嗛潰涓婃柟鐣?10px 闂撮殭
+	if menuX+ballMenuW > wa.Right {             // 鍙充晶鏀句笉涓?鈫?缈诲埌鐞冨乏渚?		menuX = br.Left + sp + bmPx(4) - ballMenuW
+	}
+	if menuX < wa.Left {
+		menuX = wa.Left
+	}
+	if menuY < wa.Top { // 涓婃柟鏀句笉涓?鈫?缈诲埌鐞冧笅鏂癸紙鍚屾牱鐣欓棿闅欙級
+		menuY = br.Bottom - sp + bmPx(10)
+	}
+	if menuY+ballMenuH > wa.Bottom {
+		menuY = wa.Bottom - ballMenuH
+	}
+	ballMenuX, ballMenuY = menuX, menuY
+
+	// 鍒嗗眰绐楀彛鍥涘懆澶氬嚭鎶曞奖杈硅窛锛氱獥鍙ｅ昂瀵?= 鍐呭 + 2*margin锛岀獥鍙ｅ乏涓?= 鍐呭宸︿笂 - margin
+	margin := bmPx(bmShadow)
+	ballMenuMargin = margin
+	winW := ballMenuW + 2*margin
+	winH := ballMenuH + 2*margin
+
+	ballMenuClassOnce.Do(ballMenuRegisterClass)
+	if ballMenuClassAtom == 0 {
+		return
+	}
+	hInst, _, _ := ballModHdr.Call(0)
+	hwnd, _, _ := ballCreate.Call(
+		uintptr(ballWS_EX_TOPMOST|ballWS_EX_TOOLWIN|ballWS_EX_NOACTIVATE|ballWS_EX_LAYERED),
+		uintptr(unsafe.Pointer(ballMenuClassName)),
+		uintptr(unsafe.Pointer(ballUtf16("go-tools 鑿滃崟"))),
+		uintptr(ballWS_POPUP),
+		uintptr(menuX-margin), uintptr(menuY-margin), uintptr(winW), uintptr(winH),
+		0, 0, hInst, 0)
+	if hwnd == 0 {
+		return
+	}
+	ballMenuHwnd = hwnd
+
+	ballMenuHover = -1
+	ballMenuResult = -1
+	ballMenuClosing = false
+
+	ballShow.Call(hwnd, ballSW_SHOWNOACTIVATE)
+	ballMenuRender(hwnd)  // 閫愬儚绱?alpha 鎻愪氦棣栧抚锛堝惈鎶楅敮榻垮渾瑙掞級
+	ballSetCap.Call(hwnd) // 鎹曡幏榧犳爣锛堝彟鏈夊紓姝ヨ疆璇㈠厹搴曠偣鑿滃崟澶栵級
+
+	var msg ballMsg
+	prevLeft := ballAsyncLeftDown()
+	for {
+		// 鎶藉彇骞舵淳鍙戞墍鏈夊凡鎺掗槦娑堟伅
+		for {
+			ret, _, _ := ballPeekMsg.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, ballPM_REMOVE)
+			if ret == 0 {
+				break
+			}
+			ballTrans.Call(uintptr(unsafe.Pointer(&msg)))
+			ballDispatch.Call(uintptr(unsafe.Pointer(&msg)))
+			if ballMenuClosing {
+				break
+			}
+		}
+		if ballMenuClosing {
+			break
+		}
+		// 鍏滃簳锛氭娴嬪埌鈥滃湪鑿滃崟澶栨寜涓嬪乏閿€濆嵆鏀惰捣锛堝嵆渚块紶鏍囨崟鑾锋湭鐢熸晥锛屼篃鑳藉搷搴旂偣鍑讳粬澶勶級
+		left := ballAsyncLeftDown()
+		if left && !prevLeft && ballCursorOutside() {
+			ballMenuResult = -1
+			ballMenuClosing = true
+			break
+		}
+		prevLeft = left
+		// 绛夊緟涓嬩竴鏉℃秷鎭垨 25ms 瓒呮椂锛堥伩鍏嶅繖绛夛紝淇濊瘉杞鍙婃椂锛夈€?		// MsgWaitForMultipleObjects 鏈?5 涓叆鍙傦細(nCount, pHandles, bWaitAll, dwMilliseconds, dwWakeMask)锛?		// 蹇呴』鏄惧紡浼?bWaitAll=FALSE锛屽惁鍒欏弬鏁伴敊浣嶄細浣?dwWakeMask 璇诲埌鏍堜笂鍨冨溇鍊尖啋寰幆鏃惰€屽崱姝绘椂鑰岀┖杞€?		ballMsgWait.Call(0, 0, 0, 25, uintptr(ballQS_ALLINPUT))
+	}
+	ballRelCap.Call()
+	ballDestroy.Call(hwnd)
+	ballMenuHwnd = 0
+
+	if app := ballApp; app != nil && ballMenuResult >= 0 && ballMenuResult < len(items) {
+		go app.handleBallAction(items[ballMenuResult].ID)
+	}
+}
+
+// ballAsyncLeftDown 宸﹂敭褰撳墠鏄惁鎸変笅锛圙etAsyncKeyState 楂樹綅锛夈€?func ballAsyncLeftDown() bool {
+	r, _, _ := ballAsyncKey.Call(ballVK_LBUTTON)
+	return int16(uint16(r)) < 0
+}
+
+// ballCursorOutside 鍏夋爣锛堝睆骞曞潗鏍囷級鏄惁钀藉湪鑿滃崟绐楀彛鐭╁舰涔嬪銆?func ballCursorOutside() bool {
+	var pt ballPoint
+	ballGetCur.Call(uintptr(unsafe.Pointer(&pt)))
+	return pt.X < ballMenuX || pt.X >= ballMenuX+ballMenuW || pt.Y < ballMenuY || pt.Y >= ballMenuY+ballMenuH
+}
+
+// ballMenuLayout 渚濇嵁鏂囨湰瀹炴祴瀹藉害鎺掑畾绐楀彛灏哄涓庢瘡椤圭煩褰紙鐗╃悊鍍忕礌锛夈€傝繑鍥?false 琛ㄧず娴嬮噺澶辫触銆?func ballMenuLayout() bool {
+	dc, _, _ := ballGetDC.Call(0)
+	if dc == 0 {
+		return false
+	}
+	old := ballMenuSelectFont(dc)
+	padX := bmPx(bmPadX)
+	textX := padX + bmPx(bmTextIn)
+	rowH := bmPx(bmRowH)
+	top := bmPx(bmVGap)
+
+	maxText := int32(0)
+	for _, it := range ballMenuItems {
+		u, _ := syscall.UTF16FromString(it.Label)
+		var sz ballSize
+		if len(u) > 1 {
+			ballGetTextExtent.Call(dc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&sz)))
+		}
+		if sz.CX > maxText {
+			maxText = sz.CX
+		}
+	}
+	if old != 0 {
+		ballSelObj.Call(dc, old)
+	}
+	ballRelDC.Call(0, dc)
+
+	w := textX + maxText + padX + bmPx(8) // 鍙充晶鐣欑櫧
+	if min := bmPx(bmMinW); w < min {
+		w = min
+	}
+	ballMenuW = w
+	ballMenuH = top + int32(len(ballMenuItems))*rowH + bmPx(bmVGap)
+	ballMenuTextX = textX
+	ballMenuPillInX = bmPx(bmPillInX)
+	ballMenuPillInY = bmPx(bmPillInY)
+
+	ballMenuRects = make([]ballRect, len(ballMenuItems))
+	for i := range ballMenuItems {
+		t := top + int32(i)*rowH
+		ballMenuRects[i] = ballRect{Left: padX, Top: t, Right: w - padX, Bottom: t + rowH}
+	}
+	// 鍏抽棴椤癸紙鏈」锛変笂鏂圭敾鍒嗛殧绾?	if n := len(ballMenuItems); n >= 2 {
+		ballMenuSepY = ballMenuRects[n-1].Top
+	} else {
+		ballMenuSepY = 0
+	}
+	return true
+}
+
+// ballMenuHit 鍛戒腑娴嬭瘯锛氳繑鍥炲厜鏍囷紙瀹㈡埛鍖虹墿鐞嗗儚绱犲潗鏍囷級鎵€鍦ㄩ」绱㈠紩锛?1 琛ㄧず鏃犮€?func ballMenuHit(x, y int32) int {
+	for i, r := range ballMenuRects {
+		if x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom {
+			return i
+		}
+	}
+	return -1
+}
+
+// ballMenuWndProc 鑿滃崟绐楀彛杩囩▼锛堜粎鐞冪嚎绋嬶級锛氭偓鍋滈珮浜€佺偣閫?鐐瑰鏀惰捣銆?func ballMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+	// 瀹㈡埛鍖哄潗鏍囦互绐楀彛宸︿笂锛?鍐呭宸︿笂 - margin锛変负鍘熺偣锛屽噺鍘绘姇褰辫竟璺濇崲绠椾负鍐呭鍧愭爣
+	x := int32(int16(uint16(lParam&0xFFFF))) - ballMenuMargin
+	y := int32(int16(uint16((lParam>>16)&0xFFFF))) - ballMenuMargin
+	switch msg {
+	case ballWM_MOUSEMOVE:
+		if idx := ballMenuHit(x, y); idx != ballMenuHover {
+			ballMenuHover = idx
+			ballMenuRender(hwnd) // 鍒嗗眰绐楀彛锛氶噸鎻愪氦閫愬儚绱犱綅鍥句互鍒锋柊鎮仠楂樹寒
+		}
+		return 0
+
+	case ballWM_LBUTTONDOWN:
+		if ballMenuHit(x, y) < 0 { // 鎹曡幏涓嬬偣鍒拌彍鍗曞锛氭敹璧?			ballMenuClosing = true
+		}
+		return 0
+
+	case ballWM_LBUTTONUP:
+		ballMenuResult = ballMenuHit(x, y)
+		ballMenuClosing = true
+		return 0
+
+	case ballWM_RBUTTONUP:
+		ballMenuClosing = true
+		return 0
+
+	case ballWM_SETCURSOR:
+		ballSetCur.Call(ballCursorArrow)
+		return 1
+	}
+	r, _, _ := ballDefProc.Call(hwnd, uintptr(msg), wParam, lParam)
+	return r
+}
+
+// ballMenuRender 鎶婅彍鍗曟覆鏌撹繘 32 浣?DIB锛圙DI 鐢诲簳/楂樹寒/鍒嗛殧/鏂囧瓧锛夛紝鍐嶉€愬儚绱犲悎鎴愬渾瑙掍笌鎶曞奖 alpha锛?// 鏈€鍚庣敤 UpdateLayeredWindow 鎻愪氦 鈥斺€?寰楀埌鎶楅敮榻垮渾瑙掋€侀浂杈规銆佸甫鏌斿拰鎶曞奖鐨勫垎灞傝彍鍗曘€?// 绐楀彛姣斿唴瀹瑰洓鍛ㄥ悇澶氬嚭 margin锛堟姇褰辩暀鐧斤級锛屽唴瀹圭粯鍒剁粡 OffsetWindowOrgEx 骞崇Щ margin銆?func ballMenuRender(hwnd uintptr) {
+	margin := int(ballMenuMargin)
+	w, h := int(ballMenuW), int(ballMenuH)
+	winW, winH := w+2*margin, h+2*margin
+	screenDC, _, _ := ballGetDC.Call(0)
+	if screenDC == 0 {
+		return
+	}
+	defer ballRelDC.Call(0, screenDC)
+	memDC, _, _ := ballCompatDC.Call(screenDC)
+	if memDC == 0 {
+		return
+	}
+	defer ballDeleteDC.Call(memDC)
+
+	var bmi ballBitmapInfo
+	bmi.Header.BiSize = uint32(unsafe.Sizeof(bmi.Header))
+	bmi.Header.BiWidth = int32(winW)
+	bmi.Header.BiHeight = -int32(winH) // top-down
+	bmi.Header.BiPlanes = 1
+	bmi.Header.BiBitCount = 32
+	bmi.Header.BiCompression = 0
+
+	var bits *byte
+	bmp, _, _ := ballDIB.Call(memDC, uintptr(unsafe.Pointer(&bmi)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0)
+	if bmp == 0 || bits == nil {
+		return
+	}
+	defer ballDelObj.Call(bmp)
+
+	old, _, _ := ballSelObj.Call(memDC, bmp)
+	ballOffsetVpOrg.Call(memDC, uintptr(margin), uintptr(margin), 0) // 瑙嗗彛鍘熺偣骞崇Щ margin锛氬唴瀹规暣浣撳彸涓嬬Щ锛屽洓鍛ㄧ暀鍑烘姇褰?	ballMenuDrawOn(memDC)                                            // 鍦ㄤ笉閫忔槑搴曚笂缁樺埗锛圙DI锛?
+	// 閫愬儚绱?alpha锛氬渾瑙掑唴瀹逛笉閫忔槑锛?px 鎶楅敮榻胯竟锛? 鍥涘懆鏌斿拰鎶曞奖锛堥涔橈級
+	// 鐩存帴鎿嶄綔 bits 鎸囬拡锛屼笌褰撳墠閫変腑鐨勪綅鍥炬棤鍏筹紝鏁呮棤闇€鍏堟崲鍥?old銆?	ballMenuApplyAlpha(unsafe.Slice(bits, winW*winH*4), winW, winH, margin, int(bmPx(bmRad)))
+
+	var ptDst ballPoint
+	ptDst.X, ptDst.Y = ballMenuX-int32(margin), ballMenuY-int32(margin)
+	sz := ballSize{CX: int32(winW), CY: int32(winH)}
+	ptSrc := ballPoint{0, 0}
+	blend := ballBlend{BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1} // AC_SRC_ALPHA
+	// 鍏抽敭锛歎LW 璇诲彇鐨勬槸 memDC 褰撳墠閫変腑鐨勪綅鍥撅紝蹇呴』鍦ㄦ妸 old 鎹㈠洖涔嬪墠鎻愪氦锛?	// 鍚﹀垯璇诲埌 CreateCompatibleDC 鑷甫鐨?1脳1 绌虹櫧浣嶅浘 鈫?鑿滃崟鍏ㄩ€忔槑鐪嬩笉瑙併€?	ballULW.Call(hwnd, screenDC, uintptr(unsafe.Pointer(&ptDst)), uintptr(unsafe.Pointer(&sz)),
+		memDC, uintptr(unsafe.Pointer(&ptSrc)), 0, uintptr(unsafe.Pointer(&blend)), ballULW_ALPHA)
+	if old != 0 {
+		ballSelObj.Call(memDC, old)
+	}
+}
+
+// ballMenuApplyAlpha 鐢ㄥ渾瑙掔煩褰?SDF 閫愬儚绱犲悎鎴?alpha锛氬唴閮ㄤ笉閫忔槑銆佽竟缂?1px 鎶楅敮榻裤€?// 澶栭儴鎸夊埌鍐呭鍦嗚鐭╁舰鐨勫璺濈琛板噺鍑烘煍鍜岄粦鑹叉姇褰憋紙棰勪箻锛氭姇褰变负榛?RGB=0锛屽唴瀹?RGB 涔樿鐩栧害锛夈€?func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
+	halfW := float64(winW-margin*2) / 2
+	halfH := float64(winH-margin*2) / 2
+	r := float64(rad)
+	cx := float64(margin) + halfW // 鍐呭涓績锛圖IB 鍧愭爣锛?	cy := float64(margin) + halfH
+	mg := float64(margin)
+	const shadowMax = 50.0
+	for y := 0; y < winH; y++ {
+		py := float64(y) + 0.5
+		rowOff := y * winW
+		for x := 0; x < winW; x++ {
+			idx := (rowOff + x) * 4
+			px := float64(x) + 0.5
+			// 鍐呭瑕嗙洊搴︼紙SDF 鍦?卤0.5px 鍐呯嚎鎬ц繃娓″緱鎶楅敮榻胯竟锛?			dCov := ballSdfRR(px-cx, py-cy, halfW, halfH, r)
+			var ca uint32
+			switch {
+			case dCov <= -0.5:
+				ca = 255
+			case dCov >= 0.5:
+				ca = 0
+			default:
+				ca = uint32((0.5-dCov)*255 + 0.5)
+			}
+			if ca >= 255 {
+				bits[idx+3] = 255 // 鍐呴儴锛歊GB 淇濇寔锛宎lpha 鎷夋弧
+				continue
+			}
+			// 鏌斿拰鎶曞奖锛氫互鍒板唴瀹瑰渾瑙掔煩褰㈢殑澶栬窛绂讳负鍑嗭紝杈圭紭鏈€娣便€佸悜澶栦簩娆¤“鍑忥紝鍥涘懆鍧囧寑銆?			var sh uint32
+			if t := dCov / mg; t < 1 {
+				s := 1 - t
+				if s > 1 {
+					s = 1
+				}
+				sh = uint32(shadowMax*s*s + 0.5)
+			}
+			if ca == 0 && sh == 0 {
+				bits[idx], bits[idx+1], bits[idx+2], bits[idx+3] = 0, 0, 0, 0
+				continue
+			}
+			b := uint32(bits[idx])
+			g := uint32(bits[idx+1])
+			rr := uint32(bits[idx+2])
+			a := ca + sh*(255-ca)/255
+			if a > 255 {
+				a = 255
+			}
+			bits[idx] = byte(b * ca / 255)
+			bits[idx+1] = byte(g * ca / 255)
+			bits[idx+2] = byte(rr * ca / 255)
+			bits[idx+3] = byte(a)
+		}
+	}
+}
+
+// ballSdfRR 鐐?(dx,dy)锛堢浉瀵瑰唴瀹逛腑蹇冿級鍒板崐瀹?halfW銆佸崐楂?halfH銆佸渾瑙?r 鐨勫渾瑙掔煩褰㈢殑甯︾璺濈锛氬唴璐熷姝ｃ€?func ballSdfRR(dx, dy, halfW, halfH, r float64) float64 {
+	ax := math.Abs(dx) - (halfW - r)
+	ay := math.Abs(dy) - (halfH - r)
+	ox := ax
+	if ox < 0 {
+		ox = 0
+	}
+	oy := ay
+	if oy < 0 {
+		oy = 0
+	}
+	outside := math.Hypot(ox, oy)
+	inside := ax
+	if ay > inside {
+		inside = ay
+	}
+	if inside > 0 {
+		inside = 0
+	}
+	return outside + inside - r
+}
+
+// ballMenuDrawOn 鍦ㄧ粰瀹?DC锛圖IB 鎴栧睆骞曪級涓婁笉閫忔槑缁樺埗锛氬簳鑹查摵婊?+ 鎮仠鍦嗚楂樹寒 + 鍒嗛殧绾?+ 鍚勯」鏂囧瓧銆?func ballMenuDrawOn(hdc uintptr) {
+	th := ballThemeColors(ballMenuDark)
+
+	// 搴曡壊閾烘弧鏁翠釜绐楀彛锛堝渾瑙掑鍍忕礌绋嶅悗鐢?ballMenuApplyAlpha 缃负閫忔槑锛?	full := ballRect{Left: 0, Top: 0, Right: ballMenuW, Bottom: ballMenuH}
+	if bg, _, _ := ballCreateBrush.Call(th.bg); bg != 0 {
+		ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&full)), bg)
+		ballDelObj.Call(bg)
+	}
+
+	// 鎮仠楂樹寒锛氬疄蹇冨渾瑙掑潡锛屾棤鎻忚竟
+	if ballMenuHover >= 0 && ballMenuHover < len(ballMenuRects) {
+		r := ballMenuRects[ballMenuHover]
+		rad := bmPx(bmPillRad)
+		hl, _, _ := ballCreateBrush.Call(th.selBg)
+		nullPen, _, _ := ballGetStockObj.Call(ballNULL_PEN)
+		oldBr, _, _ := ballSelObj.Call(hdc, hl)
+		oldPen, _, _ := ballSelObj.Call(hdc, nullPen)
+		ballRoundRect.Call(hdc,
+			uintptr(r.Left+ballMenuPillInX), uintptr(r.Top+ballMenuPillInY),
+			uintptr(r.Right-ballMenuPillInX), uintptr(r.Bottom-ballMenuPillInY),
+			uintptr(2*rad), uintptr(2*rad))
+		ballSelObj.Call(hdc, oldBr)
+		ballSelObj.Call(hdc, oldPen)
+		if hl != 0 {
+			ballDelObj.Call(hl)
+		}
+	}
+
+	// 鍏抽棴椤逛笂鏂瑰垎闅旂嚎
+	if ballMenuSepY > 0 {
+		inx := bmPx(12)
+		band := ballRect{Left: inx, Top: ballMenuSepY, Right: ballMenuW - inx, Bottom: ballMenuSepY + bmPx(1)}
+		if sep, _, _ := ballCreateBrush.Call(th.sep); sep != 0 {
+			ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&band)), sep)
+			ballDelObj.Call(sep)
+		}
+	}
+
+	// 鏂囧瓧
+	old := ballMenuSelectFont(hdc)
+	ballSetBkMode.Call(hdc, ballTRANSPARENT)
+	for i, it := range ballMenuItems {
+		r := ballMenuRects[i]
+		tx := th.text
+		if i == ballMenuHover {
+			tx = th.selText
+		}
+		ballSetTextColor.Call(hdc, tx)
+		tr := ballRect{Left: ballMenuTextX, Top: r.Top, Right: r.Right, Bottom: r.Bottom}
+		u, _ := syscall.UTF16FromString(it.Label)
+		if len(u) > 1 {
+			flags := uintptr(ballDT_LEFT | ballDT_VCENTER | ballDT_SINGLELINE | ballDT_NOPREFIX)
+			ballDrawText.Call(hdc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&tr)), flags)
+		}
+	}
+	if old != 0 {
+		ballSelObj.Call(hdc, old)
+	}
+}
+
+// ballMenuRegisterClass 娉ㄥ唽鑿滃崟绐楀彛绫伙紙浠呯悆绾跨▼銆佷竴娆★級銆?func ballMenuRegisterClass() {
+	ballMenuClassName = ballUtf16("GoToolsBallMenuCls")
+	hInst, _, _ := ballModHdr.Call(0)
+	wc := ballWndClass{
+		LpfnWndProc:   syscall.NewCallback(ballMenuWndProc),
+		HInstance:     hInst,
+		HCursor:       ballCursorArrow,
+		LpszClassName: ballMenuClassName,
+	}
+	atom, _, _ := ballNewClass.Call(uintptr(unsafe.Pointer(&wc)))
+	ballMenuClassAtom = uint16(atom)
+}
+
+// ---------------- 鑷粯鑿滃崟鐨勪富棰橀厤鑹蹭笌瀛椾綋 ----------------
+
+type ballMenuColors struct {
+	bg, text, selBg, selText, sep, disabled uintptr // COLORREF锛?x00BBGGRR锛?}
+
+// ballRGB 缁勮 GDI COLORREF锛堝瓧鑺傚簭涓?0x00BBGGRR锛夈€?func ballRGB(r, g, b int) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(b)<<16 }
+
+// ballThemeColors 杩斿洖娴?鏆楅粦涓ゅ鑿滃崟閰嶈壊锛堝榻愬浘2锛夛細
+// 榧犳爣鍋滅暀楂樹寒鍧囦负鏃犳弿杈圭殑瀹炲績鍦嗚鍧椻€斺€旀祬鑹叉ā寮忎负榛戣壊鍧楋紙鏂囧瓧杞櫧锛夛紝鏆楅粦妯″紡涓烘瘮搴曠◢浜竴妗ｇ殑鐏拌壊鍧楋紙鏂囧瓧淇濇寔浜壊锛夈€?func ballThemeColors(dark bool) ballMenuColors {
+	if dark {
+		return ballMenuColors{
+			bg:       ballRGB(0x2B, 0x2B, 0x2B),
+			text:     ballRGB(0xE8, 0xE8, 0xE8),
+			selBg:    ballRGB(0x45, 0x45, 0x45), // 鍥?锛氭繁搴曚笂绋嶄寒涓€妗ｇ殑鐏板渾瑙掑潡
+			selText:  ballRGB(0xFF, 0xFF, 0xFF),
+			sep:      ballRGB(0x3D, 0x3D, 0x3D),
+			disabled: ballRGB(0x70, 0x70, 0x70),
+		}
+	}
+	return ballMenuColors{
+		bg:       ballRGB(0xFF, 0xFF, 0xFF),
+		text:     ballRGB(0x1D, 0x21, 0x29),
+		selBg:    ballRGB(0x1D, 0x21, 0x29), // 娴呰壊妯″紡锛氶粦鑹插渾瑙掑潡
+		selText:  ballRGB(0xFF, 0xFF, 0xFF),
+		sep:      ballRGB(0xE5, 0xE6, 0xEB),
+		disabled: ballRGB(0xC9, 0xCD, 0xD4),
+	}
+}
+
+// ballMenuSelectFont 鍦?dc 涓婇€夊叆鑿滃崟瀛椾綋锛堢己鐪佸洖閫€绯荤粺 GUI 瀛椾綋锛夛紝杩斿洖鍘熷璞′究浜庡鍘熴€?func ballMenuSelectFont(dc uintptr) uintptr {
+	f := ballMenuFont
+	if f == 0 {
+		f, _, _ = ballGetStockObj.Call(ballDEFAULT_GUI_FONT)
+	}
+	old, _, _ := ballSelObj.Call(dc, f)
+	return old
+}
+
+// ballEffectiveDark 瑙ｆ瀽褰撳墠搴旈噰鐢ㄧ殑娣辨祬妯″紡锛氳窡闅忛厤缃?light/dark锛宎uto 鏃惰绯荤粺鍋忓ソ銆?func ballEffectiveDark() bool {
+	switch CurrentConfig().General.Theme {
+	case "dark":
+		return true
+	case "light":
+		return false
+	default:
+		return ballSystemUsesDarkTheme()
+	}
+}
+
+// ballSystemUsesDarkTheme 璇绘敞鍐岃〃 AppsUseLightTheme锛? 琛ㄧず娣辫壊搴旂敤妯″紡锛夈€?func ballSystemUsesDarkTheme() bool {
+	sub := ballUtf16(`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`)
+	var hk uintptr
+	if r, _, _ := ballRegOpenKey.Call(ballHKEY_CURRENT_USER, uintptr(unsafe.Pointer(sub)), 0, ballKEY_QUERY_VALUE, uintptr(unsafe.Pointer(&hk))); r != 0 {
+		return false
+	}
+	defer ballRegCloseKey.Call(hk)
+	name := ballUtf16("AppsUseLightTheme")
+	var typ, val, cb uint32 = 0, 1, 4
+	if r, _, _ := ballRegQueryValue.Call(hk, uintptr(unsafe.Pointer(name)), 0, uintptr(unsafe.Pointer(&typ)), uintptr(unsafe.Pointer(&val)), uintptr(unsafe.Pointer(&cb))); r != 0 {
+		return false
+	}
+	return val == 0
+}
+
+// ============================================================
+// 浣嶅浘娓叉煋锛欸o 鐢熸垚閫愬儚绱?alpha 鐨勫渾褰㈢悆锛堥涔?BGRA锛岃嚜涓婅€屼笅锛?// ============================================================
+
+// ballInk 鐞冮潰涓€濂椾富棰樿壊锛氬簳鏉挎部鐢?Arco --color-bg-1锛屽浘鏍?闂數娌跨敤 --color-text-1銆?type ballInk struct {
+	bgTop, bgBot, text [3]float64
+	dark               bool
+}
+
+// ballInkFor 杩斿洖娴?鏆楅粦瀵瑰簲鐨勭悆闈富棰樿壊銆傛殫榛戝簳鏉跨敤 bg-1锛?17171A锛夊井娓愬彉锛?// 鎻忚竟鏀逛负鎻愪寒锛堢櫧澧?娣辫壊妗岄潰涓ょ鑳屾櫙涓嬮兘鑳界湅娓呰竟鐣岋級銆?func ballInkFor(dark bool) ballInk {
+	if dark {
+		return ballInk{
+			bgTop: [3]float64{23, 23, 26},
+			bgBot: [3]float64{30, 30, 35},
+			text:  [3]float64{232, 232, 232},
+			dark:  true,
+		}
+	}
+	return ballInk{
+		bgTop: [3]float64{255, 255, 255},
+		bgBot: [3]float64{251, 252, 254},
+		text:  [3]float64{29, 33, 41},
+	}
+}
+
+// ballRender 杩斿洖 size*size 鐨勯涔?BGRA 缂撳啿锛坱op-down锛夛細
+// 鍙屽眰鏌斿拰鎶曞奖 + 涓婚鑹插渾褰㈠簳鏉匡紙bg-1锛? 灞呬腑鍥炬爣锛坱ext-1 鐫€鑹诧級銆?func ballRender(size int) []byte {
+	buf := make([]byte, size*size*4)
+	c := float64(size-1) / 2
+	rad := ballRadiusF - 0.5
+	if rad < 1 {
+		rad = 1
+	}
+	ink := ballInkFor(ballEffectiveDark())
+	ballCurInk = ink // 渚?ballLogoSample 鐫€鑹诧紙浠呯悆绾跨▼璇诲啓锛?
+	// 鎶曞奖锛氬弻灞傛煍鍜屾姇褰憋紙杩戣窛绂讳富闃村奖 + 澶у崐寰勭幆澧冮槾褰憋級锛屼綆閫忔槑搴︺€佸ぇ妯＄硦锛?	// 涓庤璁＄涓€岀櫧鑹插渾閽?+ 杞婚槾褰便€嶇殑瑙傛劅涓€鑷淬€?	// blur 杩囧ぇ浼氳绐楀彛杈圭紭鎴柇锛屼笂闄愮敱 ballShadowPadDIP 鐣欑櫧绾︽潫銆?	pad := float64(ballShadowPad)
+	keyOffY := math.Max(1.2, pad*0.16) // 涓婚槾褰辫交寰笅绉?	keyBlur := math.Max(4.0, pad*0.45) // 涓婚槾褰辨ā绯婂崐寰?	const keyAlpha = 0.10              // 涓婚槾褰辨渶澶т笉閫忔槑搴?	ambOffY := math.Max(0.6, pad*0.06) // 鐜闃村奖鍑犱箮涓嶄笅绉?	ambBlur := math.Max(6.0, pad*0.85) // 鐜闃村奖鏇村ぇ鏇存暎
+	const ambAlpha = 0.05              // 鐜闃村奖鏈€澶т笉閫忔槑搴?
+	// 搴曟澘锛氫富棰樿壊锛坆g-1锛夎交寰笎鍙?+ 鏋佺粏鍐呮弿杈癸紝淇濊瘉鍦ㄤ换浣曞绾镐笂閮芥湁杞粨
+	rimW := math.Max(1, float64(ballDiameterPx)*0.028)
+
+	hasLogo := ballLogoImg != nil && !ballLogoRect.Empty()
+
+	// 鏃犲浘鏍囨椂鍥為€€缁樺埗闂數锛堥鑹茶窡闅忎富棰樻枃瀛楄壊 text-1锛?	bolt := [][2]float64{
+		{0.10, -0.48}, {-0.28, 0.06}, {-0.02, 0.06},
+		{-0.12, 0.48}, {0.28, -0.10}, {0.02, -0.10},
+	}
+	s := rad * 1.15
+	boltPoly := make([][2]float64, len(bolt))
+	for i, pt := range bolt {
+		boltPoly[i] = [2]float64{c + pt[0]*s, c + pt[1]*s}
+	}
+
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dx := float64(x) - c
+			dyBall := float64(y) - c
+			distBall := math.Sqrt(dx*dx + dyBall*dyBall)
+
+			var cov float64
+			switch {
+			case distBall <= rad-0.5:
+				cov = 1
+			case distBall < rad+0.5:
+				cov = rad + 0.5 - distBall
+			}
+
+			dySh := float64(y) - (c + keyOffY)
+			keyA := ballShadowAlpha(dx, dySh, rad, keyBlur, keyAlpha)
+			ambA := ballShadowAlpha(dx, float64(y)-(c+ambOffY), rad, ambBlur, ambAlpha)
+			// 鍙屽眰鍙犲姞锛?-(1-a)(1-b)锛屼氦鍙犲涓嶄細鍙犲姞鍙戦粦
+			shA := 1 - (1-keyA)*(1-ambA)
+
+			lr, lg, lb, la := 0.0, 0.0, 0.0, 0.0
+			if hasLogo {
+				lr, lg, lb, la = ballLogoSample(x, y, c)
+			}
+
+			if cov <= 0 && shA <= 0.004 && la <= 0 {
+				continue
+			}
+
+			var sr, sg, sb float64
+			if cov > 0 {
+				t := (float64(y) - (c - rad)) / (2 * rad)
+				if t < 0 {
+					t = 0
+				} else if t > 1 {
+					t = 1
+				}
+				sr = lerp(ink.bgTop[0], ink.bgBot[0], t)
+				sg = lerp(ink.bgTop[1], ink.bgBot[1], t)
+				sb = lerp(ink.bgTop[2], ink.bgBot[2], t)
+				// 杈圭紭鍐呮弿杈癸細娴呰壊涓婚鍘嬫殫銆佹繁鑹蹭富棰樻彁浜紝涓ょ搴曡壊涓嬮兘鑳界湅娓呭渾褰㈣竟鐣?				if distBall > rad-rimW {
+					k := (distBall - (rad - rimW)) / rimW
+					if k > 1 {
+						k = 1
+					}
+					if ink.dark {
+						k *= 0.22
+						sr += (255 - sr) * k
+						sg += (255 - sg) * k
+						sb += (255 - sb) * k
+					} else {
+						k *= 0.08
+						sr *= 1 - k
+						sg *= 1 - k
+						sb *= 1 - k
+					}
+				}
+				if !hasLogo && pointInPoly(float64(x), float64(y), boltPoly) {
+					sr, sg, sb = ink.text[0], ink.text[1], ink.text[2]
+				}
+			}
+
+			// 棰勪箻 alpha 鍚堟垚锛氬簳鏉跨洊鎶曞奖锛宭ogo 鐩栧簳鏉?			a := cov + (1-cov)*shA
+			r := sr * cov
+			g := sg * cov
+			b := sb * cov
+			if la > 0 {
+				r = lr*la + r*(1-la)
+				g = lg*la + g*(1-la)
+				b = lb*la + b*(1-la)
+				a = la + a*(1-la)
+			}
+			if a <= 0.003 {
+				continue
+			}
+			o := (y*size + x) * 4
+			buf[o] = byte(clamp255(b))
+			buf[o+1] = byte(clamp255(g))
+			buf[o+2] = byte(clamp255(r))
+			buf[o+3] = byte(clamp255(a * 255))
+		}
+	}
+
+	// 瑙掓爣锛氭湁鍚庡彴鏈嶅姟杩愯鏃讹紝鍦ㄧ悆闈㈠彸涓婏紙45掳锛夊彔鍔犵櫧杈圭孩鐐?	if atomic.LoadInt32(&ballBadgeCount) > 0 {
+		ballOverlayBadge(buf, size, c, rad)
+	}
+	return buf
+}
+
+// ballCurInk 褰撳墠娓叉煋浣跨敤鐨勭悆闈富棰樿壊锛坆allRender 寮€澶磋祴鍊硷紝ballLogoSample 鐫€鑹茶鍙栵紱浠呯悆绾跨▼锛夈€?var ballCurInk = ballInkFor(false)
+
+// ballOverlayBadge 鍦ㄧ悆缂樺彸涓?45掳 鐢诲甫鐧芥弿杈圭殑绾㈢偣瑙掓爣锛堥涔?BGRA source-over锛夈€?func ballOverlayBadge(buf []byte, size int, c, rad float64) {
+	dia := float64(ballDiameterPx)
+	br := math.Max(5.0, dia*0.17)  // 瑙掓爣澶栧崐寰勶紙鍚弿杈癸級
+	ring := math.Max(1.5, br*0.22) // 鐧芥弿杈瑰搴?	k := math.Sqrt2 / 2
+	bx, by := c+rad*k, c-rad*k
+	for y := int(by - br - 1); y <= int(by+br+1); y++ {
+		if y < 0 || y >= size {
+			continue
+		}
+		for x := int(bx - br - 1); x <= int(bx+br+1); x++ {
+			if x < 0 || x >= size {
+				continue
+			}
+			d := math.Hypot(float64(x)-bx, float64(y)-by)
+			a := math.Min(1.0, math.Max(0, br+0.5-d)) // 杈圭紭鎶楅敮榻?			if a <= 0.003 {
+				continue
+			}
+			var sr, sg, sb float64
+			if d > br-ring {
+				sr, sg, sb = 255, 255, 255 // 鐧芥弿杈癸紝淇濊瘉鍦ㄤ换浣曞簳鑹茶儗鏅笂閮藉彲杈?			} else {
+				sr, sg, sb = 245, 63, 63 // 绾㈠績锛屽榻?Arco red-6
+			}
+			o := (y*size + x) * 4
+			da := float64(buf[o+3]) / 255
+			buf[o] = byte(clamp255(sb*a + float64(buf[o])*(1-a)))
+			buf[o+1] = byte(clamp255(sg*a + float64(buf[o+1])*(1-a)))
+			buf[o+2] = byte(clamp255(sr*a + float64(buf[o+2])*(1-a)))
+			buf[o+3] = byte(clamp255((a + da*(1-a)) * 255))
+		}
+	}
+}
+
+// ballShadowAlpha 璁＄畻鍗曞眰鍦嗗舰鏌斿拰闃村奖鍦ㄧ浉瀵瑰渾蹇?(dx, dy) 澶勭殑涓嶉€忔槑搴︼細
+// 鍗婂緞 rad 鍐呬负婊″€硷紝鍚戝 blur 鍍忕礌鐢?smoothstep 杩囨浮鍒?0锛岃竟缂樻棤纭竟銆?func ballShadowAlpha(dx, dy, rad, blur, maxAlpha float64) float64 {
+	d := math.Sqrt(dx*dx + dy*dy)
+	if d >= rad+blur {
+		return 0
+	}
+	f := (rad + blur - d) / blur
+	if f > 1 {
+		f = 1
+	}
+	return maxAlpha * f * f * (3 - 2*f)
+}
+
+// ballLogoSample 鎸夊簳鏉挎瘮渚嬪皢 logo 闈為€忔槑鍐呭灞呬腑缂╂斁锛岃繑鍥為涔?RGB锛?..255锛変笌 alpha锛?..1锛夈€?// 鑷畾涔夌悆鍥炬爣涓哄崟鑹查伄缃╋細鍙彇 alpha 瑕嗙洊褰㈢姸锛岄鑹茬敤褰撳墠涓婚鏂囧瓧鑹诧紙text-1锛夈€?func ballLogoSample(x, y int, c float64) (r, g, b, a float64) {
+	rect := ballLogoRect
+	target := float64(ballDiameterPx) * ballLogoRatio
+	scale := math.Min(target/float64(rect.Dx()), target/float64(rect.Dy()))
+	w := float64(rect.Dx()) * scale
+	h := float64(rect.Dy()) * scale
+	left := c - w/2
+	top := c - h/2
+	px := float64(x) + 0.5
+	py := float64(y) + 0.5
+	if px < left || px >= left+w || py < top || py >= top+h {
+		return
+	}
+	// 鐩爣鍍忕礌涓績 鈫?婧愬唴瀹瑰潗鏍囷紙鍍忕礌涓績鍦ㄦ暣鏁板潗鏍囷級
+	sx := float64(rect.Min.X) + (px-left)/w*float64(rect.Dx()) - 0.5
+	sy := float64(rect.Min.Y) + (py-top)/h*float64(rect.Dy()) - 0.5
+	if ballLogoTint {
+		_, _, _, a = ballSampleBilinear(ballLogoImg, sx, sy)
+		return ballCurInk.text[0], ballCurInk.text[1], ballCurInk.text[2], a
+	}
+	return ballSampleBilinear(ballLogoImg, sx, sy)
+}
+
+// ballSampleBilinear 瀵瑰浘鍍忓仛鍙岀嚎鎬ч噰鏍凤紙鍦ㄩ涔樼┖闂存彃鍊硷紝閬垮厤閫忔槑杈圭紭鍙戦粦锛夈€?func ballSampleBilinear(img image.Image, sx, sy float64) (r, g, b, a float64) {
+	bounds := img.Bounds()
+	x0 := int(math.Floor(sx))
+	y0 := int(math.Floor(sy))
+	fx := sx - float64(x0)
+	fy := sy - float64(y0)
+	x1, y1 := x0+1, y0+1
+
+	x0 = ballClampInt(x0, bounds.Min.X, bounds.Max.X-1)
+	x1 = ballClampInt(x1, bounds.Min.X, bounds.Max.X-1)
+	y0 = ballClampInt(y0, bounds.Min.Y, bounds.Max.Y-1)
+	y1 = ballClampInt(y1, bounds.Min.Y, bounds.Max.Y-1)
+
+	r00, g00, b00, a00 := img.At(x0, y0).RGBA()
+	r10, g10, b10, a10 := img.At(x1, y0).RGBA()
+	r01, g01, b01, a01 := img.At(x0, y1).RGBA()
+	r11, g11, b11, a11 := img.At(x1, y1).RGBA()
+
+	topR := lerp(float64(r00), float64(r10), fx)
+	topG := lerp(float64(g00), float64(g10), fx)
+	topB := lerp(float64(b00), float64(b10), fx)
+	topA := lerp(float64(a00), float64(a10), fx)
+	botR := lerp(float64(r01), float64(r11), fx)
+	botG := lerp(float64(g01), float64(g11), fx)
+	botB := lerp(float64(b01), float64(b11), fx)
+	botA := lerp(float64(a01), float64(a11), fx)
+
+	return lerp(topR, botR, fy) / 257,
+		lerp(topG, botG, fy) / 257,
+		lerp(topB, botB, fy) / 257,
+		lerp(topA, botA, fy) / 65535
+}
+
+func ballClampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func lerp(a, b, t float64) float64 { return a + (b-a)*t }
+func clamp255(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return v
+}
+
+func pointInPoly(px, py float64, poly [][2]float64) bool {
+	inside := false
+	n := len(poly)
+	for i, j := 0, n-1; i < n; j, i = i, i+1 {
+		xi, yi := poly[i][0], poly[i][1]
+		xj, yj := poly[j][0], poly[j][1]
+		if ((yi > py) != (yj > py)) &&
+			(px < (xj-xi)*(py-yi)/(yj-yi)+xi) {
+			inside = !inside
+		}
+	}
+	return inside
+}
+
+// ballPaint 鐢?UpdateLayeredWindow 鎻愪氦閫愬儚绱?alpha 鐨勭悆浣嶅浘銆?func ballPaint(hwnd uintptr) {
+	size := ballSizePx
+	premul := ballRender(size)
+
+	screenDC, _, _ := ballGetDC.Call(0)
+	if screenDC == 0 {
+		return
+	}
+	defer ballRelDC.Call(0, screenDC)
+
+	memDC, _, _ := ballCompatDC.Call(screenDC)
+	if memDC == 0 {
+		return
+	}
+	defer ballDeleteDC.Call(memDC)
+
+	var bmi ballBitmapInfo
+	bmi.Header.BiSize = uint32(unsafe.Sizeof(bmi.Header))
+	bmi.Header.BiWidth = int32(size)
+	bmi.Header.BiHeight = -int32(size) // top-down
+	bmi.Header.BiPlanes = 1
+	bmi.Header.BiBitCount = 32
+	bmi.Header.BiCompression = 0 // BI_RGB
+
+	var bits *byte
+	// CreateDIBSection(hdc, pbmi, iUsage, ppvBits, hSection, offset)
+	// iUsage=DIB_RGB_COLORS(0)锛沺pvBits=&bits锛堢 3銆? 鍙備笉鍙啓鍙嶏紝鍚﹀垯杩斿洖 ERROR_INVALID_PARAMETER锛?	bmp, _, _ := ballDIB.Call(memDC, uintptr(unsafe.Pointer(&bmi)),
+		0, uintptr(unsafe.Pointer(&bits)), 0, 0)
+	if bmp == 0 || bits == nil {
+		return
+	}
+	defer ballDelObj.Call(bmp)
+
+	n := size * size * 4
+	copy(unsafe.Slice(bits, n), premul)
+
+	old, _, _ := ballSelObj.Call(memDC, bmp)
+
+	var ptDst ballPoint
+	l, t := ballCurPos(hwnd)
+	ptDst.X, ptDst.Y = l, t
+	sz := ballSize{CX: int32(size), CY: int32(size)}
+	ptSrc := ballPoint{0, 0}
+	blend := ballBlend{BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1} // AC_SRC_ALPHA
+
+	ballULW.Call(hwnd, screenDC, uintptr(unsafe.Pointer(&ptDst)), uintptr(unsafe.Pointer(&sz)),
+		memDC, uintptr(unsafe.Pointer(&ptSrc)), 0, uintptr(unsafe.Pointer(&blend)), ballULW_ALPHA)
+
+	if old != 0 {
+		ballSelObj.Call(memDC, old)
+	}
+}
+
+// ballCurPos 璇诲彇褰撳墠绐楀彛宸︿笂瑙掞紙鐗╃悊鍍忕礌锛夈€?func ballCurPos(hwnd uintptr) (int32, int32) {
+	var rc ballRect
+	ballGetRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+	return rc.Left, rc.Top
+}
+
+// 纭繚 image 鍖呰寮曠敤锛坆allRender 浠ュ瓧鑺傜紦鍐插疄鐜帮紝鏈洿鎺ヤ娇鐢?image 绫诲瀷鏃朵繚鐣欏崰浣嶏級
+var _ = image.Point{}

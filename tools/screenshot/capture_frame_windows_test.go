@@ -4,6 +4,7 @@ package screenshot
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"strings"
 	"testing"
@@ -14,28 +15,55 @@ import (
 // 这些用例会真的抓一帧当前屏幕，属于对真实 Win32 调用的冒烟验证：
 // 只断言结构与自洽性（尺寸/解码/清单合理性），不断言具体像素，避免换台机器就红。
 
+// 冻结帧要么是单张 Image（降级路径），要么是等高的 Bands（分带并行编码），
+// 二者恰有其一；每条带解出来宽度必须等于屏宽，高度合计必须等于屏高，
+// 否则浮层拼接会错位/留缝。
+func frameDataURLs(f *CaptureFrame) ([]string, error) {
+	if len(f.Bands) > 0 && f.Image != "" {
+		return nil, fmt.Errorf("Image 与 Bands 不应同时给出")
+	}
+	urls := f.Bands
+	if len(urls) == 0 {
+		urls = []string{f.Image}
+	} else if f.BandH*len(urls) != f.H {
+		return nil, fmt.Errorf("分带高度不自洽: bandH=%d bands=%d h=%d", f.BandH, len(urls), f.H)
+	}
+	return urls, nil
+}
+
 func TestCaptureScreenFrameSelfConsistent(t *testing.T) {
 	f, err := CaptureScreenFrame()
 	if err != nil {
 		t.Fatalf("CaptureScreenFrame 失败: %v", err)
 	}
-	if !strings.HasPrefix(f.Image, "data:image/png;base64,") {
-		t.Fatalf("Image 不是 png data URL，前缀=%q", f.Image[:min(40, len(f.Image))])
-	}
-	raw, err := decodeBase64Data(f.Image)
+	urls, err := frameDataURLs(f)
 	if err != nil {
-		t.Fatalf("base64 解码失败: %v", err)
+		t.Fatal(err)
 	}
-	img, format, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatalf("PNG 解码失败: %v", err)
+	stacked := 0
+	for i, u := range urls {
+		if !strings.HasPrefix(u, "data:image/png;base64,") {
+			t.Fatalf("第 %d 条不是 png data URL，前缀=%q", i, min2(u, 40))
+		}
+		raw, err := decodeBase64Data(u)
+		if err != nil {
+			t.Fatalf("第 %d 条 base64 解码失败: %v", i, err)
+		}
+		img, format, err := image.Decode(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatalf("第 %d 条 PNG 解码失败: %v", i, err)
+		}
+		if format != "png" {
+			t.Fatalf("编码格式应为 png，实际 %q", format)
+		}
+		b := img.Bounds()
+		if b.Dx() != f.W {
+			t.Fatalf("第 %d 条宽度与声明不符: 声明 %d 实际 %d", i, f.W, b.Dx())
+		}
+		stacked += b.Dy()
 	}
-	if format != "png" {
-		t.Fatalf("编码格式应为 png，实际 %q", format)
-	}
-	b := img.Bounds()
-	if b.Dx() != f.W || b.Dy() != f.H {
-		t.Fatalf("声明尺寸与图片实际尺寸不符: 声明 %dx%d 实际 %dx%d", f.W, f.H, b.Dx(), b.Dy())
+	if stacked != f.H {
+		t.Fatalf("各带高度合计与屏高不符: 声明 %d 实际 %d", f.H, stacked)
 	}
 	if f.W <= 0 || f.H <= 0 {
 		t.Fatalf("屏幕尺寸非法: %dx%d", f.W, f.H)
@@ -43,6 +71,13 @@ func TestCaptureScreenFrameSelfConsistent(t *testing.T) {
 	if f.DPR < 1 || f.DPR > 8 {
 		t.Fatalf("DPR 异常: %v", f.DPR)
 	}
+}
+
+func min2(s string, n int) string {
+	if len(s) < n {
+		return s
+	}
+	return s[:n]
 }
 
 func TestListVisibleWindowsSanity(t *testing.T) {

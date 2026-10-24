@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -33,7 +34,15 @@ type CaptureWindowInfo struct {
 // CaptureFrame 交给选区浮层的完整上下文。
 type CaptureFrame struct {
 	// Image 是整屏冻结帧的 data URL（data:image/png;base64,...）。
+	// 走分带并行编码时本字段为空，浮层改读 Bands（二者只会有其一）。
 	Image string `json:"image"`
+	// Bands 是同一帧按「等高水平带」切开后各自编码的 PNG data URL，自上而下排列。
+	// 整屏一张图编码是这条链路最贵的单项（3440x1440 约 60~75ms），而 image/png
+	// 只在 DefaultCompression 下才自带并行；按带各自 BestSpeed 并行编码可压到
+	// ~12ms，体积几乎不变（每带只多几十字节头），浮层按序上下拼接即可。
+	Bands []string `json:"bands"`
+	// BandH 是 Bands 里每条带的高度（物理像素）；屏高无法整除时退回单张，此值为 0。
+	BandH int `json:"bandH"`
 	// W/H 是冻结帧的物理像素尺寸，前端据此换算 CSS 像素与图片像素的比例。
 	W int `json:"w"`
 	H int `json:"h"`
@@ -48,8 +57,9 @@ type CaptureFrame struct {
 
 // CaptureScreenFrame 冻结当前主屏一帧并打包成浮层可直接消费的数据。
 //
-// PNG 用 BestSpeed：整屏 3440x1440 用默认压缩要 1s 上下，浮层会明显卡顿；
-// BestSpeed 体积只大 20% 左右但编码快得多，而 PNG 本身无损，不影响成品质量。
+// PNG 用 BestSpeed 并按水平带并行编码：整屏 3440x1440 用默认压缩要 1s 上下，
+// 单张 BestSpeed 也要 60~75ms（是调起耗时里最大的一块），分成 8 带并行后 ~12ms。
+// PNG 本身无损，分带不改变成品质量。
 func CaptureScreenFrame() (*CaptureFrame, error) {
 	img := captureFrozenScreen()
 	if img == nil {
@@ -67,18 +77,23 @@ func CaptureScreenFrame() (*CaptureFrame, error) {
 		wins = listVisibleWindows()
 	}()
 
-	var buf bytes.Buffer
-	enc := png.Encoder{CompressionLevel: png.BestSpeed}
-	if err := enc.Encode(&buf, img); err != nil {
+	urls, bandH, err := encodeFrame(img)
+	if err != nil {
 		wg.Wait()
-		return nil, fmt.Errorf("PNG 编码失败: %w", err)
+		return nil, err
 	}
 	bounds := img.Bounds()
 	frame := &CaptureFrame{
-		Image: "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()),
 		W:     bounds.Dx(),
 		H:     bounds.Dy(),
 		DPR:   screenDPR(),
+		BandH: bandH,
+	}
+	// 单张时仍走 Image，保持与旧前端/降级路径兼容
+	if len(urls) == 1 {
+		frame.Image = urls[0]
+	} else {
+		frame.Bands = urls
 	}
 	cx, cy := getCursorPos()
 	frame.CursorX, frame.CursorY = int(cx), int(cy)
@@ -86,9 +101,79 @@ func CaptureScreenFrame() (*CaptureFrame, error) {
 	wg.Wait()
 	frame.Windows = wins
 
-	selLogf("冻结帧 %dx%d dpr=%.2f png=%dKB 可见窗口=%d",
-		frame.W, frame.H, frame.DPR, buf.Len()/1024, len(frame.Windows))
+	total := 0
+	for _, u := range urls {
+		total += len(u)
+	}
+	selLogf("冻结帧 %dx%d dpr=%.2f 数据=%dKB 带=%dx%d 可见窗口=%d",
+		frame.W, frame.H, frame.DPR, total/1024, len(urls), bandH, len(frame.Windows))
 	return frame, nil
+}
+
+// encodeFrame 把整屏编成一组 PNG data URL：优先分带并行编码，带数取
+// 「不超过可用核数且能整除屏高」的最大值；无法分带或任一带失败时
+// 退回单张整屏编码（宁可慢一点，也不能把坏数据交给浮层）。
+func encodeFrame(img *image.RGBA) ([]string, int, error) {
+	h := img.Bounds().Dy()
+	if n := pngBandCount(h); n > 1 {
+		if bands, berr := encodeBands(img, n); berr == nil {
+			return bands, h / n, nil
+		}
+	}
+	buf := new(bytes.Buffer)
+	enc := png.Encoder{CompressionLevel: png.BestSpeed}
+	if err := enc.Encode(buf, img); err != nil {
+		return nil, 0, fmt.Errorf("PNG 编码失败: %w", err)
+	}
+	return []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())}, 0, nil
+}
+
+// pngBandCount 选出能整除屏高且不超出可用核数的最大水平带数。
+// 整除是为了让浮层能用统一的 bandH 定位各带，避免半像素缝；
+// 带数到 8 之后再升收益很小（实测 8 带 ~11ms、单张 ~59ms），却会把体积与解码份数抬上去。
+func pngBandCount(h int) int {
+	if h <= 0 {
+		return 1
+	}
+	cpus := runtime.GOMAXPROCS(0)
+	for _, n := range [...]int{8, 6, 4, 2} {
+		if cpus >= n && h%n == 0 {
+			return n
+		}
+	}
+	return 1
+}
+
+// encodeBands 按 n 条等高水平带并行编码，返回自上而下的 data URL 列表。
+// SubImage 只是一个零拷贝的窗口视图，所以并行的开销全在 deflate 上。
+func encodeBands(img *image.RGBA, n int) ([]string, error) {
+	b := img.Bounds()
+	bandH := b.Dy() / n
+	urls := make([]string, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			y0 := b.Min.Y + i*bandH
+			sub := img.SubImage(image.Rect(b.Min.X, y0, b.Max.X, y0+bandH)).(*image.RGBA)
+			buf := new(bytes.Buffer)
+			enc := png.Encoder{CompressionLevel: png.BestSpeed}
+			if err := enc.Encode(buf, sub); err != nil {
+				errs[i] = err
+				return
+			}
+			urls[i] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+		}(i)
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, fmt.Errorf("PNG 分带编码失败: %w", err)
+		}
+	}
+	return urls, nil
 }
 
 // CopyImageBase64 把 data URL 或裸 base64 的 PNG/JPEG 图片写入系统剪贴板。
@@ -103,6 +188,18 @@ func CopyImageBase64(data string) error {
 		return fmt.Errorf("decode image failed: %w", err)
 	}
 	return copyImageToClipboard(img)
+}
+
+// ScreenGeometry 返回主屏物理尺寸与缩放比，供 Go 侧「先预建浮层、后抓屏」时用
+// （预热的隐藏窗口需要一个确定的整屏尺寸，否则隐藏态下页面拿不到视口、布局全糊）。
+func ScreenGeometry() (w, h int, dpr float64) {
+	sw := getSystemMetrics(SM_CXSCREEN)
+	sh := getSystemMetrics(SM_CYSCREEN)
+	dpr = screenDPR()
+	if sw <= 0 || sh <= 0 {
+		return 0, 0, dpr
+	}
+	return int(sw), int(sh), dpr
 }
 
 // screenDPR 主屏缩放比。GetDpiForSystem 在 Win10+ 可用，取不到时退回 1。

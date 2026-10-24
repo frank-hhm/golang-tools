@@ -68,6 +68,9 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Port > 65535 {
 		return fmt.Errorf("端口非法: %d", cfg.Port)
 	}
+	if reason := PortTaken(cfg.Port, cfg.ID); reason != "" {
+		return fmt.Errorf("%s", reason)
+	}
 	vers, _ := ListVersions()
 	ok := false
 	for _, v := range vers {
@@ -321,12 +324,57 @@ func Logs(id string, n int) ([]string, error) {
 	return lines, nil
 }
 
-// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3000）
+// runningPortOwner 返回正在监听该端口的本程序实例 ID（无则空串）
+func runningPortOwner(port int) string {
+	runMu.Lock()
+	defer runMu.Unlock()
+	for id, s := range runSrv {
+		if s.port == port {
+			return id
+		}
+	}
+	return ""
+}
+
+// PortTaken 报告端口是否不可用于（新）站点：被其它已登记实例的端口占用，或已被进程监听。
+// excludeID 用于编辑场景排除自身（含自身正在运行的监听）。返回非空字符串即占用原因，空串表示可用。
+func PortTaken(port int, excludeID string) string {
+	if port <= 0 || port > 65535 {
+		return fmt.Sprintf("端口非法: %d", port)
+	}
+	if list, _ := loadInstances(); list != nil {
+		for _, c := range list {
+			if c.ID != excludeID && c.Port == port {
+				return fmt.Sprintf("端口 %d 已被站点「%s」占用", port, c.Name)
+			}
+		}
+	}
+	if err := freePort(port); err != nil {
+		// 编辑自身且该端口正是自己运行时，允许保留
+		if owner := runningPortOwner(port); owner != "" && owner == excludeID {
+			return ""
+		}
+		return fmt.Sprintf("端口 %d 已被其它进程占用", port)
+	}
+	return ""
+}
+
+// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3000）：
+// 既跳过被其它已登记实例占用的端口，也跳过系统里已无法绑定的端口。
 func SuggestPort(from int) int {
 	if from <= 0 {
 		from = 3000
 	}
-	for p := from; p < from+100; p++ {
+	inUse := map[int]bool{}
+	if list, _ := loadInstances(); list != nil {
+		for _, c := range list {
+			inUse[c.Port] = true
+		}
+	}
+	for p := from; p < from+300 && p <= 65535; p++ {
+		if inUse[p] {
+			continue
+		}
 		if freePort(p) == nil {
 			return p
 		}

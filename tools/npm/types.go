@@ -130,6 +130,21 @@ type NpmConfigKV struct {
 	Value string `json:"value"`
 }
 
+// NpmPathBind 用户 PATH 绑定状态（强制切换本地 npm 命令）
+type NpmPathBind struct {
+	Bound         bool     `json:"bound"`         // 用户 PATH 最前是否为某 Node 目录
+	BoundDir      string   `json:"boundDir"`      // 当前绑定（最前）的 Node 目录
+	BoundVersion  string   `json:"boundVersion"`  // 该目录 Node 版本
+	BoundNpm      string   `json:"boundNpm"`      // 该目录生效 npm 版本
+	BoundScope    string   `json:"boundScope"`    // 生效绑定所在作用域：system | user
+	OtherNodeDirs []string `json:"otherNodeDirs"` // 用户 PATH 里其它 Node 目录（绑定时移除）
+	SystemHasNode bool     `json:"systemHasNode"` // 系统 PATH 里存在 Node 目录（会盖过用户 PATH，仅告警不改）
+	CanUndo       bool     `json:"canUndo"`       // 是否存在原始 PATH 备份
+	UndoNote      string   `json:"undoNote"`      // 备份时间说明
+	Platform      string   `json:"platform"`
+	Note          string   `json:"note"`
+}
+
 /* ============================ 目录约定 ============================ */
 
 // goToolsDir 数据目录 data/npm：实例登记、托管 npmrc、版本切换记录（基础目录设置页可改，见 appdirs）

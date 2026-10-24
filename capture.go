@@ -58,36 +58,106 @@ func (a *App) OpenCaptureOverlay() error {
 	// 立即抓屏。旧实现在此固定 sleep 250ms 等托盘菜单/通知卡片消失，但每次
 	// “调起”都要干等这 250ms，老机器上尤其拖慢手感；瞬态提示被定格只是
 	// 极少数场景，不值得每次截图都付这段延迟。
+	t0 := time.Now()
 	frame, err := screenshot.CaptureScreenFrame()
 	if err != nil {
-		a.capMu.Lock()
-		a.capBusy = false
-		a.capMu.Unlock()
+		a.resetCapBusy()
 		return err
 	}
+	tFrame := time.Since(t0)
 
+	// 帧先存好再处置窗口：冷建时页面 mount 后会自己来拉（GetCaptureFrame），
+	// 预热窗口则靠下面的事件告知“有新帧”。顺序反了会拉到上一轮的旧帧。
 	a.capMu.Lock()
 	a.capFrame = frame
 	a.capReady = false
-	existing := a.capWin
 	a.capMu.Unlock()
 
-	// 复用已存在的隐藏浮层：跳过“新建 WebView2 窗口 + 页面 bootstrap”——这才是
-	// 调起慢的最大头。只把新冻结帧推给它，让页面重新取帧、重置会话并回报就绪。
-	if existing != nil {
-		opLogf("capture", "复用浮层，推送新冻结帧 %dx%d dpr=%.2f 窗口=%d 个",
-			frame.W, frame.H, frame.DPR, len(frame.Windows))
-		a.app.Event.Emit("capture:newframe")
-		go a.captureReadyWatchdog()
-		return nil
+	win, created := a.ensureCaptureWindow(frame)
+	if win == nil {
+		a.resetCapBusy()
+		return fmt.Errorf("创建选区浮层窗口失败")
 	}
+	var how string
+	if created {
+		how = "冷建"
+	} else {
+		how = "复用"
+	}
+	opLogf("capture", "冻结帧就绪 %dx%d dpr=%.2f 带=%d 抓屏+编码=%s 浮层=%s 可截窗口=%d 个",
+		frame.W, frame.H, frame.DPR, len(frame.Bands), tFrame.Round(time.Millisecond),
+		how, len(frame.Windows))
 
+	// 复用（含启动时预热）时必须推事件：页面早已 mount，不会再自己取帧。
+	// 帧随事件一起送出，省掉「页面回调 GetCaptureFrame」这一整趟往返（帧体 ~650KB）。
+	if !created {
+		a.app.Event.Emit("capture:newframe", frame)
+	}
+	// 兜底：前端若因故没能回报就绪，超时后销毁窗口，别把后续截图卡死。
+	go a.captureReadyWatchdog()
+	return nil
+}
+
+// resetCapBusy 复位一次截图的进行标志（失败路径用，避免浮层被永久锁住）。
+func (a *App) resetCapBusy() {
+	a.capMu.Lock()
+	a.capBusy = false
+	a.capMu.Unlock()
+}
+
+// TryActivateNativeTool 供 Go 原生入口（全局热键、浮动球菜单）直接触发工具事件：
+// 走前端要多付一趟「热键线程 → 主窗口 JS → 绑定调用 → Go」的往返，实测十几毫秒，
+// 而截图浮层本来就是 Go 自己开的窗口；顺带也让主窗口已关闭时热键照样能截图。
+// 返回 true 表示已在 Go 侧处理完毕，调用方不必再广播给前端。
+func (a *App) TryActivateNativeTool(toolID string) bool {
+	if a.app == nil || toolID == "" {
+		return false
+	}
+	for _, t := range CurrentConfig().Tools {
+		if t.Event != "screenshot" || (t.ID != toolID && t.Key != toolID) {
+			continue
+		}
+		go func() {
+			if err := a.OpenCaptureOverlay(); err != nil {
+				errLogf("capture", "原生入口直接调起浮层失败: %v", err)
+			}
+		}()
+		return true
+	}
+	return false
+}
+
+// ensureCaptureWindow 返回浮层窗口；created 为 true 表示本轮是冷建
+// （页面即将自己 mount 取帧），false 表示复用已有窗口（页面在等 newframe 事件）。
+// 建窗期间单独持锁，避免抱着 capMu 做耗时操作。
+func (a *App) ensureCaptureWindow(frame *screenshot.CaptureFrame) (win application.Window, created bool) {
+	a.capWinMu.Lock()
+	defer a.capWinMu.Unlock()
+
+	a.capMu.Lock()
+	exist := a.capWin
+	a.capMu.Unlock()
+	if exist != nil {
+		return exist, false
+	}
+	win = a.newCaptureWindow(frame)
+	if win == nil {
+		return nil, true
+	}
+	a.capMu.Lock()
+	a.capWin = win
+	a.capMu.Unlock()
+	return win, true
+}
+
+// newCaptureWindow 全屏无边框、隐藏创建的选区浮层窗口。尺寸按冻结帧换算成 DIP：
+// 必须显式给一整屏尺寸（StartState 万一不被实现，窗口也已经铺满），隐藏窗口
+// 拿不到默认尺寸时前端实测的 dpr 会全错。真正点亮由前端 CaptureReady 触发。
+func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Window {
 	dpr := frame.DPR
 	if dpr <= 0 {
 		dpr = 1
 	}
-	// 显式给一个整屏尺寸（DIP）：StartState 万一不被实现，窗口也已经铺满，
-	// 前端据 innerWidth 实测的 dpr 才不会算错（隐藏窗口拿不到默认尺寸就全糊了）。
 	screenW := int(float64(frame.W) / dpr)
 	screenH := int(float64(frame.H) / dpr)
 	w := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -103,7 +173,7 @@ func (a *App) OpenCaptureOverlay() error {
 		Hidden:        true, // 等前端把冻结帧画出来再显示，避免黑屏一闪
 		StartState:    application.WindowStateFullscreen,
 		// 透明背景：Show 后、页面首帧合成前的那一帧露出桌面而非黑色（见文件头注释）。
-		// 只有配合 IgnoreMouseEvents 才会点击穿透，这里不设，交互照常。
+		// 也只有配合 IgnoreMouseEvents 才会点击穿透，这里不设，交互照常。
 		BackgroundType:   application.BackgroundTypeTransparent,
 		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
 		URL:              "/#/widget/capture",
@@ -114,16 +184,36 @@ func (a *App) OpenCaptureOverlay() error {
 			HiddenOnTaskbar: true,
 		},
 	})
+	opLogf("capture", "选区浮层窗口已创建 %dx%d dpr=%.2f", screenW, screenH, dpr)
+	return w
+}
+
+// PrewarmCaptureOverlay 预建隐藏的浮层窗口（不抓屏），把“新建 WebView2 窗口 +
+// 页面 bootstrap”这笔最贵的开销从第一次截图的体验里挪到启动阶段。
+// 隐藏窗口不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），也不会被枚举成
+// 可截窗口（本进程窗口已过滤），所以预热不污染冻结帧。
+func (a *App) PrewarmCaptureOverlay() {
+	if a.app == nil {
+		return
+	}
+	w, h, dpr := screenshot.ScreenGeometry()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	a.capWinMu.Lock()
+	defer a.capWinMu.Unlock()
 	a.capMu.Lock()
-	a.capWin = w
+	exist := a.capWin
 	a.capMu.Unlock()
-
-	// 兜底：前端若因故没能回报就绪，超时后销毁窗口，别把后续截图卡死。
-	go a.captureReadyWatchdog()
-
-	opLogf("capture", "选区浮层已打开 %dx%d dpr=%.2f 窗口=%d 个",
-		frame.W, frame.H, frame.DPR, len(frame.Windows))
-	return nil
+	if exist != nil {
+		return
+	}
+	if win := a.newCaptureWindow(&screenshot.CaptureFrame{W: w, H: h, DPR: dpr}); win != nil {
+		a.capMu.Lock()
+		a.capWin = win
+		a.capMu.Unlock()
+		opLogf("capture", "浮层已预热（隐藏待命）%dx%d dpr=%.2f", w, h, dpr)
+	}
 }
 
 // GetCaptureFrame 浮层页面取回冻结帧、屏幕尺寸、光标位置与可截取窗口清单。

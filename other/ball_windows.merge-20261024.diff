@@ -1,0 +1,73 @@
+﻿diff --git a/ball_windows.go b/ball_windows.go
+index 2bf6cb4..45202eb 100644
+--- a/ball_windows.go
++++ b/ball_windows.go
+@@ -115,12 +115,13 @@ const (
+ 	ballDT_NOPREFIX      = 0x00000800
+ 
+ 	// 鑷粯鑿滃崟缇庡寲锛氳彍鍗曢」绂佺敤鎬併€佸瓧浣撱€佽彍鍗曞簳鑹?-	ballMF_GRAYED         = 0x0001
+-	ballMF_DISABLED       = 0x0002
+-	ballFW_NORMAL         = 400
+-	ballDEFAULT_CHARSET   = 1
+-	ballCLEARTYPE_QUALITY = 5
+-	ballMIIM_BACKGROUND   = 0x00000002 // SetMenuInfo锛氳嚜瀹氫箟鑿滃崟鑳屾櫙鐢诲埛
++	ballMF_GRAYED           = 0x0001
++	ballMF_DISABLED         = 0x0002
++	ballFW_NORMAL           = 400
++	ballDEFAULT_CHARSET     = 1
++	ballCLEARTYPE_QUALITY   = 5
++	ballANTIALIASED_QUALITY = 3          // 鐏板害鎶楅敮榻匡細鍒嗗眰绐楀彛 DIB 閲岀殑鏂囧瓧蹇呴』鐢ㄥ畠锛孋learType 瀛愬儚绱犳覆鏌撲細鐣欎笅褰╄壊鎻忚竟锛堢湅璧锋潵鍍忊€滈娇杞€濓級
++	ballMIIM_BACKGROUND     = 0x00000002 // SetMenuInfo锛氳嚜瀹氫箟鑿滃崟鑳屾櫙鐢诲埛
+ 
+ 	// 娉ㄥ唽琛細auto 涓婚涓嬭鍙栫郴缁熸槸鍚︿娇鐢ㄦ繁鑹插簲鐢ㄦā寮? 	ballHKEY_CURRENT_USER = 0x80000001
+@@ -931,7 +932,7 @@ func ballShowMenu(ballHwnd uintptr) {
+ 	}
+ 	ballMenuFont, _, _ = ballCreateFont.Call(
+ 		uintptr(fontH), 0, 0, 0, ballFW_NORMAL, 0, 0, 0,
+-		ballDEFAULT_CHARSET, 0, 0, ballCLEARTYPE_QUALITY, 0,
++		ballDEFAULT_CHARSET, 0, 0, ballANTIALIASED_QUALITY, 0,
+ 		uintptr(unsafe.Pointer(face)))
+ 	if ballMenuFont != 0 {
+ 		defer func() { ballDelObj.Call(ballMenuFont); ballMenuFont = 0 }()
+@@ -942,8 +943,9 @@ func ballShowMenu(ballHwnd uintptr) {
+ 		return
+ 	}
+ 
+-	// 浣嶇疆锛氶敋瀹氱悆鍙充笂瑙掞紝鑿滃崟鏁翠綋缃簬鐞冧笂鏂瑰苟鐣欏嚭闂撮殭锛堜笉鍘嬩綇鐞冧綋锛夛紝
+-	// 閬垮厤鐞?logo 閫忚繃鑿滃崟鍦嗚/鎶曞奖闇插嚭锛堚€滈娇杞€濇畫褰憋級锛涘啀閽撳埗鍒板伐浣滃尯銆?+	// 浣嶇疆锛氶敋瀹氱悆鍙充笂瑙掞紝鑿滃崟鏁翠綋缃簬鐞冧笂鏂瑰苟鐣欏嚭闂撮殭锛堜笉鍘嬩綇鐞冧綋锛夆€斺€?+	// 鑿滃崟鍥涘懆 14px 鎶曞奖杈硅窛鏄崐閫忔槑鐨勶紝鑻ョ揣璐?鍘嬩綇鐞冧綋锛岀悆 logo 浼氶€忚繃
++	// 鍦嗚/鎶曞奖闇插嚭锛堚€滈娇杞€濇畫褰憋紝鍘嗗彶涓婂嚭鐜拌繃涓ゆ锛夛紱鍐嶉挀鍒跺埌宸ヤ綔鍖恒€? 	var br, wa ballRect
+ 	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
+ 	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
+@@ -1202,16 +1204,15 @@ func ballMenuRender(hwnd uintptr) {
+ }
+ 
+ // ballMenuApplyAlpha 鐢ㄥ渾瑙掔煩褰?SDF 閫愬儚绱犲悎鎴?alpha锛氬唴閮ㄤ笉閫忔槑銆佽竟缂?1px 鎶楅敮榻裤€?-// 澶栭儴鎸夊埌鍐呭鐭╁舰鐨勮窛绂昏“鍑忓嚭鏌斿拰榛戣壊鎶曞奖锛堥涔橈細鎶曞奖涓洪粦 RGB=0锛屽唴瀹?RGB 涔樿鐩栧害锛夈€?+// 澶栭儴鎸夊埌鍐呭鍦嗚鐭╁舰鐨勫璺濈琛板噺鍑烘煍鍜岄粦鑹叉姇褰憋紙棰勪箻锛氭姇褰变负榛?RGB=0锛屽唴瀹?RGB 涔樿鐩栧害锛夈€? func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
+ 	halfW := float64(winW-margin*2) / 2
+ 	halfH := float64(winH-margin*2) / 2
+ 	r := float64(rad)
+ 	cx := float64(margin) + halfW // 鍐呭涓績锛圖IB 鍧愭爣锛? 	cy := float64(margin) + halfH
+-	shOff := float64(bmPx(bmShOffY)) // 鎶曞奖涓嬬Щ锛堝厜婧愬亸涓婏級
+ 	mg := float64(margin)
+-	const shadowMax = 78.0
++	const shadowMax = 50.0
+ 	for y := 0; y < winH; y++ {
+ 		py := float64(y) + 0.5
+ 		rowOff := y * winW
+@@ -1233,13 +1234,13 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
+ 				bits[idx+3] = 255 // 鍐呴儴锛歊GB 淇濇寔锛宎lpha 鎷夋弧
+ 				continue
+ 			}
+-			// 鎶曞奖锛氬埌鍐呭鍦嗚鐭╁舰鐨勫璺濈浜屾琛板噺
+-			dSh := ballSdfRR(px-cx, py-shOff-cy, halfW, halfH, r)
++			// 鏌斿拰鎶曞奖锛氫互鍒板唴瀹瑰渾瑙掔煩褰㈢殑澶栬窛绂讳负鍑嗭紝杈圭紭鏈€娣便€佸悜澶栦簩娆¤“鍑忥紝鍥涘懆鍧囧寑銆? 			var sh uint32
+-			if dSh <= 0 {
+-				sh = uint32(shadowMax)
+-			} else if t := dSh / mg; t < 1 {
++			if t := dCov / mg; t < 1 {
+ 				s := 1 - t
++				if s > 1 {
++					s = 1
++				}
+ 				sh = uint32(shadowMax*s*s + 0.5)
+ 			}
+ 			if ca == 0 && sh == 0 {

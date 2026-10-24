@@ -31,7 +31,7 @@
                     <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
                         <template #title>图片信息</template>
                         <template #extra>
-                            <a-button v-if="base64" size="mini" type="text" status="danger" @click="reset">
+                            <a-button v-if="base64" size="mini" @click="reset">
                                 <template #icon><icon-delete /></template>清空
                             </a-button>
                         </template>
@@ -70,7 +70,7 @@
                             <template #checked>含 data 前缀</template>
                             <template #unchecked>仅纯编码</template>
                         </a-switch>
-                        <a-button type="primary" status="success" size="small" :disabled="!base64"
+                        <a-button type="primary" size="small" :disabled="!base64"
                             @click="copyText(output)">
                             <template #icon><icon-copy /></template>复制
                         </a-button>

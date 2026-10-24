@@ -10,15 +10,9 @@
         <a-form :model="st" layout="vertical" size="small">
           <a-form-item field="mode">
             <template #label>录制模式</template>
-            <a-radio-group v-model="st.mode" direction="vertical" :disabled="isBusy" @change="onModeChange">
-              <a-radio value="screen"><icon-desktop /> 屏幕</a-radio>
-              <a-radio value="region"><icon-fullscreen /> 区域</a-radio>
-              <a-radio value="camera"><icon-camera /> 摄像头</a-radio>
-            </a-radio-group>
           </a-form-item>
           <a-form-item field="fps">
             <template #label>帧率</template>
-            <a-select v-model="st.fps" :disabled="isBusy" :options="fpsOptions" />
           </a-form-item>
         </a-form>
       </a-card>
@@ -74,6 +68,7 @@
         <template #title>
           <a-space :size="8">
             <span class="panel-title">预览</span>
+            <a-tag size="small" :color="statusColor">{{ statusText }}</a-tag>
             <a-tag v-if="st.status === 'recording' || st.status === 'paused'" color="red" class="rec-tag">
               <icon-record /> {{ st.status === "paused" ? "已暂停" : "录制中" }} {{ fmtTime(displayedElapsed) }}
             </a-tag>
@@ -82,9 +77,15 @@
         </template>
         <template #extra>
           <a-space :size="8">
+            <a-select v-model="st.fps" :disabled="isBusy" :options="fpsOptions" />
+            <a-radio-group v-model="st.mode" type="button" :disabled="isBusy" @change="onModeChange">
+              <a-radio value="screen"><icon-desktop /> 屏幕</a-radio>
+              <a-radio value="region"><icon-fullscreen /> 区域</a-radio>
+              <a-radio value="camera"><icon-camera /> 摄像头</a-radio>
+            </a-radio-group>
             <!-- 屏幕模式 -->
             <template v-if="st.mode === 'screen'">
-              <a-button size="small" v-if="st.status === 'idle'" type="primary" status="success" @click="startScreen">
+              <a-button v-if="st.status === 'idle'"@click="startScreen">
                 <template #icon><icon-record /></template>开始录制
               </a-button>
             </template>
@@ -131,7 +132,8 @@
         <div class="panel-body">
           <!-- 已交给悬浮小窗控制的提示 -->
           <a-alert v-if="st.status === 'delegated'" class="widget-alert" type="warning">
-            已就绪：请在{{ st.mode === "region" ? "选区右下角" : "屏幕右下角" }}的悬浮小窗点击「开始」启动录制，进行中可查看时长并点「停止」；停止后自动返回本窗口，在预览区回放并「另存为…」保存。
+            已就绪：请在{{ st.mode === "region" ? "选区右下角" : "屏幕右下角"
+            }}的悬浮小窗点击「开始」启动录制，进行中可查看时长并点「停止」；停止后自动返回本窗口，在预览区回放并「另存为…」保存。
           </a-alert>
 
           <!-- 预览主区：铺满剩余高度 -->
@@ -143,7 +145,8 @@
                 :style="mediaStyle" />
               <div v-if="st.rect" class="sel-rect" :style="rectStyle"></div>
               <div v-if="!st.rect" class="sel-hint">按住鼠标拖动，框选要录制的区域</div>
-              <div v-else class="sel-size">{{ st.srcW }} × {{ st.srcH }} 共享源像素 · 已选 {{ st.selPx?.w }} × {{ st.selPx?.h }} ·
+              <div v-else class="sel-size">{{ st.srcW }} × {{ st.srcH }} 共享源像素 · 已选 {{ st.selPx?.w }} × {{ st.selPx?.h
+              }} ·
                 单击选区内开始录制</div>
               <div v-if="st.rect" class="sel-play-hint"><icon-play-circle /> 点击确认区域录制</div>
             </div>

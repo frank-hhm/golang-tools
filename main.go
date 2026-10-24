@@ -54,6 +54,8 @@ func init() {
 	application.RegisterEvent[UIMessage]("ui:message")
 	application.RegisterEvent[string]("ball:action")
 	application.RegisterEvent[string]("tool:activate")
+	// 复用浮层时把新冻结帧直接随事件送出，免得页面再回 Go 取一次（帧体几百 KB）
+	application.RegisterEvent[*screenshot.CaptureFrame]("capture:newframe")
 	application.RegisterEvent[mysql.InstallProgress]("mysql:install")
 	application.RegisterEvent[php.InstallProgress]("php:install")
 	application.RegisterEvent[nginx.InstallProgress]("nginx:install")

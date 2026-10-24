@@ -14,8 +14,9 @@ import (
 // 全局热键 —— 纯 Go 原生 Win32 实现
 //
 // 在专用 OS 线程上创建一个「消息-only 窗口」(HWND_MESSAGE)，用 RegisterHotKey
-// 注册来自 config（工具项 Shortcut，如 "Ctrl+Alt+S"）的系统级全局热键；
-// 命中 WM_HOTKEY 后经 App 以 "tool:activate" 事件交回主窗口，复用开窗/截图逻辑。
+// 注册来自 config（工具项 Shortcut，如 "Ctrl+Alt+S"）的系统级全局热键；命中 WM_HOTKEY 后：
+// Go 侧能直接处理的工具（截图）就地调起，其余以 "tool:activate" 事件交回主窗口，
+// 复用开窗逻辑。
 //
 // 线程/消息安全（沿用本仓库约定）：
 //   - 专用 goroutine + runtime.LockOSThread，退出时不 Unlock（线程随 goroutine 销毁）；
@@ -163,6 +164,10 @@ func hkWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		hkMu.Unlock()
 		if toolID != "" && app != nil && app.app != nil {
 			opLogf("hotkey", "全局热键触发 -> %s", toolID)
+			// 截图由 Go 直接调起：少走一趟「主窗口 JS → 绑定回 Go」，主窗口关了也能截
+			if app.TryActivateNativeTool(toolID) {
+				return 0
+			}
 			app.app.Event.Emit("tool:activate", toolID)
 		}
 		return 0

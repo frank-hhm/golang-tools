@@ -9,11 +9,12 @@
                 </template>
                 <div class="side-body">
                     <div class="field">
-                        <div class="field-label">长度模式</div>
-                        <a-radio-group v-model="lenMode" type="button" size="mini">
-                            <a-radio value="fixed">固定</a-radio>
-                            <a-radio value="range">区间</a-radio>
-                        </a-radio-group>
+                        <a-space>
+                            <a-radio-group v-model="lenMode" type="button">
+                                <a-radio value="fixed">固定</a-radio>
+                                <a-radio value="range">区间</a-radio>
+                            </a-radio-group>
+                        </a-space>
                         <a-input-number v-if="lenMode === 'fixed'" v-model="fixedLen" :min="1" :max="1000"
                             :precision="0" style="width: 100%" />
                         <a-row v-else :gutter="8" align="center">
@@ -32,10 +33,10 @@
                     <div class="field">
                         <div class="field-label">字符类型</div>
                         <div class="checks">
-                            <a-checkbox v-model="useDigits">数字 0-9</a-checkbox>
-                            <a-checkbox v-model="useLower">小写字母 a-z</a-checkbox>
-                            <a-checkbox v-model="useUpper">大写字母 A-Z</a-checkbox>
-                            <a-checkbox v-model="useSymbols">常用符号 ~!@#$%^&amp;*()_+</a-checkbox>
+                            <a-checkbox v-model="useDigits"><span class="text-grey">数字 0-9</span></a-checkbox>
+                            <a-checkbox v-model="useLower"><span class="text-grey">小写字母 a-z</span></a-checkbox>
+                            <a-checkbox v-model="useUpper"><span class="text-grey">大写字母 A-Z</span></a-checkbox>
+                            <a-checkbox v-model="useSymbols"><span class="text-grey">常用符号 ~!@#$%^&amp;*()_+</span></a-checkbox>
                         </div>
                     </div>
 
@@ -202,7 +203,6 @@ const copyText = async (text: string) => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧设置卡片：占满整列高度，内部滚动 */

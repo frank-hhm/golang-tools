@@ -56,6 +56,7 @@ type App struct {
 
 	// 截图选区浮层（WebView 版）：Go 侧只持有冻结帧与窗口句柄
 	capMu    sync.Mutex
+	capWinMu sync.Mutex               // 串行化浮层窗口的创建（启动预热与热键调起可能撞在一起）
 	capFrame *screenshot.CaptureFrame // 抓屏结果，供浮层页面拉取
 	capWin   application.Window       // 全屏浮层窗口（首次冷建，之后隐藏复用，不每次重建）
 	capBusy  bool                     // 一次截图进行中，拒绝重入
@@ -191,6 +192,12 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 			warnLogf("ball", "启动时显示浮动球失败: %v", err)
 		}
 	}
+	// 预热截图浮层：WebView2 开窗 + 页面 bootstrap 是首次截图最贵的一笔（实测 ~300ms），
+	// 挪到启动空闲期付掉，之后每次截图都只走“推帧 + 复用窗口”。
+	go func() {
+		time.Sleep(2 * time.Second)
+		a.PrewarmCaptureOverlay()
+	}()
 	// 关闭主窗口时隐藏到托盘（不退出），并提供托盘右键菜单
 	a.setupCloseToTray()
 	a.setupTray()
@@ -1069,6 +1076,11 @@ func (a *App) NpmSrvLogs(id string, lines int) ([]string, error) { return npm.Lo
 // NpmSrvSuggestPort 从 from 起探测可用端口
 func (a *App) NpmSrvSuggestPort(from int) int { return npm.SuggestPort(from) }
 
+// NpmSrvPortTaken 报告端口是否已被占用（其它站点登记或进程监听），返回占用原因，空串表示可用
+func (a *App) NpmSrvPortTaken(port int, excludeId string) string {
+	return npm.PortTaken(port, excludeId)
+}
+
 // NpmSrvPluginsDir 返回插件目录 <exedir>/plugins/npm，供前端展示指引
 func (a *App) NpmSrvPluginsDir() string {
 	dir, err := npm.PluginsDir()
@@ -1172,6 +1184,17 @@ func (a *App) NpmCliUndoSwitch(layer, entryDir string) error {
 
 // NpmCliRemoveOverride 删掉 prefix 覆盖层的 npm，让 cmd 回到该 Node 自带的版本
 func (a *App) NpmCliRemoveOverride(entryDir string) error { return npm.RemoveNpmOverride(entryDir) }
+
+// NpmPathStatus 读取当前用户 PATH 的 Node 绑定情况（强制切换本地 npm 命令）
+func (a *App) NpmPathStatus() (*npm.NpmPathBind, error) { return npm.PathBindStatus() }
+
+// NpmPathBind 把选定 Node 目录前置到 PATH 并移除其它 Node 目录；system=true 改系统 PATH（需管理员），否则改用户 PATH
+func (a *App) NpmPathBind(entryDir string, system bool) error {
+	return npm.BindNodeToPath(entryDir, system)
+}
+
+// NpmPathUnbind 恢复绑定前备份的用户 PATH
+func (a *App) NpmPathUnbind() (string, error) { return npm.UndoPathBind() }
 
 // AppDataDir 返回全局数据目录下的服务子目录（不存在则创建），如 "videos" → <数据目录>/videos；
 // 数据基础目录默认 <程序目录>/data，设置页修改后新落点随即生效
@@ -1681,7 +1704,8 @@ func (a *App) ClearBallIcon() error {
 	return nil
 }
 
-// handleBallAction 处理浮动球菜单选择：close 直接关窗，其余以 "ball:action" 事件交回主窗口。
+// handleBallAction 处理浮动球菜单选择：close 直接关窗，Go 侧能直接处理的工具事件
+// （截图）就地调起省一趟前端往返，其余以 "ball:action" 事件交回主窗口。
 func (a *App) handleBallAction(id string) {
 	opLogf("ball", "菜单选择: %s", id)
 	if id == "close" {
@@ -1690,6 +1714,9 @@ func (a *App) handleBallAction(id string) {
 	}
 	if a.app == nil {
 		errLogf("ball", "处理菜单动作时 app 未初始化: %s", id)
+		return
+	}
+	if a.TryActivateNativeTool(id) {
 		return
 	}
 	a.app.Event.Emit("ball:action", id)

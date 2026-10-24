@@ -7,8 +7,22 @@
 export interface CaptureFrame {
     /**
      * Image 是整屏冻结帧的 data URL（data:image/png;base64,...）。
+     * 走分带并行编码时本字段为空，浮层改读 Bands（二者只会有其一）。
      */
     "image": string;
+
+    /**
+     * Bands 是同一帧按「等高水平带」切开后各自编码的 PNG data URL，自上而下排列。
+     * 整屏一张图编码是这条链路最贵的单项（3440x1440 约 60~75ms），而 image/png
+     * 只在 DefaultCompression 下才自带并行；按带各自 BestSpeed 并行编码可压到
+     * ~12ms，体积几乎不变（每带只多几十字节头），浮层按序上下拼接即可。
+     */
+    "bands": string[] | null;
+
+    /**
+     * BandH 是 Bands 里每条带的高度（物理像素）；屏高无法整除时退回单张，此值为 0。
+     */
+    "bandH": number;
 
     /**
      * W/H 是冻结帧的物理像素尺寸，前端据此换算 CSS 像素与图片像素的比例。

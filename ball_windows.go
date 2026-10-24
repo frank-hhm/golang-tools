@@ -30,7 +30,7 @@ import (
 // 松手时立即把窗口坐标写入配置，下次显示（含重启/重新打开）由 ballInitPos 原样恢复。
 // 单击（未拖动）与右键都在光标处弹出快捷菜单：原生 Win32 TrackPopupMenu（与托盘右键同源，Windows 原生绘制、自动跟随系统深浅色）；
 // 菜单项动态取自配置 Quick=true 的工具（ballQuickItems），
-// 选中项经 handleBallAction → "ball:action" 事件交回主窗口复用前端开窗/截图逻辑（关闭浮动球直接停球）。
+// 选中项经 handleBallAction → "ball:action" 事件交回主窗口复用前端开窗/截图逻辑。
 // 置顶 WS_EX_TOPMOST、不占任务栏 WS_EX_TOOLWINDOW，默认贴屏幕工作区右下角。
 //
 // 消息循环安全（沿用本仓库既有约定）：
@@ -866,7 +866,7 @@ func ballQuickItems() []ballMenuItem {
 // 仅在球线程、菜单模态循环期间读写，无并发，无需加锁。
 var (
 	ballMenuHwnd    uintptr        // 菜单窗口句柄
-	ballMenuItems   []ballMenuItem // 工具项 + 末尾“关闭浮动球”
+	ballMenuItems   []ballMenuItem // quick 工具项
 	ballMenuRects   []ballRect     // 每项客户区矩形（物理像素），与 items 对齐
 	ballMenuHover   int            // 当前悬停项索引，-1 无
 	ballMenuResult  int            // 选中项索引，-1 取消
@@ -876,7 +876,6 @@ var (
 	ballMenuX       int32          // 内容区屏幕左上 x（物理像素，命中/点外判定用）
 	ballMenuY       int32          // 内容区屏幕左上 y（物理像素）
 	ballMenuMargin  int32          // 投影边距（物理像素）：窗口左上 = 内容左上 - margin
-	ballMenuSepY    int32          // 关闭项上方分隔线 y（物理像素），0 表示无
 	ballMenuTextX   int32          // 文字左起点（物理像素）
 	ballMenuPillInX int32          // 高亮条左右内缩（物理像素）
 	ballMenuPillInY int32          // 高亮条上下内缩（物理像素）
@@ -891,10 +890,10 @@ var (
 // 菜单布局常量（DIP，运行时按 ballScale 放大为物理像素）
 const (
 	bmPadX    = 8   // 菜单左右内边距
-	bmTextIn  = 16  // 文字相对项左缩进
+	bmTextIn  = 10  // 文字相对项左缩进
 	bmRowH    = 40  // 行高（宽松，图2间距）
 	bmVGap    = 6   // 上下留白
-	bmMinW    = 172 // 菜单最小宽
+	bmMinW    = 132 // 菜单最小宽
 	bmRad     = 8   // 窗口圆角半径
 	bmPillInX = 4   // 高亮条左右内缩
 	bmPillInY = 3   // 高亮条上下内缩
@@ -920,8 +919,8 @@ func bmPx(dip int) int32 {
 func ballShowMenu(ballHwnd uintptr) {
 	ballMenuDark = ballEffectiveDark()
 
-	// 组装菜单项：quick 工具 + 末尾“关闭浮动球”
-	items := append(ballQuickItems(), ballMenuItem{ID: "close", Label: "关闭浮动球"})
+	// 组装菜单项：仅 quick 工具（“关闭浮动球”入口已移除，关闭走设置页开关）
+	items := ballQuickItems()
 	ballMenuItems = items
 
 	// 菜单字体（现代无行线）；失败则绘制时回退系统 GUI 字体
@@ -943,23 +942,21 @@ func ballShowMenu(ballHwnd uintptr) {
 		return
 	}
 
-	// 位置：锚定球右上角，菜单整体置于球上方并留出间隙（不压住球体）——
-	// 菜单四周 14px 投影边距是半透明的，若紧贴/压住球体，球 logo 会透过
-	// 圆角/投影露出（“齿轮”残影，历史上出现过两次）；再钓制到工作区。
+	// 位置：锚定球右上角（菜单左下角贴球可见圆面的右上角）并整体左移/下移各 4px 紧贴球体，再钓制到工作区
 	var br, wa ballRect
 	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
 	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
 	sp := int32(ballShadowPad)
 	menuX := br.Right - sp - bmPx(4)
-	menuY := br.Top + sp - ballMenuH - bmPx(10) // 菜单底边在球可见圆面上方留 10px 间隙
-	if menuX+ballMenuW > wa.Right {             // 右侧放不下 → 翻到球左侧
+	menuY := br.Top + sp - ballMenuH + bmPx(4)
+	if menuX+ballMenuW > wa.Right { // 右侧放不下 → 翻到球左侧
 		menuX = br.Left + sp + bmPx(4) - ballMenuW
 	}
 	if menuX < wa.Left {
 		menuX = wa.Left
 	}
-	if menuY < wa.Top { // 上方放不下 → 翻到球下方（同样留间隙）
-		menuY = br.Bottom - sp + bmPx(10)
+	if menuY < wa.Top { // 上方放不下 → 翻到球下方
+		menuY = br.Bottom - sp + bmPx(4)
 	}
 	if menuY+ballMenuH > wa.Bottom {
 		menuY = wa.Bottom - ballMenuH
@@ -1093,12 +1090,6 @@ func ballMenuLayout() bool {
 		t := top + int32(i)*rowH
 		ballMenuRects[i] = ballRect{Left: padX, Top: t, Right: w - padX, Bottom: t + rowH}
 	}
-	// 关闭项（末项）上方画分隔线
-	if n := len(ballMenuItems); n >= 2 {
-		ballMenuSepY = ballMenuRects[n-1].Top
-	} else {
-		ballMenuSepY = 0
-	}
 	return true
 }
 
@@ -1213,6 +1204,34 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 	cy := float64(margin) + halfH
 	mg := float64(margin)
 	const shadowMax = 50.0
+	// 悬停高亮药丸的抗锯齿参数：GDI RoundRect 画出的药丸四角是锯齿的（看起来像“齿轮”），
+	// 这里在药丸理想边界 ±1.5px 的窄带内用 SDF 覆盖率把 底色↔药丸色 平滑重绘。
+	// 只碰边缘窄带，不碰药丸内部的文字（文字距药丸边缘≥4px）。
+	var pillOn bool
+	var pcx, pcy, phalfW, phalfH, pr float64
+	var pBgR, pBgG, pBgB, pFgR, pFgG, pFgB uint32
+	if ballMenuHover >= 0 && ballMenuHover < len(ballMenuRects) {
+		prr := ballMenuRects[ballMenuHover]
+		x0 := float64(margin + int(prr.Left) + int(ballMenuPillInX))
+		y0 := float64(margin + int(prr.Top) + int(ballMenuPillInY))
+		x1 := float64(margin + int(prr.Right) - int(ballMenuPillInX))
+		y1 := float64(margin + int(prr.Bottom) - int(ballMenuPillInY))
+		if x1 > x0 && y1 > y0 {
+			phalfW = (x1 - x0) / 2
+			phalfH = (y1 - y0) / 2
+			pcx = x0 + phalfW
+			pcy = y0 + phalfH
+			pr = float64(bmPx(bmPillRad))
+			th := ballThemeColors(ballMenuDark)
+			pFgR = uint32(th.selBg) & 0xFF
+			pFgG = (uint32(th.selBg) >> 8) & 0xFF
+			pFgB = (uint32(th.selBg) >> 16) & 0xFF
+			pBgR = uint32(th.bg) & 0xFF
+			pBgG = (uint32(th.bg) >> 8) & 0xFF
+			pBgB = (uint32(th.bg) >> 16) & 0xFF
+			pillOn = true
+		}
+	}
 	for y := 0; y < winH; y++ {
 		py := float64(y) + 0.5
 		rowOff := y * winW
@@ -1231,7 +1250,22 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 				ca = uint32((0.5-dCov)*255 + 0.5)
 			}
 			if ca >= 255 {
-				bits[idx+3] = 255 // 内部：RGB 保持，alpha 拉满
+				if pillOn {
+					if psdf := ballSdfRR(px-pcx, py-pcy, phalfW, phalfH, pr); psdf > -1.5 && psdf < 1.5 {
+						c := 0.5 - psdf
+						if c < 0 {
+							c = 0
+						} else if c > 1 {
+							c = 1
+						}
+						ic := uint32(c*255 + 0.5)
+						inv := 255 - ic
+						bits[idx] = byte((pBgB*inv + pFgB*ic) / 255)
+						bits[idx+1] = byte((pBgG*inv + pFgG*ic) / 255)
+						bits[idx+2] = byte((pBgR*inv + pFgR*ic) / 255)
+					}
+				}
+				bits[idx+3] = 255 // 内部：alpha 拉满
 				continue
 			}
 			// 柔和投影：以到内容圆角矩形的外距离为准，边缘最深、向外二次衰减，四周均匀。
@@ -1312,16 +1346,6 @@ func ballMenuDrawOn(hdc uintptr) {
 		ballSelObj.Call(hdc, oldPen)
 		if hl != 0 {
 			ballDelObj.Call(hl)
-		}
-	}
-
-	// 关闭项上方分隔线
-	if ballMenuSepY > 0 {
-		inx := bmPx(12)
-		band := ballRect{Left: inx, Top: ballMenuSepY, Right: ballMenuW - inx, Bottom: ballMenuSepY + bmPx(1)}
-		if sep, _, _ := ballCreateBrush.Call(th.sep); sep != 0 {
-			ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&band)), sep)
-			ballDelObj.Call(sep)
 		}
 	}
 

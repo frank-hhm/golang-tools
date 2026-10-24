@@ -25,6 +25,9 @@ import type * as php$0 from "../../../../../go-tools/tools/php/models.js";
 import type * as redis$0 from "../../../../../go-tools/tools/redis/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as screenshot$0 from "../../../../../go-tools/tools/screenshot/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as sniffer$0 from "../../../../../go-tools/tools/sniffer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -34,6 +37,7 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "ball:action": string;
+            "capture:newframe": screenshot$0.CaptureFrame | null;
             "mysql:install": mysql$0.InstallProgress;
             "nginx:install": nginx$0.InstallProgress;
             "npm:install": npm$0.InstallProgress;

@@ -11,13 +11,7 @@
                         </template>
                         <div class="side-body">
                             <div class="field">
-                                <div class="field-label">常用进制</div>
-                                <a-radio-group v-model="inputBase" class="base-radios">
-                                    <a-radio v-for="b in COMMON_BASES" :key="b" :value="b">{{ b }}</a-radio>
-                                </a-radio-group>
-                            </div>
-                            <div class="field">
-                                <div class="field-label">更多进制（2 ~ 62）</div>
+                                <div class="field-label">进制</div>
                                 <a-select v-model="inputBase" style="width: 100%">
                                     <a-option v-for="b in ALL_BASES" :key="b" :value="b">{{ b }}</a-option>
                                 </a-select>
@@ -27,7 +21,7 @@
                                 <a-input v-model="inputStr" :placeholder="`请输入 ${inputBase} 进制数`" allow-clear
                                     @press-enter="convert" />
                             </div>
-                            <a-button type="primary" status="success" long @click="convert">
+                            <a-button long @click="convert">
                                 <template #icon><icon-swap /></template>转换
                             </a-button>
 
@@ -42,10 +36,12 @@
                                         <a-option :value="64">64 位</a-option>
                                     </a-select>
                                 </div>
-                                <a-radio-group v-model="endian" type="button" size="mini">
+                                <a-space>
+                                    <a-radio-group v-model="endian" type="button">
                                     <a-radio value="big">大端序</a-radio>
                                     <a-radio value="little">小端序</a-radio>
                                 </a-radio-group>
+                                </a-space>
                             </div>
                         </div>
                     </a-card>

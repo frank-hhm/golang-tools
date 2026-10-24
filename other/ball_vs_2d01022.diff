@@ -1,0 +1,60 @@
+﻿diff --git a/ball_windows.go b/ball_windows.go
+index b0aee93..42e24c9 100644
+--- a/ball_windows.go
++++ b/ball_windows.go
+@@ -1211,6 +1211,34 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
+ 	cy := float64(margin) + halfH
+ 	mg := float64(margin)
+ 	const shadowMax = 50.0
++	// 鎮仠楂樹寒鑽父鐨勬姉閿娇鍙傛暟锛欸DI RoundRect 鐢诲嚭鐨勮嵂涓稿洓瑙掓槸閿娇鐨勶紙鐪嬭捣鏉ュ儚鈥滈娇杞€濓級锛?+	// 杩欓噷鍦ㄨ嵂涓哥悊鎯宠竟鐣?卤1.5px 鐨勭獎甯﹀唴鐢?SDF 瑕嗙洊鐜囨妸 搴曡壊鈫旇嵂涓歌壊 骞虫粦閲嶇粯銆?+	// 鍙杈圭紭绐勫甫锛屼笉纰拌嵂涓稿唴閮ㄧ殑鏂囧瓧锛堟枃瀛楄窛鑽父杈圭紭鈮?px锛夈€?+	var pillOn bool
++	var pcx, pcy, phalfW, phalfH, pr float64
++	var pBgR, pBgG, pBgB, pFgR, pFgG, pFgB uint32
++	if ballMenuHover >= 0 && ballMenuHover < len(ballMenuRects) {
++		prr := ballMenuRects[ballMenuHover]
++		x0 := float64(margin + int(prr.Left) + int(ballMenuPillInX))
++		y0 := float64(margin + int(prr.Top) + int(ballMenuPillInY))
++		x1 := float64(margin + int(prr.Right) - int(ballMenuPillInX))
++		y1 := float64(margin + int(prr.Bottom) - int(ballMenuPillInY))
++		if x1 > x0 && y1 > y0 {
++			phalfW = (x1 - x0) / 2
++			phalfH = (y1 - y0) / 2
++			pcx = x0 + phalfW
++			pcy = y0 + phalfH
++			pr = float64(bmPx(bmPillRad))
++			th := ballThemeColors(ballMenuDark)
++			pFgR = uint32(th.selBg) & 0xFF
++			pFgG = (uint32(th.selBg) >> 8) & 0xFF
++			pFgB = (uint32(th.selBg) >> 16) & 0xFF
++			pBgR = uint32(th.bg) & 0xFF
++			pBgG = (uint32(th.bg) >> 8) & 0xFF
++			pBgB = (uint32(th.bg) >> 16) & 0xFF
++			pillOn = true
++		}
++	}
+ 	for y := 0; y < winH; y++ {
+ 		py := float64(y) + 0.5
+ 		rowOff := y * winW
+@@ -1229,7 +1257,22 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
+ 				ca = uint32((0.5-dCov)*255 + 0.5)
+ 			}
+ 			if ca >= 255 {
+-				bits[idx+3] = 255 // 鍐呴儴锛歊GB 淇濇寔锛宎lpha 鎷夋弧
++				if pillOn {
++					if psdf := ballSdfRR(px-pcx, py-pcy, phalfW, phalfH, pr); psdf > -1.5 && psdf < 1.5 {
++						c := 0.5 - psdf
++						if c < 0 {
++							c = 0
++						} else if c > 1 {
++							c = 1
++						}
++						ic := uint32(c*255 + 0.5)
++						inv := 255 - ic
++						bits[idx] = byte((pBgB*inv + pFgB*ic) / 255)
++						bits[idx+1] = byte((pBgG*inv + pFgG*ic) / 255)
++						bits[idx+2] = byte((pBgR*inv + pFgR*ic) / 255)
++					}
++				}
++				bits[idx+3] = 255 // 鍐呴儴锛歛lpha 鎷夋弧
+ 				continue
+ 			}
+ 			// 鏌斿拰鎶曞奖锛氫互鍒板唴瀹瑰渾瑙掔煩褰㈢殑澶栬窛绂讳负鍑嗭紝杈圭紭鏈€娣便€佸悜澶栦簩娆¤“鍑忥紝鍥涘懆鍧囧寑銆?
