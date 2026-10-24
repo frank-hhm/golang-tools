@@ -1211,6 +1211,34 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 	cy := float64(margin) + halfH
 	mg := float64(margin)
 	const shadowMax = 50.0
+	// 悬停高亮药丸的抗锯齿参数：GDI RoundRect 画出的药丸四角是锯齿的（看起来像“齿轮”），
+	// 这里在药丸理想边界 ±1.5px 的窄带内用 SDF 覆盖率把 底色↔药丸色 平滑重绘。
+	// 只碰边缘窄带，不碰药丸内部的文字（文字距药丸边缘≥4px）。
+	var pillOn bool
+	var pcx, pcy, phalfW, phalfH, pr float64
+	var pBgR, pBgG, pBgB, pFgR, pFgG, pFgB uint32
+	if ballMenuHover >= 0 && ballMenuHover < len(ballMenuRects) {
+		prr := ballMenuRects[ballMenuHover]
+		x0 := float64(margin + int(prr.Left) + int(ballMenuPillInX))
+		y0 := float64(margin + int(prr.Top) + int(ballMenuPillInY))
+		x1 := float64(margin + int(prr.Right) - int(ballMenuPillInX))
+		y1 := float64(margin + int(prr.Bottom) - int(ballMenuPillInY))
+		if x1 > x0 && y1 > y0 {
+			phalfW = (x1 - x0) / 2
+			phalfH = (y1 - y0) / 2
+			pcx = x0 + phalfW
+			pcy = y0 + phalfH
+			pr = float64(bmPx(bmPillRad))
+			th := ballThemeColors(ballMenuDark)
+			pFgR = uint32(th.selBg) & 0xFF
+			pFgG = (uint32(th.selBg) >> 8) & 0xFF
+			pFgB = (uint32(th.selBg) >> 16) & 0xFF
+			pBgR = uint32(th.bg) & 0xFF
+			pBgG = (uint32(th.bg) >> 8) & 0xFF
+			pBgB = (uint32(th.bg) >> 16) & 0xFF
+			pillOn = true
+		}
+	}
 	for y := 0; y < winH; y++ {
 		py := float64(y) + 0.5
 		rowOff := y * winW
@@ -1229,7 +1257,22 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 				ca = uint32((0.5-dCov)*255 + 0.5)
 			}
 			if ca >= 255 {
-				bits[idx+3] = 255 // 内部：RGB 保持，alpha 拉满
+				if pillOn {
+					if psdf := ballSdfRR(px-pcx, py-pcy, phalfW, phalfH, pr); psdf > -1.5 && psdf < 1.5 {
+						c := 0.5 - psdf
+						if c < 0 {
+							c = 0
+						} else if c > 1 {
+							c = 1
+						}
+						ic := uint32(c*255 + 0.5)
+						inv := 255 - ic
+						bits[idx] = byte((pBgB*inv + pFgB*ic) / 255)
+						bits[idx+1] = byte((pBgG*inv + pFgG*ic) / 255)
+						bits[idx+2] = byte((pBgR*inv + pFgR*ic) / 255)
+					}
+				}
+				bits[idx+3] = 255 // 内部：alpha 拉满
 				continue
 			}
 			// 柔和投影：以到内容圆角矩形的外距离为准，边缘最深、向外二次衰减，四周均匀。
