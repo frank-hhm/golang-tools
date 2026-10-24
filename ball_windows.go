@@ -942,21 +942,22 @@ func ballShowMenu(ballHwnd uintptr) {
 		return
 	}
 
-	// 位置：锚定球右上角（菜单左下角贴球可见圆面的右上角）并整体左移/下移各 4px 紧贴球体，再钓制到工作区
+	// 位置：锚定球右上角，菜单整体置于球上方并留出间隙（不压住球体），
+	// 避免球 logo 透过菜单圆角/投影露出（“齿轮”残影）；再钓制到工作区。
 	var br, wa ballRect
 	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
 	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
 	sp := int32(ballShadowPad)
 	menuX := br.Right - sp - bmPx(4)
-	menuY := br.Top + sp - ballMenuH + bmPx(4)
-	if menuX+ballMenuW > wa.Right { // 右侧放不下 → 翻到球左侧
+	menuY := br.Top + sp - ballMenuH - bmPx(10) // 菜单底边在球可见圆面上方留 10px 间隙
+	if menuX+ballMenuW > wa.Right {             // 右侧放不下 → 翻到球左侧
 		menuX = br.Left + sp + bmPx(4) - ballMenuW
 	}
 	if menuX < wa.Left {
 		menuX = wa.Left
 	}
-	if menuY < wa.Top { // 上方放不下 → 翻到球下方
-		menuY = br.Bottom - sp + bmPx(4)
+	if menuY < wa.Top { // 上方放不下 → 翻到球下方（同样留间隙）
+		menuY = br.Bottom - sp + bmPx(10)
 	}
 	if menuY+ballMenuH > wa.Bottom {
 		menuY = wa.Bottom - ballMenuH
@@ -1020,8 +1021,10 @@ func ballShowMenu(ballHwnd uintptr) {
 			break
 		}
 		prevLeft = left
-		// 等待下一条消息或 25ms 超时（避免忙等，保证轮询及时）
-		ballMsgWait.Call(0, 0, 25, uintptr(ballQS_ALLINPUT))
+		// 等待下一条消息或 25ms 超时（避免忙等，保证轮询及时）。
+		// MsgWaitForMultipleObjects 有 5 个入参：(nCount, pHandles, bWaitAll, dwMilliseconds, dwWakeMask)，
+		// 必须显式传 bWaitAll=FALSE，否则参数错位会使 dwWakeMask 读到栈上垃圾值→循环时而卡死时而空转。
+		ballMsgWait.Call(0, 0, 0, 25, uintptr(ballQS_ALLINPUT))
 	}
 	ballRelCap.Call()
 	ballDestroy.Call(hwnd)
@@ -1179,11 +1182,9 @@ func ballMenuRender(hwnd uintptr) {
 	old, _, _ := ballSelObj.Call(memDC, bmp)
 	ballOffsetVpOrg.Call(memDC, uintptr(margin), uintptr(margin), 0) // 视口原点平移 margin：内容整体右下移，四周留出投影
 	ballMenuDrawOn(memDC)                                            // 在不透明底上绘制（GDI）
-	if old != 0 {
-		ballSelObj.Call(memDC, old)
-	}
 
 	// 逐像素 alpha：圆角内容不透明（1px 抗锯齿边）+ 四周柔和投影（预乘）
+	// 直接操作 bits 指针，与当前选中的位图无关，故无需先换回 old。
 	ballMenuApplyAlpha(unsafe.Slice(bits, winW*winH*4), winW, winH, margin, int(bmPx(bmRad)))
 
 	var ptDst ballPoint
@@ -1191,8 +1192,13 @@ func ballMenuRender(hwnd uintptr) {
 	sz := ballSize{CX: int32(winW), CY: int32(winH)}
 	ptSrc := ballPoint{0, 0}
 	blend := ballBlend{BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1} // AC_SRC_ALPHA
+	// 关键：ULW 读取的是 memDC 当前选中的位图，必须在把 old 换回之前提交，
+	// 否则读到 CreateCompatibleDC 自带的 1×1 空白位图 → 菜单全透明看不见。
 	ballULW.Call(hwnd, screenDC, uintptr(unsafe.Pointer(&ptDst)), uintptr(unsafe.Pointer(&sz)),
 		memDC, uintptr(unsafe.Pointer(&ptSrc)), 0, uintptr(unsafe.Pointer(&blend)), ballULW_ALPHA)
+	if old != 0 {
+		ballSelObj.Call(memDC, old)
+	}
 }
 
 // ballMenuApplyAlpha 用圆角矩形 SDF 逐像素合成 alpha：内部不透明、边缘 1px 抗锯齿、
