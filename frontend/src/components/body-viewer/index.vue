@@ -61,7 +61,7 @@
             </div>
             <div v-else class="bv-visual">
                 <a-tree v-if="treeData.length" :key="treeVersion" :data="treeData" size="small" block-node
-                    :default-expanded-keys="rootKeys" />
+                    :default-expanded-keys="rootKeys" show-line />
                 <a-empty v-else description="该格式暂不支持可视化" />
             </div>
         </div>

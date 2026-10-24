@@ -122,6 +122,27 @@
                                 <a-switch v-model="form.ball.enabled" type="round" @change="scheduleSave(0)" />
                                 <span class="hint">开启后浮动球常驻屏幕右下角（独立原生小窗，置顶、可拖动，点击展开快捷功能）。修改后立即显隐，并在下次启动时自动恢复。</span>
                             </a-form-item>
+                            <a-form-item field="ballIcon">
+                                <template #label>浮动球图标</template>
+                                <div class="logo-picker">
+                                    <div class="ball-icon-preview">
+                                        <i v-if="isIconfontIcon(form.ball.icon)" class="icon ball-icon-glyph"
+                                            :class="form.ball.icon"></i>
+                                        <component v-else-if="form.ball.icon" :is="iconComp(form.ball.icon)"
+                                            class="ball-icon-glyph" />
+                                        <span v-else class="logo-placeholder">默认</span>
+                                    </div>
+                                    <a-space>
+                                        <a-button size="small" @click="openBallIconModal">选择图标</a-button>
+                                        <a-button size="small" status="danger" v-if="form.ball.icon"
+                                            @click="clearBallIcon">清除</a-button>
+                                    </a-space>
+                                    <select-icon-modal ref="ballIconModalRef"
+                                        :type="isIconfontIcon(form.ball.icon) ? 'iconfont' : 'arco'"
+                                        @change="onBallIconChange"></select-icon-modal>
+                                </div>
+                                <span class="hint">浮动球中心图标（图标库或 Arco），颜色自动跟随主题正文色 var(--color-text-1)，球面底色跟随 var(--color-bg-1)。留空使用应用 Logo/内置默认。</span>
+                            </a-form-item>
                         </a-form>
                     </a-card>
 
@@ -293,8 +314,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, createVNode, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref, render as renderVNode, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
+import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
+import iconData from "@/components/select-modal/icon/icon.json";
 import { applyTheme, type ThemeMode } from "@/utils/theme";
 import {
     arcoIconComp as iconComp,
@@ -357,14 +380,14 @@ interface ToolRow {
 }
 
 /** 完整配置（保存时整体回传） */
-const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, tools: [] });
+const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, tools: [] });
 const form = reactive<{
     log: { enabled: boolean; level: string; path: string };
-    ball: { enabled: boolean };
+    ball: { enabled: boolean; icon: string };
     general: { autoStart: boolean; appName: string; appLogo: string; theme: string };
 }>({
     log: { enabled: true, level: "info", path: "" },
-    ball: { enabled: false },
+    ball: { enabled: false, icon: "" },
     general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" },
 });
 const tools = ref<ToolRow[]>([]);
@@ -411,6 +434,93 @@ async function clearLogo() {
     try { logoPreview.value = (await GoTools?.GetAppLogo()) || ""; } catch { logoPreview.value = ""; }
 }
 
+/* ---------------- 浮动球球心图标 ---------------- */
+const ballIconModalRef = ref<any>(null);
+function openBallIconModal() {
+    ballIconModalRef.value?.open?.();
+}
+
+/**
+ * 图标值（icon-xxx / Arco 名）→ 128px 黑色字形 alpha 遮罩 PNG base64。
+ * Go 侧浮动球只取遮罩形状，按主题文字色（text-1）着色，因此这里固定用黑色绘制。
+ */
+async function iconToMaskPng(icon: string, size = 128): Promise<string> {
+    const val = String(icon || "").trim();
+    if (!val) return "";
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.fillStyle = "#000";
+    if (isIconfontIcon(val)) {
+        // 图标库：查 icon.json 的 unicode，用页面已加载的 "icon" 字体画字形
+        const hit = (iconData as any[]).find((i) => "icon-" + i.font_class === val);
+        if (!hit?.unicode) return "";
+        const ch = String.fromCharCode(parseInt(String(hit.unicode), 16));
+        try { await (document as any).fonts?.load(`100px "icon"`, ch); } catch { /* 字体已由样式全局加载，失败时直接绘制 */ }
+        ctx.font = `${Math.round(size * 0.82)}px "icon"`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(ch, size / 2, size / 2 + size * 0.02);
+    } else {
+        // Arco：离屏渲染图标组件 → 序列化 SVG（currentColor 独立解析为黑色）→ 画入 canvas
+        const compName = iconComp(val);
+        const compObj = compName ? (ArcoIconComps as any)[compName] : null;
+        if (!compObj) return "";
+        const host = document.createElement("div");
+        host.style.cssText = `font-size:${size}px;color:#000;position:absolute;left:-9999px;`;
+        document.body.appendChild(host);
+        try {
+            renderVNode(createVNode(compObj, null), host);
+            const svgEl = host.querySelector("svg");
+            if (!svgEl) return "";
+            svgEl.setAttribute("width", String(size));
+            svgEl.setAttribute("height", String(size));
+            const src = new XMLSerializer().serializeToString(svgEl);
+            const img = new Image();
+            const ok = await new Promise<boolean>((res) => {
+                img.onload = () => res(true);
+                img.onerror = () => res(false);
+                img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(src);
+            });
+            if (!ok) return "";
+            ctx.drawImage(img, 0, 0, size, size);
+        } finally {
+            renderVNode(null, host);
+            host.remove();
+        }
+    }
+    const url = canvas.toDataURL("image/png");
+    return url.includes(",") ? url.split(",")[1] : "";
+}
+
+/** 图标选择回填：生成遮罩上传 Go 侧 → 配置记录图标值 → 自动保存 */
+async function onBallIconChange(val: any) {
+    const icon = String(val ?? "");
+    let b64 = "";
+    try { b64 = await iconToMaskPng(icon); } catch { /* 渲染异常按失败处理 */ }
+    if (!b64) {
+        Message.error("该图标无法渲染，请换一个试试");
+        return;
+    }
+    try {
+        await GoTools?.SaveBallIcon(b64);
+    } catch {
+        Message.error("保存球图标失败");
+        return;
+    }
+    form.ball.icon = icon;
+    scheduleSave(0);
+}
+
+/** 清除自定义球图标：回退应用 Logo/内置默认（图标值随 ball.icon 一并清空保存） */
+async function clearBallIcon() {
+    try { await GoTools?.ClearBallIcon(); } catch { /* 忽略 */ }
+    form.ball.icon = "";
+    scheduleSave(0);
+}
+
 function normTool(t: any): ToolRow {
     return {
         id: t.id || t.key || "",
@@ -435,7 +545,7 @@ async function load() {
         if (cfg) {
             fullConfig.value = cfg;
             form.log = { enabled: !!cfg.log?.enabled, level: cfg.log?.level || "info", path: cfg.log?.path || "" };
-            form.ball = { enabled: !!cfg.ball?.enabled };
+            form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "" };
             form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
             tools.value = (cfg.tools || []).map(normTool);
         }
@@ -976,5 +1086,22 @@ onBeforeUnmount(() => {
 .logo-placeholder {
     font-size: var(--base-size-small);
     color: var(--color-text-4);
+}
+
+/* 浮动球图标选择器：圆形预览模拟球面，颜色语义与 Go 侧原生绘制一致（bg-1 底 / text-1 图标） */
+.ball-icon-preview {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px dashed var(--color-border-3);
+    background: var(--color-bg-1);
+    color: var(--color-text-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.ball-icon-glyph {
+    font-size: 26px;
 }
 </style>

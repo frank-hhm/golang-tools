@@ -4,7 +4,7 @@
         <a-col :span="5" class="side-col">
             <a-row class="side-pages">
                 <a-col class="side-cols side-cols-top" :span="24">
-                    <a-card class="side-card" >
+                    <a-card class="side-card">
                         <template #title>
                             <a-space :size="6">
                                 <a-tag size="small" :color="running ? 'green' : 'gray'">
@@ -70,7 +70,7 @@
                                     <a-list-item @click="selectedProcess = ''" :class="{ active: !selectedProcess }">
                                         <span class="filter-name">全部</span>
                                         <template #actions>
-                                            <a-tag size="small" color="gray">{{ flows.length }}</a-tag>
+                                            <a-tag size="small" color="gray">{{ processFacet.length }}</a-tag>
                                         </template>
                                     </a-list-item>
                                     <a-list-item v-for="p in processList" :key="p.name" @click="toggleProcess(p.name)"
@@ -87,7 +87,7 @@
                                     <a-list-item @click="selectedDomain = ''" :class="{ active: !selectedDomain }">
                                         <span class="filter-name">全部</span>
                                         <template #actions>
-                                            <a-tag size="small" color="gray">{{ flows.length }}</a-tag>
+                                            <a-tag size="small" color="gray">{{ domainFacet.length }}</a-tag>
                                         </template>
                                     </a-list-item>
                                     <a-list-item v-for="d in domainList" :key="d.name" @click="toggleDomain(d.name)"
@@ -113,37 +113,49 @@
                         <template #title>
                             <a-space :size="8">
                                 <span>请求列表</span>
-                                <a-tag size="small">共 {{ flows.length }}</a-tag>
+                                <a-tag size="small">共 {{ scopedFlows.length }}</a-tag>
                             </a-space>
                         </template>
                         <template #extra>
                             <a-radio-group v-model="selectedProto" type="button">
                                 <a-radio v-for="t in PROTO_TABS" :key="t.key" :value="t.key">
                                     {{ t.label }}<span v-if="t.key !== 'All'" class="pcnt">{{ protoCount(t.key)
-                                        }}</span>
+                                    }}</span>
                                 </a-radio>
                             </a-radio-group>
                         </template>
                         <div class="list-body">
-                            <div class="type-chips">
-                                <span v-for="t in TYPE_TABS" :key="t.key" class="chip"
-                                    :class="{ active: selectedKind === t.key }"
-                                    @click="selectedKind = selectedKind === t.key ? '' : t.key">{{ t.label }}</span>
-                                <span class="chip-sep"></span>
-                                <span v-for="s in STATUS_TABS" :key="s" class="chip"
-                                    :class="{ active: selectedStatus === s }"
-                                    @click="selectedStatus = selectedStatus === s ? '' : s">{{ s }}</span>
+                            <!-- 内容类型 / 请求方法 / 状态码快捷筛选：单选 radio，带命中数量，再选 All 取消 -->
+                            <div class="type-filters">
+                                <a-radio-group v-model="selectedKind" type="button">
+                                    <a-radio value="">All<span class="pcnt">{{ scopedFlows.length }}</span></a-radio>
+                                    <a-radio v-for="t in TYPE_TABS" :key="t.key" :value="t.key">
+                                        {{ t.label }}<span v-if="kindCounts[t.key]" class="pcnt">{{ kindCounts[t.key]
+                                        }}</span>
+                                    </a-radio>
+                                </a-radio-group>
+                                <a-radio-group v-model="selectedMethod" type="button">
+                                    <a-radio value="">All<span class="pcnt">{{ scopedFlows.length }}</span></a-radio>
+                                    <a-radio v-for="m in methodList" :key="m.name" :value="m.name">
+                                        {{ m.name }}<span v-if="m.count" class="pcnt">{{ m.count }}</span>
+                                    </a-radio>
+                                </a-radio-group>
+                                <a-radio-group v-model="selectedStatus" type="button">
+                                    <a-radio value="">All</a-radio>
+                                    <a-radio v-for="s in STATUS_TABS" :key="s" :value="s">
+                                        {{ s }}<span v-if="statusCounts[s]" class="pcnt">{{ statusCounts[s] }}</span>
+                                    </a-radio>
+                                </a-radio-group>
                             </div>
                             <div class="list-toolbar">
-                                <a-input-search v-model="keyword" placeholder="搜索 URL / 域名" size="small" allow-clear
+                                <a-input-search v-model="keyword" placeholder="搜索 URL / 域名" allow-clear
                                     class="list-search" />
                                 <span class="count-tip">显示 {{ filteredFlows.length }} 条</span>
                             </div>
                             <a-table class="flow-table" :data="pagedFlows" row-key="id" size="small" :pagination="false"
-                                :scroll="{ y: '100%', x: '100%', minWidth: 720 }"
-                                :bordered="{cell: true }"
-                                :column-resizable="true"
-                                :row-class="(r) => (r.id === selectedId ? 'row-selected' : '')" @row-click="onRowClick">
+                                :scroll="{ y: '100%', x: '100%', minWidth: 720 }" :bordered="{ cell: true }"
+                                :column-resizable="true" :row-class="(r) => (r.id === selectedId ? 'row-selected' : '')"
+                                @row-click="onRowClick">
                                 <template #columns>
                                     <a-table-column title="ID" data-index="id" :width="56" />
                                     <a-table-column title="图标" :width="52" align="center">
@@ -219,7 +231,7 @@
                                     <a-descriptions :column="1" bordered>
                                         <a-descriptions-item label="时间">{{ selectedFlow.time }}</a-descriptions-item>
                                         <a-descriptions-item label="协议">{{ selectedFlow.protocol
-                                            }}</a-descriptions-item>
+                                        }}</a-descriptions-item>
                                         <a-descriptions-item label="方法">{{ selectedFlow.method }}</a-descriptions-item>
                                         <a-descriptions-item label="域名">{{ selectedFlow.host }}</a-descriptions-item>
                                         <a-descriptions-item label="路径">{{ selectedFlow.path }}</a-descriptions-item>
@@ -241,7 +253,7 @@
 
                                 <div v-show="detailTab === 'reqHeaders'" class="detail-view">
                                     <a-descriptions v-if="headerEntries(selectedFlow.requestHeaders).length" :column="1"
-                                         bordered>
+                                        bordered>
                                         <a-descriptions-item v-for="hd in headerEntries(selectedFlow.requestHeaders)"
                                             :key="hd.k" :label="hd.k">
                                             <span class="hdr-val">{{ hd.v }}</span>
@@ -270,8 +282,9 @@
 
                                 <div v-show="detailTab === 'respBody'" class="detail-view detail-view-fill">
                                     <body-viewer :body="selectedFlow.responseBody"
-                                        :content-type="selectedFlow.contentType" :encoding="selectedFlow.respBodyEncoding"
-                                        :raw-size="selectedFlow.respSize" :truncated="selectedFlow.respTruncated"
+                                        :content-type="selectedFlow.contentType"
+                                        :encoding="selectedFlow.respBodyEncoding" :raw-size="selectedFlow.respSize"
+                                        :truncated="selectedFlow.respTruncated"
                                         :filename="bodyFilename(selectedFlow)" />
                                 </div>
                             </template>
@@ -293,6 +306,8 @@ import type { TableData } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import type { Flow } from "bindings/go-tools/tools/sniffer/models";
 import { useSetting } from "@/hooks/useSetting";
+import { getStorage, setStorage } from "@/utils";
+import CacheKey from "@/constants/cache-key";
 
 const {
     proxy: { $GoTools },
@@ -358,6 +373,7 @@ const selectedProto = ref("All");
 const selectedProcess = ref("");
 const selectedDomain = ref("");
 const selectedKind = ref<KindKey | "">("");
+const selectedMethod = ref("");
 const selectedStatus = ref<(typeof STATUS_TABS)[number] | "">("");
 const keyword = ref("");
 const sideSearch = ref("");
@@ -369,6 +385,35 @@ const curPage = ref(1);
 const pageSize = ref(useSetting().PageLimit.value || 10);
 
 let offEvent: (() => void) | null = null;
+
+/* ============ 筛选状态持久化 ============ */
+/** 窗口关闭重开后恢复上次的筛选/视图状态（同源 localStorage 跨窗口共享） */
+const restoreFilterState = () => {
+    const s = getStorage(CacheKey.SNIFFER_FILTER);
+    if (!s) return;
+    if (typeof s.port === "number" && s.port > 0) port.value = s.port;
+    selectedProto.value = s.proto || "All";
+    selectedKind.value = s.kind || "";
+    selectedMethod.value = s.method || "";
+    selectedStatus.value = s.status || "";
+    keyword.value = s.keyword || "";
+    filterTab.value = s.tab || "app";
+    selectedProcess.value = s.process || "";
+    selectedDomain.value = s.domain || "";
+    detailTab.value = s.detail || "overview";
+};
+
+watch(
+    [port, selectedProto, selectedKind, selectedMethod, selectedStatus, keyword, filterTab, selectedProcess, selectedDomain, detailTab],
+    () => {
+        setStorage(CacheKey.SNIFFER_FILTER, {
+            port: port.value, proto: selectedProto.value, kind: selectedKind.value,
+            method: selectedMethod.value,
+            status: selectedStatus.value, keyword: keyword.value, tab: filterTab.value,
+            process: selectedProcess.value, domain: selectedDomain.value, detail: detailTab.value,
+        });
+    }
+);
 
 /* ============ 捕获控制 ============ */
 const onStart = async () => {
@@ -385,15 +430,24 @@ const onStop = async () => {
     try {
         await $GoTools.StopSnifferProxy();
         running.value = false;
-        Message.success("抓包已停止，系统代理已还原");
+        // 停止即清：后台缓冲已随服务停止销毁，视图同步清空保持一致
+        flows.value = [];
+        selectedId.value = null;
+        Message.success("抓包已停止，系统代理已还原，抓取数据已清空");
     } catch (e: any) {
         Message.error("停止失败：" + (e?.message || e));
     }
 };
 
-const clearAll = () => {
+const clearAll = async () => {
     flows.value = [];
     selectedId.value = null;
+    // 同步清后端缓冲，否则重开窗口时旧数据会被回填复现
+    try {
+        await $GoTools.ClearSnifferFlows();
+    } catch {
+        /* 忽略 */
+    }
 };
 
 const onFlow = (ev: any) => {
@@ -406,6 +460,8 @@ const onFlow = (ev: any) => {
 };
 
 onMounted(async () => {
+    // 先恢复上次筛选状态，再注册监听：页面关闭期间 Go 侧持续缓冲，重开不丢数据
+    restoreFilterState();
     offEvent = Events.On("sniffer:flow", onFlow);
     try {
         const st = await $GoTools.SnifferProxyStatus();
@@ -415,6 +471,19 @@ onMounted(async () => {
         }
     } catch {
         /* 忽略状态查询失败 */
+    }
+    // 回填历史：与订阅后已到达的实时事件按 id 去重（id 仅在单次服务会话内唯一）
+    if (running.value) {
+        try {
+            const hist = ((await $GoTools.GetSnifferFlows()) || []) as Flow[];
+            if (hist.length) {
+                const cur = new Set(flows.value.map((f) => f.id));
+                const merged = hist.filter((f) => !cur.has(f.id)).concat(flows.value);
+                flows.value = merged.length > MAX_FLOWS ? merged.slice(merged.length - MAX_FLOWS) : merged;
+            }
+        } catch {
+            /* 回填失败不影响实时捕获 */
+        }
     }
 });
 
@@ -429,20 +498,60 @@ const matchKeyword = (f: Flow) => {
     return f.url?.toLowerCase().includes(k) || f.host?.toLowerCase().includes(k);
 };
 
-const filteredFlows = computed(() =>
+/**
+ * 筛选联动范围（分面计数）：
+ * - protoBase：命中应用 + 域名，供协议 Tab 计数（忽略协议自身选择）；
+ * - scopedFlows：再叠加协议选择，作为类型/方法/状态计数与列表「共 N」的口径；
+ * - processFacet / domainFacet：各自忽略自身维度的选择（否则选中某应用后其他应用计数会被清零，无法切换）。
+ * 空进程/空域名统一归一为 (未知)，与列表项显示值一致，保证点击可筛选。
+ */
+const procOf = (f: Flow) => (f.process || "").trim() || "(未知)";
+const hostOf = (f: Flow) => (f.host || "").trim() || "(未知)";
+
+const protoBase = computed(() =>
     flows.value.filter(
         (f) =>
-            (selectedProto.value === "All" || f.protocol === selectedProto.value) &&
-            (!selectedProcess.value || f.process === selectedProcess.value) &&
-            (!selectedDomain.value || f.host === selectedDomain.value) &&
+            (!selectedProcess.value || procOf(f) === selectedProcess.value) &&
+            (!selectedDomain.value || hostOf(f) === selectedDomain.value)
+    )
+);
+const scopedFlows = computed(() =>
+    protoBase.value.filter(
+        (f) => selectedProto.value === "All" || f.protocol === selectedProto.value
+    )
+);
+const processFacet = computed(() =>
+    flows.value.filter((f) => !selectedDomain.value || hostOf(f) === selectedDomain.value)
+);
+const domainFacet = computed(() =>
+    flows.value.filter((f) => !selectedProcess.value || procOf(f) === selectedProcess.value)
+);
+
+/** 请求方法归一（空方法兜底为其他），选项动态取自当前筛选范围内实际出现的方法 */
+const methodOf = (f: Flow) => (f.method || "").toUpperCase() || "其他";
+const methodList = computed(() => {
+    const m = new Map<string, number>();
+    for (const f of scopedFlows.value) {
+        const k = methodOf(f);
+        m.set(k, (m.get(k) || 0) + 1);
+    }
+    return Array.from(m, ([name, count]) => ({ name, count })).sort(
+        (a, b) => b.count - a.count || a.name.localeCompare(b.name)
+    );
+});
+
+const filteredFlows = computed(() =>
+    scopedFlows.value.filter(
+        (f) =>
             (!selectedKind.value || kindOf(f) === selectedKind.value) &&
+            (!selectedMethod.value || methodOf(f) === selectedMethod.value) &&
             (!selectedStatus.value || statusClass(f.statusCode) === selectedStatus.value) &&
             matchKeyword(f)
     )
 );
 
 /** 筛选条件变化后回到第一页，避免停留在越界空页 */
-watch([selectedProto, selectedProcess, selectedDomain, selectedKind, selectedStatus, keyword], () => {
+watch([selectedProto, selectedProcess, selectedDomain, selectedKind, selectedMethod, selectedStatus, keyword], () => {
     curPage.value = 1;
 });
 
@@ -464,15 +573,15 @@ const onPageChange = (val: { page: number; limit: number }) => {
     pageSize.value = val.limit;
 };
 
-const processList = computed(() => buildCount("process"));
+const processList = computed(() => buildCount("process", processFacet.value));
 const domainList = computed(() => {
     const kw = sideSearch.value.toLowerCase();
-    return buildCount("host").filter((d) => !kw || d.name.toLowerCase().includes(kw));
+    return buildCount("host", domainFacet.value).filter((d) => !kw || d.name.toLowerCase().includes(kw));
 });
 
-function buildCount(field: "process" | "host") {
+function buildCount(field: "process" | "host", source: Flow[]) {
     const map = new Map<string, number>();
-    for (const f of flows.value) {
+    for (const f of source) {
         const key = (f[field] || "").trim() || "(未知)";
         map.set(key, (map.get(key) || 0) + 1);
     }
@@ -482,10 +591,30 @@ function buildCount(field: "process" | "host") {
     return arr.sort((a, b) => b.count - a.count);
 }
 
+/** 协议命中数：跟随应用/域名筛选，忽略协议自身选择 */
 const protoCount = (key: string) => {
-    if (key === "All") return flows.value.length;
-    return flows.value.filter((f) => f.protocol === key).length;
+    if (key === "All") return protoBase.value.length;
+    return protoBase.value.filter((f) => f.protocol === key).length;
 };
+
+/** 各内容类型/状态码的命中数：跟随应用/域名/协议筛选（scopedFlows 口径） */
+const kindCounts = computed(() => {
+    const m: Partial<Record<KindKey, number>> = {};
+    for (const f of scopedFlows.value) {
+        const k = kindOf(f);
+        if (k) m[k] = (m[k] || 0) + 1;
+    }
+    return m;
+});
+
+const statusCounts = computed(() => {
+    const m: Record<string, number> = {};
+    for (const f of scopedFlows.value) {
+        const s = statusClass(f.statusCode);
+        if (s) m[s] = (m[s] || 0) + 1;
+    }
+    return m;
+});
 
 const selectedFlow = computed(() => flows.value.find((f) => f.id === selectedId.value) || null);
 
@@ -802,46 +931,25 @@ const headerEntries = (hObj: Hdrs) =>
     border-bottom: 1px solid var(--color-border-1);
 }
 
-/* 内容类型/状态码快捷筛选 chips：可换行的小标签，再点一次取消选中 */
-.type-chips {
+/* 内容类型/状态码快捷筛选：两枚单选 radio 组，项多时自动换行 */
+.type-filters {
     flex: none;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 6px 12px;
     padding: var(--base-radius-default) var(--base-padding) 0;
 }
 
-.chip {
-    padding: 1px 9px;
-    border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-default);
-    background: var(--color-fill-1);
-    color: var(--color-text-2);
-    font-size: var(--base-size-small);
-    line-height: 18px;
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
+.type-filters :deep(.arco-radio-group) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
 }
 
-.chip:hover {
-    border-color: rgb(var(--primary-6));
-    color: rgb(var(--primary-6));
-}
-
-.chip.active {
-    border-color: rgb(var(--primary-6));
-    background: var(--color-primary-light-1);
-    color: rgb(var(--primary-6));
-    font-weight: 500;
-}
-
-.chip-sep {
-    width: 1px;
-    height: 16px;
-    margin: 0 2px;
-    background: var(--color-border-2);
+/* 换行后连体边框观感不佳，改成每项独立小圆角胶囊 */
+.type-filters :deep(.arco-radio-button) {
+    border-radius: var(--base-radius-small) !important;
 }
 
 /* 列表类型图标 */
@@ -896,8 +1004,15 @@ const headerEntries = (hObj: Hdrs) =>
     white-space: nowrap;
 }
 
-:deep(.row-selected) {
-    background-color: var(--color-primary-light-1) !important;
+/* 选中行高亮：row-class 加在 tr 上，但 Arco 的 td 自带背景色会盖住 tr 背景，
+   必须直接覆盖 td；同时压掉 hover 背景，避免鼠标滑过时选中高亮被替换 */
+.flow-table :deep(.arco-table-tr.row-selected .arco-table-td) {
+    background-color:var(--color-fill-2) !important;
+}
+
+/* 行可点击查看详情，给出指针提示 */
+.flow-table :deep(.arco-table-tr) {
+    cursor: pointer;
 }
 
 .pager {

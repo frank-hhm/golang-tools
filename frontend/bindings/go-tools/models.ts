@@ -26,6 +26,11 @@ export interface BallConfig {
     "enabled": boolean;
 
     /**
+     * 球心图标值（icon-xxx 或 Arco 名，供设置页回显；像素数据在配置目录 ball_icon.png）
+     */
+    "icon": string;
+
+    /**
      * 上次拖动后的窗口左上角 X（物理像素，含阴影留白）
      */
     "x": number;

@@ -545,6 +545,26 @@ func (a *App) SnifferProxyStatus() (bool, int) {
 	return a.snifferRunning, 0
 }
 
+// GetSnifferFlows 返回后台缓冲的抓包记录，供抓包窗口重开时回填
+// （页面关闭期间服务继续捕获的数据在这里，服务未运行/已停止时返回空）
+func (a *App) GetSnifferFlows() []sniffer.Flow {
+	a.snifferMu.Lock()
+	defer a.snifferMu.Unlock()
+	if !a.snifferRunning || a.mitm == nil {
+		return nil
+	}
+	return a.mitm.Flows()
+}
+
+// ClearSnifferFlows 清空后台抓包缓冲（前端「清空」按钮同步调用，避免重开窗口旧数据复现）
+func (a *App) ClearSnifferFlows() {
+	a.snifferMu.Lock()
+	defer a.snifferMu.Unlock()
+	if a.mitm != nil {
+		a.mitm.ResetFlows()
+	}
+}
+
 /* ============================ Redis 管理 ============================ */
 
 // RedisOpen 建立并登记一个 Redis 连接
@@ -1608,13 +1628,63 @@ func (a *App) BallOpen() error {
 		return fmt.Errorf("应用尚未初始化")
 	}
 	opLogf("ball", "BallOpen 调用")
-	return errErr("ball", startNativeBall(a), "启动浮动球失败")
+	if err := startNativeBall(a); err != nil {
+		return err
+	}
+	return nil
 }
 
 // BallClose 关闭桌面浮动球。
 func (a *App) BallClose() {
 	opLogf("ball", "BallClose 调用")
 	stopNativeBall()
+}
+
+// ballMenuItem 浮动球菜单项：由原生 Win32 快捷菜单（ball_windows.go: ballShowMenu）绘制，ID 决定点击动作。
+type ballMenuItem struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
+// Go 侧写入配置目录 ball_icon.png 并通知球线程重载；渲染时只取遮罩形状，颜色跟随主题文字色（text-1）。
+// 图标值本身（icon-xxx / Arco 名）随 ball.icon 由 SaveConfig 持久化，供设置页回显。
+func (a *App) SaveBallIcon(b64Png string) error {
+	raw := strings.TrimSpace(b64Png)
+	if strings.HasPrefix(raw, "data:") {
+		if i := strings.Index(raw, ","); i >= 0 {
+			raw = raw[i+1:]
+		}
+	}
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return errErr("ball", err, "球图标数据解析失败")
+	}
+	if len(data) == 0 {
+		return a.ClearBallIcon()
+	}
+	p, err := ballIconMaskPath()
+	if err != nil {
+		return errErr("ball", err, "球图标路径不可用")
+	}
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		return errErr("ball", err, "球图标写入失败")
+	}
+	opLogf("ball", "球心图标已保存: %s (%d 字节)", p, len(data))
+	ballReloadIcon()
+	return nil
+}
+
+// ClearBallIcon 删除自定义球心图标，浮动球回退到应用 Logo/内置默认图。
+func (a *App) ClearBallIcon() error {
+	if p, err := ballIconMaskPath(); err == nil {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return errErr("ball", err, "球图标删除失败")
+		}
+		opLogf("ball", "球心图标已清除: %s", p)
+	}
+	ballReloadIcon()
+	return nil
 }
 
 // handleBallAction 处理浮动球菜单选择：close 直接关窗，其余以 "ball:action" 事件交回主窗口。
@@ -1641,7 +1711,11 @@ func (a *App) GetConfig() AppConfig {
 // SetAppTheme 持久化当前主题模式（light/dark/auto）：供标题栏快速切换时同步写入配置，
 // 以便浮动球原生菜单等 Go 侧 UI 跟随应用浅/暗黑模式。
 func (a *App) SetAppTheme(theme string) error {
-	return SaveAppTheme(theme)
+	if err := SaveAppTheme(theme); err != nil {
+		return err
+	}
+	ballReloadIcon() // 球面底板/图标着色随主题重绘
+	return nil
 }
 
 // SaveConfig 保存配置：写入用户配置目录 JSON + 重新初始化日志器 + 热键重载 + 浮动球显隐；返回日志目录。
@@ -1669,6 +1743,8 @@ func (a *App) SaveConfig(cfg AppConfig) (string, error) {
 	if cfg.Ball.Enabled {
 		if err := a.BallOpen(); err != nil {
 			warnLogf("ball", "按设置显示浮动球失败: %v", err)
+		} else {
+			ballReloadIcon() // 球已在跑时 BallOpen 幂等无感，主题/图标变更靠此重载生效
 		}
 	} else {
 		a.BallClose()

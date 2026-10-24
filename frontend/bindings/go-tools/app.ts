@@ -119,6 +119,20 @@ export function ChooseLogDir(): $CancellablePromise<string> {
 }
 
 /**
+ * ClearBallIcon 删除自定义球心图标，浮动球回退到应用 Logo/内置默认图。
+ */
+export function ClearBallIcon(): $CancellablePromise<void> {
+    return $Call.ByID(1952872458);
+}
+
+/**
+ * ClearSnifferFlows 清空后台抓包缓冲（前端「清空」按钮同步调用，避免重开窗口旧数据复现）
+ */
+export function ClearSnifferFlows(): $CancellablePromise<void> {
+    return $Call.ByID(2087092606);
+}
+
+/**
  * CloseCaptureOverlay 关闭浮层窗口并复位会话状态。
  */
 export function CloseCaptureOverlay(): $CancellablePromise<void> {
@@ -206,6 +220,14 @@ export function GetPinnedImage(id: number): $CancellablePromise<string> {
  */
 export function GetSerialPorts(): $CancellablePromise<usbserial$0.SerialDeviceInfo[] | null> {
     return $Call.ByID(2103145165);
+}
+
+/**
+ * GetSnifferFlows 返回后台缓冲的抓包记录，供抓包窗口重开时回填
+ * （页面关闭期间服务继续捕获的数据在这里，服务未运行/已停止时返回空）
+ */
+export function GetSnifferFlows(): $CancellablePromise<sniffer$0.Flow[] | null> {
+    return $Call.ByID(165179835);
 }
 
 /**
@@ -1480,6 +1502,15 @@ export function RedisStatus(id: string): $CancellablePromise<redis$0.ServerStatu
  */
 export function RedisStopMonitor(): $CancellablePromise<void> {
     return $Call.ByID(2637994250);
+}
+
+/**
+ * SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
+ * Go 侧写入配置目录 ball_icon.png 并通知球线程重载；渲染时只取遮罩形状，颜色跟随主题文字色（text-1）。
+ * 图标值本身（icon-xxx / Arco 名）随 ball.icon 由 SaveConfig 持久化，供设置页回显。
+ */
+export function SaveBallIcon(b64Png: string): $CancellablePromise<void> {
+    return $Call.ByID(2848455424, b64Png);
 }
 
 /**

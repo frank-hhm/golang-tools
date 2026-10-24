@@ -21,6 +21,10 @@ import (
 // maxBodyCapture 请求/响应体最大捕获字节数，超出截断
 const maxBodyCapture = 512 * 1024
 
+// maxFlowBuffer 后台保留的最近请求条数：抓包窗口关闭后 Go 侧继续累积，
+// 重开窗口时通过 GetSnifferFlows 回填；服务停止即清空。
+const maxFlowBuffer = 3000
+
 // Flow 一次完整的 HTTP(S) 请求/响应记录
 type Flow struct {
 	ID          int64  `json:"id"`
@@ -70,6 +74,10 @@ type Mitm struct {
 	connsMu sync.Mutex
 	conns   map[net.Conn]struct{}
 	stopped bool
+
+	// 后台环形缓冲：前端窗口不在时也不丢数据（受 maxFlowBuffer 限制）
+	flowsMu  sync.Mutex
+	flowsBuf []Flow
 }
 
 // NewMitm 创建引擎（加载或生成根 CA）
@@ -136,6 +144,8 @@ func (m *Mitm) Stop() {
 	if m.transport != nil {
 		m.transport.CloseIdleConnections()
 	}
+	// 服务停止即清：重开服务视为新一轮会话，不残留旧数据
+	m.ResetFlows()
 	// 给连接协程一个短暂的收敛窗口；超时后立即返回，绝不无限阻塞 wg.Wait()，
 	// 避免个别卡在慢上游上的请求把 StopSnifferProxy 拖死。
 	done := make(chan struct{})
@@ -357,6 +367,30 @@ func (m *Mitm) capture(proto string, req *http.Request, reqBody []byte, resp *ht
 	if m.emit != nil {
 		m.emit(f)
 	}
+
+	// 先缓冲后推送：即使抓包窗口已关闭（无监听者），数据也保留在内存供回填
+	m.flowsMu.Lock()
+	m.flowsBuf = append(m.flowsBuf, f)
+	if over := len(m.flowsBuf) - maxFlowBuffer; over > 0 {
+		m.flowsBuf = m.flowsBuf[over:]
+	}
+	m.flowsMu.Unlock()
+}
+
+// Flows 返回当前缓冲的全部抓包记录（副本，按捕获顺序）
+func (m *Mitm) Flows() []Flow {
+	m.flowsMu.Lock()
+	defer m.flowsMu.Unlock()
+	out := make([]Flow, len(m.flowsBuf))
+	copy(out, m.flowsBuf)
+	return out
+}
+
+// ResetFlows 清空缓冲（服务停止 / 前端手动清空时调用）
+func (m *Mitm) ResetFlows() {
+	m.flowsMu.Lock()
+	m.flowsBuf = nil
+	m.flowsMu.Unlock()
 }
 
 // procOf 依据连接的本地端口（即发起应用的临时端口）定位进程

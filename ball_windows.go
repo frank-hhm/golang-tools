@@ -11,7 +11,9 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -26,8 +28,9 @@ import (
 // 交互：按住拖动用 SetCapture + SetWindowPos 原生移动（无 IPC 往返，不闪动）；
 // 拖动范围以「圆形底板」为准（阴影像素可探出屏幕），鼠标可把球停到屏幕上任意位置；
 // 松手时立即把窗口坐标写入配置，下次显示（含重启/重新打开）由 ballInitPos 原样恢复。
-// 单击（未拖动）在球上弹出原生系统菜单（TrackPopupMenu），选择项经
-// App.handleBallAction → "ball:action" 事件交回主窗口复用前端开窗/截图逻辑。
+// 单击（未拖动）与右键都在光标处弹出快捷菜单：原生 Win32 TrackPopupMenu（与托盘右键同源，Windows 原生绘制、自动跟随系统深浅色）；
+// 菜单项动态取自配置 Quick=true 的工具（ballQuickItems），
+// 选中项经 handleBallAction → "ball:action" 事件交回主窗口复用前端开窗/截图逻辑（关闭浮动球直接停球）。
 // 置顶 WS_EX_TOPMOST、不占任务栏 WS_EX_TOOLWINDOW，默认贴屏幕工作区右下角。
 //
 // 消息循环安全（沿用本仓库既有约定）：
@@ -45,9 +48,12 @@ const (
 	ballWS_EX_TOPMOST = 0x00000008
 	ballWS_EX_TOOLWIN = 0x00000080
 
+	ballWS_EX_NOACTIVATE = 0x08000000 // 菜单窗口：不激活、不抢前台焦点
+
 	ballSW_SHOWNOACTIVATE = 4
 
 	ballWM_DESTROY     = 0x0002
+	ballWM_PAINT       = 0x000F
 	ballWM_CLOSE       = 0x0010
 	ballWM_SETCURSOR   = 0x0020
 	ballWM_MOUSEMOVE   = 0x0200
@@ -55,6 +61,12 @@ const (
 	ballWM_LBUTTONUP   = 0x0202
 	ballWM_RBUTTONUP   = 0x0205
 	ballWM_CAPTURECHG  = 0x0215
+
+	// 菜单模态循环：PeekMessage 抽取 + GetAsyncKeyState 轮询“菜单外点击”兜底
+	ballPM_REMOVE   = 0x0001
+	ballVK_LBUTTON  = 0x01
+	ballVK_RBUTTON  = 0x02
+	ballQS_ALLINPUT = 0x04FF
 
 	ballIDC_ARROW   = 32512
 	ballIDC_HAND    = 32649
@@ -82,6 +94,11 @@ const (
 	ballODS_DISABLED   = 0x0004
 	ballTRANSPARENT    = 1
 
+	// 自定义消息：WM_APP 起点。后台服务数变化时通知球线程重绘角标；设置/主题/图标变更时重载球心图标
+	ballWM_APP    = 0x8000
+	ballWM_BADGE  = ballWM_APP + 1
+	ballWM_RELOAD = ballWM_APP + 2
+
 	// GetSysColor 索引
 	ballCOLOR_MENU          = 3
 	ballCOLOR_MENUTEXT      = 7
@@ -98,12 +115,12 @@ const (
 	ballDT_NOPREFIX      = 0x00000800
 
 	// 自绘菜单美化：菜单项禁用态、字体、菜单底色
-	ballMF_GRAYED          = 0x0001
-	ballMF_DISABLED        = 0x0002
-	ballFW_NORMAL          = 400
-	ballDEFAULT_CHARSET    = 1
-	ballCLEARTYPE_QUALITY  = 5
-	ballMIIM_BACKGROUND    = 0x00000002 // SetMenuInfo：自定义菜单背景画刷
+	ballMF_GRAYED         = 0x0001
+	ballMF_DISABLED       = 0x0002
+	ballFW_NORMAL         = 400
+	ballDEFAULT_CHARSET   = 1
+	ballCLEARTYPE_QUALITY = 5
+	ballMIIM_BACKGROUND   = 0x00000002 // SetMenuInfo：自定义菜单背景画刷
 
 	// 注册表：auto 主题下读取系统是否使用深色应用模式
 	ballHKEY_CURRENT_USER = 0x80000001
@@ -178,6 +195,16 @@ type ballMsg struct {
 	Time    uint32
 	Pt      ballPoint
 }
+
+// PAINTSTRUCT（BeginPaint/EndPaint 用，amd64 布局与 C 一致）
+type ballPaintStruct struct {
+	HDC         uintptr
+	FErase      int32
+	RcPaint     ballRect
+	FRestore    int32
+	FIncUpdate  int32
+	RgbReserved [32]byte
+}
 type ballWndClass struct {
 	Style         uint32
 	LpfnWndProc   uintptr
@@ -222,6 +249,9 @@ var (
 	ballCreate   = ballUser32.NewProc("CreateWindowExW")
 	ballShow     = ballUser32.NewProc("ShowWindow")
 	ballGetMsg   = ballUser32.NewProc("GetMessageW")
+	ballPeekMsg  = ballUser32.NewProc("PeekMessageW")
+	ballMsgWait  = ballUser32.NewProc("MsgWaitForMultipleObjects")
+	ballAsyncKey = ballUser32.NewProc("GetAsyncKeyState")
 	ballTrans    = ballUser32.NewProc("TranslateMessage")
 	ballDispatch = ballUser32.NewProc("DispatchMessageW")
 	ballDefProc  = ballUser32.NewProc("DefWindowProcW")
@@ -257,6 +287,14 @@ var (
 	ballCreateFont    = ballGdi32.NewProc("CreateFontW")
 	ballRoundRect     = ballGdi32.NewProc("RoundRect")
 	ballSetMenuInfo   = ballUser32.NewProc("SetMenuInfo")
+
+	// 自绘菜单窗口（独立无边框圆角窗）用
+	ballBeginPaint    = ballUser32.NewProc("BeginPaint")
+	ballEndPaint      = ballUser32.NewProc("EndPaint")
+	ballInvalRect     = ballUser32.NewProc("InvalidateRect")
+	ballSetWinRgn     = ballUser32.NewProc("SetWindowRgn")
+	ballRoundRgn      = ballGdi32.NewProc("CreateRoundRectRgn")
+	ballOffsetVpOrg   = ballGdi32.NewProc("OffsetViewportOrgEx")
 	ballAdv32         = windows.NewLazySystemDLL("advapi32.dll")
 	ballRegOpenKey    = ballAdv32.NewProc("RegOpenKeyExW")
 	ballRegQueryValue = ballAdv32.NewProc("RegQueryValueExW")
@@ -288,7 +326,11 @@ var (
 	ballRadiusF    float64
 	ballLogoImg    image.Image     // 浮动球中心 logo 图像（nil 则回退闪电）
 	ballLogoRect   image.Rectangle // logo 非透明内容包围盒（去源图留白）
+	ballLogoTint   bool            // 球心图标为单色遮罩：仅取 alpha，按主题文字色（text-1）着色
 	ballCx, ballCy float64
+
+	// 角标：>0 时在球面右上画红点，表示有后台服务在运行（atomic，跨线程读写）
+	ballBadgeCount int32
 
 	// 拖拽（仅球线程读写）
 	ballCaptured bool
@@ -303,12 +345,8 @@ var (
 	ballCursorHand  uintptr
 	ballCursorMove  uintptr
 
-	// 自绘菜单（仅球线程使用；TrackPopupMenu 为模态，同线程重入安全）
-	ballScale     float64            // DPI 缩放，用于把留白 DIP 换算成物理像素
-	ballMenuLabel map[uintptr]string // 菜单项 ID → 文本，供 MEASURE/DRAW 回查
-	ballMenuSep   map[uintptr]bool   // 分隔符项 ID 集合（owner-draw 自绘细线）
-	ballMenuFont  uintptr            // 菜单字体句柄（弹菜单前创建，关闭后销毁）
-	ballMenuDark  bool               // 当前是否按深色主题绘制（跟随应用浅/暗黑）
+	// 球线程使用的 DPI 缩放（留白/尺寸 DIP↔物理像素换算）
+	ballScale float64
 )
 
 func ballUtf16(s string) *uint16 {
@@ -320,6 +358,33 @@ func ballUtf16(s string) *uint16 {
 // 关键生命周期/用户离散操作/异常统一走全局可配置日志（logger.go）。
 func ballLogf(format string, args ...any) {
 	appLogf(logInfo, "ball", format, args...)
+}
+
+// ballBadgeLoop 每 3s 把后台运行服务数同步到球面角标；服务启停最迟 3s 内反映到 Badge。
+func ballBadgeLoop(hwnd uintptr, stop <-chan struct{}) {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	for {
+		ballRefreshBadge(hwnd)
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// ballRefreshBadge 重算后台运行数；只在数值变化时 PostMessage 通知球线程重绘，避免无谓刷屏。
+// PostMessage 跨线程触发 WM_PAINT 类重绘是本窗口既有约定（stopNativeBall 同样如此）。
+func ballRefreshBadge(hwnd uintptr) {
+	if ballApp == nil {
+		return
+	}
+	n := int32(ballApp.activeBackgroundCount())
+	if atomic.SwapInt32(&ballBadgeCount, n) == n {
+		return
+	}
+	ballPostMsg.Call(hwnd, ballWM_BADGE, 0, 0)
 }
 
 // startNativeBall 启动桌面浮动球（幂等）。
@@ -337,11 +402,19 @@ func startNativeBall(a *App) error {
 	ballDone = false
 	ballMu.Unlock()
 
-	// 加载 logo 图片
-	ballLoadLogo()
-
 	go ballThread()
 	return nil
+}
+
+// ballReloadIcon 通知浮动球线程重读球心图标并按当前主题重绘（设置/主题/图标变更后从任意 goroutine 调用）。
+// 图标加载统一收敛到球线程执行（WM_RELOAD），避免与 ballRender 的像素读取竞态。
+func ballReloadIcon() {
+	ballMu.Lock()
+	h, running := ballHwnd, ballRunning
+	ballMu.Unlock()
+	if running && h != 0 {
+		ballPostMsg.Call(h, ballWM_RELOAD, 0, 0)
+	}
 }
 
 // stopNativeBall 请求关闭浮动球（从任意 goroutine 调用）。
@@ -354,26 +427,38 @@ func stopNativeBall() {
 	}
 }
 
-// ballLoadLogo 从配置加载 logo 图片到 ballLogoImg，并计算非透明内容包围盒。
+// ballLoadLogo 加载球心图标到 ballLogoImg（仅球线程调用）：
+// 优先自定义球图标（前端渲染的黑色 alpha 遮罩，按主题 text-1 着色）> 应用 Logo > 内置默认。
 func ballLoadLogo() {
 	ballLogoImg = nil
 	ballLogoRect = image.Rectangle{}
-	cfg := CurrentConfig()
+	ballLogoTint = false
 	var data []byte
-	if cfg.General.AppLogo != "" {
-		if b, err := os.ReadFile(cfg.General.AppLogo); err == nil {
+	if p, err := ballIconMaskPath(); err == nil {
+		if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
 			data = b
+			ballLogoTint = true
 		}
 	}
-	if len(data) == 0 && ballApp != nil {
-		data = ballApp.defaultLogo
+	if len(data) == 0 {
+		cfg := CurrentConfig()
+		if cfg.General.AppLogo != "" {
+			if b, err := os.ReadFile(cfg.General.AppLogo); err == nil {
+				data = b
+			}
+		}
+		if len(data) == 0 && ballApp != nil {
+			data = ballApp.defaultLogo
+		}
 	}
 	if len(data) == 0 {
+		ballLogoTint = false
 		return
 	}
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
 		ballLogf("logo PNG 解码失败: %v", err)
+		ballLogoTint = false
 		return
 	}
 	ballLogoImg = img
@@ -477,8 +562,14 @@ func ballThread() {
 	ballHwnd = hwnd
 	ballMu.Unlock()
 
+	ballLoadLogo()
 	ballPaint(hwnd)
 	ballShow.Call(hwnd, ballSW_SHOWNOACTIVATE)
+
+	// 角标同步循环：定期把「后台运行服务数」反映到球面（有变化才重绘）
+	badgeStop := make(chan struct{})
+	defer close(badgeStop)
+	go ballBadgeLoop(hwnd, badgeStop)
 
 	var msg ballMsg
 	for {
@@ -617,8 +708,9 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			if wasDragging {
 				ballSavePos(hwnd) // 拖动结束：同步记忆位置，立即落盘
 				ballApplyCursor(hwnd)
-			} else {
-				ballShowMenu(hwnd)
+			} else if app := ballApp; app != nil {
+				// 单击（未拖动）：直接打开/聚焦主界面，不再弹菜单（快捷菜单仅保留右键）
+				go app.showMainWindow()
 			}
 		}
 		return 0
@@ -634,7 +726,24 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 1
 
 	case ballWM_RBUTTONUP:
+		if ballMenuHwnd != 0 {
+			// 菜单已开：再次右键→收起（切换）。菜单模态循环会把球窗消息一并派发，
+			// 若不拦截会重入 ballShowMenu 弹出第二层菜单。
+			ballMenuClosing = true
+			return 0
+		}
 		ballShowMenu(hwnd)
+		return 0
+
+	case ballWM_BADGE:
+		// 角标变化：重读 ballBadgeCount 重绘整球
+		ballPaint(hwnd)
+		return 0
+
+	case ballWM_RELOAD:
+		// 设置/主题/图标变更：球线程内重读球心图标并重绘
+		ballLoadLogo()
+		ballPaint(hwnd)
 		return 0
 
 	case ballWM_CLOSE:
@@ -646,20 +755,6 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		ballDone = true
 		ballMu.Unlock()
 		return 0
-
-	case ballWM_MEASUREITEM:
-		mis := (*ballMeasureItem)(unsafe.Pointer(lParam))
-		if mis.CtlType == ballODT_MENU {
-			ballMeasureMenuItem(mis)
-			return 1
-		}
-
-	case ballWM_DRAWITEM:
-		dis := (*ballDrawItem)(unsafe.Pointer(lParam))
-		if dis.CtlType == ballODT_MENU {
-			ballDrawMenuItem(dis)
-			return 1
-		}
 	}
 	r, _, _ := ballDefProc.Call(hwnd, uintptr(msg), wParam, lParam)
 	return r
@@ -746,9 +841,9 @@ func ballSavePos(hwnd uintptr) {
 	ballLogf("已记住位置: (%d, %d)", l, t)
 }
 
-// ballQuickItems 从当前配置读取标记为快捷（Quick=true）的工具，作为原生菜单项（ID → 显示名）。
-func ballQuickItems() []struct{ ID, Label string } {
-	var out []struct{ ID, Label string }
+// ballQuickItems 从当前配置读取标记为快捷（Quick=true）的工具，作为菜单项（ID → 显示名）。
+func ballQuickItems() []ballMenuItem {
+	var out []ballMenuItem
 	for _, t := range CurrentConfig().Tools {
 		if !t.Quick {
 			continue
@@ -761,21 +856,74 @@ func ballQuickItems() []struct{ ID, Label string } {
 		if label == "" {
 			label = t.Key
 		}
-		out = append(out, struct{ ID, Label string }{id, label})
+		out = append(out, ballMenuItem{ID: id, Label: label})
 	}
 	return out
 }
 
-// ballShowMenu 在光标处弹出原生快捷菜单（菜单项动态来自配置的 quick 工具）。
-// 全部项 owner-draw，按应用当前浅/暗黑主题自绘：深色底 + 圆角高亮条 + 现代字体。
-func ballShowMenu(hwnd uintptr) {
-	items := ballQuickItems()
-	ballMenuDark = ballEffectiveDark()
-	ballMenuSep = map[uintptr]bool{}
-	ballMenuLabel = map[uintptr]string{}
+// ---------------- 自绘快捷菜单（独立无边框圆角窗口）运行期状态 ----------------
+// 仅在球线程、菜单模态循环期间读写，无并发，无需加锁。
+var (
+	ballMenuHwnd    uintptr        // 菜单窗口句柄
+	ballMenuItems   []ballMenuItem // 工具项 + 末尾“关闭浮动球”
+	ballMenuRects   []ballRect     // 每项客户区矩形（物理像素），与 items 对齐
+	ballMenuHover   int            // 当前悬停项索引，-1 无
+	ballMenuResult  int            // 选中项索引，-1 取消
+	ballMenuClosing bool           // 请求结束模态循环
+	ballMenuW       int32          // 窗口宽（物理像素）
+	ballMenuH       int32          // 窗口高（物理像素）
+	ballMenuX       int32          // 内容区屏幕左上 x（物理像素，命中/点外判定用）
+	ballMenuY       int32          // 内容区屏幕左上 y（物理像素）
+	ballMenuMargin  int32          // 投影边距（物理像素）：窗口左上 = 内容左上 - margin
+	ballMenuSepY    int32          // 关闭项上方分隔线 y（物理像素），0 表示无
+	ballMenuTextX   int32          // 文字左起点（物理像素）
+	ballMenuPillInX int32          // 高亮条左右内缩（物理像素）
+	ballMenuPillInY int32          // 高亮条上下内缩（物理像素）
+	ballMenuFont    uintptr        // 本次菜单 GDI 字体（弹出前创建、弹完删除）
+	ballMenuDark    bool           // 本次菜单深/浅配色
 
-	// 菜单字体（比 DEFAULT_GUI_FONT 更现代）。WM_MEASUREITEM 在 AppendMenu 时即触发，
-	// 故必须在追加任何项之前把字体建好。失败则回退系统 GUI 字体。
+	ballMenuClassOnce sync.Once
+	ballMenuClassName *uint16
+	ballMenuClassAtom uint16
+)
+
+// 菜单布局常量（DIP，运行时按 ballScale 放大为物理像素）
+const (
+	bmPadX    = 8   // 菜单左右内边距
+	bmTextIn  = 16  // 文字相对项左缩进
+	bmRowH    = 40  // 行高（宽松，图2间距）
+	bmVGap    = 6   // 上下留白
+	bmMinW    = 172 // 菜单最小宽
+	bmRad     = 8   // 窗口圆角半径
+	bmPillInX = 4   // 高亮条左右内缩
+	bmPillInY = 3   // 高亮条上下内缩
+	bmPillRad = 4   // 高亮条圆角
+	bmShadow  = 14  // 四周投影留白（窗口比内容大的边距）
+	bmShOffY  = 2   // 投影下移量（光源偏上）
+)
+
+// bmPx 把 DIP 值按当前 DPI 缩放为物理像素（至少 1）。
+func bmPx(dip int) int32 {
+	v := int32(math.Round(float64(dip) * ballScale))
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
+
+// ballShowMenu 在浮动球右上角弹出自绘快捷菜单（独立无边框圆角分层窗口）：
+// 用 WS_EX_LAYERED + UpdateLayeredWindow 逐像素 alpha 提交，实现真正抗锯齿圆角、零边框，
+// 并从根上消除区域裁剪/owner-draw 的齿轮残影（角外像素 alpha=0 直接透桌面）。
+// 位置固定锚定球右上角并紧贴球体，钓到工作区。在球线程以嵌套消息循环运行：
+// 悬停高亮、点选/点菜单外/再次右键收起，选中项交回 handleBallAction。
+func ballShowMenu(ballHwnd uintptr) {
+	ballMenuDark = ballEffectiveDark()
+
+	// 组装菜单项：quick 工具 + 末尾“关闭浮动球”
+	items := append(ballQuickItems(), ballMenuItem{ID: "close", Label: "关闭浮动球"})
+	ballMenuItems = items
+
+	// 菜单字体（现代无行线）；失败则绘制时回退系统 GUI 字体
 	face := ballUtf16("Microsoft YaHei UI")
 	fontH := -int32(math.Round(13 * ballScale))
 	if fontH > -13 {
@@ -789,148 +937,370 @@ func ballShowMenu(hwnd uintptr) {
 		defer func() { ballDelObj.Call(ballMenuFont); ballMenuFont = 0 }()
 	}
 
-	menu, _, _ := ballCreatePM.Call()
-	if menu == 0 {
+	// 布局：实测文本宽 → 窗口尺寸 + 每项矩形
+	if !ballMenuLayout() {
 		return
 	}
-	defer ballDestroyM.Call(menu)
 
-	// 菜单底色画刷：填充项与项之间的缝隙/边距，避免系统灰底在深色主题下露出
-	th := ballThemeColors(ballMenuDark)
-	bgBrush, _, _ := ballCreateBrush.Call(th.bg)
-	if bgBrush != 0 {
-		defer ballDelObj.Call(bgBrush)
-		var mi ballMenuInfo
-		mi.CbSize = uint32(unsafe.Sizeof(mi))
-		mi.FMask = ballMIIM_BACKGROUND
-		mi.HbrBack = bgBrush
-		ballSetMenuInfo.Call(menu, uintptr(unsafe.Pointer(&mi)))
+	// 位置：锚定球右上角（菜单左下角贴球可见圆面的右上角）并整体左移/下移各 4px 紧贴球体，再钓制到工作区
+	var br, wa ballRect
+	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
+	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
+	sp := int32(ballShadowPad)
+	menuX := br.Right - sp - bmPx(4)
+	menuY := br.Top + sp - ballMenuH + bmPx(4)
+	if menuX+ballMenuW > wa.Right { // 右侧放不下 → 翻到球左侧
+		menuX = br.Left + sp + bmPx(4) - ballMenuW
 	}
-
-	// 逐项分配自增 ID：quick 项 1..n，分隔符 n+1，关闭 n+2（分隔符置灰禁用，不可选中）
-	cmd := uintptr(0)
-	next := func() uintptr { cmd++; return cmd }
-	for _, it := range items {
-		id := next()
-		ballMenuLabel[id] = it.Label
-		ballAppendM.Call(menu, ballMF_OWNERDRAW, id, id)
+	if menuX < wa.Left {
+		menuX = wa.Left
 	}
-	sepID := next()
-	ballMenuSep[sepID] = true
-	ballAppendM.Call(menu, ballMF_OWNERDRAW|ballMF_GRAYED|ballMF_DISABLED, sepID, sepID)
-	closeID := next()
-	ballMenuLabel[closeID] = "关闭浮动球"
-	ballAppendM.Call(menu, ballMF_OWNERDRAW, closeID, closeID)
+	if menuY < wa.Top { // 上方放不下 → 翻到球下方
+		menuY = br.Bottom - sp + bmPx(4)
+	}
+	if menuY+ballMenuH > wa.Bottom {
+		menuY = wa.Bottom - ballMenuH
+	}
+	ballMenuX, ballMenuY = menuX, menuY
 
-	var p ballPoint
-	ballGetCur.Call(uintptr(unsafe.Pointer(&p)))
-	ballSetFore.Call(hwnd) // 让菜单在点击别处时正确消失
-	ret, _, _ := ballTrackPM.Call(menu, ballTPM_RIGHTBUTTON|ballTPM_RETURNCMD,
-		uintptr(p.X), uintptr(p.Y), hwnd, 0)
-	ballPostMsg.Call(hwnd, 0, 0, 0) // WM_NULL：解除菜单与前台窗口的已知死锁
+	// 分层窗口四周多出投影边距：窗口尺寸 = 内容 + 2*margin，窗口左上 = 内容左上 - margin
+	margin := bmPx(bmShadow)
+	ballMenuMargin = margin
+	winW := ballMenuW + 2*margin
+	winH := ballMenuH + 2*margin
 
-	if ret == 0 {
+	ballMenuClassOnce.Do(ballMenuRegisterClass)
+	if ballMenuClassAtom == 0 {
 		return
 	}
-	app := ballApp
-	if app == nil {
+	hInst, _, _ := ballModHdr.Call(0)
+	hwnd, _, _ := ballCreate.Call(
+		uintptr(ballWS_EX_TOPMOST|ballWS_EX_TOOLWIN|ballWS_EX_NOACTIVATE|ballWS_EX_LAYERED),
+		uintptr(unsafe.Pointer(ballMenuClassName)),
+		uintptr(unsafe.Pointer(ballUtf16("go-tools 菜单"))),
+		uintptr(ballWS_POPUP),
+		uintptr(menuX-margin), uintptr(menuY-margin), uintptr(winW), uintptr(winH),
+		0, 0, hInst, 0)
+	if hwnd == 0 {
 		return
 	}
-	if ret == closeID {
-		go app.handleBallAction("close")
-		return
+	ballMenuHwnd = hwnd
+
+	ballMenuHover = -1
+	ballMenuResult = -1
+	ballMenuClosing = false
+
+	ballShow.Call(hwnd, ballSW_SHOWNOACTIVATE)
+	ballMenuRender(hwnd)  // 逐像素 alpha 提交首帧（含抗锯齿圆角）
+	ballSetCap.Call(hwnd) // 捕获鼠标（另有异步轮询兜底点菜单外）
+
+	var msg ballMsg
+	prevLeft := ballAsyncLeftDown()
+	for {
+		// 抽取并派发所有已排队消息
+		for {
+			ret, _, _ := ballPeekMsg.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, ballPM_REMOVE)
+			if ret == 0 {
+				break
+			}
+			ballTrans.Call(uintptr(unsafe.Pointer(&msg)))
+			ballDispatch.Call(uintptr(unsafe.Pointer(&msg)))
+			if ballMenuClosing {
+				break
+			}
+		}
+		if ballMenuClosing {
+			break
+		}
+		// 兜底：检测到“在菜单外按下左键”即收起（即便鼠标捕获未生效，也能响应点击他处）
+		left := ballAsyncLeftDown()
+		if left && !prevLeft && ballCursorOutside() {
+			ballMenuResult = -1
+			ballMenuClosing = true
+			break
+		}
+		prevLeft = left
+		// 等待下一条消息或 25ms 超时（避免忙等，保证轮询及时）
+		ballMsgWait.Call(0, 0, 25, uintptr(ballQS_ALLINPUT))
 	}
-	if int(ret-1) < len(items) {
-		go app.handleBallAction(items[ret-1].ID)
+	ballRelCap.Call()
+	ballDestroy.Call(hwnd)
+	ballMenuHwnd = 0
+
+	if app := ballApp; app != nil && ballMenuResult >= 0 && ballMenuResult < len(items) {
+		go app.handleBallAction(items[ballMenuResult].ID)
 	}
 }
 
-// ballMenuPad 自绘菜单项的留白（物理像素，随 DPI 放大）：
-// 上下留白撑出行高，左留白给文字缩进，右留白收边（含高亮条内缩余量）。
-func ballMenuPad() (vPad, leftPad, rightPad int32) {
-	vPad = int32(ballScale * 8)
-	if vPad < 6 {
-		vPad = 6
-	}
-	leftPad = int32(ballScale * 18)
-	rightPad = int32(ballScale * 22)
-	return
+// ballAsyncLeftDown 左键当前是否按下（GetAsyncKeyState 高位）。
+func ballAsyncLeftDown() bool {
+	r, _, _ := ballAsyncKey.Call(ballVK_LBUTTON)
+	return int16(uint16(r)) < 0
 }
 
-// ballMeasureMenuItem 处理 WM_MEASUREITEM：按文本实际宽度 + 留白定下每项尺寸。
-func ballMeasureMenuItem(mis *ballMeasureItem) {
-	id := uintptr(mis.ItemID)
-	if ballMenuSep[id] {
-		mis.ItemHeight = uint32(ballScale * 10)
-		mis.ItemWidth = uint32(ballScale * 40)
-		return
-	}
+// ballCursorOutside 光标（屏幕坐标）是否落在菜单窗口矩形之外。
+func ballCursorOutside() bool {
+	var pt ballPoint
+	ballGetCur.Call(uintptr(unsafe.Pointer(&pt)))
+	return pt.X < ballMenuX || pt.X >= ballMenuX+ballMenuW || pt.Y < ballMenuY || pt.Y >= ballMenuY+ballMenuH
+}
+
+// ballMenuLayout 依据文本实测宽度排定窗口尺寸与每项矩形（物理像素）。返回 false 表示测量失败。
+func ballMenuLayout() bool {
 	dc, _, _ := ballGetDC.Call(0)
 	if dc == 0 {
-		return
+		return false
 	}
 	old := ballMenuSelectFont(dc)
-	u, _ := syscall.UTF16FromString(ballMenuLabel[id])
-	var sz ballSize
-	if len(u) > 1 {
-		ballGetTextExtent.Call(dc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&sz)))
+	padX := bmPx(bmPadX)
+	textX := padX + bmPx(bmTextIn)
+	rowH := bmPx(bmRowH)
+	top := bmPx(bmVGap)
+
+	maxText := int32(0)
+	for _, it := range ballMenuItems {
+		u, _ := syscall.UTF16FromString(it.Label)
+		var sz ballSize
+		if len(u) > 1 {
+			ballGetTextExtent.Call(dc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&sz)))
+		}
+		if sz.CX > maxText {
+			maxText = sz.CX
+		}
 	}
 	if old != 0 {
 		ballSelObj.Call(dc, old)
 	}
 	ballRelDC.Call(0, dc)
 
-	vPad, leftPad, rightPad := ballMenuPad()
-	mis.ItemHeight = uint32(int32(sz.CY) + 2*vPad)
-	mis.ItemWidth = uint32(int32(sz.CX) + leftPad + rightPad)
+	w := textX + maxText + padX + bmPx(8) // 右侧留白
+	if min := bmPx(bmMinW); w < min {
+		w = min
+	}
+	ballMenuW = w
+	ballMenuH = top + int32(len(ballMenuItems))*rowH + bmPx(bmVGap)
+	ballMenuTextX = textX
+	ballMenuPillInX = bmPx(bmPillInX)
+	ballMenuPillInY = bmPx(bmPillInY)
+
+	ballMenuRects = make([]ballRect, len(ballMenuItems))
+	for i := range ballMenuItems {
+		t := top + int32(i)*rowH
+		ballMenuRects[i] = ballRect{Left: padX, Top: t, Right: w - padX, Bottom: t + rowH}
+	}
+	// 关闭项（末项）上方画分隔线
+	if n := len(ballMenuItems); n >= 2 {
+		ballMenuSepY = ballMenuRects[n-1].Top
+	} else {
+		ballMenuSepY = 0
+	}
+	return true
 }
 
-// ballDrawMenuItem 处理 WM_DRAWITEM：自绘主题底色、圆角选中高亮、分隔细线与文本。
-func ballDrawMenuItem(dis *ballDrawItem) {
-	hdc := dis.HDC
-	rc := dis.RcItem
-	id := uintptr(dis.ItemID)
+// ballMenuHit 命中测试：返回光标（客户区物理像素坐标）所在项索引，-1 表示无。
+func ballMenuHit(x, y int32) int {
+	for i, r := range ballMenuRects {
+		if x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom {
+			return i
+		}
+	}
+	return -1
+}
+
+// ballMenuWndProc 菜单窗口过程（仅球线程）：悬停高亮、点选/点外收起。
+func ballMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+	// 客户区坐标以窗口左上（=内容左上 - margin）为原点，减去投影边距换算为内容坐标
+	x := int32(int16(uint16(lParam&0xFFFF))) - ballMenuMargin
+	y := int32(int16(uint16((lParam>>16)&0xFFFF))) - ballMenuMargin
+	switch msg {
+	case ballWM_MOUSEMOVE:
+		if idx := ballMenuHit(x, y); idx != ballMenuHover {
+			ballMenuHover = idx
+			ballMenuRender(hwnd) // 分层窗口：重提交逐像素位图以刷新悬停高亮
+		}
+		return 0
+
+	case ballWM_LBUTTONDOWN:
+		if ballMenuHit(x, y) < 0 { // 捕获下点到菜单外：收起
+			ballMenuClosing = true
+		}
+		return 0
+
+	case ballWM_LBUTTONUP:
+		ballMenuResult = ballMenuHit(x, y)
+		ballMenuClosing = true
+		return 0
+
+	case ballWM_RBUTTONUP:
+		ballMenuClosing = true
+		return 0
+
+	case ballWM_SETCURSOR:
+		ballSetCur.Call(ballCursorArrow)
+		return 1
+	}
+	r, _, _ := ballDefProc.Call(hwnd, uintptr(msg), wParam, lParam)
+	return r
+}
+
+// ballMenuRender 把菜单渲染进 32 位 DIB（GDI 画底/高亮/分隔/文字），再逐像素合成圆角与投影 alpha，
+// 最后用 UpdateLayeredWindow 提交 —— 得到抗锯齿圆角、零边框、带柔和投影的分层菜单。
+// 窗口比内容四周各多出 margin（投影留白），内容绘制经 OffsetWindowOrgEx 平移 margin。
+func ballMenuRender(hwnd uintptr) {
+	margin := int(ballMenuMargin)
+	w, h := int(ballMenuW), int(ballMenuH)
+	winW, winH := w+2*margin, h+2*margin
+	screenDC, _, _ := ballGetDC.Call(0)
+	if screenDC == 0 {
+		return
+	}
+	defer ballRelDC.Call(0, screenDC)
+	memDC, _, _ := ballCompatDC.Call(screenDC)
+	if memDC == 0 {
+		return
+	}
+	defer ballDeleteDC.Call(memDC)
+
+	var bmi ballBitmapInfo
+	bmi.Header.BiSize = uint32(unsafe.Sizeof(bmi.Header))
+	bmi.Header.BiWidth = int32(winW)
+	bmi.Header.BiHeight = -int32(winH) // top-down
+	bmi.Header.BiPlanes = 1
+	bmi.Header.BiBitCount = 32
+	bmi.Header.BiCompression = 0
+
+	var bits *byte
+	bmp, _, _ := ballDIB.Call(memDC, uintptr(unsafe.Pointer(&bmi)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0)
+	if bmp == 0 || bits == nil {
+		return
+	}
+	defer ballDelObj.Call(bmp)
+
+	old, _, _ := ballSelObj.Call(memDC, bmp)
+	ballOffsetVpOrg.Call(memDC, uintptr(margin), uintptr(margin), 0) // 视口原点平移 margin：内容整体右下移，四周留出投影
+	ballMenuDrawOn(memDC)                                            // 在不透明底上绘制（GDI）
+	if old != 0 {
+		ballSelObj.Call(memDC, old)
+	}
+
+	// 逐像素 alpha：圆角内容不透明（1px 抗锯齿边）+ 四周柔和投影（预乘）
+	ballMenuApplyAlpha(unsafe.Slice(bits, winW*winH*4), winW, winH, margin, int(bmPx(bmRad)))
+
+	var ptDst ballPoint
+	ptDst.X, ptDst.Y = ballMenuX-int32(margin), ballMenuY-int32(margin)
+	sz := ballSize{CX: int32(winW), CY: int32(winH)}
+	ptSrc := ballPoint{0, 0}
+	blend := ballBlend{BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1} // AC_SRC_ALPHA
+	ballULW.Call(hwnd, screenDC, uintptr(unsafe.Pointer(&ptDst)), uintptr(unsafe.Pointer(&sz)),
+		memDC, uintptr(unsafe.Pointer(&ptSrc)), 0, uintptr(unsafe.Pointer(&blend)), ballULW_ALPHA)
+}
+
+// ballMenuApplyAlpha 用圆角矩形 SDF 逐像素合成 alpha：内部不透明、边缘 1px 抗锯齿、
+// 外部按到内容矩形的距离衰减出柔和黑色投影（预乘：投影为黑 RGB=0，内容 RGB 乘覆盖度）。
+func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
+	halfW := float64(winW-margin*2) / 2
+	halfH := float64(winH-margin*2) / 2
+	r := float64(rad)
+	cx := float64(margin) + halfW // 内容中心（DIB 坐标）
+	cy := float64(margin) + halfH
+	shOff := float64(bmPx(bmShOffY)) // 投影下移（光源偏上）
+	mg := float64(margin)
+	const shadowMax = 78.0
+	for y := 0; y < winH; y++ {
+		py := float64(y) + 0.5
+		rowOff := y * winW
+		for x := 0; x < winW; x++ {
+			idx := (rowOff + x) * 4
+			px := float64(x) + 0.5
+			// 内容覆盖度（SDF 在 ±0.5px 内线性过渡得抗锯齿边）
+			dCov := ballSdfRR(px-cx, py-cy, halfW, halfH, r)
+			var ca uint32
+			switch {
+			case dCov <= -0.5:
+				ca = 255
+			case dCov >= 0.5:
+				ca = 0
+			default:
+				ca = uint32((0.5-dCov)*255 + 0.5)
+			}
+			if ca >= 255 {
+				bits[idx+3] = 255 // 内部：RGB 保持，alpha 拉满
+				continue
+			}
+			// 投影：到内容圆角矩形的外距离二次衰减
+			dSh := ballSdfRR(px-cx, py-shOff-cy, halfW, halfH, r)
+			var sh uint32
+			if dSh <= 0 {
+				sh = uint32(shadowMax)
+			} else if t := dSh / mg; t < 1 {
+				s := 1 - t
+				sh = uint32(shadowMax*s*s + 0.5)
+			}
+			if ca == 0 && sh == 0 {
+				bits[idx], bits[idx+1], bits[idx+2], bits[idx+3] = 0, 0, 0, 0
+				continue
+			}
+			b := uint32(bits[idx])
+			g := uint32(bits[idx+1])
+			rr := uint32(bits[idx+2])
+			a := ca + sh*(255-ca)/255
+			if a > 255 {
+				a = 255
+			}
+			bits[idx] = byte(b * ca / 255)
+			bits[idx+1] = byte(g * ca / 255)
+			bits[idx+2] = byte(rr * ca / 255)
+			bits[idx+3] = byte(a)
+		}
+	}
+}
+
+// ballSdfRR 点 (dx,dy)（相对内容中心）到半宽 halfW、半高 halfH、圆角 r 的圆角矩形的带符距离：内负外正。
+func ballSdfRR(dx, dy, halfW, halfH, r float64) float64 {
+	ax := math.Abs(dx) - (halfW - r)
+	ay := math.Abs(dy) - (halfH - r)
+	ox := ax
+	if ox < 0 {
+		ox = 0
+	}
+	oy := ay
+	if oy < 0 {
+		oy = 0
+	}
+	outside := math.Hypot(ox, oy)
+	inside := ax
+	if ay > inside {
+		inside = ay
+	}
+	if inside > 0 {
+		inside = 0
+	}
+	return outside + inside - r
+}
+
+// ballMenuDrawOn 在给定 DC（DIB 或屏幕）上不透明绘制：底色铺满 + 悬停圆角高亮 + 分隔线 + 各项文字。
+func ballMenuDrawOn(hdc uintptr) {
 	th := ballThemeColors(ballMenuDark)
 
-	// 背景铺满（与 SetMenuInfo 底色一致，双保险）
+	// 底色铺满整个窗口（圆角外像素稍后由 ballMenuApplyAlpha 置为透明）
+	full := ballRect{Left: 0, Top: 0, Right: ballMenuW, Bottom: ballMenuH}
 	if bg, _, _ := ballCreateBrush.Call(th.bg); bg != 0 {
-		ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&rc)), bg)
+		ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&full)), bg)
 		ballDelObj.Call(bg)
 	}
 
-	// 分隔符：画一条两端内缩的细线后返回
-	if ballMenuSep[id] {
-		lineH := int32(ballScale)
-		if lineH < 1 {
-			lineH = 1
-		}
-		cy := (rc.Top + rc.Bottom) / 2
-		inx := int32(ballScale * 12)
-		band := ballRect{Left: rc.Left + inx, Top: cy, Right: rc.Right - inx, Bottom: cy + lineH}
-		if sep, _, _ := ballCreateBrush.Call(th.sep); sep != 0 {
-			ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&band)), sep)
-			ballDelObj.Call(sep)
-		}
-		return
-	}
-
-	selected := dis.ItemState&ballODS_SELECTED != 0
-	disabled := dis.ItemState&(ballODS_GRAYED|ballODS_DISABLED) != 0
-
-	// 选中：内缩留边的圆角高亮条（只填色不描边）
-	if selected {
-		inx := int32(ballScale * 5)
-		iny := int32(ballScale * 3)
-		rad := int32(ballScale * 6)
-		if rad < 2 {
-			rad = 2
-		}
+	// 悬停高亮：实心圆角块，无描边
+	if ballMenuHover >= 0 && ballMenuHover < len(ballMenuRects) {
+		r := ballMenuRects[ballMenuHover]
+		rad := bmPx(bmPillRad)
 		hl, _, _ := ballCreateBrush.Call(th.selBg)
 		nullPen, _, _ := ballGetStockObj.Call(ballNULL_PEN)
 		oldBr, _, _ := ballSelObj.Call(hdc, hl)
 		oldPen, _, _ := ballSelObj.Call(hdc, nullPen)
-		ballRoundRect.Call(hdc, uintptr(rc.Left+inx), uintptr(rc.Top+iny),
-			uintptr(rc.Right-inx), uintptr(rc.Bottom-iny), uintptr(2*rad), uintptr(2*rad))
+		ballRoundRect.Call(hdc,
+			uintptr(r.Left+ballMenuPillInX), uintptr(r.Top+ballMenuPillInY),
+			uintptr(r.Right-ballMenuPillInX), uintptr(r.Bottom-ballMenuPillInY),
+			uintptr(2*rad), uintptr(2*rad))
 		ballSelObj.Call(hdc, oldBr)
 		ballSelObj.Call(hdc, oldPen)
 		if hl != 0 {
@@ -938,28 +1308,50 @@ func ballDrawMenuItem(dis *ballDrawItem) {
 		}
 	}
 
-	// 文本色：禁用灰 / 选中白 / 常态主题文字
-	tx := th.text
-	switch {
-	case disabled:
-		tx = th.disabled
-	case selected:
-		tx = th.selText
+	// 关闭项上方分隔线
+	if ballMenuSepY > 0 {
+		inx := bmPx(12)
+		band := ballRect{Left: inx, Top: ballMenuSepY, Right: ballMenuW - inx, Bottom: ballMenuSepY + bmPx(1)}
+		if sep, _, _ := ballCreateBrush.Call(th.sep); sep != 0 {
+			ballFillRect.Call(hdc, uintptr(unsafe.Pointer(&band)), sep)
+			ballDelObj.Call(sep)
+		}
 	}
-	ballSetBkMode.Call(hdc, ballTRANSPARENT)
-	ballSetTextColor.Call(hdc, tx)
 
+	// 文字
 	old := ballMenuSelectFont(hdc)
-	_, leftPad, rightPad := ballMenuPad()
-	tr := ballRect{Left: rc.Left + leftPad, Top: rc.Top, Right: rc.Right - rightPad, Bottom: rc.Bottom}
-	u, _ := syscall.UTF16FromString(ballMenuLabel[id])
-	if len(u) > 1 {
-		flags := uintptr(ballDT_LEFT | ballDT_VCENTER | ballDT_SINGLELINE | ballDT_NOPREFIX)
-		ballDrawText.Call(hdc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&tr)), flags)
+	ballSetBkMode.Call(hdc, ballTRANSPARENT)
+	for i, it := range ballMenuItems {
+		r := ballMenuRects[i]
+		tx := th.text
+		if i == ballMenuHover {
+			tx = th.selText
+		}
+		ballSetTextColor.Call(hdc, tx)
+		tr := ballRect{Left: ballMenuTextX, Top: r.Top, Right: r.Right, Bottom: r.Bottom}
+		u, _ := syscall.UTF16FromString(it.Label)
+		if len(u) > 1 {
+			flags := uintptr(ballDT_LEFT | ballDT_VCENTER | ballDT_SINGLELINE | ballDT_NOPREFIX)
+			ballDrawText.Call(hdc, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)-1), uintptr(unsafe.Pointer(&tr)), flags)
+		}
 	}
 	if old != 0 {
 		ballSelObj.Call(hdc, old)
 	}
+}
+
+// ballMenuRegisterClass 注册菜单窗口类（仅球线程、一次）。
+func ballMenuRegisterClass() {
+	ballMenuClassName = ballUtf16("GoToolsBallMenuCls")
+	hInst, _, _ := ballModHdr.Call(0)
+	wc := ballWndClass{
+		LpfnWndProc:   syscall.NewCallback(ballMenuWndProc),
+		HInstance:     hInst,
+		HCursor:       ballCursorArrow,
+		LpszClassName: ballMenuClassName,
+	}
+	atom, _, _ := ballNewClass.Call(uintptr(unsafe.Pointer(&wc)))
+	ballMenuClassAtom = uint16(atom)
 }
 
 // ---------------- 自绘菜单的主题配色与字体 ----------------
@@ -971,14 +1363,14 @@ type ballMenuColors struct {
 // ballRGB 组装 GDI COLORREF（字节序为 0x00BBGGRR）。
 func ballRGB(r, g, b int) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(b)<<16 }
 
-// ballThemeColors 返回浅/暗黑两套菜单配色，贴近应用 Arco 语义色与图2观感。
+// ballThemeColors 返回浅/暗黑两套菜单配色（对齐图2）：
+// 鼠标停留高亮均为无描边的实心圆角块——浅色模式为黑色块（文字转白），暗黑模式为比底稍亮一档的灰色块（文字保持亮色）。
 func ballThemeColors(dark bool) ballMenuColors {
-	accent := ballRGB(0x16, 0x5D, 0xFF) // 主色蓝，与前端 --primary-6 对齐
 	if dark {
 		return ballMenuColors{
 			bg:       ballRGB(0x2B, 0x2B, 0x2B),
 			text:     ballRGB(0xE8, 0xE8, 0xE8),
-			selBg:    accent,
+			selBg:    ballRGB(0x45, 0x45, 0x45), // 图2：深底上稍亮一档的灰圆角块
 			selText:  ballRGB(0xFF, 0xFF, 0xFF),
 			sep:      ballRGB(0x3D, 0x3D, 0x3D),
 			disabled: ballRGB(0x70, 0x70, 0x70),
@@ -987,7 +1379,7 @@ func ballThemeColors(dark bool) ballMenuColors {
 	return ballMenuColors{
 		bg:       ballRGB(0xFF, 0xFF, 0xFF),
 		text:     ballRGB(0x1D, 0x21, 0x29),
-		selBg:    accent,
+		selBg:    ballRGB(0x1D, 0x21, 0x29), // 浅色模式：黑色圆角块
 		selText:  ballRGB(0xFF, 0xFF, 0xFF),
 		sep:      ballRGB(0xE5, 0xE6, 0xEB),
 		disabled: ballRGB(0xC9, 0xCD, 0xD4),
@@ -1036,8 +1428,32 @@ func ballSystemUsesDarkTheme() bool {
 // 位图渲染：Go 生成逐像素 alpha 的圆形球（预乘 BGRA，自上而下）
 // ============================================================
 
+// ballInk 球面一套主题色：底板沿用 Arco --color-bg-1，图标/闪电沿用 --color-text-1。
+type ballInk struct {
+	bgTop, bgBot, text [3]float64
+	dark               bool
+}
+
+// ballInkFor 返回浅/暗黑对应的球面主题色。暗黑底板用 bg-1（#17171A）微渐变，
+// 描边改为提亮（白墙/深色桌面两种背景下都能看清边界）。
+func ballInkFor(dark bool) ballInk {
+	if dark {
+		return ballInk{
+			bgTop: [3]float64{23, 23, 26},
+			bgBot: [3]float64{30, 30, 35},
+			text:  [3]float64{232, 232, 232},
+			dark:  true,
+		}
+	}
+	return ballInk{
+		bgTop: [3]float64{255, 255, 255},
+		bgBot: [3]float64{251, 252, 254},
+		text:  [3]float64{29, 33, 41},
+	}
+}
+
 // ballRender 返回 size*size 的预乘 BGRA 缓冲（top-down）：
-// 双层柔和投影 + 白色圆形底板 + 居中 logo。
+// 双层柔和投影 + 主题色圆形底板（bg-1）+ 居中图标（text-1 着色）。
 func ballRender(size int) []byte {
 	buf := make([]byte, size*size*4)
 	c := float64(size-1) / 2
@@ -1045,6 +1461,8 @@ func ballRender(size int) []byte {
 	if rad < 1 {
 		rad = 1
 	}
+	ink := ballInkFor(ballEffectiveDark())
+	ballCurInk = ink // 供 ballLogoSample 着色（仅球线程读写）
 
 	// 投影：双层柔和投影（近距离主阴影 + 大半径环境阴影），低透明度、大模糊，
 	// 与设计稿中「白色圆钮 + 轻阴影」的观感一致。
@@ -1057,12 +1475,12 @@ func ballRender(size int) []byte {
 	ambBlur := math.Max(6.0, pad*0.85) // 环境阴影更大更散
 	const ambAlpha = 0.05              // 环境阴影最大不透明度
 
-	// 底板：纯白轻微渐变 + 极细内描边，保证在白墙纸上也有轮廓
+	// 底板：主题色（bg-1）轻微渐变 + 极细内描边，保证在任何壁纸上都有轮廓
 	rimW := math.Max(1, float64(ballDiameterPx)*0.028)
 
 	hasLogo := ballLogoImg != nil && !ballLogoRect.Empty()
 
-	// 无 logo 时回退绘制闪电
+	// 无图标时回退绘制闪电（颜色跟随主题文字色 text-1）
 	bolt := [][2]float64{
 		{0.10, -0.48}, {-0.28, 0.06}, {-0.02, 0.06},
 		{-0.12, 0.48}, {0.28, -0.10}, {0.02, -0.10},
@@ -1110,22 +1528,29 @@ func ballRender(size int) []byte {
 				} else if t > 1 {
 					t = 1
 				}
-				sr = lerp(255, 251, t)
-				sg = lerp(255, 252, t)
-				sb = lerp(255, 254, t)
-				// 边缘内描边：极轻压暗，白底上也能看清圆形边界
+				sr = lerp(ink.bgTop[0], ink.bgBot[0], t)
+				sg = lerp(ink.bgTop[1], ink.bgBot[1], t)
+				sb = lerp(ink.bgTop[2], ink.bgBot[2], t)
+				// 边缘内描边：浅色主题压暗、深色主题提亮，两种底色下都能看清圆形边界
 				if distBall > rad-rimW {
 					k := (distBall - (rad - rimW)) / rimW
 					if k > 1 {
 						k = 1
 					}
-					k *= 0.08
-					sr *= 1 - k
-					sg *= 1 - k
-					sb *= 1 - k
+					if ink.dark {
+						k *= 0.22
+						sr += (255 - sr) * k
+						sg += (255 - sg) * k
+						sb += (255 - sb) * k
+					} else {
+						k *= 0.08
+						sr *= 1 - k
+						sg *= 1 - k
+						sb *= 1 - k
+					}
 				}
 				if !hasLogo && pointInPoly(float64(x), float64(y), boltPoly) {
-					sr, sg, sb = 48, 50, 58
+					sr, sg, sb = ink.text[0], ink.text[1], ink.text[2]
 				}
 			}
 
@@ -1150,7 +1575,51 @@ func ballRender(size int) []byte {
 			buf[o+3] = byte(clamp255(a * 255))
 		}
 	}
+
+	// 角标：有后台服务运行时，在球面右上（45°）叠加白边红点
+	if atomic.LoadInt32(&ballBadgeCount) > 0 {
+		ballOverlayBadge(buf, size, c, rad)
+	}
 	return buf
+}
+
+// ballCurInk 当前渲染使用的球面主题色（ballRender 开头赋值，ballLogoSample 着色读取；仅球线程）。
+var ballCurInk = ballInkFor(false)
+
+// ballOverlayBadge 在球缘右上 45° 画带白描边的红点角标（预乘 BGRA source-over）。
+func ballOverlayBadge(buf []byte, size int, c, rad float64) {
+	dia := float64(ballDiameterPx)
+	br := math.Max(5.0, dia*0.17)  // 角标外半径（含描边）
+	ring := math.Max(1.5, br*0.22) // 白描边宽度
+	k := math.Sqrt2 / 2
+	bx, by := c+rad*k, c-rad*k
+	for y := int(by - br - 1); y <= int(by+br+1); y++ {
+		if y < 0 || y >= size {
+			continue
+		}
+		for x := int(bx - br - 1); x <= int(bx+br+1); x++ {
+			if x < 0 || x >= size {
+				continue
+			}
+			d := math.Hypot(float64(x)-bx, float64(y)-by)
+			a := math.Min(1.0, math.Max(0, br+0.5-d)) // 边缘抗锯齿
+			if a <= 0.003 {
+				continue
+			}
+			var sr, sg, sb float64
+			if d > br-ring {
+				sr, sg, sb = 255, 255, 255 // 白描边，保证在任何底色背景上都可辨
+			} else {
+				sr, sg, sb = 245, 63, 63 // 红心，对齐 Arco red-6
+			}
+			o := (y*size + x) * 4
+			da := float64(buf[o+3]) / 255
+			buf[o] = byte(clamp255(sb*a + float64(buf[o])*(1-a)))
+			buf[o+1] = byte(clamp255(sg*a + float64(buf[o+1])*(1-a)))
+			buf[o+2] = byte(clamp255(sr*a + float64(buf[o+2])*(1-a)))
+			buf[o+3] = byte(clamp255((a + da*(1-a)) * 255))
+		}
+	}
 }
 
 // ballShadowAlpha 计算单层圆形柔和阴影在相对圆心 (dx, dy) 处的不透明度：
@@ -1168,6 +1637,7 @@ func ballShadowAlpha(dx, dy, rad, blur, maxAlpha float64) float64 {
 }
 
 // ballLogoSample 按底板比例将 logo 非透明内容居中缩放，返回预乘 RGB（0..255）与 alpha（0..1）。
+// 自定义球图标为单色遮罩：只取 alpha 覆盖形状，颜色用当前主题文字色（text-1）。
 func ballLogoSample(x, y int, c float64) (r, g, b, a float64) {
 	rect := ballLogoRect
 	target := float64(ballDiameterPx) * ballLogoRatio
@@ -1184,6 +1654,10 @@ func ballLogoSample(x, y int, c float64) (r, g, b, a float64) {
 	// 目标像素中心 → 源内容坐标（像素中心在整数坐标）
 	sx := float64(rect.Min.X) + (px-left)/w*float64(rect.Dx()) - 0.5
 	sy := float64(rect.Min.Y) + (py-top)/h*float64(rect.Dy()) - 0.5
+	if ballLogoTint {
+		_, _, _, a = ballSampleBilinear(ballLogoImg, sx, sy)
+		return ballCurInk.text[0], ballCurInk.text[1], ballCurInk.text[2], a
+	}
 	return ballSampleBilinear(ballLogoImg, sx, sy)
 }
 

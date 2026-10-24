@@ -24,10 +24,11 @@ type LogConfig struct {
 
 // BallConfig 桌面浮动球设置
 type BallConfig struct {
-	Enabled bool `json:"enabled"` // 是否在启动时显示浮动球（设置页可即时显隐）
-	X       int  `json:"x"`       // 上次拖动后的窗口左上角 X（物理像素，含阴影留白）
-	Y       int  `json:"y"`       // 上次拖动后的窗口左上角 Y
-	HasPos  bool `json:"hasPos"`  // 是否已记录位置；false 时启动停靠工作区右下角
+	Enabled bool   `json:"enabled"` // 是否在启动时显示浮动球（设置页可即时显隐）
+	Icon    string `json:"icon"`    // 球心图标值（icon-xxx 或 Arco 名，供设置页回显；像素数据在配置目录 ball_icon.png）
+	X       int    `json:"x"`       // 上次拖动后的窗口左上角 X（物理像素，含阴影留白）
+	Y       int    `json:"y"`       // 上次拖动后的窗口左上角 Y
+	HasPos  bool   `json:"hasPos"`  // 是否已记录位置；false 时启动停靠工作区右下角
 }
 
 // GeneralConfig 应用通用设置
@@ -124,6 +125,16 @@ func configFilePath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "config.json"), nil
+}
+
+// ballIconMaskPath 浮动球球心图标的 alpha 遮罩 PNG 路径（与 config.json 同目录）：
+// 前端把选中图标渲染成黑色字形遮罩上传，Go 侧只取 alpha 通道按主题文字色着色。
+func ballIconMaskPath() (string, error) {
+	p, err := configFilePath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(p), "ball_icon.png"), nil
 }
 
 // defaultLogDir 默认日志目录：程序目录下 logs（取不到 exe 路径时退回用户配置目录 go-tools/logs）。
