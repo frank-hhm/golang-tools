@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"go-tools/appdirs"
+	"go-tools/services/applog"
 )
 
 // ============================================================
@@ -16,7 +17,9 @@ import (
 // 位置：os.UserConfigDir()/go-tools/config.json
 // 内容：日志设置（开关/级别/路径）+ 全局目录布局（插件/数据/日志基础目录）
 //       + 可编辑工具列表（含快捷标记、全局热键等）
-// 读取方：全局日志器、全局目录解析（appdirs）、浮动球原生菜单、全局热键、前端设置页/首页
+// 读取方：启动与设置保存时转交给日志器（services/applog）、目录布局（appdirs）、
+// 浮动球与全局热键（经 app.go 的 nativeHost 适配注入 services/winui）、前端设置页/首页。
+// 本文件留在 package main：AppConfig 等类型出现在绑定方法签名里，会被 Wails 生成进前端模型。
 // ============================================================
 
 // LogConfig 日志设置
@@ -43,7 +46,7 @@ type GeneralConfig struct {
 	Theme     string `json:"theme"`     // 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
 }
 
-// PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/paths.go）；
+// PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/layout.go）；
 // 空 = 默认 <应用目录>/plugins|data|logs。修改保存后，各服务配置与另存文件默认目录随即落新路径。
 type PathsConfig struct {
 	Plugins string `json:"plugins"` // 插件目录：服务程序安装位置（php/nginx/mysql/redis/npm）
@@ -150,12 +153,12 @@ func ballIconMaskPath() (string, error) {
 	return filepath.Join(filepath.Dir(p), "ball_icon.png"), nil
 }
 
-// defaultLogDir 程序日志默认目录：日志基础目录/app（基础目录默认 <应用目录>/logs，设置页可改）。
-func defaultLogDir() string {
-	if dir, err := appdirs.Logs("app"); err == nil {
-		return dir
+// initAppDirs 应用全局目录配置并预建服务子目录（启动与保存配置时调用，幂等）。
+// 布局本身的解析与迁移规则都在 appdirs 包内（appdirs/layout.go）。
+func initAppDirs(cfg AppConfig) {
+	if err := appdirs.ApplyLayout(cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs); err != nil {
+		applog.Errorf("paths", "创建全局目录失败: %v", err)
 	}
-	return filepath.Join(appdirs.DefaultRoot(), "logs", "app")
 }
 
 // legacyToolIcons 旧版默认数据中不存在于 Arco 的图标 → 当前图标，避免历史配置图标空白。
@@ -266,7 +269,7 @@ func LoadAppConfig() AppConfig {
 		appCfgWriteMu.Lock()
 		_, _ = writeAppConfigLocked(cfg)
 		appCfgWriteMu.Unlock()
-		opLogf("config", "首次启动：已生成默认配置与全局目录（plugins/data/logs + 服务子目录）")
+		applog.Infof("config", "首次启动：已生成默认配置与全局目录（plugins/data/logs + 服务子目录）")
 	}
 	return cfg
 }

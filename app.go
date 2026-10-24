@@ -8,9 +8,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"go-tools/appdirs"
+	"go-tools/services/applog"
+	"go-tools/services/winui"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
+	"go-tools/tools/ocr"
 	"go-tools/tools/php"
 	"go-tools/tools/redis"
 	"go-tools/tools/screenshot"
@@ -60,7 +63,8 @@ type App struct {
 	capFrame *screenshot.CaptureFrame // 抓屏结果，供浮层页面拉取
 	capWin   application.Window       // 全屏浮层窗口（首次冷建，之后隐藏复用，不每次重建）
 	capBusy  bool                     // 一次截图进行中，拒绝重入
-	capReady bool                     // 浮层已回报本次冻结帧就绪，看门狗据此决定要不要销毁
+	capReady bool                     // 浮层已回报本次冻结帧就绪，看门狗据此判断要不要销毁
+	capGen   uint64                   // 截图轮次：兜底定时器只处置自己那一轮，不得误杀已完结的浮层
 
 	// 图钉置顶：每张钉住的截图开一个无边框置顶小窗，id → 图片数据/窗口
 	pinMu   sync.Mutex
@@ -184,12 +188,12 @@ func (a *App) startup(ctx context.Context) {
 // 写错名字不会报错但永远不会被调用（热键/浮动球/托盘均依赖此入口）。
 func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	a.startup(ctx)
-	// 启动全局热键（从 config 读取工具 Shortcut），a.app 已由 SetApp 注入
-	startHotKeys(a)
+	// 启动全局热键（工具 Shortcut 由 nativeHost.Hotkeys 给出），a.app 已由 SetApp 注入
+	winui.StartHotkeys(nativeHost{a})
 	// 启动时按设置显示浮动球
 	if CurrentConfig().Ball.Enabled {
 		if err := a.BallOpen(); err != nil {
-			warnLogf("ball", "启动时显示浮动球失败: %v", err)
+			applog.Warnf("ball", "启动时显示浮动球失败: %v", err)
 		}
 	}
 	// 预热截图浮层：WebView2 开窗 + 页面 bootstrap 是首次截图最贵的一笔（实测 ~300ms），
@@ -230,9 +234,9 @@ func (a *App) applyAutoStart(enabled bool) {
 		err = a.app.Autostart.Disable()
 	}
 	if err != nil {
-		warnLogf("config", "设置开机自启失败(enabled=%v): %v", enabled, err)
+		applog.Warnf("config", "设置开机自启失败(enabled=%v): %v", enabled, err)
 	} else {
-		opLogf("config", "开机自启已同步: enabled=%v", enabled)
+		applog.Infof("config", "开机自启已同步: enabled=%v", enabled)
 	}
 }
 
@@ -249,7 +253,7 @@ func (a *App) setupCloseToTray() {
 		}
 		e.Cancel() // 取消默认关闭，仅隐藏到托盘
 		a.mainWindow.Hide()
-		opLogf("tray", "主窗口关闭请求已拦截：隐藏到托盘")
+		applog.Infof("tray", "主窗口关闭请求已拦截：隐藏到托盘")
 	})
 }
 
@@ -274,7 +278,7 @@ func (a *App) setupTray() {
 	// 单击托盘图标：显示主窗口；保留右键菜单
 	tray.OnClick(func() { a.showMainWindow() })
 	a.tray = tray
-	opLogf("tray", "系统托盘已创建")
+	applog.Infof("tray", "系统托盘已创建")
 }
 
 // showMainWindow 显示并聚焦主窗口（从托盘唤起）。
@@ -292,14 +296,17 @@ func (a *App) showMainWindow() {
 // 与前端 useToolWindow 的 "/win"+path 约定保持一致，否则新窗口没有原有菜单栏。
 func (a *App) openSettingsFromTray() {
 	if err := a.OpenToolWindow("/win/tools/settings", "设置", true, false, 0, 0); err != nil {
-		warnLogf("tray", "打开设置失败: %v", err)
+		applog.Warnf("tray", "打开设置失败: %v", err)
 	}
 }
 
 // RealQuit 真正退出程序：置退出标志（使关闭钩子不再拦截）、销毁托盘，再终止应用。
 func (a *App) RealQuit() {
-	opLogf("tray", "托盘菜单：真正退出")
+	applog.Infof("tray", "托盘菜单：真正退出")
 	a.quitting.Store(true)
+	// 截图浮层先销毁：它是透明全屏置顶层，哪怕只是隐藏态留在原地，退出流程一旦
+	// 卡住（WebView2 收尾慢）就会变成整个桌面点不动，等进程真退了才恢复。
+	a.destroyCaptureOverlay()
 	if a.tray != nil {
 		a.tray.Destroy()
 		a.tray = nil
@@ -376,12 +383,12 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 			w.Show()
 			w.UnMinimise()
 			w.Focus()
-			opLogf("window", "复用单例窗口: %s (%s)", path, title)
+			applog.Infof("window", "复用单例窗口: %s (%s)", path, title)
 			return nil
 		}
 		opts.Name = name
 	}
-	opLogf("window", "新建窗口: %s (%s) single=%v fullscreen=%v %dx%d", path, title, single, fullscreen, width, height)
+	applog.Infof("window", "新建窗口: %s (%s) single=%v fullscreen=%v %dx%d", path, title, single, fullscreen, width, height)
 	a.app.Window.NewWithOptions(opts)
 	return nil
 }
@@ -1331,10 +1338,10 @@ func (a *App) MySQLSetSQLLogSettings(enabled bool, dir string) (string, error) {
 	}
 	cfg.ToolSettings["mysql"] = ToolSettings{SQLLogEnabled: enabled, SQLLogDir: dir}
 	if _, err := writeAppConfigLocked(cfg); err != nil {
-		errLogf("mysql", "保存 SQL 日志设置失败: %v", err)
+		applog.Errorf("mysql", "保存 SQL 日志设置失败: %v", err)
 		return resolved, err
 	}
-	opLogf("mysql", "SQL 日志设置已更新: enabled=%v dir=%s", enabled, resolved)
+	applog.Infof("mysql", "SQL 日志设置已更新: enabled=%v dir=%s", enabled, resolved)
 	return resolved, nil
 }
 
@@ -1364,7 +1371,7 @@ func (a *App) MySQLOpenSQLLogDir() error {
 	cmd := exec.Command("explorer.exe", dir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
-		errLogf("mysql", "打开 SQL 日志目录失败: %v", err)
+		applog.Errorf("mysql", "打开 SQL 日志目录失败: %v", err)
 		return err
 	}
 	return nil
@@ -1374,10 +1381,10 @@ func (a *App) MySQLOpenSQLLogDir() error {
 func (a *App) MySQLClearSQLLog() (int, error) {
 	n, err := mysql.ClearSQLLog()
 	if err != nil {
-		errLogf("mysql", "清空 SQL 日志失败: %v", err)
+		applog.Errorf("mysql", "清空 SQL 日志失败: %v", err)
 		return n, err
 	}
-	opLogf("mysql", "已清空 SQL 日志: %d 个文件", n)
+	applog.Infof("mysql", "已清空 SQL 日志: %d 个文件", n)
 	return n, nil
 }
 
@@ -1636,16 +1643,16 @@ func (a *App) NotifyClose() {
 
 /* ============================ 桌面浮动球（Go 原生 Win32 分层窗口） ============================ */
 
-// 浮动球原生菜单项动态来自 config 中标记为 Quick 的工具（见 ball_windows.go: ballQuickItems）。
-// 点击后由 handleBallAction 派发：工具类以 "ball:action" 事件交回主窗口，"close" 直接关窗。
+// 浮动球原生菜单项动态取自配置里标记为 Quick 的工具（见 services/winui/ball_windows.go: ballQuickItems）。
+// 选中项由 handleBallAction 派发：工具类以 "ball:action" 事件交回主窗口，"close" 直接关窗。
 
 // BallOpen 打开桌面浮动球（Go 原生 Win32 分层窗口：真透明、置顶、可拖动、点击弹原生菜单）。幂等。
 func (a *App) BallOpen() error {
 	if a.app == nil {
 		return fmt.Errorf("应用尚未初始化")
 	}
-	opLogf("ball", "BallOpen 调用")
-	if err := startNativeBall(a); err != nil {
+	applog.Infof("ball", "BallOpen 调用")
+	if err := winui.StartBall(nativeHost{a}); err != nil {
 		return err
 	}
 	return nil
@@ -1653,14 +1660,80 @@ func (a *App) BallOpen() error {
 
 // BallClose 关闭桌面浮动球。
 func (a *App) BallClose() {
-	opLogf("ball", "BallClose 调用")
-	stopNativeBall()
+	applog.Infof("ball", "BallClose 调用")
+	winui.StopBall()
 }
 
-// ballMenuItem 浮动球菜单项：由原生 Win32 快捷菜单（ball_windows.go: ballShowMenu）绘制，ID 决定点击动作。
-type ballMenuItem struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
+// nativeHost 把 *App 适配成 winui.Host：原生浮层与热键不读 config.json、不持窗口对象，
+// 需要的配置与回调全部从这里要。适配方法挂在未导出类型上，
+// 因而不会被 Wails 生成进前端绑定。
+type nativeHost struct{ a *App }
+
+func (h nativeHost) BallMenuItems() []winui.MenuItem {
+	var out []winui.MenuItem
+	for _, t := range CurrentConfig().Tools {
+		if !t.Quick {
+			continue
+		}
+		id := t.ID
+		if id == "" {
+			id = t.Key
+		}
+		label := t.Name
+		if label == "" {
+			label = t.Key
+		}
+		out = append(out, winui.MenuItem{ID: id, Label: label})
+	}
+	return out
+}
+
+func (h nativeHost) BallTheme() string { return CurrentConfig().General.Theme }
+
+func (h nativeHost) BallLogoPath() string { return CurrentConfig().General.AppLogo }
+
+func (h nativeHost) BallIconMaskPath() (string, error) { return ballIconMaskPath() }
+
+func (h nativeHost) BallDefaultLogo() []byte { return h.a.defaultLogo }
+
+func (h nativeHost) BallPosition() (int, int, bool) {
+	b := CurrentConfig().Ball
+	return b.X, b.Y, b.HasPos
+}
+
+func (h nativeHost) SaveBallPosition(x, y int) error { return SaveBallPos(x, y) }
+
+func (h nativeHost) BadgeCount() int { return h.a.activeBackgroundCount() }
+
+func (h nativeHost) OnBallAction(id string) { h.a.handleBallAction(id) }
+
+func (h nativeHost) ShowMainWindow() { h.a.showMainWindow() }
+
+func (h nativeHost) Hotkeys() []winui.Hotkey {
+	var out []winui.Hotkey
+	for _, t := range CurrentConfig().Tools {
+		if strings.TrimSpace(t.Shortcut) == "" {
+			continue
+		}
+		id := t.ID
+		if id == "" {
+			id = t.Key
+		}
+		out = append(out, winui.Hotkey{ID: id, Shortcut: t.Shortcut})
+	}
+	return out
+}
+
+// DispatchTool 热键命中：截图等 Go 侧能直接处理的工具就地调起（少走一趟主窗口 JS），
+// 其余以 "tool:activate" 事件交回主窗口复用开窗逻辑。
+func (h nativeHost) DispatchTool(id string) {
+	if h.a == nil || h.a.app == nil {
+		return
+	}
+	if h.a.TryActivateNativeTool(id) {
+		return
+	}
+	h.a.app.Event.Emit("tool:activate", id)
 }
 
 // SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
@@ -1675,20 +1748,20 @@ func (a *App) SaveBallIcon(b64Png string) error {
 	}
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return errErr("ball", err, "球图标数据解析失败")
+		return applog.Fail("ball", err, "球图标数据解析失败")
 	}
 	if len(data) == 0 {
 		return a.ClearBallIcon()
 	}
 	p, err := ballIconMaskPath()
 	if err != nil {
-		return errErr("ball", err, "球图标路径不可用")
+		return applog.Fail("ball", err, "球图标路径不可用")
 	}
 	if err := os.WriteFile(p, data, 0o644); err != nil {
-		return errErr("ball", err, "球图标写入失败")
+		return applog.Fail("ball", err, "球图标写入失败")
 	}
-	opLogf("ball", "球心图标已保存: %s (%d 字节)", p, len(data))
-	ballReloadIcon()
+	applog.Infof("ball", "球心图标已保存: %s (%d 字节)", p, len(data))
+	winui.ReloadBallIcon()
 	return nil
 }
 
@@ -1696,24 +1769,24 @@ func (a *App) SaveBallIcon(b64Png string) error {
 func (a *App) ClearBallIcon() error {
 	if p, err := ballIconMaskPath(); err == nil {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			return errErr("ball", err, "球图标删除失败")
+			return applog.Fail("ball", err, "球图标删除失败")
 		}
-		opLogf("ball", "球心图标已清除: %s", p)
+		applog.Infof("ball", "球心图标已清除: %s", p)
 	}
-	ballReloadIcon()
+	winui.ReloadBallIcon()
 	return nil
 }
 
 // handleBallAction 处理浮动球菜单选择：close 直接关窗，Go 侧能直接处理的工具事件
 // （截图）就地调起省一趟前端往返，其余以 "ball:action" 事件交回主窗口。
 func (a *App) handleBallAction(id string) {
-	opLogf("ball", "菜单选择: %s", id)
+	applog.Infof("ball", "菜单选择: %s", id)
 	if id == "close" {
-		stopNativeBall()
+		winui.StopBall()
 		return
 	}
 	if a.app == nil {
-		errLogf("ball", "处理菜单动作时 app 未初始化: %s", id)
+		applog.Errorf("ball", "处理菜单动作时 app 未初始化: %s", id)
 		return
 	}
 	if a.TryActivateNativeTool(id) {
@@ -1735,7 +1808,7 @@ func (a *App) SetAppTheme(theme string) error {
 	if err := SaveAppTheme(theme); err != nil {
 		return err
 	}
-	ballReloadIcon() // 球面底板/图标着色随主题重绘
+	winui.ReloadBallIcon() // 球面底板/图标着色随主题重绘
 	return nil
 }
 
@@ -1751,26 +1824,26 @@ func (a *App) SaveConfig(cfg AppConfig) (string, error) {
 	}
 	path, err := SaveAppConfig(cfg)
 	if err != nil {
-		errLogf("config", "保存配置失败: %v", err)
+		applog.Errorf("config", "保存配置失败: %v", err)
 		return "", err
 	}
 	// 全局目录布局（paths）可能变更：重新应用并预建服务子目录，需在日志器与工具日志重配置之前
 	initAppDirs(cfg)
-	logDir := InitLogger(cfg.Log)
+	logDir := applog.Init(logConfig(cfg.Log))
 	// SQL 日志默认目录随日志基础目录变更重解析（配置了固定目录的不受影响）
 	ms := cfg.ToolSettings["mysql"]
 	mysql.ConfigureSQLLog(ms.SQLLogEnabled, ms.SQLLogDir)
-	opLogf("config", "配置已保存: %s（日志目录: %s, enabled=%v level=%s, ball=%v, autoStart=%v, paths=%s|%s|%s）", path, logDir, cfg.Log.Enabled, cfg.Log.Level, cfg.Ball.Enabled, cfg.General.AutoStart, cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs)
+	applog.Infof("config", "配置已保存: %s（日志目录: %s, enabled=%v level=%s, ball=%v, autoStart=%v, paths=%s|%s|%s）", path, logDir, cfg.Log.Enabled, cfg.Log.Level, cfg.Ball.Enabled, cfg.General.AutoStart, cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs)
 	// 热键可能变更：请求热键线程按新配置重载
-	reloadHotKeys()
+	winui.ReloadHotkeys()
 	// 开机自启随设置即时生效（Enable/Disable 均幂等）
 	a.applyAutoStart(cfg.General.AutoStart)
 	// 浮动球显隐随设置变更即时生效
 	if cfg.Ball.Enabled {
 		if err := a.BallOpen(); err != nil {
-			warnLogf("ball", "按设置显示浮动球失败: %v", err)
+			applog.Warnf("ball", "按设置显示浮动球失败: %v", err)
 		} else {
-			ballReloadIcon() // 球已在跑时 BallOpen 幂等无感，主题/图标变更靠此重载生效
+			winui.ReloadBallIcon() // 球已在跑时 BallOpen 幂等无感，主题/图标变更靠此重载生效
 		}
 	} else {
 		a.BallClose()
@@ -1807,16 +1880,21 @@ func (a *App) ChooseDir(title string) (string, error) {
 	return dir, nil
 }
 
+// OcrImage 对成品图（dataURL/base64 PNG）做文字识别，返回识别出的纯文本。
+// 实现细节（WinRT + PowerShell 5.1 调用）在 tools/ocr，这里只保留绑定入口。
+func (a *App) OcrImage(data string) (string, error) {
+	return ocr.Image(data)
+}
+
+// logConfig 把根包（绑定面）的 LogConfig 转成 applog 自己的配置类型，
+// 使日志包不反向依赖 package main。
+func logConfig(l LogConfig) applog.Config {
+	return applog.Config{Enabled: l.Enabled, Level: l.Level, Path: l.Path}
+}
+
 // GetLogDir 返回当前实际使用的日志目录。
 func (a *App) GetLogDir() string {
-	cfg := CurrentConfig()
-	if p := strings.TrimSpace(cfg.Log.Path); p != "" {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return filepath.Dir(p)
-		}
-		return p
-	}
-	return defaultLogDir()
+	return applog.ResolveDir(logConfig(CurrentConfig().Log))
 }
 
 // OpenLogDir 在系统资源管理器中打开当前日志目录（Windows: explorer）。
@@ -1828,7 +1906,7 @@ func (a *App) OpenLogDir() error {
 	cmd := exec.Command("explorer.exe", dir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
-		errLogf("log", "打开日志目录失败: %v", err)
+		applog.Errorf("log", "打开日志目录失败: %v", err)
 		return err
 	}
 	return nil

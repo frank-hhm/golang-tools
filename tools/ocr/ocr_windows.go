@@ -1,6 +1,10 @@
 //go:build windows
 
-package main
+// Package ocr 用 Windows 自带的 Windows.Media.Ocr（WinRT）做文字识别。
+//
+// 由根目录 ocr_windows.go 归档而来：绑定入口 (*App).OcrImage 仍留在 package main，
+// 这里的实现与前端只通过一个字符串进出，属于纯能力模块。
+package ocr
 
 import (
 	"bytes"
@@ -13,6 +17,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"go-tools/services/applog"
 	"go-tools/tools/screenshot"
 )
 
@@ -27,8 +32,8 @@ import (
 // 依赖：系统需装有对应语言的 OCR 识别包（“中文(简体)简易识别”等）。缺包时
 // TryCreateFrom* 返回 null，脚本以 OCR_UNAVAILABLE 退出，这里翻译成友好提示。
 
-// OcrImage 对成品图（dataURL/base64 PNG）做文字识别，返回识别出的纯文本。
-func (a *App) OcrImage(data string) (string, error) {
+// Image 对成品图（dataURL/base64 PNG）做文字识别，返回识别出的纯文本。
+func Image(data string) (string, error) {
 	if data == "" {
 		return "", fmt.Errorf("没有可识别的图片数据")
 	}
@@ -75,7 +80,7 @@ func (a *App) OcrImage(data string) (string, error) {
 	if text == "" {
 		return "", fmt.Errorf("未识别到文字")
 	}
-	opLogf("capture", "OCR 完成 %d 字", len([]rune(text)))
+	applog.Infof("capture", "OCR 完成 %d 字", len([]rune(text)))
 	return text, nil
 }
 

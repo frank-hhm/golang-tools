@@ -93,7 +93,7 @@ export interface LogConfig {
 }
 
 /**
- * PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/paths.go）；
+ * PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/layout.go）；
  * 空 = 默认 <应用目录>/plugins|data|logs。修改保存后，各服务配置与另存文件默认目录随即落新路径。
  */
 export interface PathsConfig {

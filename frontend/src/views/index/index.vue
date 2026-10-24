@@ -4,7 +4,7 @@
       <a-col :span="16" class="left-col">
         <!-- ========== 左侧：系统信息 ========== -->
 
-        <a-row :gutter="[12, 12]" class="left-inner">
+        <a-row class="left-inner">
           <a-col :span="24">
             <a-card>
 
@@ -645,7 +645,7 @@ onUnmounted(() => {
 /* 行继承主窗口可视高度（100vh − 40px 自绘标题栏 − 内容区/页面内边距），
    使左右两列撞满整屏，右侧“快捷操作”卡片随之铺满到底，不留底部空白 */
 .home-row {
-  height: calc(100vh - 2 * var(--base-padding));
+  height: 100%;
 }
 
 /* 左列：纵向 flex，让“本地服务实例”卡片向下铺满剩余高度 */
@@ -664,6 +664,7 @@ onUnmounted(() => {
 }
 
 .svc-col {
+  margin-top: 12px;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;

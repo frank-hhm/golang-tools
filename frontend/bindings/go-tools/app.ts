@@ -1031,6 +1031,7 @@ export function NpmVersionOf(version: string): $CancellablePromise<string> {
 
 /**
  * OcrImage 对成品图（dataURL/base64 PNG）做文字识别，返回识别出的纯文本。
+ * 实现细节（WinRT + PowerShell 5.1 调用）在 tools/ocr，这里只保留绑定入口。
  */
 export function OcrImage(data: string): $CancellablePromise<string> {
     return $Call.ByID(965844268, data);
@@ -1327,8 +1328,8 @@ export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
 /**
  * PrewarmCaptureOverlay 预建隐藏的浮层窗口（不抓屏），把“新建 WebView2 窗口 +
  * 页面 bootstrap”这笔最贵的开销从第一次截图的体验里挪到启动阶段。
- * 隐藏窗口不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），也不会被枚举成
- * 可截窗口（本进程窗口已过滤），所以预热不污染冻结帧。
+ * 预热窗口必须真的是隐藏的：既不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），
+ * 也不会被枚举成可截窗口（本进程窗口已过滤），更不会挡住桌面点击。
  */
 export function PrewarmCaptureOverlay(): $CancellablePromise<void> {
     return $Call.ByID(1081378001);

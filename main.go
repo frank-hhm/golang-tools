@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"go-tools/services/applog"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -66,13 +67,13 @@ func init() {
 func main() {
 	// 加载全局配置（用户配置目录 config.json）并初始化可配置文件日志
 	startupCfg := LoadAppConfig()
-	logDir := InitLogger(startupCfg.Log)
-	opLogf("app", "=== go-tools 启动 === 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
+	logDir := applog.Init(logConfig(startupCfg.Log))
+	applog.Infof("app", "=== go-tools 启动 === 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
 
 	// 应用 MySQL 工具级设置（SQL 执行日志开关与目录）
 	mysqlSettings := startupCfg.ToolSettings["mysql"]
 	sqlLogDir := mysql.ConfigureSQLLog(mysqlSettings.SQLLogEnabled, mysqlSettings.SQLLogDir)
-	opLogf("mysql", "SQL 日志: enabled=%v dir=%s", mysqlSettings.SQLLogEnabled, sqlLogDir)
+	applog.Infof("mysql", "SQL 日志: enabled=%v dir=%s", mysqlSettings.SQLLogEnabled, sqlLogDir)
 
 	// Create an instance of the app structure
 	appInstance := NewApp()

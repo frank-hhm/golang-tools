@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package winui
 
 import (
 	"bytes"
@@ -16,6 +16,8 @@ import (
 	"time"
 	"unsafe"
 
+	"go-tools/services/applog"
+
 	"golang.org/x/sys/windows"
 )
 
@@ -30,7 +32,7 @@ import (
 // 松手时立即把窗口坐标写入配置，下次显示（含重启/重新打开）由 ballInitPos 原样恢复。
 // 单击（未拖动）与右键都在光标处弹出快捷菜单：原生 Win32 TrackPopupMenu（与托盘右键同源，Windows 原生绘制、自动跟随系统深浅色）；
 // 菜单项动态取自配置 Quick=true 的工具（ballQuickItems），
-// 选中项经 handleBallAction → "ball:action" 事件交回主窗口复用前端开窗/截图逻辑。
+// 选中项经 Host.OnBallAction → "ball:action" 事件交回主窗口复用前端开窗/截图逻辑。
 // 置顶 WS_EX_TOPMOST、不占任务栏 WS_EX_TOOLWINDOW，默认贴屏幕工作区右下角。
 //
 // 消息循环安全（沿用本仓库既有约定）：
@@ -314,7 +316,7 @@ var (
 var (
 	ballMu        sync.Mutex
 	ballRunning   bool
-	ballApp       *App
+	ballHost      Host
 	ballHwnd      uintptr
 	ballDone      bool
 	ballClassOnce sync.Once
@@ -356,9 +358,9 @@ func ballUtf16(s string) *uint16 {
 }
 
 // ballLogf 浮动球专用日志辅助（沿用 selector 的 selLogf 约定）：
-// 关键生命周期/用户离散操作/异常统一走全局可配置日志（logger.go）。
+// 关键生命周期/用户离散操作/异常统一走全局可配置日志（services/applog）。
 func ballLogf(format string, args ...any) {
-	appLogf(logInfo, "ball", format, args...)
+	applog.Infof("ball", format, args...)
 }
 
 // ballBadgeLoop 每 3s 把后台运行服务数同步到球面角标；服务启停最迟 3s 内反映到 Badge。
@@ -376,29 +378,29 @@ func ballBadgeLoop(hwnd uintptr, stop <-chan struct{}) {
 }
 
 // ballRefreshBadge 重算后台运行数；只在数值变化时 PostMessage 通知球线程重绘，避免无谓刷屏。
-// PostMessage 跨线程触发 WM_PAINT 类重绘是本窗口既有约定（stopNativeBall 同样如此）。
+// PostMessage 跳线程触发 WM_PAINT 类重绘是本窗口既有约定（StopBall 同样如此）。
 func ballRefreshBadge(hwnd uintptr) {
-	if ballApp == nil {
+	if ballHost == nil {
 		return
 	}
-	n := int32(ballApp.activeBackgroundCount())
+	n := int32(ballHost.BadgeCount())
 	if atomic.SwapInt32(&ballBadgeCount, n) == n {
 		return
 	}
 	ballPostMsg.Call(hwnd, ballWM_BADGE, 0, 0)
 }
 
-// startNativeBall 启动桌面浮动球（幂等）。
-func startNativeBall(a *App) error {
-	if a == nil {
-		return fmt.Errorf("app 为空")
+// StartBall 启动桌面浮动球（幂等）；h 为主程序注入的宿主回调集。
+func StartBall(h Host) error {
+	if h == nil {
+		return fmt.Errorf("host 为空")
 	}
 	ballMu.Lock()
 	if ballRunning {
 		ballMu.Unlock()
 		return nil
 	}
-	ballApp = a
+	ballHost = h
 	ballRunning = true
 	ballDone = false
 	ballMu.Unlock()
@@ -407,9 +409,9 @@ func startNativeBall(a *App) error {
 	return nil
 }
 
-// ballReloadIcon 通知浮动球线程重读球心图标并按当前主题重绘（设置/主题/图标变更后从任意 goroutine 调用）。
+// ReloadBallIcon 通知浮动球线程重读球心图标并按当前主题重绘（设置/主题/图标变更后从任意 goroutine 调用）。
 // 图标加载统一收敛到球线程执行（WM_RELOAD），避免与 ballRender 的像素读取竞态。
-func ballReloadIcon() {
+func ReloadBallIcon() {
 	ballMu.Lock()
 	h, running := ballHwnd, ballRunning
 	ballMu.Unlock()
@@ -418,8 +420,8 @@ func ballReloadIcon() {
 	}
 }
 
-// stopNativeBall 请求关闭浮动球（从任意 goroutine 调用）。
-func stopNativeBall() {
+// StopBall 请求关闭浮动球（从任意 goroutine 调用）。
+func StopBall() {
 	ballMu.Lock()
 	h := ballHwnd
 	ballMu.Unlock()
@@ -435,21 +437,22 @@ func ballLoadLogo() {
 	ballLogoRect = image.Rectangle{}
 	ballLogoTint = false
 	var data []byte
-	if p, err := ballIconMaskPath(); err == nil {
-		if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
-			data = b
-			ballLogoTint = true
+	if ballHost != nil {
+		if p, err := ballHost.BallIconMaskPath(); err == nil {
+			if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
+				data = b
+				ballLogoTint = true
+			}
 		}
 	}
-	if len(data) == 0 {
-		cfg := CurrentConfig()
-		if cfg.General.AppLogo != "" {
-			if b, err := os.ReadFile(cfg.General.AppLogo); err == nil {
+	if len(data) == 0 && ballHost != nil {
+		if p := ballHost.BallLogoPath(); p != "" {
+			if b, err := os.ReadFile(p); err == nil {
 				data = b
 			}
 		}
-		if len(data) == 0 && ballApp != nil {
-			data = ballApp.defaultLogo
+		if len(data) == 0 {
+			data = ballHost.BallDefaultLogo()
 		}
 	}
 	if len(data) == 0 {
@@ -592,15 +595,16 @@ func ballThread() {
 // ballInitPos 初始位置：优先沿用上次拖动保存的位置（钳制到可见区域），
 // 否则停靠主屏工作区右下角。
 func ballInitPos() (int32, int32) {
-	cfg := CurrentConfig()
-	if cfg.Ball.HasPos {
-		l, t := ballClampToScreen(int32(cfg.Ball.X), int32(cfg.Ball.Y))
-		if l != int32(cfg.Ball.X) || t != int32(cfg.Ball.Y) {
-			ballLogf("上次位置 (%d, %d) 不在可见区域，已修正为 (%d, %d)", cfg.Ball.X, cfg.Ball.Y, l, t)
-		} else {
-			ballLogf("恢复上次位置: (%d, %d)", l, t)
+	if ballHost != nil {
+		if ox, oy, ok := ballHost.BallPosition(); ok {
+			l, t := ballClampToScreen(int32(ox), int32(oy))
+			if l != int32(ox) || t != int32(oy) {
+				ballLogf("上次位置 (%d, %d) 不在可见区域，已修正为 (%d, %d)", ox, oy, l, t)
+			} else {
+				ballLogf("恢复上次位置: (%d, %d)", l, t)
+			}
+			return l, t
 		}
-		return l, t
 	}
 	return ballDefaultPos()
 }
@@ -709,9 +713,9 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			if wasDragging {
 				ballSavePos(hwnd) // 拖动结束：同步记忆位置，立即落盘
 				ballApplyCursor(hwnd)
-			} else if app := ballApp; app != nil {
+			} else if ballHost != nil {
 				// 单击（未拖动）：直接打开/聚焦主界面，不再弹菜单（快捷菜单仅保留右键）
-				go app.showMainWindow()
+				go ballHost.ShowMainWindow()
 			}
 		}
 		return 0
@@ -835,29 +839,25 @@ func ballClampToScreen(l, t int32) (int32, int32) {
 // 下次启动/重开浮动球时由 ballInitPos 原样恢复。
 func ballSavePos(hwnd uintptr) {
 	l, t := ballCurPos(hwnd)
-	if err := SaveBallPos(int(l), int(t)); err != nil {
+	if ballHost == nil {
+		return
+	}
+	if err := ballHost.SaveBallPosition(int(l), int(t)); err != nil {
 		ballLogf("保存位置失败: (%d, %d) %v", l, t, err)
 		return
 	}
 	ballLogf("已记住位置: (%d, %d)", l, t)
 }
 
-// ballQuickItems 从当前配置读取标记为快捷（Quick=true）的工具，作为菜单项（ID → 显示名）。
-func ballQuickItems() []ballMenuItem {
-	var out []ballMenuItem
-	for _, t := range CurrentConfig().Tools {
-		if !t.Quick {
-			continue
-		}
-		id := t.ID
-		if id == "" {
-			id = t.Key
-		}
-		label := t.Name
-		if label == "" {
-			label = t.Key
-		}
-		out = append(out, ballMenuItem{ID: id, Label: label})
+// ballQuickItems 取宿主给出的快捷工具项（配置里 Quick=true），作为菜单项（ID → 显示名）。
+func ballQuickItems() []MenuItem {
+	if ballHost == nil {
+		return nil
+	}
+	items := ballHost.BallMenuItems()
+	out := make([]MenuItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, MenuItem{ID: it.ID, Label: it.Label})
 	}
 	return out
 }
@@ -865,22 +865,22 @@ func ballQuickItems() []ballMenuItem {
 // ---------------- 自绘快捷菜单（独立无边框圆角窗口）运行期状态 ----------------
 // 仅在球线程、菜单模态循环期间读写，无并发，无需加锁。
 var (
-	ballMenuHwnd    uintptr        // 菜单窗口句柄
-	ballMenuItems   []ballMenuItem // quick 工具项
-	ballMenuRects   []ballRect     // 每项客户区矩形（物理像素），与 items 对齐
-	ballMenuHover   int            // 当前悬停项索引，-1 无
-	ballMenuResult  int            // 选中项索引，-1 取消
-	ballMenuClosing bool           // 请求结束模态循环
-	ballMenuW       int32          // 窗口宽（物理像素）
-	ballMenuH       int32          // 窗口高（物理像素）
-	ballMenuX       int32          // 内容区屏幕左上 x（物理像素，命中/点外判定用）
-	ballMenuY       int32          // 内容区屏幕左上 y（物理像素）
-	ballMenuMargin  int32          // 投影边距（物理像素）：窗口左上 = 内容左上 - margin
-	ballMenuTextX   int32          // 文字左起点（物理像素）
-	ballMenuPillInX int32          // 高亮条左右内缩（物理像素）
-	ballMenuPillInY int32          // 高亮条上下内缩（物理像素）
-	ballMenuFont    uintptr        // 本次菜单 GDI 字体（弹出前创建、弹完删除）
-	ballMenuDark    bool           // 本次菜单深/浅配色
+	ballMenuHwnd    uintptr    // 菜单窗口句柄
+	ballMenuItems   []MenuItem // quick 工具项
+	ballMenuRects   []ballRect // 每项客户区矩形（物理像素），与 items 对齐
+	ballMenuHover   int        // 当前悬停项索引，-1 无
+	ballMenuResult  int        // 选中项索引，-1 取消
+	ballMenuClosing bool       // 请求结束模态循环
+	ballMenuW       int32      // 窗口宽（物理像素）
+	ballMenuH       int32      // 窗口高（物理像素）
+	ballMenuX       int32      // 内容区屏幕左上 x（物理像素，命中/点外判定用）
+	ballMenuY       int32      // 内容区屏幕左上 y（物理像素）
+	ballMenuMargin  int32      // 投影边距（物理像素）：窗口左上 = 内容左上 - margin
+	ballMenuTextX   int32      // 文字左起点（物理像素）
+	ballMenuPillInX int32      // 高亮条左右内缩（物理像素）
+	ballMenuPillInY int32      // 高亮条上下内缩（物理像素）
+	ballMenuFont    uintptr    // 本次菜单 GDI 字体（弹出前创建、弹完删除）
+	ballMenuDark    bool       // 本次菜单深/浅配色
 
 	ballMenuClassOnce sync.Once
 	ballMenuClassName *uint16
@@ -915,7 +915,7 @@ func bmPx(dip int) int32 {
 // 用 WS_EX_LAYERED + UpdateLayeredWindow 逐像素 alpha 提交，实现真正抗锯齿圆角、零边框，
 // 并从根上消除区域裁剪/owner-draw 的齿轮残影（角外像素 alpha=0 直接透桌面）。
 // 位置固定锚定球右上角并紧贴球体，钓到工作区。在球线程以嵌套消息循环运行：
-// 悬停高亮、点选/点菜单外/再次右键收起，选中项交回 handleBallAction。
+// 悬停高亮、点选/点菜单外/再次右键收起，选中项交回 Host.OnBallAction。
 func ballShowMenu(ballHwnd uintptr) {
 	ballMenuDark = ballEffectiveDark()
 
@@ -1029,8 +1029,8 @@ func ballShowMenu(ballHwnd uintptr) {
 	ballDestroy.Call(hwnd)
 	ballMenuHwnd = 0
 
-	if app := ballApp; app != nil && ballMenuResult >= 0 && ballMenuResult < len(items) {
-		go app.handleBallAction(items[ballMenuResult].ID)
+	if ballHost != nil && ballMenuResult >= 0 && ballMenuResult < len(items) {
+		go ballHost.OnBallAction(items[ballMenuResult].ID)
 	}
 }
 
@@ -1427,9 +1427,13 @@ func ballMenuSelectFont(dc uintptr) uintptr {
 	return old
 }
 
-// ballEffectiveDark 解析当前应采用的深浅模式：跟随配置 light/dark，auto 时读系统偏好。
+// ballEffectiveDark 解析当前应采用的深浅模式：跟随宿主主题 light/dark，auto 时读系统偏好。
 func ballEffectiveDark() bool {
-	switch CurrentConfig().General.Theme {
+	theme := ""
+	if ballHost != nil {
+		theme = ballHost.BallTheme()
+	}
+	switch theme {
 	case "dark":
 		return true
 	case "light":

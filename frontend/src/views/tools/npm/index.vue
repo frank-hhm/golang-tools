@@ -388,10 +388,15 @@
 
     <!-- Node / npm 版本管理：原先工具箱里两个长得像“版本切换”的入口，合成一个弹窗的两个页签：
          「Node 版本」管 Node 本体的下载/注册/删除，「npm 生效链」管 cmd 里 npm -v 实际跑的那一份 -->
-    <a-modal v-model:visible="versionsVisible" title="Node / npm 版本管理" :width="900" :footer="false" unmount-on-close
+    <a-modal v-model:visible="versionsVisible" title="Node / Npm 版本管理" :width="900" :footer="false" unmount-on-close
         :body-style="{ height: '620px', overflow: 'auto' }">
-        <a-tabs v-model:active-key="verTab" @change="onVerTabChange">
-            <a-tab-pane key="node" title="Node 版本">
+        <div class="ver-switch">
+            <a-radio-group v-model="verTab" type="button" @change="onVerTabChange">
+                <a-radio value="node">Node 版本</a-radio>
+                <a-radio value="chain">npm 生效链（命令行切换）</a-radio>
+            </a-radio-group>
+        </div>
+        <div v-show="verTab === 'node'" class="ver-pane">
                 <div class="ver-block">
                     <div class="ver-title">
                         本地可用版本
@@ -473,9 +478,9 @@
                         <div v-for="(l, i) in installLogs" :key="i" class="ls-line">{{ l }}</div>
                     </div>
                 </div>
-            </a-tab-pane>
+        </div>
 
-            <a-tab-pane key="chain" title="npm 生效链（命令行切换）">
+        <div v-show="verTab === 'chain'" class="ver-pane">
                 <a-spin :loading="chainLoading" style="width:100%">
                     <div class="chain-hero">
                         <div class="chain-hero-l">
@@ -609,8 +614,7 @@
                         </div>
                     </div>
                 </a-spin>
-            </a-tab-pane>
-        </a-tabs>
+        </div>
     </a-modal>
 
     <!-- 站点访问日志（实时）：点击「日志」弹出，独立滚动区 -->
@@ -930,7 +934,7 @@ async function openVersionsModal() {
     if (remoteVersions.value.length === 0) loadRemoteVersions();
 }
 /** 切到生效链页签才体检一次：PATH、prefix 都可能被外部改动，但开框不必抢这几毫秒 */
-function onVerTabChange(k: string | number) {
+function onVerTabChange(k: string | number | boolean) {
     if (k !== "chain") return;
     // 总览页已经拉过一次生效链时不重拉；版本清单自身带缓存，直接调安全
     if (!chain.value) void loadChain();
@@ -1630,6 +1634,15 @@ onUnmounted(() => {
 
 .add-local {
     margin-top: 10px;
+}
+
+/* 版本管理弹窗：a-radio-group 按钮式页签切换替代 a-tabs */
+.ver-switch {
+    margin-bottom: 12px;
+}
+
+.ver-pane {
+    min-height: 0;
 }
 
 .mgr-label {

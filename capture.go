@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"go-tools/services/applog"
 	"go-tools/tools/screenshot"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -33,6 +34,11 @@ const captureOverlayName = "win:/widget/capture"
 // JS 抛错、绑定未生成），此时宁可关掉窗口也不能留一个看不见的僵尸挡住下次截图。
 const captureReadyTimeout = 6 * time.Second
 
+// captureHoldTimeout 浮层调起后一直没人收场（拉起来就去干别的、也不按 ESC）
+// 时的兜底回收。capBusy 一旦占住，后续热键会被静默忽略，所以不能无限期等。
+// 取 3 分钟：正常框选/标注根本用不到这么久，又不至于误收正在编辑的图。
+const captureHoldTimeout = 3 * time.Minute
+
 // OpenCaptureOverlay 冻结主屏一帧并打开全屏选区编辑浮层。
 // 重复触发（热键连按）时直接忽略，避免把已经打开的浮层再刷一遍。
 func (a *App) OpenCaptureOverlay() error {
@@ -45,11 +51,13 @@ func (a *App) OpenCaptureOverlay() error {
 		return nil
 	}
 	a.capBusy = true
+	a.capGen++
+	gen := a.capGen
 	a.capMu.Unlock()
 
 	defer func() {
 		if r := recover(); r != nil {
-			errLogf("capture", "打开选区浮层 panic: %v", r)
+			applog.Errorf("capture", "打开选区浮层 panic: %v", r)
 			// 关窗+复位，避免遗留一个半死的浮层既抓不住又挡住下次截图。
 			a.destroyCaptureOverlay()
 		}
@@ -84,7 +92,7 @@ func (a *App) OpenCaptureOverlay() error {
 	} else {
 		how = "复用"
 	}
-	opLogf("capture", "冻结帧就绪 %dx%d dpr=%.2f 带=%d 抓屏+编码=%s 浮层=%s 可截窗口=%d 个",
+	applog.Infof("capture", "冻结帧就绪 %dx%d dpr=%.2f 带=%d 抓屏+编码=%s 浮层=%s 可截窗口=%d 个",
 		frame.W, frame.H, frame.DPR, len(frame.Bands), tFrame.Round(time.Millisecond),
 		how, len(frame.Windows))
 
@@ -94,7 +102,9 @@ func (a *App) OpenCaptureOverlay() error {
 		a.app.Event.Emit("capture:newframe", frame)
 	}
 	// 兜底：前端若因故没能回报就绪，超时后销毁窗口，别把后续截图卡死。
-	go a.captureReadyWatchdog()
+	// 两个定时器都只在“自己这一轮还没收场”时才动手（见 capGen）。
+	go a.captureReadyWatchdog(gen)
+	go a.captureIdleRecycle(gen)
 	return nil
 }
 
@@ -103,6 +113,23 @@ func (a *App) resetCapBusy() {
 	a.capMu.Lock()
 	a.capBusy = false
 	a.capMu.Unlock()
+}
+
+// captureIdleRecycle 浮层长时间没人收场时的回收。
+// hideCaptureOverlay/destroyCaptureOverlay 都会把 capBusy 置回 false，因此若
+// captureHoldTimeout 之后本轮 capBusy 仍为 true，就等价于「这一轮没人正经收场」：
+// 只隐窗（窗口对象保留供下次复用）并释放标志，不让后续热键被静默吞掉。
+// 靠 gen 认轮：不带轮次判据的话，上一轮的定时器会提前关掉用户正在用的新浮层。
+func (a *App) captureIdleRecycle(gen uint64) {
+	time.Sleep(captureHoldTimeout)
+	a.capMu.Lock()
+	held := a.capGen == gen && a.capBusy
+	a.capMu.Unlock()
+	if !held {
+		return
+	}
+	applog.Warnf("capture", "浮层 %s 无人收场，自动隐藏并释放截图标志", captureHoldTimeout)
+	a.hideCaptureOverlay()
 }
 
 // TryActivateNativeTool 供 Go 原生入口（全局热键、浮动球菜单）直接触发工具事件：
@@ -119,7 +146,7 @@ func (a *App) TryActivateNativeTool(toolID string) bool {
 		}
 		go func() {
 			if err := a.OpenCaptureOverlay(); err != nil {
-				errLogf("capture", "原生入口直接调起浮层失败: %v", err)
+				applog.Errorf("capture", "原生入口直接调起浮层失败: %v", err)
 			}
 		}()
 		return true
@@ -151,8 +178,14 @@ func (a *App) ensureCaptureWindow(frame *screenshot.CaptureFrame) (win applicati
 }
 
 // newCaptureWindow 全屏无边框、隐藏创建的选区浮层窗口。尺寸按冻结帧换算成 DIP：
-// 必须显式给一整屏尺寸（StartState 万一不被实现，窗口也已经铺满），隐藏窗口
-// 拿不到默认尺寸时前端实测的 dpr 会全错。真正点亮由前端 CaptureReady 触发。
+// 必须显式给一整屏尺寸，隐藏窗口拿不到默认尺寸时前端实测的 dpr 会全错。
+// 真正点亮由前端 CaptureReady 触发。
+//
+// 这里绝对不能设 StartState=Fullscreen：Wails(beta.12) 的 fullscreen() 会给窗口
+// 强行加上 WS_VISIBLE 并 SetWindowPos(HWND_TOP)，等于把 Hidden 作废——一个透明、
+// 未合成内容、置顶且铺满整屏的窗口就此常驻，看不见却吃掉屏幕上所有点击
+// （预热时就是这种状态，只有截一次图再收场才会 SW_HIDE 恢复）。预热与冷建都需要
+// 窗口保持真隐藏，进全屏的动作已经在 CaptureReady 里按正确顺序显式做了。
 func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Window {
 	dpr := frame.DPR
 	if dpr <= 0 {
@@ -160,7 +193,7 @@ func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Windo
 	}
 	screenW := int(float64(frame.W) / dpr)
 	screenH := int(float64(frame.H) / dpr)
-	w := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:          captureOverlayName,
 		Title:         "截图",
 		X:             0,
@@ -170,8 +203,7 @@ func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Windo
 		Frameless:     true,
 		AlwaysOnTop:   true,
 		DisableResize: true,
-		Hidden:        true, // 等前端把冻结帧画出来再显示，避免黑屏一闪
-		StartState:    application.WindowStateFullscreen,
+		Hidden:        true, // 等前端把冻结帧画出来再显示，避免黑屏一闪（见上方注释：不可叠加 Fullscreen）
 		// 透明背景：Show 后、页面首帧合成前的那一帧露出桌面而非黑色（见文件头注释）。
 		// 也只有配合 IgnoreMouseEvents 才会点击穿透，这里不设，交互照常。
 		BackgroundType:   application.BackgroundTypeTransparent,
@@ -184,14 +216,14 @@ func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Windo
 			HiddenOnTaskbar: true,
 		},
 	})
-	opLogf("capture", "选区浮层窗口已创建 %dx%d dpr=%.2f", screenW, screenH, dpr)
-	return w
+	applog.Infof("capture", "选区浮层窗口已创建（隐藏）%dx%d dpr=%.2f", screenW, screenH, dpr)
+	return win
 }
 
 // PrewarmCaptureOverlay 预建隐藏的浮层窗口（不抓屏），把“新建 WebView2 窗口 +
 // 页面 bootstrap”这笔最贵的开销从第一次截图的体验里挪到启动阶段。
-// 隐藏窗口不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），也不会被枚举成
-// 可截窗口（本进程窗口已过滤），所以预热不污染冻结帧。
+// 预热窗口必须真的是隐藏的：既不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），
+// 也不会被枚举成可截窗口（本进程窗口已过滤），更不会挡住桌面点击。
 func (a *App) PrewarmCaptureOverlay() {
 	if a.app == nil {
 		return
@@ -212,7 +244,7 @@ func (a *App) PrewarmCaptureOverlay() {
 		a.capMu.Lock()
 		a.capWin = win
 		a.capMu.Unlock()
-		opLogf("capture", "浮层已预热（隐藏待命）%dx%d dpr=%.2f", w, h, dpr)
+		applog.Infof("capture", "浮层已预热（隐藏待命，不拦截点击）%dx%d dpr=%.2f", w, h, dpr)
 	}
 }
 
@@ -263,7 +295,7 @@ func (a *App) CaptureFinish(data string, openPreview bool) error {
 			a.app.Event.Emit("screenshot:updated")
 		}
 	}
-	opLogf("capture", "截图完成 copy=%v preview=%v %dKB", data != "", openPreview, len(data)/1024)
+	applog.Infof("capture", "截图完成 copy=%v preview=%v %dKB", data != "", openPreview, len(data)/1024)
 	// 关窗放在本次调用返回之后：浮层就是这次调用的发起方，同步销毁它会让
 	// 响应永远回不去，极端情况下还会撞上 WebView2 正在序列化的回调。
 	a.closeOverlayLater(150 * time.Millisecond)
@@ -272,7 +304,7 @@ func (a *App) CaptureFinish(data string, openPreview bool) error {
 
 // CaptureCancel 放弃本次截图（ESC / 右键 / ✕）。
 func (a *App) CaptureCancel() {
-	opLogf("capture", "截图已取消")
+	applog.Infof("capture", "截图已取消")
 	a.closeOverlayLater(0)
 }
 
@@ -292,7 +324,7 @@ func (a *App) CaptureLog(note string) {
 	if note == "" {
 		return
 	}
-	opLogf("capture", "浮层: %s", note)
+	applog.Infof("capture", "浮层: %s", note)
 }
 
 // SaveCaptureFile 弹出原生「另存为」对话框（默认落在配置的截图目录 data/screenshots），
@@ -336,7 +368,7 @@ func (a *App) SaveCaptureFile(data string) (string, error) {
 	if err := screenshot.SaveImageFile(path, data); err != nil {
 		return "", fmt.Errorf("保存失败: %w", err)
 	}
-	opLogf("capture", "截图已保存: %s", path)
+	applog.Infof("capture", "截图已保存: %s", path)
 	return path, nil
 }
 
@@ -405,7 +437,7 @@ func (a *App) OpenPinnedImage(data string, x, y, w, h int) (int, error) {
 	a.pinMu.Unlock()
 	win.Show()
 	win.Focus()
-	opLogf("capture", "图钉已置顶 #%d %dx%d @%d,%d", id, dw, dh, dx, dy)
+	applog.Infof("capture", "图钉已置顶 #%d %dx%d @%d,%d", id, dw, dh, dx, dy)
 	return id, nil
 }
 
@@ -437,13 +469,17 @@ func (a *App) CloseCaptureOverlay() {
 // captureReadyWatchdog 就绪看门狗：一次截图在 captureReadyTimeout 内仍未收到
 // 前端 CaptureReady 回报，就判定浮层页面异常（JS 抛错/绑定缺失），销毁窗口，
 // 下次截图会重新冷建——不复用一个可能已坏死的面板。
-func (a *App) captureReadyWatchdog() {
+//
+// 必须拿轮次 gen 做判据：capReady 在正常收场（hideCaptureOverlay）时也会被清回
+// false，只看 !capReady 的话，每次秒完成的截图都会在 6s 后被看门狗当成僵尸干掉，
+// 刚预热的窗口白白销毁，下次只能冷建（实测日志里每张图后都跟一条“未就绪，销毁窗口”）。
+func (a *App) captureReadyWatchdog(gen uint64) {
 	time.Sleep(captureReadyTimeout)
 	a.capMu.Lock()
-	stale := a.capWin != nil && !a.capReady
+	stale := a.capWin != nil && a.capGen == gen && a.capBusy && !a.capReady
 	a.capMu.Unlock()
 	if stale {
-		warnLogf("capture", "选区浮层 %s 内未就绪，销毁窗口", captureReadyTimeout)
+		applog.Warnf("capture", "选区浮层 %s 内未就绪，销毁窗口", captureReadyTimeout)
 		a.destroyCaptureOverlay()
 	}
 }

@@ -64,7 +64,7 @@ onUnmounted(() => { off?.(); });
     width: calc(100% - (2*var(--base-padding)));
     height: calc(100% - 40px - (2*var(--base-padding)));
     padding: var(--base-padding);
-    background: var(--color-bg-body);
+    background: var(--color-bg-1);
     overflow-y: scroll;
 }
 </style>

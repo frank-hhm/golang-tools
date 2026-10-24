@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package winui
 
 import (
 	"runtime"
@@ -8,15 +8,16 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"go-tools/services/applog"
 )
 
 // ============================================================
 // 全局热键 —— 纯 Go 原生 Win32 实现
 //
 // 在专用 OS 线程上创建一个「消息-only 窗口」(HWND_MESSAGE)，用 RegisterHotKey
-// 注册来自 config（工具项 Shortcut，如 "Ctrl+Alt+S"）的系统级全局热键；命中 WM_HOTKEY 后：
-// Go 侧能直接处理的工具（截图）就地调起，其余以 "tool:activate" 事件交回主窗口，
-// 复用开窗逻辑。
+// 注册来自宿主（Host.Hotkeys，形如 "Ctrl+Alt+S"）的系统级全局热键；命中 WM_HOTKEY 后：
+// 统一交回 Host.DispatchTool，由主程序决定 Go 侧直接调进还是以 "tool:activate" 事件回主窗口。
 //
 // 线程/消息安全（沿用本仓库约定）：
 //   - 专用 goroutine + runtime.LockOSThread，退出时不 Unlock（线程随 goroutine 销毁）；
@@ -49,7 +50,7 @@ var (
 
 var (
 	hkMu        sync.Mutex
-	hkApp       *App
+	hkHost      Host
 	hkHwnd      uintptr
 	hkStarted   bool
 	hkClassOnce sync.Once
@@ -59,9 +60,9 @@ var (
 	hkIds []string
 )
 
-// startHotKeys 启动全局热键线程（幂等）；已启动则请求按最新配置重载。
-func startHotKeys(a *App) {
-	if a == nil {
+// StartHotkeys 启动全局热键线程（幂等）；已启动则请求按当前配置重载。
+func StartHotkeys(h Host) {
+	if h == nil {
 		return
 	}
 	hkMu.Lock()
@@ -73,14 +74,14 @@ func startHotKeys(a *App) {
 		}
 		return
 	}
-	hkApp = a
+	hkHost = h
 	hkStarted = true
 	hkMu.Unlock()
 	go hkThread()
 }
 
-// reloadHotKeys 请求热键线程按当前配置重新注册（从任意 goroutine 调用）。
-func reloadHotKeys() {
+// ReloadHotkeys 请求热键线程按当前配置重新注册（从任意 goroutine 调用）。
+func ReloadHotkeys() {
 	hkMu.Lock()
 	h := hkHwnd
 	hkMu.Unlock()
@@ -96,7 +97,7 @@ func hkThread() {
 
 	hkClassOnce.Do(hkRegisterClass)
 	if hkClassName == nil {
-		errLogf("hotkey", "窗口类注册失败，热键不可用")
+		applog.Errorf("hotkey", "窗口类注册失败，热键不可用")
 		return
 	}
 
@@ -111,7 +112,7 @@ func hkThread() {
 		0, hInst, 0,
 	)
 	if hwnd == 0 {
-		errLogf("hotkey", "创建消息窗口失败")
+		applog.Errorf("hotkey", "创建消息窗口失败")
 		return
 	}
 	hkMu.Lock()
@@ -141,7 +142,7 @@ func hkRegisterClass() {
 	}
 	atom, _, err := ballNewClass.Call(uintptr(unsafe.Pointer(&wc)))
 	if atom == 0 {
-		errLogf("hotkey", "RegisterClassW 失败: %v", err)
+		applog.Errorf("hotkey", "RegisterClassW 失败: %v", err)
 		hkClassName = nil
 	}
 }
@@ -159,16 +160,10 @@ func hkWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if id-1 >= 0 && id-1 < len(hkIds) {
 			toolID = hkIds[id-1]
 		}
-		hkMu.Lock()
-		app := hkApp
-		hkMu.Unlock()
-		if toolID != "" && app != nil && app.app != nil {
-			opLogf("hotkey", "全局热键触发 -> %s", toolID)
-			// 截图由 Go 直接调起：少走一趟「主窗口 JS → 绑定回 Go」，主窗口关了也能截
-			if app.TryActivateNativeTool(toolID) {
-				return 0
-			}
-			app.app.Event.Emit("tool:activate", toolID)
+		if toolID != "" && hkHost != nil {
+			applog.Infof("hotkey", "全局热键触发 -> %s", toolID)
+			// 截图等 Go 侧能直接处理的工具由主程序就地调起，其余发事件回主窗口
+			hkHost.DispatchTool(toolID)
 		}
 		return 0
 
@@ -196,25 +191,28 @@ func hkApply() {
 	}
 	hkIds = nil
 
-	for _, t := range CurrentConfig().Tools {
-		sc := strings.TrimSpace(t.Shortcut)
+	if hkHost == nil {
+		return
+	}
+	for _, b := range hkHost.Hotkeys() {
+		sc := strings.TrimSpace(b.Shortcut)
 		if sc == "" {
 			continue
 		}
 		mods, vk, ok := parseShortcut(sc)
 		if !ok {
-			warnLogf("hotkey", "无法解析热键 %q（工具 %s）", sc, t.ID)
+			applog.Warnf("hotkey", "无法解析热键 %q（工具 %s）", sc, b.ID)
 			continue
 		}
 		id := uintptr(len(hkIds) + 1)
 		r, _, _ := hkRegProc.Call(hwnd, id, uintptr(mods|hkMOD_NOREPEAT), uintptr(vk))
 		if r == 0 {
-			warnLogf("hotkey", "注册热键失败 %q（工具 %s），可能与其他应用冲突", sc, t.ID)
+			applog.Warnf("hotkey", "注册热键失败 %q（工具 %s），可能与其他应用冲突", sc, b.ID)
 			continue
 		}
-		hkIds = append(hkIds, t.ID)
+		hkIds = append(hkIds, b.ID)
 	}
-	opLogf("hotkey", "已注册 %d 个全局热键", len(hkIds))
+	applog.Infof("hotkey", "已注册 %d 个全局热键", len(hkIds))
 }
 
 // parseShortcut 解析 "Ctrl+Alt+S" 形式为 (修饰键, 虚拟键码, 是否有效)。

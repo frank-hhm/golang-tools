@@ -25,7 +25,7 @@
     ]
   },
   "dependencies": {
-    "@arco-themes/vue-dev-frank-brank": "^0.0.5",
+    "@arco-themes/vue-dev-frank-brank": "^0.0.6",
     "@vueuse/core": "^7.7.1",
     "@wailsio/runtime": "latest",
     "@wangeditor/editor": "^5.1.23",

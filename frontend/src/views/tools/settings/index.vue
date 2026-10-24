@@ -825,7 +825,6 @@ onBeforeUnmount(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧分类列 */

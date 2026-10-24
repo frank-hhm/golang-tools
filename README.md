@@ -49,6 +49,27 @@ Take a moment to familiarize yourself with your project structure:
 - `app.go`: Define your application structure and methods here
 - `wails.json`: Configuration file for your Wails project
 
+### Go 侧目录布局
+
+根目录只留「绑定面」：`*App` 的方法与它签名里出现的结构体会被 Wails 生成到
+`frontend/bindings/go-tools/`，所以这些文件必须留在 package main：
+
+| 根目录文件 | 作用 |
+| --- | --- |
+| `main.go` / `main_other.go` | 入口（windows / 非 windows 各一份） |
+| `app.go` | `*App` 绑定方法 + 托盘/窗口/生命周期 + `nativeHost` 适配 |
+| `capture.go` | 截图浮层窗口的创建、预热、显隐与收场 |
+| `config.go` | `AppConfig` 等配置类型（设置页数据契约）与读写 |
+| `sysinfo.go` | `SystemInfo` 等系统信息类型与采集 |
+| `greetservice.go` | 脚手架示例服务 |
+
+实现层按需下沉，新增能力请放对应目录而不要再往根目录堆：
+
+- `services/applog/` 全局可配置日志（`applog.Infof/Warnf/Errorf/Debugf/Fail`，调用点带 tag）
+- `services/winui/` 原生 Win32 界面：桌面浮动球 + 全局热键（不读配置，配置/回调经 `Host` 由 `nativeHost` 注入）
+- `appdirs/` 三类基础目录的解析与标准布局落建（`Set`/`ApplyLayout`/旧布局迁移）
+- `tools/<服务名>/` 各工具后端（php/nginx/mysql/redis/npm/sniffer/usbserial/screenshot/ocr…）
+
 ## Redis 本地服务管理（内置版本目录）
 
 Redis 工具页支持直接管理本机 `redis-server` 实例，版本二进制有三个渠道：程序内置、在线下载（GitHub redis-windows，≥ 7.0）、手动添加本机目录。
