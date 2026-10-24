@@ -115,12 +115,13 @@ const (
 	ballDT_NOPREFIX      = 0x00000800
 
 	// 自绘菜单美化：菜单项禁用态、字体、菜单底色
-	ballMF_GRAYED         = 0x0001
-	ballMF_DISABLED       = 0x0002
-	ballFW_NORMAL         = 400
-	ballDEFAULT_CHARSET   = 1
-	ballCLEARTYPE_QUALITY = 5
-	ballMIIM_BACKGROUND   = 0x00000002 // SetMenuInfo：自定义菜单背景画刷
+	ballMF_GRAYED           = 0x0001
+	ballMF_DISABLED         = 0x0002
+	ballFW_NORMAL           = 400
+	ballDEFAULT_CHARSET     = 1
+	ballCLEARTYPE_QUALITY   = 5
+	ballANTIALIASED_QUALITY = 3          // 灰度抗锯齿：分层窗口 DIB 里的文字必须用它，ClearType 子像素渲染会留下彩色描边（看起来像“齿轮”）
+	ballMIIM_BACKGROUND     = 0x00000002 // SetMenuInfo：自定义菜单背景画刷
 
 	// 注册表：auto 主题下读取系统是否使用深色应用模式
 	ballHKEY_CURRENT_USER = 0x80000001
@@ -931,7 +932,7 @@ func ballShowMenu(ballHwnd uintptr) {
 	}
 	ballMenuFont, _, _ = ballCreateFont.Call(
 		uintptr(fontH), 0, 0, 0, ballFW_NORMAL, 0, 0, 0,
-		ballDEFAULT_CHARSET, 0, 0, ballCLEARTYPE_QUALITY, 0,
+		ballDEFAULT_CHARSET, 0, 0, ballANTIALIASED_QUALITY, 0,
 		uintptr(unsafe.Pointer(face)))
 	if ballMenuFont != 0 {
 		defer func() { ballDelObj.Call(ballMenuFont); ballMenuFont = 0 }()
@@ -942,22 +943,21 @@ func ballShowMenu(ballHwnd uintptr) {
 		return
 	}
 
-	// 位置：锚定球右上角，菜单整体置于球上方并留出间隙（不压住球体），
-	// 避免球 logo 透过菜单圆角/投影露出（“齿轮”残影）；再钓制到工作区。
+	// 位置：锚定球右上角（菜单左下角贴球可见圆面的右上角）并整体左移/下移各 4px 紧贴球体，再钓制到工作区
 	var br, wa ballRect
 	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
 	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
 	sp := int32(ballShadowPad)
 	menuX := br.Right - sp - bmPx(4)
-	menuY := br.Top + sp - ballMenuH - bmPx(10) // 菜单底边在球可见圆面上方留 10px 间隙
-	if menuX+ballMenuW > wa.Right {             // 右侧放不下 → 翻到球左侧
+	menuY := br.Top + sp - ballMenuH + bmPx(4)
+	if menuX+ballMenuW > wa.Right { // 右侧放不下 → 翻到球左侧
 		menuX = br.Left + sp + bmPx(4) - ballMenuW
 	}
 	if menuX < wa.Left {
 		menuX = wa.Left
 	}
-	if menuY < wa.Top { // 上方放不下 → 翻到球下方（同样留间隙）
-		menuY = br.Bottom - sp + bmPx(10)
+	if menuY < wa.Top { // 上方放不下 → 翻到球下方
+		menuY = br.Bottom - sp + bmPx(4)
 	}
 	if menuY+ballMenuH > wa.Bottom {
 		menuY = wa.Bottom - ballMenuH
@@ -1202,16 +1202,15 @@ func ballMenuRender(hwnd uintptr) {
 }
 
 // ballMenuApplyAlpha 用圆角矩形 SDF 逐像素合成 alpha：内部不透明、边缘 1px 抗锯齿、
-// 外部按到内容矩形的距离衰减出柔和黑色投影（预乘：投影为黑 RGB=0，内容 RGB 乘覆盖度）。
+// 外部按到内容圆角矩形的外距离衰减出柔和黑色投影（预乘：投影为黑 RGB=0，内容 RGB 乘覆盖度）。
 func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 	halfW := float64(winW-margin*2) / 2
 	halfH := float64(winH-margin*2) / 2
 	r := float64(rad)
 	cx := float64(margin) + halfW // 内容中心（DIB 坐标）
 	cy := float64(margin) + halfH
-	shOff := float64(bmPx(bmShOffY)) // 投影下移（光源偏上）
 	mg := float64(margin)
-	const shadowMax = 78.0
+	const shadowMax = 50.0
 	for y := 0; y < winH; y++ {
 		py := float64(y) + 0.5
 		rowOff := y * winW
@@ -1233,13 +1232,13 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 				bits[idx+3] = 255 // 内部：RGB 保持，alpha 拉满
 				continue
 			}
-			// 投影：到内容圆角矩形的外距离二次衰减
-			dSh := ballSdfRR(px-cx, py-shOff-cy, halfW, halfH, r)
+			// 柔和投影：以到内容圆角矩形的外距离为准，边缘最深、向外二次衰减，四周均匀。
 			var sh uint32
-			if dSh <= 0 {
-				sh = uint32(shadowMax)
-			} else if t := dSh / mg; t < 1 {
+			if t := dCov / mg; t < 1 {
 				s := 1 - t
+				if s > 1 {
+					s = 1
+				}
 				sh = uint32(shadowMax*s*s + 0.5)
 			}
 			if ca == 0 && sh == 0 {
