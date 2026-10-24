@@ -12,6 +12,7 @@ declare module '@vue/runtime-core' {
     Icon: typeof import('./src/components/select-modal/icon/index.vue')['default']
     LayoutBody: typeof import('./src/components/layouts/LayoutBody.vue')['default']
     Layouts: typeof import('./src/components/layouts/index.vue')['default']
+    Page: typeof import('./src/components/plugins/page/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     WinTitleBar: typeof import('./src/components/layouts/WinTitleBar.vue')['default']

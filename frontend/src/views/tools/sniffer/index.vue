@@ -3,50 +3,54 @@
         <!-- 左侧约 30%：抓包控制（上50%）+ 筛选（下50%） -->
         <a-col :span="5" class="side-col">
             <a-row class="side-pages">
-                <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                <a-col class="side-cols side-cols-top" :span="24">
+                    <a-card class="side-card" >
                         <template #title>
                             <a-space :size="6">
-                                <span class="led" :class="{ on: running }"></span>
-                                <span>抓包控制</span>
+                                <a-tag size="small" :color="running ? 'green' : 'gray'">
+                                    {{ running ? "捕获中" : "未开始" }}
+                                </a-tag>
+                                <div class="led" :class="{ on: running }"></div>
+                                <div>抓包控制</div>
                             </a-space>
                         </template>
                         <template #extra>
-                            <a-tag size="small" :color="running ? 'green' : 'gray'">
-                                {{ running ? "捕获中" : "未开始" }}
-                            </a-tag>
+                            <a-space>
+                                <a-button size="small" :disabled="!flows.length" @click="clearAll">
+                                    <template #icon><icon-delete /></template>
+                                </a-button>
+                                <a-button size="small" v-if="!running" @click="onStart">
+                                    <template #icon><icon-play-arrow /></template>
+                                </a-button>
+                                <a-button size="small" v-else @click="onStop">
+                                    <template #icon><icon-pause /></template>
+                                </a-button>
+                            </a-space>
                         </template>
-                        <div class="side-body">
-                            <div class="field">
-                                <div class="field-label">代理端口</div>
-                                <a-input-number v-model="port" :min="1" :max="65535" :disabled="running" hide-button
-                                    style="width: 100%" />
-                            </div>
-                            <div class="field-actions">
-                                <a-button v-if="!running" type="primary" status="success" long @click="onStart">
-                                    <template #icon><icon-play-arrow /></template>开始抓包
-                                </a-button>
-                                <a-button v-else status="danger" long @click="onStop">
-                                    <template #icon><icon-pause /></template>停止抓包
-                                </a-button>
-                                <a-button long :disabled="!flows.length" @click="clearAll">
-                                    <template #icon><icon-delete /></template>清空记录
-                                </a-button>
-                            </div>
-                            <a-descriptions :column="2" size="small" bordered class="stat-desc">
-                                <a-descriptions-item label="总数">{{ flows.length }}</a-descriptions-item>
-                                <a-descriptions-item label="显示">{{ filteredFlows.length }}</a-descriptions-item>
-                                <a-descriptions-item label="监听" :span="2">
-                                    <span class="mono">127.0.0.1:{{ port }}</span>
-                                </a-descriptions-item>
-                            </a-descriptions>
-                            <div class="ca-tip">
-                                <icon-info-circle /> 开始后会安装本地根证书并临时接管系统代理（停止时自动还原），用于解密 HTTPS 流量。
-                            </div>
-                        </div>
+                        <a-row :gutter="[12, 12]">
+                            <a-col :span="24">
+                                <a-input-number v-model="port" :min="1" :max="65535" :disabled="running" hide-button>
+                                    <template #prefix>代理端口:</template>
+                                </a-input-number>
+                            </a-col>
+                            <a-col :span="24">
+                                <a-descriptions :column="2" size="medium" bordered class="stat-desc">
+                                    <a-descriptions-item label="总数">{{ flows.length }}</a-descriptions-item>
+                                    <a-descriptions-item label="显示">{{ filteredFlows.length }}</a-descriptions-item>
+                                    <a-descriptions-item label="监听" :span="2">
+                                        <span class="mono">127.0.0.1:{{ port }}</span>
+                                    </a-descriptions-item>
+                                </a-descriptions>
+                            </a-col>
+                            <a-col :span="24">
+                                <div class="ca-tip">
+                                    <icon-info-circle /> 开始后会安装本地根证书并临时接管系统代理（停止时自动还原），用于解密 HTTPS 流量。
+                                </div>
+                            </a-col>
+                        </a-row>
                     </a-card>
                 </a-col>
-                <a-col class="side-cols mt6" :span="24">
+                <a-col class="side-cols  side-cols-bottom" :span="24">
                     <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
                         <template #title>
                             <a-space>
@@ -62,34 +66,36 @@
                         </template>
                         <div class="side-body filter-body">
                             <div v-show="filterTab === 'app'" class="filter-view">
-                                <a-list :bordered="false" size="small" class="filter-list">
-                                    <a-list-item @click="selectedProcess = ''">
-                                        <div class="filter-item" :class="{ active: !selectedProcess }">
-                                            <span class="filter-name">全部</span>
+                                <a-list :bordered="false" size="small" class="filter-list" hoverable>
+                                    <a-list-item @click="selectedProcess = ''" :class="{ active: !selectedProcess }">
+                                        <span class="filter-name">全部</span>
+                                        <template #actions>
                                             <a-tag size="small" color="gray">{{ flows.length }}</a-tag>
-                                        </div>
+                                        </template>
                                     </a-list-item>
-                                    <a-list-item v-for="p in processList" :key="p.name" @click="toggleProcess(p.name)">
-                                        <div class="filter-item" :class="{ active: selectedProcess === p.name }">
-                                            <span class="filter-name" :title="p.name">{{ p.name }}</span>
+                                    <a-list-item v-for="p in processList" :key="p.name" @click="toggleProcess(p.name)"
+                                        :class="{ active: selectedProcess === p.name }">
+                                        <span class="filter-name" :title="p.name">{{ p.name }}</span>
+                                        <template #actions>
                                             <a-tag size="small" color="gray">{{ p.count }}</a-tag>
-                                        </div>
+                                        </template>
                                     </a-list-item>
                                 </a-list>
                             </div>
                             <div v-show="filterTab === 'domain'" class="filter-view">
                                 <a-list :bordered="false" size="small" class="filter-list">
-                                    <a-list-item @click="selectedDomain = ''">
-                                        <div class="filter-item" :class="{ active: !selectedDomain }">
-                                            <span class="filter-name">全部</span>
+                                    <a-list-item @click="selectedDomain = ''" :class="{ active: !selectedDomain }">
+                                        <span class="filter-name">全部</span>
+                                        <template #actions>
                                             <a-tag size="small" color="gray">{{ flows.length }}</a-tag>
-                                        </div>
+                                        </template>
                                     </a-list-item>
-                                    <a-list-item v-for="d in domainList" :key="d.name" @click="toggleDomain(d.name)">
-                                        <div class="filter-item" :class="{ active: selectedDomain === d.name }">
-                                            <span class="filter-name" :title="d.name">{{ d.name }}</span>
+                                    <a-list-item v-for="d in domainList" :key="d.name" @click="toggleDomain(d.name)"
+                                        :class="{ active: selectedDomain === d.name }">
+                                        <span class="filter-name" :title="d.name">{{ d.name }}</span>
+                                        <template #actions>
                                             <a-tag size="small" color="gray">{{ d.count }}</a-tag>
-                                        </div>
+                                        </template>
                                     </a-list-item>
                                 </a-list>
                             </div>
@@ -119,45 +125,65 @@
                             </a-radio-group>
                         </template>
                         <div class="list-body">
+                            <div class="type-chips">
+                                <span v-for="t in TYPE_TABS" :key="t.key" class="chip"
+                                    :class="{ active: selectedKind === t.key }"
+                                    @click="selectedKind = selectedKind === t.key ? '' : t.key">{{ t.label }}</span>
+                                <span class="chip-sep"></span>
+                                <span v-for="s in STATUS_TABS" :key="s" class="chip"
+                                    :class="{ active: selectedStatus === s }"
+                                    @click="selectedStatus = selectedStatus === s ? '' : s">{{ s }}</span>
+                            </div>
                             <div class="list-toolbar">
                                 <a-input-search v-model="keyword" placeholder="搜索 URL / 域名" size="small" allow-clear
                                     class="list-search" />
                                 <span class="count-tip">显示 {{ filteredFlows.length }} 条</span>
                             </div>
                             <a-table class="flow-table" :data="pagedFlows" row-key="id" size="small" :pagination="false"
-                                :scroll="{ y: '100%', x: 720 }" :column-resizable="true"  :bordered="{ wrapper: true, cell: true }"
+                                :scroll="{ y: '100%', x: '100%', minWidth: 720 }"
+                                :bordered="{cell: true }"
+                                :column-resizable="true"
                                 :row-class="(r) => (r.id === selectedId ? 'row-selected' : '')" @row-click="onRowClick">
                                 <template #columns>
-                                    <a-table-column title="ID" data-index="id" :width="60" />
-                                    <a-table-column title="协议" data-index="protocol" :width="70">
+                                    <a-table-column title="ID" data-index="id" :width="56" />
+                                    <a-table-column title="图标" :width="52" align="center">
+                                        <template #cell="{ record }">
+                                            <component :is="kindIcon(record)" class="kind-icon"
+                                                :style="{ color: kindColor(record) }" :title="kindLabel(record)" />
+                                        </template>
+                                    </a-table-column>
+                                    <a-table-column title="协议" data-index="protocol" :width="72">
                                         <template #cell="{ record }">
                                             <a-tag size="small" :color="protoColor(record.protocol)">
                                                 {{ record.protocol }}
                                             </a-tag>
                                         </template>
                                     </a-table-column>
-                                    <a-table-column title="方法" data-index="method" :width="70" />
+                                    <a-table-column title="方法" data-index="method" :width="80" />
                                     <a-table-column title="URL" data-index="url" :ellipsis="true" :tooltip="true" />
-                                    <a-table-column title="应用程序" data-index="process" :width="120" :ellipsis="true"
+                                    <a-table-column title="应用程序" data-index="process" :width="110" :ellipsis="true"
                                         :tooltip="true" />
-                                    <a-table-column title="状态" data-index="statusCode" :width="70">
+                                    <a-table-column title="状态" data-index="statusCode" :width="64">
                                         <template #cell="{ record }">
                                             <span :style="{ color: statusColor(record.statusCode) }">
                                                 {{ record.statusCode }}
                                             </span>
                                         </template>
                                     </a-table-column>
-                                    <a-table-column title="大小" :width="90">
-                                        <template #cell="{ record }">{{ formatSize(record.respSize) }}</template>
+                                    <a-table-column title="大小" :width="78">
+                                        <template #cell="{ record }">
+                                            <span class="text-grey">{{ formatSize(record.respSize) }}</span>
+                                        </template>
                                     </a-table-column>
-                                    <a-table-column title="耗时" :width="80">
-                                        <template #cell="{ record }">{{ record.duration }}ms</template>
+                                    <a-table-column title="耗时" :width="78">
+                                        <template #cell="{ record }">
+                                            <span class="text-grey">{{ record.duration }}ms</span>
+                                        </template>
                                     </a-table-column>
                                 </template>
                             </a-table>
                             <div class="pager">
-                                <a-pagination v-model:current="page" :total="filteredFlows.length" :page-size="pageSize"
-                                    size="mini" show-total />
+                                <page :list-page="listPage" @change="onPageChange" />
                             </div>
                         </div>
                     </a-card>
@@ -190,7 +216,7 @@
                                 </a-radio-group>
 
                                 <div v-show="detailTab === 'overview'" class="detail-view">
-                                    <a-descriptions :column="1" size="small" bordered>
+                                    <a-descriptions :column="1" bordered>
                                         <a-descriptions-item label="时间">{{ selectedFlow.time }}</a-descriptions-item>
                                         <a-descriptions-item label="协议">{{ selectedFlow.protocol
                                             }}</a-descriptions-item>
@@ -204,6 +230,8 @@
                                         <a-descriptions-item label="响应类型">
                                             {{ selectedFlow.contentType || '-' }}
                                         </a-descriptions-item>
+                                        <a-descriptions-item label="内容分类">{{ kindLabel(selectedFlow) || '-' }}
+                                        </a-descriptions-item>
                                         <a-descriptions-item label="请求/响应大小">{{ formatSize(selectedFlow.reqSize) }} /
                                             {{ formatSize(selectedFlow.respSize) }}</a-descriptions-item>
                                         <a-descriptions-item label="耗时">{{ selectedFlow.duration }}
@@ -213,7 +241,7 @@
 
                                 <div v-show="detailTab === 'reqHeaders'" class="detail-view">
                                     <a-descriptions v-if="headerEntries(selectedFlow.requestHeaders).length" :column="1"
-                                        size="small" bordered>
+                                         bordered>
                                         <a-descriptions-item v-for="hd in headerEntries(selectedFlow.requestHeaders)"
                                             :key="hd.k" :label="hd.k">
                                             <span class="hdr-val">{{ hd.v }}</span>
@@ -223,12 +251,15 @@
                                 </div>
 
                                 <div v-show="detailTab === 'reqBody'" class="detail-view detail-view-fill">
-                                    <body-viewer :body="selectedFlow.requestBody" />
+                                    <body-viewer :body="selectedFlow.requestBody"
+                                        :content-type="reqContentType(selectedFlow)"
+                                        :encoding="selectedFlow.reqBodyEncoding" :raw-size="selectedFlow.reqSize"
+                                        :filename="bodyFilename(selectedFlow)" />
                                 </div>
 
                                 <div v-show="detailTab === 'respHeaders'" class="detail-view">
                                     <a-descriptions v-if="headerEntries(selectedFlow.responseHeaders).length"
-                                        :column="1" size="small" bordered>
+                                        :column="1" bordered>
                                         <a-descriptions-item v-for="hd in headerEntries(selectedFlow.responseHeaders)"
                                             :key="hd.k" :label="hd.k">
                                             <span class="hdr-val">{{ hd.v }}</span>
@@ -239,7 +270,9 @@
 
                                 <div v-show="detailTab === 'respBody'" class="detail-view detail-view-fill">
                                     <body-viewer :body="selectedFlow.responseBody"
-                                        :content-type="selectedFlow.contentType" />
+                                        :content-type="selectedFlow.contentType" :encoding="selectedFlow.respBodyEncoding"
+                                        :raw-size="selectedFlow.respSize" :truncated="selectedFlow.respTruncated"
+                                        :filename="bodyFilename(selectedFlow)" />
                                 </div>
                             </template>
                             <div v-else class="detail-empty">
@@ -259,6 +292,7 @@ import { Message } from "@arco-design/web-vue";
 import type { TableData } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import type { Flow } from "bindings/go-tools/tools/sniffer/models";
+import { useSetting } from "@/hooks/useSetting";
 
 const {
     proxy: { $GoTools },
@@ -272,6 +306,48 @@ const PROTO_TABS = [
     { key: "WS", label: "WebSocket" },
 ];
 
+/* ============ 内容类型分类（筛选 chips + 列表图标） ============ */
+type KindKey = "json" | "xml" | "text" | "html" | "js" | "image" | "media" | "binary";
+
+const TYPE_TABS: { key: KindKey; label: string }[] = [
+    { key: "json", label: "JSON" },
+    { key: "xml", label: "XML" },
+    { key: "text", label: "文本" },
+    { key: "html", label: "HTML" },
+    { key: "js", label: "JS" },
+    { key: "image", label: "图片" },
+    { key: "media", label: "媒体" },
+    { key: "binary", label: "二进制" },
+];
+const STATUS_TABS = ["3xx", "4xx", "5xx"] as const;
+
+const KIND_LABELS: Record<KindKey, string> = {
+    json: "JSON", xml: "XML", text: "文本", html: "HTML", js: "JS/CSS",
+    image: "图片", media: "媒体", binary: "二进制",
+};
+
+const KIND_ICONS: Record<KindKey, string> = {
+    json: "icon-code",
+    xml: "icon-code-block",
+    text: "icon-file",
+    html: "icon-launch",
+    js: "icon-code-square",
+    image: "icon-file-image",
+    media: "icon-file-video",
+    binary: "icon-storage",
+};
+
+const KIND_COLORS: Record<KindKey, string> = {
+    json: "rgb(var(--green-6))",
+    xml: "rgb(var(--orange-6))",
+    text: "var(--color-text-3)",
+    html: "rgb(var(--red-6))",
+    js: "rgb(var(--gold-6))",
+    image: "rgb(var(--purple-6))",
+    media: "rgb(var(--pinkpurple-6))",
+    binary: "rgb(var(--arcoblue-6))",
+};
+
 /* ============ 状态 ============ */
 const port = ref(8888);
 const running = ref(false);
@@ -281,14 +357,16 @@ const MAX_FLOWS = 3000;
 const selectedProto = ref("All");
 const selectedProcess = ref("");
 const selectedDomain = ref("");
+const selectedKind = ref<KindKey | "">("");
+const selectedStatus = ref<(typeof STATUS_TABS)[number] | "">("");
 const keyword = ref("");
 const sideSearch = ref("");
 const filterTab = ref("app");
 const detailTab = ref("overview");
 
 const selectedId = ref<number | null>(null);
-const page = ref(1);
-const pageSize = 200;
+const curPage = ref(1);
+const pageSize = ref(useSetting().PageLimit.value || 10);
 
 let offEvent: (() => void) | null = null;
 
@@ -357,19 +435,34 @@ const filteredFlows = computed(() =>
             (selectedProto.value === "All" || f.protocol === selectedProto.value) &&
             (!selectedProcess.value || f.process === selectedProcess.value) &&
             (!selectedDomain.value || f.host === selectedDomain.value) &&
+            (!selectedKind.value || kindOf(f) === selectedKind.value) &&
+            (!selectedStatus.value || statusClass(f.statusCode) === selectedStatus.value) &&
             matchKeyword(f)
     )
 );
 
 /** 筛选条件变化后回到第一页，避免停留在越界空页 */
-watch([selectedProto, selectedProcess, selectedDomain, keyword], () => {
-    page.value = 1;
+watch([selectedProto, selectedProcess, selectedDomain, selectedKind, selectedStatus, keyword], () => {
+    curPage.value = 1;
 });
 
 const pagedFlows = computed(() => {
-    const start = (page.value - 1) * pageSize;
-    return filteredFlows.value.slice(start, start + pageSize);
+    const start = (curPage.value - 1) * pageSize.value;
+    return filteredFlows.value.slice(start, start + pageSize.value);
 });
+
+/** 分页组件数据源 */
+const listPage = computed(() => ({
+    total: filteredFlows.value.length,
+    page: curPage.value,
+    limit: pageSize.value,
+}));
+
+/** 分页组件页码 / 每页条数变化 */
+const onPageChange = (val: { page: number; limit: number }) => {
+    curPage.value = val.page;
+    pageSize.value = val.limit;
+};
 
 const processList = computed(() => buildCount("process"));
 const domainList = computed(() => {
@@ -413,6 +506,77 @@ const formatSize = (n: number) => {
 
 const protoColor = (p: string) => (p === "HTTPS" ? "green" : p === "WS" ? "purple" : "arcoblue");
 
+/** 按响应 Content-Type（及体编码）归类到筛选分类；无法归类返回空串 */
+function kindOf(f: Flow): KindKey | "" {
+    const main = (f.contentType || "").toLowerCase().split(";")[0].trim();
+    if (!main) return "";
+    if (main === "image/svg+xml") return "image";
+    if (main.includes("json")) return "json";
+    if (main.includes("xml")) return "xml";
+    if (main === "text/html" || main === "application/xhtml+xml") return "html";
+    if (/(javascript|ecmascript|css)/.test(main)) return "js";
+    if (main.startsWith("image/")) return "image";
+    if (main.startsWith("video/") || main.startsWith("audio/")) return "media";
+    if (main.startsWith("text/")) return "text";
+    if (f.respBodyEncoding === "base64") return "binary";
+    if (/(pdf|zip|octet-stream|protobuf|grpc|wasm|font|x-)/.test(main)) return "binary";
+    return "";
+}
+
+/** 状态码大类（3xx/4xx/5xx），其余返回空串 */
+const statusClass = (code: number) =>
+    code >= 300 && code < 400 ? "3xx" : code >= 400 && code < 500 ? "4xx" : code >= 500 ? "5xx" : "";
+
+const kindLabel = (f: Flow) => {
+    const k = kindOf(f);
+    if (!k) return "";
+    if (k === "media") {
+        const main = (f.contentType || "").toLowerCase();
+        if (main.startsWith("audio")) return "音频";
+        if (main.startsWith("image")) return "图片";
+        return "视频";
+    }
+    if (k === "binary" && (f.contentType || "").toLowerCase().includes("pdf")) return "PDF";
+    return KIND_LABELS[k];
+};
+
+const kindIcon = (f: Flow) => {
+    const k = kindOf(f);
+    if (!k) return "icon-link";
+    if (k === "media") {
+        const main = (f.contentType || "").toLowerCase();
+        if (main.startsWith("audio")) return "icon-file-audio";
+        if (main.startsWith("image")) return "icon-file-image";
+        return "icon-file-video";
+    }
+    if (k === "binary" && (f.contentType || "").toLowerCase().includes("pdf")) return "icon-file-pdf";
+    return KIND_ICONS[k];
+};
+
+const kindColor = (f: Flow) => {
+    const k = kindOf(f);
+    return k ? KIND_COLORS[k] : "var(--color-text-3)";
+};
+
+/** 取请求头的 Content-Type（头名大小写不敏感） */
+const reqContentType = (f: Flow) => {
+    const hdrs = f.requestHeaders || {};
+    for (const k of Object.keys(hdrs)) {
+        if (k.toLowerCase() === "content-type") return (hdrs[k] || [])[0] || "";
+    }
+    return "";
+};
+
+/** 二进制体下载文件名：取 URL 路径末段 */
+const bodyFilename = (f: Flow) => {
+    try {
+        const seg = new URL(f.url).pathname.split("/").filter(Boolean).pop();
+        return seg ? decodeURIComponent(seg) : "";
+    } catch {
+        return "";
+    }
+};
+
 const statusColor = (code: number) => {
     if (!code) return "var(--color-text-3)";
     if (code < 300) return "rgb(var(--green-6))";
@@ -435,7 +599,6 @@ const headerEntries = (hObj: Hdrs) =>
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列（a-col，约 30% 宽）：上下两张卡片各占 50% 高 */
@@ -447,14 +610,22 @@ const headerEntries = (hObj: Hdrs) =>
 }
 
 .side-pages {
-    height: calc(100% - 6px);
+    height: 100%;
 }
 
 .side-cols {
-    height: 50%;
     width: 100%;
     display: flex;
     flex-direction: column;
+}
+
+.side-cols-top {
+
+    height: 240px;
+}
+
+.side-cols-bottom {
+    height: calc(100% - 240px);
 }
 
 /* 左侧卡片：标题走 #title、操作走 #extra，body 弹性填充 */
@@ -559,23 +730,11 @@ const headerEntries = (hObj: Hdrs) =>
     cursor: pointer;
 }
 
-.filter-list :deep(.arco-list-item:hover) {
+.filter-list :deep(.arco-list-item:hover),
+.filter-list :deep(.arco-list-item.active) {
     background: var(--color-fill-2);
 }
 
-.filter-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap:var(--base-padding);
-    font-size: var(--base-size-small);
-    color: var(--color-text-2);
-}
-
-.filter-item.active {
-    color: rgb(var(--primary-6));
-}
 
 .filter-name {
     overflow: hidden;
@@ -643,6 +802,54 @@ const headerEntries = (hObj: Hdrs) =>
     border-bottom: 1px solid var(--color-border-1);
 }
 
+/* 内容类型/状态码快捷筛选 chips：可换行的小标签，再点一次取消选中 */
+.type-chips {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: var(--base-radius-default) var(--base-padding) 0;
+}
+
+.chip {
+    padding: 1px 9px;
+    border: 1px solid var(--color-border-2);
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
+    color: var(--color-text-2);
+    font-size: var(--base-size-small);
+    line-height: 18px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.chip:hover {
+    border-color: rgb(var(--primary-6));
+    color: rgb(var(--primary-6));
+}
+
+.chip.active {
+    border-color: rgb(var(--primary-6));
+    background: var(--color-primary-light-1);
+    color: rgb(var(--primary-6));
+    font-weight: 500;
+}
+
+.chip-sep {
+    width: 1px;
+    height: 16px;
+    margin: 0 2px;
+    background: var(--color-border-2);
+}
+
+/* 列表类型图标 */
+.kind-icon {
+    font-size: 16px;
+    vertical-align: middle;
+}
+
 .list-search {
     flex: 1;
     min-width: 0;
@@ -682,14 +889,20 @@ const headerEntries = (hObj: Hdrs) =>
     min-height: 0;
 }
 
+/* 列挤压兜底：Arco 单元格默认 word-break: break-all，列一窄就会把「协议/方法/OPTIONS」
+   逐字竖排；固定单行显示，宽度不足时交给横向滚动，而不是压缩列宽 */
+.flow-table :deep(.arco-table-th),
+.flow-table :deep(.arco-table-td) {
+    white-space: nowrap;
+}
+
 :deep(.row-selected) {
     background-color: var(--color-primary-light-1) !important;
 }
 
 .pager {
     flex: none;
-    padding: 6px var(--base-padding);
-    border-top: 1px solid var(--color-border-1);
+    padding: var(--base-padding);
     display: flex;
     justify-content: flex-end;
 }

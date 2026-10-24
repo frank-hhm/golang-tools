@@ -2,6 +2,7 @@ import { App, Plugin } from 'vue';
 import LayoutBody from '@/components/layouts/LayoutBody.vue'
 import selectIconModal from '@/components/select-modal/icon/index.vue'
 import BodyViewer from '@/components/body-viewer/index.vue'
+import page from '@/components/plugins/page/index.vue'
 
 export const ComponentsPlugin: Plugin = {
     install(app: App) {
@@ -12,7 +13,8 @@ export const ComponentsPlugin: Plugin = {
         app.component('layout-body', LayoutBody);
         // body-viewer：报文查看器，支持 美化 / 原生 / 预览 / 可视化 四种视图
         app.component('body-viewer', BodyViewer);
-
+        app.component('page', page);
+        
     },
 };
-export {  LayoutBody , selectIconModal, BodyViewer};
+export {  LayoutBody , selectIconModal, BodyViewer, page };

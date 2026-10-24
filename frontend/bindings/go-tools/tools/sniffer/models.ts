@@ -32,6 +32,18 @@ export interface Flow {
     "responseHeaders": { [_ in string]?: string[] | null } | null;
     "requestBody": string;
     "responseBody": string;
+
+    /**
+     * ReqBodyEncoding / RespBodyEncoding 标记对应报文体编码：
+     * 空串为文本原样；"base64" 表示二进制内容（图片/音视频/文件流），前端据此还原渲染
+     */
+    "reqBodyEncoding": string;
+    "respBodyEncoding": string;
+
+    /**
+     * RespTruncated 响应体超过捕获上限被截断（二进制体无法附加截断标记，用独立标志）
+     */
+    "respTruncated": boolean;
 }
 
 /**

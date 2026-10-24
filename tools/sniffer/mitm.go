@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 // maxBodyCapture 请求/响应体最大捕获字节数，超出截断
@@ -41,6 +43,13 @@ type Flow struct {
 	ResponseHeaders map[string][]string `json:"responseHeaders"`
 	RequestBody     string              `json:"requestBody"`
 	ResponseBody    string              `json:"responseBody"`
+
+	// ReqBodyEncoding / RespBodyEncoding 标记对应报文体编码：
+	// 空串为文本原样；"base64" 表示二进制内容（图片/音视频/文件流），前端据此还原渲染
+	ReqBodyEncoding  string `json:"reqBodyEncoding"`
+	RespBodyEncoding string `json:"respBodyEncoding"`
+	// RespTruncated 响应体超过捕获上限被截断（二进制体无法附加截断标记，用独立标志）
+	RespTruncated bool `json:"respTruncated"`
 }
 
 // Mitm MITM 代理引擎
@@ -317,26 +326,33 @@ func (m *Mitm) capture(proto string, req *http.Request, reqBody []byte, resp *ht
 
 	proc := m.procOf(conn)
 
+	reqCT := req.Header.Get("Content-Type")
+	reqBodyStr, reqEnc := encodeBody(reqBody, reqCT)
+	respBodyStr, respEnc := encodeBody(respBody, contentType)
+
 	f := Flow{
-		ID:              atomic.AddInt64(&m.idSeq, 1),
-		Time:            start.Format("2006-01-02 15:04:05.000"),
-		Protocol:        proto,
-		Method:          req.Method,
-		URL:             fullURL,
-		Host:            host,
-		Path:            path,
-		StatusCode:      statusCode,
-		Status:          status,
-		Duration:        time.Since(start).Milliseconds(),
-		ReqSize:         len(reqBody),
-		RespSize:        len(respBody),
-		Process:         proc.Name,
-		Pid:             proc.Pid,
-		ContentType:     contentType,
-		RequestHeaders:  reqHdrs,
-		ResponseHeaders: respHdrs,
-		RequestBody:     truncateString(reqBody),
-		ResponseBody:    truncateString(respBody),
+		ID:               atomic.AddInt64(&m.idSeq, 1),
+		Time:             start.Format("2006-01-02 15:04:05.000"),
+		Protocol:         proto,
+		Method:           req.Method,
+		URL:              fullURL,
+		Host:             host,
+		Path:             path,
+		StatusCode:       statusCode,
+		Status:           status,
+		Duration:         time.Since(start).Milliseconds(),
+		ReqSize:          len(reqBody),
+		RespSize:         len(respBody),
+		Process:          proc.Name,
+		Pid:              proc.Pid,
+		ContentType:      contentType,
+		RequestHeaders:   reqHdrs,
+		ResponseHeaders:  respHdrs,
+		RequestBody:      reqBodyStr,
+		ResponseBody:     respBodyStr,
+		ReqBodyEncoding:  reqEnc,
+		RespBodyEncoding: respEnc,
+		RespTruncated:    len(respBody) >= maxBodyCapture,
 	}
 	if m.emit != nil {
 		m.emit(f)
@@ -368,6 +384,19 @@ func drainBody(rc io.ReadCloser) []byte {
 	return b
 }
 
+// encodeBody 编码报文体：二进制内容转 base64 并标记编码，文本原样返回。
+// 二进制判定 = MIME 类型命中已知二进制族，或头部字节嗅探判定（含 NUL / 非法 UTF-8）。
+func encodeBody(b []byte, contentType string) (string, string) {
+	if len(b) == 0 {
+		return "", ""
+	}
+	if isBinaryMIME(contentType) || looksBinary(b) {
+		return base64.StdEncoding.EncodeToString(b), "base64"
+	}
+	return truncateString(b), ""
+}
+
+// truncateString 文本体超限截断并附加标记
 func truncateString(b []byte) string {
 	if len(b) == 0 {
 		return ""
@@ -376,6 +405,46 @@ func truncateString(b []byte) string {
 		return string(b[:maxBodyCapture]) + "...(truncated)"
 	}
 	return string(b)
+}
+
+// isBinaryMIME 按 Content-Type 判断是否二进制族（svg 为文本例外，可直接渲染/预览）
+func isBinaryMIME(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	if ct == "" || ct == "image/svg+xml" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(ct, "image/"),
+		strings.HasPrefix(ct, "video/"),
+		strings.HasPrefix(ct, "audio/"),
+		strings.HasPrefix(ct, "font/"):
+		return true
+	}
+	switch ct {
+	case "application/pdf", "application/octet-stream", "application/zip",
+		"application/x-zip-compressed", "application/gzip", "application/x-gzip",
+		"application/x-protobuf", "application/grpc", "application/wasm",
+		"application/x-font-ttf", "application/x-font-woff", "application/vnd.ms-fontobject":
+		return true
+	}
+	return strings.HasSuffix(ct, "-stream") || strings.Contains(ct, "protobuf")
+}
+
+// looksBinary 嗅探头部字节：出现 NUL 或整体非合法 UTF-8 即视为二进制
+func looksBinary(b []byte) bool {
+	n := len(b)
+	if n > 8192 {
+		n = 8192
+	}
+	for i := 0; i < n; i++ {
+		if b[i] == 0 {
+			return true
+		}
+	}
+	return !utf8.Valid(b[:n])
 }
 
 func cloneHeaders(h http.Header) map[string][]string {

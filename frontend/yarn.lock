@@ -41,10 +41,10 @@
     "@babel/types" "^7.12.12"
     "@types/node" "^16.11.10"
 
-"@arco-themes/vue-dev-frank-brank@^0.0.4":
-  version "0.0.4"
-  resolved "https://registry.npmmirror.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.4.tgz#c896210026e3d01cbeef11154311990b6e37cd22"
-  integrity sha512-SkcRQk7KgdqPvbq0st4oLgRFA+uZgqJl/JYbWBd5zwQO16MBdVS/J5FfORrCFUILx53Rb3vvjHyrUXRJux/XIw==
+"@arco-themes/vue-dev-frank-brank@^0.0.5":
+  version "0.0.5"
+  resolved "https://registry.npmmirror.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.5.tgz#5adb95668c386408456806b78aff1c12c800c06a"
+  integrity sha512-gNK1+rmY94dLuhsJ+g03VA37cleI31cW7Jnjafo9u7RY8L2/Rp2d59Wz8dfgegkfab0J5vQgfziJ+buAhrEutA==
 
 "@babel/code-frame@^7.27.1", "@babel/code-frame@^7.29.7":
   version "7.29.7"
