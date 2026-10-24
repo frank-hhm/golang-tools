@@ -11,7 +11,7 @@ import "@/styles/index.scss"
 import * as Utils from '@/utils'
 import { setupGoMessage } from '@/utils/gomessage'
 import { initTheme, syncThemeFromConfig } from '@/utils/theme'
-import * as GoToolsBindings from "bindings/go-tools/index";
+import * as GoToolsBindings from "bindings/go-tools/services/app/index";
 import { ScreenshotService as GoScreenshot } from "bindings/go-tools/tools/screenshot/index";
 
 const app = createApp(App);

@@ -7,7 +7,9 @@ import (
 	"log"
 	"time"
 
+	appsvc "go-tools/services/app"
 	"go-tools/services/applog"
+	"go-tools/services/config"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -51,8 +53,8 @@ func init() {
 	application.RegisterEvent[redis.ServerLogLine]("redis:serverlog")
 	application.RegisterEvent[string]("video:saved")
 	application.RegisterEvent[string]("video:cmd")
-	application.RegisterEvent[VideoStatus]("video:status")
-	application.RegisterEvent[UIMessage]("ui:message")
+	application.RegisterEvent[appsvc.VideoStatus]("video:status")
+	application.RegisterEvent[appsvc.UIMessage]("ui:message")
 	application.RegisterEvent[string]("ball:action")
 	application.RegisterEvent[string]("tool:activate")
 	// 复用浮层时把新冻结帧直接随事件送出，免得页面再回 Go 取一次（帧体几百 KB）
@@ -66,8 +68,8 @@ func init() {
 
 func main() {
 	// 加载全局配置（用户配置目录 config.json）并初始化可配置文件日志
-	startupCfg := LoadAppConfig()
-	logDir := applog.Init(logConfig(startupCfg.Log))
+	startupCfg := config.LoadAppConfig()
+	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))
 	applog.Infof("app", "=== go-tools 启动 === 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
 
 	// 应用 MySQL 工具级设置（SQL 执行日志开关与目录）
@@ -76,7 +78,7 @@ func main() {
 	applog.Infof("mysql", "SQL 日志: enabled=%v dir=%s", mysqlSettings.SQLLogEnabled, sqlLogDir)
 
 	// Create an instance of the app structure
-	appInstance := NewApp()
+	appInstance := appsvc.NewApp()
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -86,7 +88,7 @@ func main() {
 		Name:        "go-tools",
 		Description: "A demo of using raw HTML & CSS",
 		Services: []application.Service{
-			application.NewService(&GreetService{}),
+			application.NewService(&appsvc.GreetService{}),
 			application.NewService(appInstance),
 			application.NewService(screenshot.NewScreenshotService()),
 		},

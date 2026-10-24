@@ -114,55 +114,6 @@ export interface PathsConfig {
 }
 
 /**
- * SvcEntry 由本程序管理的本地服务实例状态
- */
-export interface SvcEntry {
-    "id": string;
-
-    /**
-     * redis | mysql | php | nginx | npm
-     */
-    "type": string;
-    "name": string;
-    "port": number;
-    "running": boolean;
-    "version": string;
-}
-
-/**
- * SystemInfo 系统概览信息（供前端面板展示）
- */
-export interface SystemInfo {
-    "hostname": string;
-    "os": string;
-    "platform": string;
-    "uptime": number;
-    "bootTime": number;
-    "cpuUsage": number;
-    "cpuCores": number;
-    "cpuThreads": number;
-    "memTotal": number;
-    "memUsed": number;
-    "memPercent": number;
-    "diskTotal": number;
-    "diskUsed": number;
-    "diskPercent": number;
-
-    /**
-     * 启动以来累计发送字节
-     */
-    "netSent": number;
-
-    /**
-     * 启动以来累计接收字节
-     */
-    "netRecv": number;
-    "goroutines": number;
-    "appMemAlloc": number;
-    "services": SvcEntry[] | null;
-}
-
-/**
  * ToolConfig 单个工具项（首页列表 / 浮动球快捷 / 全局热键 共用）
  */
 export interface ToolConfig {
@@ -245,44 +196,4 @@ export interface ToolSettings {
      * SQL 日志目录；空 = 默认（程序目录下 logs）
      */
     "sqlLogDir": string;
-}
-
-/**
- * UIMessage 通知载荷（预留给 WebView 内桥接展示；当前 ShowMessage 走原生小窗，不再使用此事件）
- */
-export interface UIMessage {
-    /**
-     * info|success|warning|error
-     */
-    "level": string;
-
-    /**
-     * 提示内容
-     */
-    "text": string;
-
-    /**
-     * 毫秒，0 = 前端默认
-     */
-    "duration": number;
-}
-
-/**
- * VideoStatus 录制悬浮小窗展示用的状态（由录制工具窗经 Go 转发）
- */
-export interface VideoStatus {
-    /**
-     * recording|paused|saving|cancelsave|savefail|saved|closed
-     */
-    "state": string;
-
-    /**
-     * 已录制秒数
-     */
-    "elapsed": number;
-
-    /**
-     * 进度/路径/错误信息
-     */
-    "note": string;
 }

@@ -3,6 +3,7 @@ import LayoutBody from '@/components/layouts/LayoutBody.vue'
 import selectIconModal from '@/components/common/select-icon-modal/index.vue'
 import CommonPager from '@/components/common/pager/index.vue'
 import CommonThemeSwitch from '@/components/common/theme-switch/index.vue'
+import CommonCanvasClock from '@/components/common/canvas-clock/index.vue'
 import BodyViewer from '@/components/business/body-viewer/index.vue'
 
 /**
@@ -20,6 +21,8 @@ export const ComponentsPlugin: Plugin = {
         app.component('common-pager', CommonPager);
         // common-theme-switch：浅色/暗黑切换开关，主窗口与工具窗标题栏共用，跨窗口经 storage 同步
         app.component('common-theme-switch', CommonThemeSwitch);
+        // common-canvas-clock：Canvas 指针时钟（size/配色/平滑走动可配），由 test/clock-by-canvas 插件封装
+        app.component('common-canvas-clock', CommonCanvasClock);
         // select-icon-modal：图标选择弹层，通过 type 属性切换图标源
         //  - type="iconfont"（默认）：本地字体图标，emit `icon-xxx`
         //  - type="arco"：Arco Design 图标库，emit 图标名（如 camera / clock-circle）
@@ -28,4 +31,4 @@ export const ComponentsPlugin: Plugin = {
         app.component('body-viewer', BodyViewer);
     },
 };
-export { LayoutBody, CommonPager, CommonThemeSwitch, selectIconModal, BodyViewer };
+export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, selectIconModal, BodyViewer };

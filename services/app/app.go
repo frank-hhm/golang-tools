@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package app
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go-tools/appdirs"
 	"go-tools/services/applog"
+	"go-tools/services/config"
 	"go-tools/services/winui"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
@@ -120,7 +121,7 @@ func (a *App) SetDefaultLogo(b []byte) {
 
 // GetAppLogo 返回当前应用 logo 的 base64 PNG 字符串（自定义路径优先，否则内置默认）
 func (a *App) GetAppLogo() string {
-	cfg := CurrentConfig()
+	cfg := config.CurrentConfig()
 	if cfg.General.AppLogo != "" {
 		if data, err := os.ReadFile(cfg.General.AppLogo); err == nil && len(data) > 0 {
 			return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
@@ -151,7 +152,7 @@ func (a *App) ChooseAppLogo() (string, error) {
 
 // ApplyAppName 将当前配置的应用名应用到主窗口标题和托盘提示
 func (a *App) ApplyAppName() {
-	cfg := CurrentConfig()
+	cfg := config.CurrentConfig()
 	if a.mainWindow != nil {
 		a.mainWindow.SetTitle(cfg.General.AppName)
 	}
@@ -167,7 +168,7 @@ func (a *App) ApplyAppName() {
 
 // getLogoBytes 返回当前生效的 logo 字节（自定义路径优先，否则内置默认）
 func (a *App) getLogoBytes() []byte {
-	cfg := CurrentConfig()
+	cfg := config.CurrentConfig()
 	if cfg.General.AppLogo != "" {
 		if data, err := os.ReadFile(cfg.General.AppLogo); err == nil && len(data) > 0 {
 			return data
@@ -191,7 +192,7 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	// 启动全局热键（工具 Shortcut 由 nativeHost.Hotkeys 给出），a.app 已由 SetApp 注入
 	winui.StartHotkeys(nativeHost{a})
 	// 启动时按设置显示浮动球
-	if CurrentConfig().Ball.Enabled {
+	if config.CurrentConfig().Ball.Enabled {
 		if err := a.BallOpen(); err != nil {
 			applog.Warnf("ball", "启动时显示浮动球失败: %v", err)
 		}
@@ -206,7 +207,7 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	a.setupCloseToTray()
 	a.setupTray()
 	// 开机自启：按配置同步注册（Enable 幂等，程序移动后也能修正旧路径）
-	if CurrentConfig().General.AutoStart {
+	if config.CurrentConfig().General.AutoStart {
 		a.applyAutoStart(true)
 	}
 	return nil
@@ -266,7 +267,7 @@ func (a *App) setupTray() {
 	if len(a.trayIcon) > 0 {
 		tray.SetIcon(a.trayIcon)
 	}
-	tray.SetTooltip(CurrentConfig().General.AppName)
+	tray.SetTooltip(config.CurrentConfig().General.AppName)
 
 	menu := application.NewMenu()
 	menu.Add("打开主界面").OnClick(func(*application.Context) { a.showMainWindow() })
@@ -1321,7 +1322,7 @@ func (a *App) MySQLDeleteRows(id, database, table, pkCol string, pkVals []string
 // MySQLGetSQLLogSettings 返回 SQL 日志开关、目录与现存文件列表
 func (a *App) MySQLGetSQLLogSettings() mysql.SQLLogSettings {
 	st := mysql.SQLLogStatus()
-	st.Dir = CurrentConfig().ToolSettings["mysql"].SQLLogDir
+	st.Dir = config.CurrentConfig().ToolSettings["mysql"].SQLLogDir
 	return st
 }
 
@@ -1330,14 +1331,13 @@ func (a *App) MySQLSetSQLLogSettings(enabled bool, dir string) (string, error) {
 	dir = strings.TrimSpace(dir)
 	resolved := mysql.ConfigureSQLLog(enabled, dir)
 
-	appCfgWriteMu.Lock()
-	defer appCfgWriteMu.Unlock()
-	cfg := CurrentConfig()
-	if cfg.ToolSettings == nil {
-		cfg.ToolSettings = map[string]ToolSettings{}
-	}
-	cfg.ToolSettings["mysql"] = ToolSettings{SQLLogEnabled: enabled, SQLLogDir: dir}
-	if _, err := writeAppConfigLocked(cfg); err != nil {
+	_, err := config.Update(func(cfg *config.AppConfig) {
+		if cfg.ToolSettings == nil {
+			cfg.ToolSettings = map[string]config.ToolSettings{}
+		}
+		cfg.ToolSettings["mysql"] = config.ToolSettings{SQLLogEnabled: enabled, SQLLogDir: dir}
+	})
+	if err != nil {
 		applog.Errorf("mysql", "保存 SQL 日志设置失败: %v", err)
 		return resolved, err
 	}
@@ -1671,7 +1671,7 @@ type nativeHost struct{ a *App }
 
 func (h nativeHost) BallMenuItems() []winui.MenuItem {
 	var out []winui.MenuItem
-	for _, t := range CurrentConfig().Tools {
+	for _, t := range config.CurrentConfig().Tools {
 		if !t.Quick {
 			continue
 		}
@@ -1688,20 +1688,20 @@ func (h nativeHost) BallMenuItems() []winui.MenuItem {
 	return out
 }
 
-func (h nativeHost) BallTheme() string { return CurrentConfig().General.Theme }
+func (h nativeHost) BallTheme() string { return config.CurrentConfig().General.Theme }
 
-func (h nativeHost) BallLogoPath() string { return CurrentConfig().General.AppLogo }
+func (h nativeHost) BallLogoPath() string { return config.CurrentConfig().General.AppLogo }
 
-func (h nativeHost) BallIconMaskPath() (string, error) { return ballIconMaskPath() }
+func (h nativeHost) BallIconMaskPath() (string, error) { return config.BallIconMaskPath() }
 
 func (h nativeHost) BallDefaultLogo() []byte { return h.a.defaultLogo }
 
 func (h nativeHost) BallPosition() (int, int, bool) {
-	b := CurrentConfig().Ball
+	b := config.CurrentConfig().Ball
 	return b.X, b.Y, b.HasPos
 }
 
-func (h nativeHost) SaveBallPosition(x, y int) error { return SaveBallPos(x, y) }
+func (h nativeHost) SaveBallPosition(x, y int) error { return config.SaveBallPos(x, y) }
 
 func (h nativeHost) BadgeCount() int { return h.a.activeBackgroundCount() }
 
@@ -1711,7 +1711,7 @@ func (h nativeHost) ShowMainWindow() { h.a.showMainWindow() }
 
 func (h nativeHost) Hotkeys() []winui.Hotkey {
 	var out []winui.Hotkey
-	for _, t := range CurrentConfig().Tools {
+	for _, t := range config.CurrentConfig().Tools {
 		if strings.TrimSpace(t.Shortcut) == "" {
 			continue
 		}
@@ -1753,7 +1753,7 @@ func (a *App) SaveBallIcon(b64Png string) error {
 	if len(data) == 0 {
 		return a.ClearBallIcon()
 	}
-	p, err := ballIconMaskPath()
+	p, err := config.BallIconMaskPath()
 	if err != nil {
 		return applog.Fail("ball", err, "球图标路径不可用")
 	}
@@ -1767,7 +1767,7 @@ func (a *App) SaveBallIcon(b64Png string) error {
 
 // ClearBallIcon 删除自定义球心图标，浮动球回退到应用 Logo/内置默认图。
 func (a *App) ClearBallIcon() error {
-	if p, err := ballIconMaskPath(); err == nil {
+	if p, err := config.BallIconMaskPath(); err == nil {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 			return applog.Fail("ball", err, "球图标删除失败")
 		}
@@ -1798,14 +1798,14 @@ func (a *App) handleBallAction(id string) {
 /* ============================ 配置与日志（供设置页调用） ============================ */
 
 // GetConfig 返回当前应用配置（日志设置 + 工具列表）。
-func (a *App) GetConfig() AppConfig {
-	return CurrentConfig()
+func (a *App) GetConfig() config.AppConfig {
+	return config.CurrentConfig()
 }
 
 // SetAppTheme 持久化当前主题模式（light/dark/auto）：供标题栏快速切换时同步写入配置，
 // 以便浮动球原生菜单等 Go 侧 UI 跟随应用浅/暗黑模式。
 func (a *App) SetAppTheme(theme string) error {
-	if err := SaveAppTheme(theme); err != nil {
+	if err := config.SaveAppTheme(theme); err != nil {
 		return err
 	}
 	winui.ReloadBallIcon() // 球面底板/图标着色随主题重绘
@@ -1813,23 +1813,23 @@ func (a *App) SetAppTheme(theme string) error {
 }
 
 // SaveConfig 保存配置：写入用户配置目录 JSON + 重新初始化日志器 + 热键重载 + 浮动球显隐；返回日志目录。
-func (a *App) SaveConfig(cfg AppConfig) (string, error) {
+func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	// 浮动球位置由后端维护（拖动结束落盘），前端保存设置时沿用当前值，避免被零值覆盖。
-	if cur := CurrentConfig(); cur.Ball.HasPos {
+	if cur := config.CurrentConfig(); cur.Ball.HasPos {
 		cfg.Ball.X, cfg.Ball.Y, cfg.Ball.HasPos = cur.Ball.X, cur.Ball.Y, cur.Ball.HasPos
 	}
 	// 工具级设置由各工具页自行保存（如 MySQL 的 SQL 日志），设置页 payload 不含该字段，沿用当前值避免被清空。
 	if len(cfg.ToolSettings) == 0 {
-		cfg.ToolSettings = CurrentConfig().ToolSettings
+		cfg.ToolSettings = config.CurrentConfig().ToolSettings
 	}
-	path, err := SaveAppConfig(cfg)
+	path, err := config.SaveAppConfig(cfg)
 	if err != nil {
 		applog.Errorf("config", "保存配置失败: %v", err)
 		return "", err
 	}
 	// 全局目录布局（paths）可能变更：重新应用并预建服务子目录，需在日志器与工具日志重配置之前
-	initAppDirs(cfg)
-	logDir := applog.Init(logConfig(cfg.Log))
+	config.InitAppDirs(cfg)
+	logDir := applog.Init(config.ApplogConfig(cfg.Log))
 	// SQL 日志默认目录随日志基础目录变更重解析（配置了固定目录的不受影响）
 	ms := cfg.ToolSettings["mysql"]
 	mysql.ConfigureSQLLog(ms.SQLLogEnabled, ms.SQLLogDir)
@@ -1886,15 +1886,9 @@ func (a *App) OcrImage(data string) (string, error) {
 	return ocr.Image(data)
 }
 
-// logConfig 把根包（绑定面）的 LogConfig 转成 applog 自己的配置类型，
-// 使日志包不反向依赖 package main。
-func logConfig(l LogConfig) applog.Config {
-	return applog.Config{Enabled: l.Enabled, Level: l.Level, Path: l.Path}
-}
-
 // GetLogDir 返回当前实际使用的日志目录。
 func (a *App) GetLogDir() string {
-	return applog.ResolveDir(logConfig(CurrentConfig().Log))
+	return applog.ResolveDir(config.ApplogConfig(config.CurrentConfig().Log))
 }
 
 // OpenLogDir 在系统资源管理器中打开当前日志目录（Windows: explorer）。

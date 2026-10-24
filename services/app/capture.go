@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package app
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go-tools/services/applog"
+	"go-tools/services/config"
 	"go-tools/tools/screenshot"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -140,7 +141,7 @@ func (a *App) TryActivateNativeTool(toolID string) bool {
 	if a.app == nil || toolID == "" {
 		return false
 	}
-	for _, t := range CurrentConfig().Tools {
+	for _, t := range config.CurrentConfig().Tools {
 		if t.Event != "screenshot" || (t.ID != toolID && t.Key != toolID) {
 			continue
 		}

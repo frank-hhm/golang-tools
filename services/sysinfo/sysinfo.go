@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package sysinfo
 
 import (
 	"fmt"
@@ -62,8 +62,8 @@ type SvcEntry struct {
 	Version string `json:"version"`
 }
 
-// GetSystemInfo 采集系统快照
-func (a *App) GetSystemInfo() (*SystemInfo, error) {
+// Snapshot 采集系统快照（CPU/内存/磁盘/网络 + 本程序管理的服务实例）
+func Snapshot() *SystemInfo {
 	info := &SystemInfo{}
 
 	// 主机
@@ -116,12 +116,13 @@ func (a *App) GetSystemInfo() (*SystemInfo, error) {
 	}
 
 	// 本程序管理的服务实例
-	info.Services = collectServiceStatus()
+	info.Services = ActiveServices()
 
-	return info, nil
+	return info
 }
 
-func collectServiceStatus() []SvcEntry {
+// ActiveServices 汇总本程序管理的各服务实例状态
+func ActiveServices() []SvcEntry {
 	var out []SvcEntry
 	// Redis instances
 	if redisInsts, _ := redis.ListInstances(); redisInsts != nil {
@@ -174,21 +175,4 @@ func collectServiceStatus() []SvcEntry {
 		}
 	}
 	return out
-}
-
-// activeBackgroundCount 统计当前在后台运行的任务数（受管服务实例 + 抓包代理），
-// 供浮动球 Badge 判定：>0 显示角标，=0 隐藏。
-func (a *App) activeBackgroundCount() int {
-	n := 0
-	for _, s := range collectServiceStatus() {
-		if s.Running {
-			n++
-		}
-	}
-	a.snifferMu.Lock()
-	if a.snifferRunning {
-		n++
-	}
-	a.snifferMu.Unlock()
-	return n
 }

@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -18,8 +18,8 @@ import (
 // 内容：日志设置（开关/级别/路径）+ 全局目录布局（插件/数据/日志基础目录）
 //       + 可编辑工具列表（含快捷标记、全局热键等）
 // 读取方：启动与设置保存时转交给日志器（services/applog）、目录布局（appdirs）、
-// 浮动球与全局热键（经 app.go 的 nativeHost 适配注入 services/winui）、前端设置页/首页。
-// 本文件留在 package main：AppConfig 等类型出现在绑定方法签名里，会被 Wails 生成进前端模型。
+// 浮动球与全局热键（经 services/app 的 nativeHost 适配注入 services/winui）、前端设置页/首页。
+// 本包集中应用配置的类型与持久化；AppConfig 等类型出现在绑定方法签名里，会被 Wails 生成进前端模型。
 // ============================================================
 
 // LogConfig 日志设置
@@ -126,6 +126,11 @@ func DefaultConfig() AppConfig {
 	}
 }
 
+// ApplogConfig 把配置里的 LogConfig 转成 applog 自己的配置类型，使日志包不反向依赖应用层。
+func ApplogConfig(l LogConfig) applog.Config {
+	return applog.Config{Enabled: l.Enabled, Level: l.Level, Path: l.Path}
+}
+
 // configFilePath 返回配置文件路径，必要时创建目录。
 func configFilePath() (string, error) {
 	base, err := os.UserConfigDir()
@@ -143,9 +148,9 @@ func configFilePath() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-// ballIconMaskPath 浮动球球心图标的 alpha 遮罩 PNG 路径（与 config.json 同目录）：
+// BallIconMaskPath 浮动球球心图标的 alpha 遮罩 PNG 路径（与 config.json 同目录）：
 // 前端把选中图标渲染成黑色字形遮罩上传，Go 侧只取 alpha 通道按主题文字色着色。
-func ballIconMaskPath() (string, error) {
+func BallIconMaskPath() (string, error) {
 	p, err := configFilePath()
 	if err != nil {
 		return "", err
@@ -153,9 +158,9 @@ func ballIconMaskPath() (string, error) {
 	return filepath.Join(filepath.Dir(p), "ball_icon.png"), nil
 }
 
-// initAppDirs 应用全局目录配置并预建服务子目录（启动与保存配置时调用，幂等）。
+// InitAppDirs 应用全局目录配置并预建服务子目录（启动与保存配置时调用，幂等）。
 // 布局本身的解析与迁移规则都在 appdirs 包内（appdirs/layout.go）。
-func initAppDirs(cfg AppConfig) {
+func InitAppDirs(cfg AppConfig) {
 	if err := appdirs.ApplyLayout(cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs); err != nil {
 		applog.Errorf("paths", "创建全局目录失败: %v", err)
 	}
@@ -259,7 +264,7 @@ func LoadAppConfig() AppConfig {
 	}
 	normalizeConfig(&cfg)
 	// 应用全局目录布局：设置基础目录 → 迁移旧布局 → 确保服务子目录存在
-	initAppDirs(cfg)
+	InitAppDirs(cfg)
 	appCfgMu.Lock()
 	appCfg = cfg
 	appCfgSet = true
@@ -289,6 +294,16 @@ func CurrentConfig() AppConfig {
 func SaveAppConfig(cfg AppConfig) (string, error) {
 	appCfgWriteMu.Lock()
 	defer appCfgWriteMu.Unlock()
+	return writeAppConfigLocked(cfg)
+}
+
+// Update 在写锁内读—改—写当前配置并落盘（返回文件路径）：
+// 供调用方在持锁期间基于最新缓存做增量修改，避免与拖动球位/主题等并发保存互相覆盖。
+func Update(mutate func(cfg *AppConfig)) (string, error) {
+	appCfgWriteMu.Lock()
+	defer appCfgWriteMu.Unlock()
+	cfg := CurrentConfig()
+	mutate(&cfg)
 	return writeAppConfigLocked(cfg)
 }
 

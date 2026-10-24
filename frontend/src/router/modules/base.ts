@@ -72,6 +72,16 @@ export default [{
             },
             component: () => import('@/views/demo/gomessage/index.vue')
         },
+        {
+            // common-canvas-clock 时钟组件 demo（由 test/clock-by-canvas 插件封装）
+            path: '/demo/clock',
+            name: '/demo/clock',
+            meta: {
+                auth: false,
+                menu_name: "Canvas时钟Demo",
+            },
+            component: () => import('@/views/demo/clock/index.vue')
+        },
         ...buildChildren('/')
     ]
 }, {
@@ -94,6 +104,17 @@ export default [{
                 menu_name: "Go消息Demo",
             },
             component: () => import('@/views/demo/gomessage/index.vue')
+        },
+        {
+            // Canvas 时钟 demo 的新窗口路由
+            path: 'demo/clock',
+            name: '/win/demo/clock',
+            meta: {
+                auth: false,
+                blank: true,
+                menu_name: "Canvas时钟Demo",
+            },
+            component: () => import('@/views/demo/clock/index.vue')
         }
     ]
 }, {

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>clock-by-canvas</title>
+	<link rel="stylesheet" type="text/css" href="css/style.css">
+</head>
+<body>
+	<div class="box">
+		<canvas id="clock" width="500" height="500"></canvas>
+	</div>
+	<script src="http://www.jq22.com/jquery/jquery-1.10.2.js"></script>
+	<script type="text/javascript" src="js/clock-canvas.min.js"></script>
+	<script type="text/javascript">
+		$(function() {
+			$("#clock").drawClock(
+			);
+		})
+	</script>
+</body>
+</html>

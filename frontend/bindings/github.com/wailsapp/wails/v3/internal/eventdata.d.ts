@@ -7,7 +7,7 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as main$0 from "../../../../../go-tools/models.js";
+import type * as app$0 from "../../../../../go-tools/services/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as mysql$0 from "../../../../../go-tools/tools/mysql/models.js";
@@ -51,10 +51,10 @@ declare module "@wailsio/runtime" {
             "sniffer:flow": sniffer$0.Flow;
             "time": string;
             "tool:activate": string;
-            "ui:message": main$0.UIMessage;
+            "ui:message": app$0.UIMessage;
             "video:cmd": string;
             "video:saved": string;
-            "video:status": main$0.VideoStatus;
+            "video:status": app$0.VideoStatus;
         }
     }
 }
