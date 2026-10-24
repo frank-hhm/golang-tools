@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "go-tools",
+			"FileDescription": "go-tools",
+			"LegalCopyright": "© 2026 go-tools",
+			"ProductName": "go-tools",
+			"Comments": "go-tools 桌面工具箱"
+		}
+	}
+}

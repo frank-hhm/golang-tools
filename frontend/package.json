@@ -1,0 +1,71 @@
+{
+  "name": "Tools",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:dev": "vue-tsc && vite build --minify false --mode development",
+    "build": "vue-tsc && vite build --mode production",
+    "preview": "vite preview"
+  },
+  "lint-staged": {
+    "*.{js,jsx,vue,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{scss,less,css,html,md}": [
+      "prettier --write"
+    ],
+    "package.json": [
+      "prettier --write"
+    ],
+    "{!(package)*.json,.!(browserslist)*rc}": [
+      "prettier --write--parser json"
+    ]
+  },
+  "dependencies": {
+    "@arco-themes/vue-dev-frank-brank": "^0.0.4",
+    "@vueuse/core": "^7.7.1",
+    "@wailsio/runtime": "latest",
+    "@wangeditor/editor": "^5.1.23",
+    "@wangeditor/editor-for-vue": "^5.1.12",
+    "axios": "^0.27.2",
+    "dayjs": "^1.11.7",
+    "js-cookie": "^2.2.0",
+    "jsqr": "^1.4.0",
+    "nprogress": "^0.2.0",
+    "particles.vue3": "^2.9.3",
+    "pinia": "^2.0.18",
+    "qrcode-generator": "^2.0.4",
+    "rollup-plugin-image": "^1.0.2",
+    "tsparticles": "^2.9.3",
+    "vue": "^3.2.37",
+    "vue-cropper": "^1.1.1",
+    "vue-router": "^4.1.5",
+    "vue-tsc": "^3.3.12",
+    "vuex": "^4.0.2"
+  },
+  "devDependencies": {
+    "@arco-design/web-vue": "^2.57.0",
+    "@arco-plugins/vite-vue": "^1.4.5",
+    "@types/js-cookie": "^3.0.2",
+    "@types/node": "^22.12.0",
+    "@types/nprogress": "^0.2.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vitejs/plugin-vue-jsx": "^1.3.3",
+    "less": "^4.2.0",
+    "less-loader": "^11.1.3",
+    "pinia-plugin-persist": "^1.0.0",
+    "sass": "^1.105.2",
+    "sass-loader": "8.0.2",
+    "ts-loader": "^9.4.2",
+    "typescript": "~5.9.3",
+    "unplugin-auto-import": "^0.11.5",
+    "unplugin-element-plus": "^0.2.0",
+    "unplugin-vue-components": "^0.22.11",
+    "vite": "^8.3.4",
+    "vue-loader": "^17.0.1",
+    "vue-template-compiler": "^2.7.14"
+  }
+}

@@ -1,0 +1,22 @@
+2026-10-22 10:52:06.766 [INFO] [config] 配置已保存: C:\Users\Administrator\AppData\Roaming\go-tools\config.json（日志文件: E:\go-tools-bak\Log\go-tools.log, enabled=true level=debug）
+2026-10-22 11:02:47.292 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:03:30.192 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:03:44.637 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:03:47.594 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:04:26.349 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:04:28.483 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:05:01.939 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:05:19.161 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:05:22.111 [INFO] [app] === go-tools 启动 === 日志文件: E:\go-tools-bak\Log\go-tools.log (enabled=true level=debug)
+2026-10-22 11:06:52.852 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:07:56.244 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:08:00.883 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:08:34.629 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:08:48.359 [INFO] [window] 新建窗口: /win/tools/screenshot (截图预览) single=true fullscreen=false 1000x718
+2026-10-22 11:08:55.828 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:12:59.796 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:13:25.821 [INFO] [config] 配置已保存: C:\Users\Administrator\AppData\Roaming\go-tools\config.json（日志文件: E:\go-tools-bak\Log\go-tools.log, enabled=true level=debug）
+2026-10-22 11:13:34.011 [INFO] [ball] BallOpen 调用
+2026-10-22 11:13:40.404 [INFO] [window] 新建窗口: /win/tools/redis (Redis管理) single=true fullscreen=true 1000x718
+2026-10-22 11:13:42.907 [INFO] [window] 新建窗口: /win/tools/settings (设置) single=true fullscreen=false 1000x718
+2026-10-22 11:15:29.173 [INFO] [config] 配置已保存: C:\Users\Administrator\AppData\Roaming\go-tools\config.json（日志文件: E:\go-tools-bak\Log\go-tools.log, enabled=true level=debug）

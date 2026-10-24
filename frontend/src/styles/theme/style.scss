@@ -1,0 +1,60 @@
+.default-append .arco-input-append {
+    padding: 0 !important;
+}
+
+/******card-form********/
+.card-form .arco-card-body {
+    padding-bottom: 0 !important;
+}
+
+.arco-card-bordered{
+    border: 1px solid var(--color-border-1)!important;
+}
+/******loading********/
+.state-loading {
+    position: relative;
+    user-select: none;
+    overflow: hidden;
+    border-radius: 3px;
+}
+
+.state-loading:before {
+    -webkit-animation: loader 0.75s linear;
+    -webkit-animation-iteration-count: infinite;
+    animation: loader 0.75s linear;
+    animation-iteration-count: infinite;
+    border-color: rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.1) rgba(var(--primary-6)) rgba(var(--primary-6));
+    border-radius: 50%;
+    border-style: solid;
+    border-width: 2px;
+    box-shadow: 0 0 0 1px transparent;
+    content: "";
+    height: 16px;
+    left: 50%;
+    margin: -8px 0 0 -8px;
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    z-index: 5;
+}
+
+.state-loading:after {
+    background-color: var(--color-bg-3);
+    border-radius: 3px;
+    /* border-radius: 4px; */
+    content: "";
+    height: 100%;
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 100%;
+    z-index: 4;
+    opacity: 0.7;
+}
+
+@keyframes loader {
+    100% {
+        -webkit-transform: rotate(1turn);
+        transform: rotate(1turn);
+    }
+}
