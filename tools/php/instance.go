@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 /* ============================ 配置持久化 ============================ */
@@ -147,14 +149,9 @@ func findInstance(id string) (*InstanceConfig, error) {
 	return nil, fmt.Errorf("实例不存在: %s", id)
 }
 
-// defaultDocRoot 默认站点目录：<exedir>/data/www/<实例名>，与程序其它数据目录保持一致
+// defaultDocRoot 默认站点目录：<数据目录>/www/<实例名>，与程序其它数据目录保持一致（基础目录设置页可改）
 func defaultDocRoot(id, name string) string {
-	base := ""
-	if exe, err := os.Executable(); err == nil {
-		base = filepath.Join(filepath.Dir(exe), "data", "www")
-	} else if d, err := goToolsDir(); err == nil {
-		base = filepath.Join(d, "www")
-	}
+	base := filepath.Join(appdirs.DataBase(), "www")
 	dir := sanitizeDirName(name)
 	if dir == "" {
 		dir = sanitizeDirName(id)
@@ -245,13 +242,22 @@ func tcpUp(port int) bool {
 	return true
 }
 
-// instanceLogPath 实例访问/错误统一日志文件
+// instanceLogPath 实例访问/错误统一日志：<日志目录>/php/<实例ID>.log（按服务名识别，基础目录设置页可改）
 func instanceLogPath(id string) (string, error) {
-	dir, err := instanceDir(id)
+	dir, err := appdirs.Logs("php")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "php_server.log"), nil
+	return filepath.Join(dir, filepath.Base(id)+".log"), nil
+}
+
+// legacyInstanceLogPath 旧版实例日志（实例工作目录下 php_server.log）：仅用于兼容读取历史日志
+func legacyInstanceLogPath(id string) string {
+	dir, err := instanceDir(id)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "php_server.log")
 }
 
 // StartInstance 启动 php -S 内置服务器：
@@ -291,7 +297,10 @@ func StartInstance(id string) error {
 			return err
 		}
 	}
-	logPath := filepath.Join(instDir, "php_server.log")
+	logPath, err := instanceLogPath(id)
+	if err != nil {
+		return err
+	}
 	lf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
@@ -452,6 +461,12 @@ func Logs(id string, n int) ([]string, error) {
 	}
 	if lines := tailLines(logPath, n); len(lines) > 0 {
 		return lines, nil
+	}
+	// 兼容旧版：实例目录下的 php_server.log
+	if legacy := legacyInstanceLogPath(id); legacy != "" {
+		if lines := tailLines(legacy, n); len(lines) > 0 {
+			return lines, nil
+		}
 	}
 	if p := trackedSrv(id); p != nil {
 		return p.mem.Lines(n), nil

@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"go-tools/appdirs"
+
 	"github.com/shirou/gopsutil/v3/process"
 )
 
@@ -202,14 +204,9 @@ func sanitizeDirName(s string) string {
 	return s
 }
 
-// defaultDocRoot 默认站点目录：<exedir>/data/www/<实例名>，与 PHP 包保持一致
+// defaultDocRoot 默认站点目录：<数据目录>/www/<实例名>，与 PHP 包保持一致（基础目录设置页可改）
 func defaultDocRoot(id, name string) string {
-	base := ""
-	if exe, err := os.Executable(); err == nil {
-		base = filepath.Join(filepath.Dir(exe), "data", "www")
-	} else if d, err := goToolsDir(); err == nil {
-		base = filepath.Join(d, "www")
-	}
+	base := filepath.Join(appdirs.DataBase(), "www")
 	dir := sanitizeDirName(name)
 	if dir == "" {
 		dir = sanitizeDirName(id)

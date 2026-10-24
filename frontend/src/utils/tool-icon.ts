@@ -1,4 +1,4 @@
-import iconData from "@/components/select-modal/icon/icon.json";
+import iconData from "@/components/common/select-icon-modal/icon.json";
 
 interface IconfontItem {
     name?: string;

@@ -35,6 +35,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -134,34 +136,11 @@ type ExtensionInfo struct {
 
 /* ============================ 目录约定 ============================ */
 
-func goToolsDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", herr
-		}
-		base = filepath.Join(home, ".config")
-	}
-	dir := filepath.Join(base, "go-tools")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// goToolsDir 数据目录 data/php：实例登记/配置缓存（基础目录设置页可改，见 appdirs）
+func goToolsDir() (string, error) { return appdirs.Data("php") }
 
-// pluginsRoot 插件目录 <exedir>/plugins/php：内置版本、安装版本与离线 zip 的统一位置（确保存在）
-func pluginsRoot() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(filepath.Dir(exe), "plugins", "php")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// pluginsRoot 插件目录 plugins/php：内置版本、安装版本与离线 zip 的统一位置（确保存在）
+func pluginsRoot() (string, error) { return appdirs.Plugins("php") }
 
 // PluginsDir 导出版：返回插件目录（供前端展示离线包放置指引）
 func PluginsDir() (string, error) { return pluginsRoot() }

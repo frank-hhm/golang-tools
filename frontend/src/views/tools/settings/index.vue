@@ -30,48 +30,6 @@
                 </template>
 
                 <div class="tab-content">
-                    <!-- ===================== 日志设置 ===================== -->
-                    <a-card v-show="activeTab === 'log'" class="pane-card">
-                        <template #title>日志文件</template>
-                        <template #extra>
-                            <a-space>
-                                <a-button v-if="activePath" size="small" @click="openLogDir">打开日志目录</a-button>
-                                <a-button size="small" @click="resetLog">恢复默认</a-button>
-                            </a-space>
-                        </template>
-                        <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
-                            <a-form-item field="enabled">
-                                <template #label>启用文件日志</template>
-                                <a-switch type="round" v-model="form.log.enabled" @change="scheduleSave(0)" />
-                                <span class="hint">关闭后不再写入日志文件（仅开发控制台可见）。</span>
-                            </a-form-item>
-
-                            <a-form-item field="level">
-                                <template #label>日志级别</template>
-                                <a-select v-model="form.log.level" style="width: 220px" @change="scheduleSave(0)">
-                                    <a-option value="debug">debug（最详细）</a-option>
-                                    <a-option value="info">info（默认，含操作记录）</a-option>
-                                    <a-option value="warn">warn（含异常告警）</a-option>
-                                    <a-option value="error">error（仅错误）</a-option>
-                                </a-select>
-                            </a-form-item>
-
-                            <a-form-item field="path">
-                                <template #label>日志目录</template>
-                                <div class="path-row">
-                                    <a-input v-model="form.log.path" placeholder="留空使用默认目录（程序目录下 logs）"
-                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
-                                        @clear="scheduleSave(0)" />
-                                    <a-button @click="pickDir">选择目录</a-button>
-                                </div>
-                                <div class="hint">只需配置一个目录，日志按“级别 + 当前日期”自动分文件，如
-                                    Error20261022.log、Info20261022.log（Warn/Debug 同理）。当前目录：{{
-                                    activePath || "（未加载）" }}</div>
-                            </a-form-item>
-
-                        </a-form>
-                    </a-card>
-
                     <!-- ===================== 通用设置 ===================== -->
                     <a-card v-show="activeTab === 'general'" class="pane-card">
                         <template #title>应用与外观</template>
@@ -109,6 +67,49 @@
                                 <template #label>开机默认启动</template>
                                 <a-switch  type="round" v-model="form.general.autoStart" @change="scheduleSave(0)" />
                                 <span class="hint">开启后 Windows 登录时自动启动应用。</span>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
+
+                    <!-- ===================== 目录设置 ===================== -->
+                    <a-card v-show="activeTab === 'paths'" class="pane-card">
+                        <template #title>全局目录布局</template>
+                        <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
+                            <a-form-item field="paths.plugins">
+                                <template #label>插件目录（plugins）</template>
+                                <div class="path-row">
+                                    <a-input v-model="form.paths.plugins" placeholder="留空使用默认（应用目录/plugins）"
+                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                        @clear="scheduleSave(0)" />
+                                    <a-button @click="pickBaseDir('plugins', '选择插件目录')">选择目录</a-button>
+                                </div>
+                                <div class="hint">服务程序安装位置：PHP/Nginx/MySQL/Redis/npm 等按服务名建子目录（plugins/服务名）。修改后新安装/下载的服务落到新目录。</div>
+                            </a-form-item>
+                            <a-form-item field="paths.data">
+                                <template #label>数据目录（data）</template>
+                                <div class="path-row">
+                                    <a-input v-model="form.paths.data" placeholder="留空使用默认（应用目录/data）"
+                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                        @clear="scheduleSave(0)" />
+                                    <a-button @click="pickBaseDir('data', '选择数据目录')">选择目录</a-button>
+                                </div>
+                                <div class="hint">服务配置缓存与实例工作目录（data/服务名）；截图另存、录像、站点根等文件的默认落点（data/screenshots、data/videos、data/www）。保存后各另存对话框默认目录随即使用新路径。</div>
+                            </a-form-item>
+                            <a-form-item field="log.enabled">
+                                <template #label>启用文件日志</template>
+                                <a-switch type="round" v-model="form.log.enabled" @change="scheduleSave(0)" />
+                                <span class="hint">关闭后不再写入日志文件（仅开发控制台可见）。</span>
+                            </a-form-item>
+                            <a-form-item field="paths.logs">
+                                <template #label>日志目录（logs）</template>
+                                <div class="path-row">
+                                    <a-input v-model="form.paths.logs" placeholder="留空使用默认（应用目录/logs）"
+                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                        @clear="scheduleSave(0)" />
+                                    <a-button @click="pickBaseDir('logs', '选择日志目录')">选择目录</a-button>
+                                    <a-button v-if="activePath" @click="openLogDir">打开日志目录</a-button>
+                                </div>
+                                <div class="hint">程序与各服务日志的根目录，按服务名建子目录：logs/app 程序日志、logs/mysql SQL 日志、logs/php 实例服务日志等。开启文件日志后 info / warn / error 全部记录，按“级别 + 当前日期”自动分文件（如 Info20261022.log、Warn20261022.log、Error20261022.log）。当前程序日志目录：{{ activePath || "（未加载）" }}</div>
                             </a-form-item>
                         </a-form>
                     </a-card>
@@ -317,7 +318,7 @@
 import { computed, createVNode, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref, render as renderVNode, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
-import iconData from "@/components/select-modal/icon/icon.json";
+import iconData from "@/components/common/select-icon-modal/icon.json";
 import { applyTheme, type ThemeMode } from "@/utils/theme";
 import {
     arcoIconComp as iconComp,
@@ -380,15 +381,17 @@ interface ToolRow {
 }
 
 /** 完整配置（保存时整体回传） */
-const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, tools: [] });
+const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, paths: { plugins: "", data: "", logs: "" }, tools: [] });
 const form = reactive<{
     log: { enabled: boolean; level: string; path: string };
     ball: { enabled: boolean; icon: string };
     general: { autoStart: boolean; appName: string; appLogo: string; theme: string };
+    paths: { plugins: string; data: string; logs: string };
 }>({
     log: { enabled: true, level: "info", path: "" },
     ball: { enabled: false, icon: "" },
     general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" },
+    paths: { plugins: "", data: "", logs: "" },
 });
 const tools = ref<ToolRow[]>([]);
 
@@ -398,12 +401,12 @@ let saveChain: Promise<void> = Promise.resolve();
 
 /** 设置分类：左侧导航与右侧面板标题共用 */
 const SETTING_TABS = [
-    { key: "log", label: "日志", icon: "IconFile" },
     { key: "general", label: "通用", icon: "IconSettings" },
+    { key: "paths", label: "目录", icon: "IconFolder" },
     { key: "ball", label: "浮动球", icon: "IconDesktop" },
     { key: "tools", label: "工具", icon: "IconApps" },
 ];
-const activeTab = ref("log");
+const activeTab = ref("general");
 const activeTabMeta = computed(() => SETTING_TABS.find((t) => t.key === activeTab.value) || SETTING_TABS[0]);
 
 /** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
@@ -544,9 +547,10 @@ async function load() {
         const cfg = await GoTools?.GetConfig();
         if (cfg) {
             fullConfig.value = cfg;
-            form.log = { enabled: !!cfg.log?.enabled, level: cfg.log?.level || "info", path: cfg.log?.path || "" };
+            form.log = { enabled: !!cfg.log?.enabled, level: cfg.log?.level || "info", path: "" };
             form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "" };
             form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
+            form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "" };
             tools.value = (cfg.tools || []).map(normTool);
         }
         activePath.value = (await GoTools?.GetLogDir()) || "";
@@ -636,11 +640,12 @@ function resetTools() {
 }
 
 /* ---------------- 日志操作 ---------------- */
-async function pickDir() {
+/** 选择全局基础目录（插件/数据/日志）：保存后各服务配置与另存默认目录随即落新路径 */
+async function pickBaseDir(kind: "plugins" | "data" | "logs", title: string) {
     try {
-        const dir = await GoTools?.ChooseLogDir();
+        const dir = await GoTools?.ChooseDir(title);
         if (dir) {
-            form.log.path = dir;
+            form.paths[kind] = dir;
             scheduleSave(0);
         }
     } catch {
@@ -670,7 +675,7 @@ function autoSave(): Promise<void> {
 async function runSave() {
     saving.value = true;
     try {
-        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, tools: tools.value.map(normTool) };
+        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, tools: tools.value.map(normTool) };
         const path = await GoTools?.SaveConfig(payload);
         fullConfig.value = payload;
         activePath.value = path || "";
@@ -681,11 +686,6 @@ async function runSave() {
     } finally {
         saving.value = false;
     }
-}
-
-function resetLog() {
-    form.log = { enabled: true, level: "info", path: "" };
-    scheduleSave(0);
 }
 
 async function openLogDir() {

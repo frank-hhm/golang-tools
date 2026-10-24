@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"go-tools/appdirs"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -56,9 +57,9 @@ type App struct {
 	// 截图选区浮层（WebView 版）：Go 侧只持有冻结帧与窗口句柄
 	capMu    sync.Mutex
 	capFrame *screenshot.CaptureFrame // 抓屏结果，供浮层页面拉取
-	capWin   application.Window       // 全屏浮层窗口
-	capBusy  bool                     // 一次截图进行中（含抓屏的 250ms 等待），拒绝重入
-	capReady bool                     // 浮层已回报首帧完成，看门狗据此决定要不要收场
+	capWin   application.Window       // 全屏浮层窗口（首次冷建，之后隐藏复用，不每次重建）
+	capBusy  bool                     // 一次截图进行中，拒绝重入
+	capReady bool                     // 浮层已回报本次冻结帧就绪，看门狗据此决定要不要销毁
 
 	// 图钉置顶：每张钉住的截图开一个无边框置顶小窗，id → 图片数据/窗口
 	pinMu   sync.Mutex
@@ -1172,21 +1173,14 @@ func (a *App) NpmCliUndoSwitch(layer, entryDir string) error {
 // NpmCliRemoveOverride 删掉 prefix 覆盖层的 npm，让 cmd 回到该 Node 自带的版本
 func (a *App) NpmCliRemoveOverride(entryDir string) error { return npm.RemoveNpmOverride(entryDir) }
 
-// AppDataDir 返回程序目录下的数据子目录（不存在则创建），如 "videos" → <exedir>/data/videos；用作各类另存默认位置
+// AppDataDir 返回全局数据目录下的服务子目录（不存在则创建），如 "videos" → <数据目录>/videos；
+// 数据基础目录默认 <程序目录>/data，设置页修改后新落点随即生效
 func (a *App) AppDataDir(sub string) (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("获取程序目录失败: %w", err)
-	}
 	sub = filepath.Base(filepath.FromSlash(strings.TrimSpace(sub)))
 	if sub == "" || sub == "." || sub == ".." {
 		return "", fmt.Errorf("非法数据子目录名")
 	}
-	dir := filepath.Join(filepath.Dir(exe), "data", sub)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
+	return appdirs.Data(sub)
 }
 
 /* ============================ MySQL 管理 ============================ */
@@ -1733,8 +1727,13 @@ func (a *App) SaveConfig(cfg AppConfig) (string, error) {
 		errLogf("config", "保存配置失败: %v", err)
 		return "", err
 	}
+	// 全局目录布局（paths）可能变更：重新应用并预建服务子目录，需在日志器与工具日志重配置之前
+	initAppDirs(cfg)
 	logDir := InitLogger(cfg.Log)
-	opLogf("config", "配置已保存: %s（日志目录: %s, enabled=%v level=%s, ball=%v, autoStart=%v）", path, logDir, cfg.Log.Enabled, cfg.Log.Level, cfg.Ball.Enabled, cfg.General.AutoStart)
+	// SQL 日志默认目录随日志基础目录变更重解析（配置了固定目录的不受影响）
+	ms := cfg.ToolSettings["mysql"]
+	mysql.ConfigureSQLLog(ms.SQLLogEnabled, ms.SQLLogDir)
+	opLogf("config", "配置已保存: %s（日志目录: %s, enabled=%v level=%s, ball=%v, autoStart=%v, paths=%s|%s|%s）", path, logDir, cfg.Log.Enabled, cfg.Log.Level, cfg.Ball.Enabled, cfg.General.AutoStart, cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs)
 	// 热键可能变更：请求热键线程按新配置重载
 	reloadHotKeys()
 	// 开机自启随设置即时生效（Enable/Disable 均幂等）
@@ -1758,14 +1757,22 @@ func (a *App) SaveConfig(cfg AppConfig) (string, error) {
 
 // ChooseLogDir 弹出原生目录选择框，返回所选目录（取消返回空串）。
 func (a *App) ChooseLogDir() (string, error) {
+	return a.ChooseDir("选择日志目录")
+}
+
+// ChooseDir 弹原生目录选择框（供设置页选择插件/数据/日志等基础目录），取消返回空串。
+func (a *App) ChooseDir(title string) (string, error) {
 	if a.app == nil {
 		return "", fmt.Errorf("应用尚未初始化")
+	}
+	if strings.TrimSpace(title) == "" {
+		title = "选择目录"
 	}
 	dir, err := a.app.Dialog.OpenFile().
 		CanChooseFiles(false).
 		CanChooseDirectories(true).
 		AllowsOtherFileTypes(false).
-		SetTitle("选择日志目录").
+		SetTitle(title).
 		PromptForSingleSelection()
 	if err != nil {
 		return "", err

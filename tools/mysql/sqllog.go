@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 // ============================================================
@@ -47,21 +49,12 @@ var (
 	sqlLogDate    string
 )
 
-// DefaultSQLLogDir 默认 SQL 日志目录：程序目录下 logs（与设置页日志默认目录一致）；
-// 取不到 exe 路径时退回用户配置目录 go-tools/sql-logs。
+// DefaultSQLLogDir 默认 SQL 日志目录：日志基础目录/mysql（基础目录默认 <应用目录>/logs，设置页可改）。
 func DefaultSQLLogDir() string {
-	if exe, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(exe), "logs")
+	if dir, err := appdirs.Logs("mysql"); err == nil {
+		return dir
 	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "sql-logs"
-		}
-		base = filepath.Join(home, ".config")
-	}
-	return filepath.Join(base, "go-tools", "sql-logs")
+	return filepath.Join(appdirs.LogsBase(), "mysql")
 }
 
 // resolveSQLLogDir 规范化日志目录（空=默认；误填文件路径时取所在目录）。

@@ -130,6 +130,7 @@
  */
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { Message } from "@arco-design/web-vue";
+import { Events } from "@wailsio/runtime";
 import { IconArrowRise, IconCheck, IconClose, IconEye, IconMosaic, IconPen, IconSave, IconUndo } from "@arco-design/web-vue/es/icon";
 import {
     DEFAULT_COLOR, DEFAULT_FONT_SIZE, DEFAULT_LW, HANDLE_DIRS, type HandleDir, type Pt, type Rect, type Shape,
@@ -348,51 +349,106 @@ function installErrorReport() {
     });
 }
 
+/** offNewFrame 复用浮层时后端推送“有新冻结帧”事件的解绑句柄 */
+let offNewFrame: any = null;
+/** starting 防止冷挂载与 newframe 事件几乎同时触发时重复初始化 */
+let starting = false;
+
 onMounted(async () => {
     installErrorReport();
-    let f: Frame | null = null;
-    try {
-        f = await $GoTools.GetCaptureFrame();
-    } catch (e: any) {
-        report(`GetCaptureFrame 异常: ${e?.message || e}`);
-        f = null;
-    }
-    if (!f || !f.image) {
-        // 拿不到帧说明后端没走 OpenCaptureOverlay（或已被别的窗口取走）
-        Message.error("未取得屏幕画面，请重新触发截图");
-        setTimeout(onCancel, 800);
-        return;
-    }
-    frame.value = f;
-    imgUrl.value = f.image;
-    measureDpr();
-    ready.value = true;
-    try {
-        await loadImage(f);
-    } catch (e: any) {
-        Message.error("画面解码失败：" + (e?.message || e));
-        onCancel();
-        return;
-    }
-    cursor.value = { x: toCss(f.cursorX), y: toCss(f.cursorY) };
-    hover.value = hitWindow(f.cursorX, f.cursorY, f.windows || []);
-    await nextTick();
-    drawMagnifier();
-    $GoTools.CaptureReady();
+    // 事件与鼠标/键盘绑定只做一次：复用浮层时页面不会重新 mount，
+    // 若放进 beginCapture 会随每次截图累积重复监听器。
     bindEvents();
-    // 显示与 Fullscreen() 之后视口才定型，再测一次 dpr，
-    // 否则创建时的尺寸会被当成换算基准，整层布局都会偏
-    await raf();
-    const before = dpr.value;
-    measureDpr();
-    if (before !== dpr.value) {
-        cursor.value = { x: toCss(f.cursorX), y: toCss(f.cursorY) };
-        redraw();
-        drawMagnifier();
-    }
-    report(`就绪 视口${window.innerWidth}x${window.innerHeight} 帧${f.w}x${f.h} `
-        + `dpr ${before.toFixed(3)}→${dpr.value.toFixed(3)} 可截窗口${f.windows?.length ?? 0}`);
+    offNewFrame = Events.On("capture:newframe", () => {
+        void beginCapture();
+    });
+    // 冷建路径：后端在开窗前已备好冻结帧，首挂载直接取帧即可。
+    await beginCapture();
 });
+
+/**
+ * 取回后端准备好的冻结帧并初始化一次截图会话。
+ *
+ * 冷建与复用两条路径都走这里：冷建时由 onMounted 触发一次，复用时由后端的
+ * capture:newframe 事件触发。复用会先 resetSession 清掉上一轮的选区/标注，
+ * 否则旧框会残留到新画面上。取不到帧（隐藏待命 / 帧未就绪）时静默返回，
+ * 交给看门狗在超时后销毁坏窗口，不弹错误也不自行收场。
+ */
+async function beginCapture() {
+    if (starting) return;
+    starting = true;
+    try {
+        resetSession();
+        let f: Frame | null = null;
+        try {
+            f = await $GoTools.GetCaptureFrame();
+        } catch (e: any) {
+            report(`GetCaptureFrame 异常: ${e?.message || e}`);
+            f = null;
+        }
+        if (!f || !f.image) {
+            report("无可用冻结帧，等待 capture:newframe");
+            return;
+        }
+        frame.value = f;
+        imgUrl.value = f.image;
+        measureDpr();
+        ready.value = true;
+        try {
+            await loadImage(f);
+        } catch (e: any) {
+            report(`画面解码失败: ${e?.message || e}`);
+            return;
+        }
+        cursor.value = { x: toCss(f.cursorX), y: toCss(f.cursorY) };
+        hover.value = hitWindow(f.cursorX, f.cursorY, f.windows || []);
+        await nextTick();
+        drawMagnifier();
+        $GoTools.CaptureReady();
+        // 显示与 Fullscreen() 之后视口才定型，再测一次 dpr，
+        // 否则创建时的尺寸会被当成换算基准，整层布局都会偏
+        await raf();
+        const before = dpr.value;
+        measureDpr();
+        if (before !== dpr.value) {
+            cursor.value = { x: toCss(f.cursorX), y: toCss(f.cursorY) };
+            redraw();
+            drawMagnifier();
+        }
+        report(`就绪 视口${window.innerWidth}x${window.innerHeight} 帧${f.w}x${f.h} `
+            + `dpr ${before.toFixed(3)}→${dpr.value.toFixed(3)} 可截窗口${f.windows?.length ?? 0}`);
+    } finally {
+        starting = false;
+    }
+}
+
+/** resetSession 清空一次截图会话的全部可变状态，供复用浮层时回到干净起点。 */
+function resetSession() {
+    frame.value = null;
+    ready.value = false;
+    imgUrl.value = "";
+    srcCanvas.value = null;
+    sel.value = null;
+    hover.value = null;
+    cursor.value = { x: 0, y: 0 };
+    picking.value = false;
+    liveDrag.value = { x1: 0, y1: 0, x2: 0, y2: 0 };
+    tool.value = "none";
+    color.value = DEFAULT_COLOR;
+    lw.value = DEFAULT_LW;
+    fontSize.value = DEFAULT_FONT_SIZE;
+    shapes.value = [];
+    live.value = null;
+    editBox.value = null;
+    toolbarHidden.value = false;
+    hoverColor.value = "#000000";
+    phase.value = "pick";
+    press = { kind: "none" };
+    boxDrag = null;
+    ocrVisible.value = false;
+    ocrText.value = "";
+    ocrLoading.value = false;
+}
 
 function raf() {
     return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -429,7 +485,17 @@ function loadImage(f: Frame) {
     });
 }
 
-onBeforeUnmount(unbindEvents);
+onBeforeUnmount(() => {
+    unbindEvents();
+    if (offNewFrame) {
+        try {
+            offNewFrame();
+        } catch {
+            /* ignore */
+        }
+        offNewFrame = null;
+    }
+});
 
 /* ---------------- 事件 ---------------- */
 function bindEvents() {

@@ -36,6 +36,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 /* ============================ 类型 ============================ */
@@ -97,21 +99,8 @@ type ServerLogLine struct {
 
 /* ============================ 目录约定 ============================ */
 
-func goToolsDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", herr
-		}
-		base = filepath.Join(home, ".config")
-	}
-	dir := filepath.Join(base, "go-tools")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// goToolsDir 数据目录 data/redis：实例登记与实例数据目录（基础目录设置页可改，见 appdirs）
+func goToolsDir() (string, error) { return appdirs.Data("redis") }
 
 // downloadedRoot 旧版下载缓存根目录（含 locals.json 登记表；新安装统一落插件目录）
 func downloadedRoot() (string, error) {
@@ -126,18 +115,8 @@ func downloadedRoot() (string, error) {
 	return dir, nil
 }
 
-// offlineRoot 插件目录 <exedir>/plugins/redis：内置版本与离线安装 zip 的默认放置位置（确保存在）
-func offlineRoot() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(filepath.Dir(exe), "plugins", "redis")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// offlineRoot 插件目录 plugins/redis：内置版本与离线安装 zip 的默认放置位置（确保存在）
+func offlineRoot() (string, error) { return appdirs.Plugins("redis") }
 
 // OfflineDir 导出版：返回插件离线目录（供前端展示放置指引）
 func OfflineDir() (string, error) { return offlineRoot() }

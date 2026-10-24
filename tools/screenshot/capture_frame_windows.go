@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -54,9 +55,22 @@ func CaptureScreenFrame() (*CaptureFrame, error) {
 	if img == nil {
 		return nil, fmt.Errorf("抓屏失败：屏幕或显卡驱动不可访问")
 	}
+
+	// 枚举窗口是跨进程 IPC（每个候选窗 1~2 次 DwmGetWindowAttribute），与
+	// CPU 密集的整屏 PNG 编码彼此独立：并行跑，把枚举耗时藏进编码里。窗口开
+	// 得越多、机器越老，这段重叠省下的绝对时间越明显。
+	var wins []CaptureWindowInfo
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		wins = listVisibleWindows()
+	}()
+
 	var buf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.BestSpeed}
 	if err := enc.Encode(&buf, img); err != nil {
+		wg.Wait()
 		return nil, fmt.Errorf("PNG 编码失败: %w", err)
 	}
 	bounds := img.Bounds()
@@ -68,7 +82,10 @@ func CaptureScreenFrame() (*CaptureFrame, error) {
 	}
 	cx, cy := getCursorPos()
 	frame.CursorX, frame.CursorY = int(cx), int(cy)
-	frame.Windows = listVisibleWindows()
+
+	wg.Wait()
+	frame.Windows = wins
+
 	selLogf("冻结帧 %dx%d dpr=%.2f png=%dKB 可见窗口=%d",
 		frame.W, frame.H, frame.DPR, buf.Len()/1024, len(frame.Windows))
 	return frame, nil
@@ -136,13 +153,33 @@ type winRect struct {
 // 所以累加目标经 lParam 传成一个 *[]CaptureWindowInfo 指针。
 // 取回时读的是 lParam 这个局部变量自己的地址（而非把 uintptr 转成指针），
 // 既符合 syscall 惯例也不会触发 vet 的 unsafe.Pointer 告警。
+//
+// 过滤按“越来越贵”排序：先做几次纯 user32 本地调用（可见性 / 标题长度 /
+// GetWindowRect 尺寸初筛 / 进程归属），把明显无关的窗口挡在外面，最后才对
+// 幸存窗口发 DWM 跨进程调用。窗口开得越多，省下的 DWM 往返越可观。
 func enumWindowsProc(hwnd, lParam uintptr) uintptr {
 	if v, _, _ := procIsWindowVisible.Call(hwnd); v == 0 {
 		return 1
 	}
 	// 无标题的窗口多是 shell 的宿主窗（Program Manager / WorkerW / 托盘幽灵窗），
-	// 它们铺满整屏，若不排除会把真正的应用全部盖住。
-	if n, _, _ := procGetWindowTextLW.Call(hwnd); n == 0 {
+	// 它们铺满整屏，若不排除会把真正的应用全部盖住。长度顺手留给后面取标题用。
+	n, _, _ := procGetWindowTextLW.Call(hwnd)
+	if n == 0 {
+		return 1
+	}
+	// 便宜的 GetWindowRect 先做尺寸初筛（含 Win10/11 那圈约 7px 透明边框也无妨，
+	// 只是超集），明显过小的幽灵窗就此出局，不必再动 DWM。
+	var r winRect
+	if ret, _, _ := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); ret == 0 {
+		return 1
+	}
+	if r.right-r.left < 8 || r.bottom-r.top < 8 {
+		return 1
+	}
+	// 本进程自己的窗口全部剔除：浮层里再列出「截图预览」「主窗口」没有意义
+	var pid uint32
+	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	if pid == selfProcessID {
 		return 1
 	}
 	// 被 DWM 遮蔽（UWP 挂起、最小化的现代应用）的窗口画不出内容，跳过
@@ -151,18 +188,12 @@ func enumWindowsProc(hwnd, lParam uintptr) uintptr {
 	if cloaked != 0 {
 		return 1
 	}
-	r := windowBounds(hwnd)
-	if r.right-r.left < 8 || r.bottom-r.top < 8 {
-		return 1
-	}
-	title := windowTitle(hwnd)
+	// 真实可见边界优先用 DWM 的 EXTENDED_FRAME_BOUNDS（去掉那圈透明边框，否则截出
+	// 来会带黑边）；调用失败时 DWM 不写缓冲，r 仍是上面 GetWindowRect 的结果。
+	procDwmGetWindowAttr.Call(hwnd, dwmwaExtendedFrameBounds,
+		uintptr(unsafe.Pointer(&r)), uintptr(unsafe.Sizeof(r)))
+	title := windowTitleN(hwnd, int(n))
 	if title == "" {
-		return 1
-	}
-	// 本进程自己的窗口全部剔除：浮层里再列出「截图预览」「主窗口」没有意义
-	var pid uint32
-	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
-	if pid == selfProcessID {
 		return 1
 	}
 	out := *(**[]CaptureWindowInfo)(unsafe.Pointer(&lParam))
@@ -176,24 +207,10 @@ func enumWindowsProc(hwnd, lParam uintptr) uintptr {
 
 var selfProcessID = uint32(windows.GetCurrentProcessId())
 
-// windowBounds 取窗口真实可见边界。
-// GetWindowRect 含一圈透明的可调整边框（Win10/11 上每边约 7px），截出来会带黑边，
-// 所以优先用 DWM 的 EXTENDED_FRAME_BOUNDS，失败才回退。
-func windowBounds(hwnd uintptr) winRect {
-	var r winRect
-	if ret, _, _ := procDwmGetWindowAttr.Call(hwnd, dwmwaExtendedFrameBounds,
-		uintptr(unsafe.Pointer(&r)), uintptr(unsafe.Sizeof(r))); ret == 0 {
-		return r
-	}
-	if ret, _, _ := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); ret != 0 {
-		return r
-	}
-	return winRect{}
-}
-
-func windowTitle(hwnd uintptr) string {
-	n, _, _ := procGetWindowTextLW.Call(hwnd)
-	if n == 0 {
+// windowTitleN 按已知标题长度（前面 GetWindowTextLengthW 已取过）读取窗口标题，
+// 避免对同一窗口重复调用 GetWindowTextLengthW。
+func windowTitleN(hwnd uintptr, n int) string {
+	if n <= 0 {
 		return ""
 	}
 	buf := make([]uint16, n+2)

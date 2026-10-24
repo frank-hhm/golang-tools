@@ -35,6 +35,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -116,9 +118,9 @@ type NpmPackage struct {
 	Version      string `json:"version"`
 	Description  string `json:"description"`
 	Path         string `json:"path"`
-	Manager      string `json:"manager"`   // 归属的包管理器（npm / yarn / pnpm …）
-	HasBin       bool   `json:"hasBin"`    // 是否提供命令行入口
-	Builtin      bool   `json:"builtin"`   // 随 Node 发行（npm 本体），不可卸载
+	Manager      string `json:"manager"` // 归属的包管理器（npm / yarn / pnpm …）
+	HasBin       bool   `json:"hasBin"`  // 是否提供命令行入口
+	Builtin      bool   `json:"builtin"` // 随 Node 发行（npm 本体），不可卸载
 	DependentsOn string `json:"-"`
 }
 
@@ -130,34 +132,11 @@ type NpmConfigKV struct {
 
 /* ============================ 目录约定 ============================ */
 
-func goToolsDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", herr
-		}
-		base = filepath.Join(home, ".config")
-	}
-	dir := filepath.Join(base, "go-tools")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// goToolsDir 数据目录 data/npm：实例登记、托管 npmrc、版本切换记录（基础目录设置页可改，见 appdirs）
+func goToolsDir() (string, error) { return appdirs.Data("npm") }
 
-// pluginsRoot 插件目录 <exedir>/plugins/npm（确保存在）
-func pluginsRoot() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(filepath.Dir(exe), "plugins", "npm")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// pluginsRoot 插件目录 plugins/npm（确保存在）
+func pluginsRoot() (string, error) { return appdirs.Plugins("npm") }
 
 // PluginsDir 导出版：返回插件目录（供前端展示离线包放置指引）
 func PluginsDir() (string, error) { return pluginsRoot() }

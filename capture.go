@@ -49,17 +49,15 @@ func (a *App) OpenCaptureOverlay() error {
 
 	defer func() {
 		if r := recover(); r != nil {
-			a.capMu.Lock()
-			a.capBusy = false
-			a.capWin = nil
-			a.capMu.Unlock()
 			errLogf("capture", "打开选区浮层 panic: %v", r)
+			// 关窗+复位，避免遗留一个半死的浮层既抓不住又挡住下次截图。
+			a.destroyCaptureOverlay()
 		}
 	}()
 
-	// 等一下：热键往往来自托盘菜单/通知卡片，让它们先从屏幕上消失再抓帧，
-	// 否则这些转瞬即逝的东西会被定格进冻结帧里。
-	time.Sleep(250 * time.Millisecond)
+	// 立即抓屏。旧实现在此固定 sleep 250ms 等托盘菜单/通知卡片消失，但每次
+	// “调起”都要干等这 250ms，老机器上尤其拖慢手感；瞬态提示被定格只是
+	// 极少数场景，不值得每次截图都付这段延迟。
 	frame, err := screenshot.CaptureScreenFrame()
 	if err != nil {
 		a.capMu.Lock()
@@ -71,7 +69,18 @@ func (a *App) OpenCaptureOverlay() error {
 	a.capMu.Lock()
 	a.capFrame = frame
 	a.capReady = false
+	existing := a.capWin
 	a.capMu.Unlock()
+
+	// 复用已存在的隐藏浮层：跳过“新建 WebView2 窗口 + 页面 bootstrap”——这才是
+	// 调起慢的最大头。只把新冻结帧推给它，让页面重新取帧、重置会话并回报就绪。
+	if existing != nil {
+		opLogf("capture", "复用浮层，推送新冻结帧 %dx%d dpr=%.2f 窗口=%d 个",
+			frame.W, frame.H, frame.DPR, len(frame.Windows))
+		a.app.Event.Emit("capture:newframe")
+		go a.captureReadyWatchdog()
+		return nil
+	}
 
 	dpr := frame.DPR
 	if dpr <= 0 {
@@ -109,17 +118,8 @@ func (a *App) OpenCaptureOverlay() error {
 	a.capWin = w
 	a.capMu.Unlock()
 
-	// 兜底：前端若因故没能回报就绪，超时后直接收场，别把后续截图卡死。
-	go func() {
-		time.Sleep(captureReadyTimeout)
-		a.capMu.Lock()
-		stale := a.capWin != nil && !a.capReady
-		a.capMu.Unlock()
-		if stale {
-			warnLogf("capture", "选区浮层 %s 内未就绪，自动关闭", captureReadyTimeout)
-			a.CloseCaptureOverlay()
-		}
-	}()
+	// 兜底：前端若因故没能回报就绪，超时后销毁窗口，别把后续截图卡死。
+	go a.captureReadyWatchdog()
 
 	opLogf("capture", "选区浮层已打开 %dx%d dpr=%.2f 窗口=%d 个",
 		frame.W, frame.H, frame.DPR, len(frame.Windows))
@@ -186,9 +186,10 @@ func (a *App) CaptureCancel() {
 	a.closeOverlayLater(0)
 }
 
-// closeOverlayLater 延迟关闭浮层，给当前这次绑定调用留出返回的时机。
+// closeOverlayLater 延迟收场浮层，给当前这次绑定调用留出返回的时机。
+// 正常结束时隐藏而非关闭，以便下次截图复用同一个窗口。
 func (a *App) closeOverlayLater(d time.Duration) {
-	time.AfterFunc(d, a.CloseCaptureOverlay)
+	time.AfterFunc(d, a.hideCaptureOverlay)
 }
 
 // CaptureLog 浮层回写一条诊断日志。
@@ -337,8 +338,43 @@ func (a *App) ClosePinnedImage(id int) {
 	}
 }
 
-// CloseCaptureOverlay 关闭浮层窗口并复位会话状态。
+// CloseCaptureOverlay 兼容旧调用名：彻底关闭并丢弃浮层窗口（异常收场时用），
+// 下次截图会冷建一个新窗口。
 func (a *App) CloseCaptureOverlay() {
+	a.destroyCaptureOverlay()
+}
+
+// captureReadyWatchdog 就绪看门狗：一次截图在 captureReadyTimeout 内仍未收到
+// 前端 CaptureReady 回报，就判定浮层页面异常（JS 抛错/绑定缺失），销毁窗口，
+// 下次截图会重新冷建——不复用一个可能已坏死的面板。
+func (a *App) captureReadyWatchdog() {
+	time.Sleep(captureReadyTimeout)
+	a.capMu.Lock()
+	stale := a.capWin != nil && !a.capReady
+	a.capMu.Unlock()
+	if stale {
+		warnLogf("capture", "选区浮层 %s 内未就绪，销毁窗口", captureReadyTimeout)
+		a.destroyCaptureOverlay()
+	}
+}
+
+// hideCaptureOverlay 结束一次截图：隐藏浮层窗口并复位状态，但保留窗口对象，
+// 供下次截图直接复用（省去重建 WebView2 的开销）。窗口隐藏后不会被下次
+// 冻结帧抓进去（GDI 抓屏不含 SW_HIDE 窗口）。
+func (a *App) hideCaptureOverlay() {
+	a.capMu.Lock()
+	w := a.capWin
+	a.capFrame = nil
+	a.capReady = false
+	a.capBusy = false
+	a.capMu.Unlock()
+	if w != nil {
+		w.Hide()
+	}
+}
+
+// destroyCaptureOverlay 彻底关闭并丢弃浮层窗口对象（看门狗超时/异常时用）。
+func (a *App) destroyCaptureOverlay() {
 	a.capMu.Lock()
 	w := a.capWin
 	a.capWin = nil

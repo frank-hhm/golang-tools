@@ -943,21 +943,23 @@ func ballShowMenu(ballHwnd uintptr) {
 		return
 	}
 
-	// 位置：锚定球右上角（菜单左下角贴球可见圆面的右上角）并整体左移/下移各 4px 紧贴球体，再钓制到工作区
+	// 位置：锚定球右上角，菜单整体置于球上方并留出间隙（不压住球体）——
+	// 菜单四周 14px 投影边距是半透明的，若紧贴/压住球体，球 logo 会透过
+	// 圆角/投影露出（“齿轮”残影，历史上出现过两次）；再钓制到工作区。
 	var br, wa ballRect
 	ballGetRect.Call(ballHwnd, uintptr(unsafe.Pointer(&br)))
 	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&wa)), 0)
 	sp := int32(ballShadowPad)
 	menuX := br.Right - sp - bmPx(4)
-	menuY := br.Top + sp - ballMenuH + bmPx(4)
-	if menuX+ballMenuW > wa.Right { // 右侧放不下 → 翻到球左侧
+	menuY := br.Top + sp - ballMenuH - bmPx(10) // 菜单底边在球可见圆面上方留 10px 间隙
+	if menuX+ballMenuW > wa.Right {             // 右侧放不下 → 翻到球左侧
 		menuX = br.Left + sp + bmPx(4) - ballMenuW
 	}
 	if menuX < wa.Left {
 		menuX = wa.Left
 	}
-	if menuY < wa.Top { // 上方放不下 → 翻到球下方
-		menuY = br.Bottom - sp + bmPx(4)
+	if menuY < wa.Top { // 上方放不下 → 翻到球下方（同样留间隙）
+		menuY = br.Bottom - sp + bmPx(10)
 	}
 	if menuY+ballMenuH > wa.Bottom {
 		menuY = wa.Bottom - ballMenuH

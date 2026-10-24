@@ -8,13 +8,14 @@ export {}
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     BlankLayout: typeof import('./src/components/layouts/BlankLayout.vue')['default']
-    BodyViewer: typeof import('./src/components/body-viewer/index.vue')['default']
-    Icon: typeof import('./src/components/select-modal/icon/index.vue')['default']
+    BodyViewer: typeof import('./src/components/business/body-viewer/index.vue')['default']
     LayoutBody: typeof import('./src/components/layouts/LayoutBody.vue')['default']
     Layouts: typeof import('./src/components/layouts/index.vue')['default']
-    Page: typeof import('./src/components/plugins/page/index.vue')['default']
+    Pager: typeof import('./src/components/common/pager/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SelectIconModal: typeof import('./src/components/common/select-icon-modal/index.vue')['default']
+    ThemeSwitch: typeof import('./src/components/common/theme-switch/index.vue')['default']
     WinTitleBar: typeof import('./src/components/layouts/WinTitleBar.vue')['default']
   }
 }

@@ -8,6 +8,7 @@ export interface AppConfig {
     "log": LogConfig;
     "ball": BallConfig;
     "general": GeneralConfig;
+    "paths": PathsConfig;
     "tools": ToolConfig[] | null;
 
     /**
@@ -89,6 +90,27 @@ export interface LogConfig {
      * 日志目录；空 = 默认（配置目录下 go-tools/logs）。按级别+日期自动分文件：Error20261022.log / Info20261022.log 等
      */
     "path": string;
+}
+
+/**
+ * PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/paths.go）；
+ * 空 = 默认 <应用目录>/plugins|data|logs。修改保存后，各服务配置与另存文件默认目录随即落新路径。
+ */
+export interface PathsConfig {
+    /**
+     * 插件目录：服务程序安装位置（php/nginx/mysql/redis/npm）
+     */
+    "plugins": string;
+
+    /**
+     * 数据目录：服务配置缓存/实例工作目录/截图录像等另存默认位置
+     */
+    "data": string;
+
+    /**
+     * 日志目录：各服务日志与程序日志（logs/<服务名>）
+     */
+    "logs": string;
 }
 
 /**

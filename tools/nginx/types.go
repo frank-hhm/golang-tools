@@ -32,6 +32,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -105,43 +107,11 @@ type InstallProgress struct {
 
 /* ============================ 目录约定 ============================ */
 
-// goToolsDir 返回 Nginx 数据目录。
-// 优先使用可移植目录 <exedir>/data/（与 PHP 的 defaultDocRoot 保持同一层次），
-// 失败时回退到 %APPDATA%/go-tools/。
-func goToolsDir() (string, error) {
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Join(filepath.Dir(exe), "data")
-		if err := os.MkdirAll(dir, 0o755); err == nil {
-			return dir, nil
-		}
-	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", herr
-		}
-		base = filepath.Join(home, ".config")
-	}
-	dir := filepath.Join(base, "go-tools")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// goToolsDir 数据目录 data/nginx：实例登记与实例工作目录（基础目录设置页可改，见 appdirs）
+func goToolsDir() (string, error) { return appdirs.Data("nginx") }
 
-// pluginsRoot 插件目录 <exedir>/plugins/nginx（确保存在）
-func pluginsRoot() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(filepath.Dir(exe), "plugins", "nginx")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// pluginsRoot 插件目录 plugins/nginx（确保存在）
+func pluginsRoot() (string, error) { return appdirs.Plugins("nginx") }
 
 // PluginsDir 导出版：返回插件目录（供前端展示离线包放置指引）
 func PluginsDir() (string, error) { return pluginsRoot() }

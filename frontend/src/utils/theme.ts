@@ -7,24 +7,26 @@
  */
 export type ThemeMode = "light" | "dark" | "auto";
 
-const STORAGE_KEY = "app-theme-mode";
+/** 主题模式在 localStorage 的键（storage 事件据此跨窗口同步，如 common-theme-switch 组件） */
+export const THEME_STORAGE_KEY = "app-theme-mode";
 
 function prefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function isDark(mode: ThemeMode): boolean {
+/** 主题模式最终呈现是否为暗黑（auto 按系统实际偏好判定） */
+export function isDark(mode: ThemeMode): boolean {
   return mode === "dark" || (mode === "auto" && prefersDark());
 }
 
 /** 当前主题模式（localStorage 优先） */
 export function currentTheme(): ThemeMode {
-  return (localStorage.getItem(STORAGE_KEY) as ThemeMode) || "light";
+  return (localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode) || "light";
 }
 
 /** 立即应用主题：切换 body 的 arco-theme 属性并记忆选择 */
 export function applyTheme(mode: ThemeMode) {
-  localStorage.setItem(STORAGE_KEY, mode);
+  localStorage.setItem(THEME_STORAGE_KEY, mode);
   const dark = isDark(mode);
   document.body.setAttribute("arco-theme", dark ? "dark" : "light");
   document.documentElement.style.colorScheme = dark ? "dark" : "light";
@@ -43,7 +45,7 @@ export function initTheme() {
   });
   // 其他窗口（如设置页独立窗口）修改主题时，storage 事件自动广播同步
   window.addEventListener("storage", (e) => {
-    if (e.key === STORAGE_KEY && e.newValue) {
+    if (e.key === THEME_STORAGE_KEY && e.newValue) {
       applyTheme(e.newValue as ThemeMode);
     }
   });
@@ -51,7 +53,7 @@ export function initTheme() {
 
 /** 从后端配置回退应用主题（仅本地从未选择过主题时生效） */
 export function syncThemeFromConfig(theme?: string) {
-  if (theme && !localStorage.getItem(STORAGE_KEY)) {
+  if (theme && !localStorage.getItem(THEME_STORAGE_KEY)) {
     applyTheme(theme as ThemeMode);
   }
 }

@@ -4,15 +4,19 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+
+	"go-tools/appdirs"
 )
 
 // ============================================================
 // 全局应用配置（Go 侧 JSON 文件持久化，与 redis/mysql 连接配置同目录）
 //
 // 位置：os.UserConfigDir()/go-tools/config.json
-// 内容：日志设置（开关/级别/路径）+ 可编辑工具列表（含快捷标记、全局热键等）
-// 读取方：全局日志器、浮动球原生菜单、全局热键、前端设置页/首页
+// 内容：日志设置（开关/级别/路径）+ 全局目录布局（插件/数据/日志基础目录）
+//       + 可编辑工具列表（含快捷标记、全局热键等）
+// 读取方：全局日志器、全局目录解析（appdirs）、浮动球原生菜单、全局热键、前端设置页/首页
 // ============================================================
 
 // LogConfig 日志设置
@@ -37,6 +41,14 @@ type GeneralConfig struct {
 	AppName   string `json:"appName"`   // 应用显示名称（窗口标题/托盘提示），默认 "Tools"
 	AppLogo   string `json:"appLogo"`   // 自定义 logo 图片绝对路径，空表示使用内置默认
 	Theme     string `json:"theme"`     // 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
+}
+
+// PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/paths.go）；
+// 空 = 默认 <应用目录>/plugins|data|logs。修改保存后，各服务配置与另存文件默认目录随即落新路径。
+type PathsConfig struct {
+	Plugins string `json:"plugins"` // 插件目录：服务程序安装位置（php/nginx/mysql/redis/npm）
+	Data    string `json:"data"`    // 数据目录：服务配置缓存/实例工作目录/截图录像等另存默认位置
+	Logs    string `json:"logs"`    // 日志目录：各服务日志与程序日志（logs/<服务名>）
 }
 
 // ToolConfig 单个工具项（首页列表 / 浮动球快捷 / 全局热键 共用）
@@ -67,6 +79,7 @@ type AppConfig struct {
 	Log          LogConfig               `json:"log"`
 	Ball         BallConfig              `json:"ball"`
 	General      GeneralConfig           `json:"general"`
+	Paths        PathsConfig             `json:"paths"`
 	Tools        []ToolConfig            `json:"tools"`
 	ToolSettings map[string]ToolSettings `json:"toolSettings"` // 工具级设置，键为工具 Key（如 mysql）
 }
@@ -137,20 +150,12 @@ func ballIconMaskPath() (string, error) {
 	return filepath.Join(filepath.Dir(p), "ball_icon.png"), nil
 }
 
-// defaultLogDir 默认日志目录：程序目录下 logs（取不到 exe 路径时退回用户配置目录 go-tools/logs）。
+// defaultLogDir 程序日志默认目录：日志基础目录/app（基础目录默认 <应用目录>/logs，设置页可改）。
 func defaultLogDir() string {
-	if exe, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(exe), "logs")
+	if dir, err := appdirs.Logs("app"); err == nil {
+		return dir
 	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "logs"
-		}
-		base = filepath.Join(home, ".config")
-	}
-	return filepath.Join(base, "go-tools", "logs")
+	return filepath.Join(appdirs.DefaultRoot(), "logs", "app")
 }
 
 // legacyToolIcons 旧版默认数据中不存在于 Arco 的图标 → 当前图标，避免历史配置图标空白。
@@ -177,6 +182,9 @@ func normalizeConfig(cfg *AppConfig) {
 	if cfg.General.AppName == "" {
 		cfg.General.AppName = "Tools"
 	}
+	cfg.Paths.Plugins = strings.TrimSpace(cfg.Paths.Plugins)
+	cfg.Paths.Data = strings.TrimSpace(cfg.Paths.Data)
+	cfg.Paths.Logs = strings.TrimSpace(cfg.Paths.Logs)
 	switch cfg.General.Theme {
 	case "light", "dark", "auto":
 	default:
@@ -219,9 +227,15 @@ func normalizeConfig(cfg *AppConfig) {
 }
 
 // LoadAppConfig 读取配置；文件不存在/解析失败时回落默认值。结果缓存为当前配置。
+// 首次启动（无任何配置文件）时：自动生成全局目录布局（plugins/data/logs + 服务子目录）
+// 并立即落盘默认配置；同时应用 paths 配置（目录布局随即生效，幂等）。
 func LoadAppConfig() AppConfig {
 	cfg := DefaultConfig()
+	firstRun := false
 	if path, err := configFilePath(); err == nil {
+		if _, serr := os.Stat(path); serr != nil && os.IsNotExist(serr) {
+			firstRun = true
+		}
 		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
 			var loaded AppConfig
 			if err := json.Unmarshal(data, &loaded); err == nil {
@@ -230,6 +244,7 @@ func LoadAppConfig() AppConfig {
 				}
 				cfg.Ball = loaded.Ball
 				cfg.General = loaded.General
+				cfg.Paths = loaded.Paths
 				if len(loaded.Tools) > 0 {
 					cfg.Tools = loaded.Tools
 				}
@@ -240,10 +255,19 @@ func LoadAppConfig() AppConfig {
 		}
 	}
 	normalizeConfig(&cfg)
+	// 应用全局目录布局：设置基础目录 → 迁移旧布局 → 确保服务子目录存在
+	initAppDirs(cfg)
 	appCfgMu.Lock()
 	appCfg = cfg
 	appCfgSet = true
 	appCfgMu.Unlock()
+	if firstRun {
+		// 首次启动：把默认配置（含目录布局）立即写入 config.json
+		appCfgWriteMu.Lock()
+		_, _ = writeAppConfigLocked(cfg)
+		appCfgWriteMu.Unlock()
+		opLogf("config", "首次启动：已生成默认配置与全局目录（plugins/data/logs + 服务子目录）")
+	}
 	return cfg
 }
 

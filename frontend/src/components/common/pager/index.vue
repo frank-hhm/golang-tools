@@ -7,7 +7,7 @@
 </template>
 <script lang="ts">
 export default {
-    name: "page",
+    name: "common-pager",
 };
 </script>
 <script lang="ts" setup>

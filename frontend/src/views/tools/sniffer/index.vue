@@ -195,7 +195,7 @@
                                 </template>
                             </a-table>
                             <div class="pager">
-                                <page :list-page="listPage" @change="onPageChange" />
+                                <common-pager :list-page="listPage" @change="onPageChange" />
                             </div>
                         </div>
                     </a-card>

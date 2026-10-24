@@ -12,12 +12,12 @@ import (
 // ============================================================
 // 全局可配置日志
 //
-//   - 由 config.json 的 Log 段控制：开关 / 最低级别 / 日志目录。
-//   - 只需配置一个目录；按“级别 + 当前日期”自动分文件写入，如：
+//   - 由 config.json 的 Log 段控制：开关 / 日志目录。
+//   - 只需配置一个目录；开启后 info / warn / error 全部记录，按“级别 + 当前日期”自动分文件写入，如：
 //       Error20261022.log / Warn20261022.log / Info20261022.log / Debug20261022.log
 //     跨零点自动切换到新日期文件（按级别各自滚动）。
 //   - 每个关键操作与异常都应通过 opLogf / errLogf（或带 tag 的 appLogf）记录。
-//   - 线程安全；InitLogger 可在设置变更后重复调用以切换目录/级别/开关。
+//   - 线程安全；InitLogger 可在设置变更后重复调用以切换目录/开关。
 //   - 同时输出到文件与标准输出（开发期可见）。
 // ============================================================
 
@@ -38,24 +38,10 @@ type logHandle struct {
 var (
 	loggerMu      sync.Mutex
 	loggerEnabled bool
-	loggerLevel   = logInfo
 	logDir        string
 	logHandles    = map[int]*logHandle{}
 	loggerInited  bool
 )
-
-func levelFromName(s string) int {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "debug":
-		return logDebug
-	case "warn", "warning":
-		return logWarn
-	case "error":
-		return logError
-	default:
-		return logInfo
-	}
-}
 
 func levelName(l int) string {
 	switch l {
@@ -111,7 +97,6 @@ func InitLogger(cfg LogConfig) string {
 		logDir = dir
 	}
 	loggerEnabled = cfg.Enabled
-	loggerLevel = levelFromName(cfg.Level)
 	loggerInited = true
 	return dir
 }
@@ -145,7 +130,7 @@ func writeToFile(level int, line string) {
 	_, _ = h.f.WriteString(line + "\n")
 }
 
-// appLogf 记录一条日志：低于当前级别的被丢弃；未启用文件时仅输出到标准输出。
+// appLogf 记录一条日志：未启用文件日志时丢弃（所有级别写入各自分级文件）。
 func appLogf(level int, tag, format string, args ...any) {
 	// 未初始化时兜底：至少保证开发期 stdout 可见
 	loggerMu.Lock()
@@ -156,10 +141,10 @@ func appLogf(level int, tag, format string, args ...any) {
 		}
 		return
 	}
-	enabled, thr := loggerEnabled, loggerLevel
+	enabled := loggerEnabled
 	loggerMu.Unlock()
 
-	if !enabled || level < thr {
+	if !enabled {
 		return
 	}
 

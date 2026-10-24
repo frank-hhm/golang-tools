@@ -43,7 +43,8 @@ import * as usbserial$0 from "./tools/usbserial/models.js";
 import * as $models from "./models.js";
 
 /**
- * AppDataDir 返回程序目录下的数据子目录（不存在则创建），如 "videos" → <exedir>/data/videos；用作各类另存默认位置
+ * AppDataDir 返回全局数据目录下的服务子目录（不存在则创建），如 "videos" → <数据目录>/videos；
+ * 数据基础目录默认 <程序目录>/data，设置页修改后新落点随即生效
  */
 export function AppDataDir(sub: string): $CancellablePromise<string> {
     return $Call.ByID(3857306371, sub);
@@ -112,6 +113,13 @@ export function ChooseAppLogo(): $CancellablePromise<string> {
 }
 
 /**
+ * ChooseDir 弹原生目录选择框（供设置页选择插件/数据/日志等基础目录），取消返回空串。
+ */
+export function ChooseDir(title: string): $CancellablePromise<string> {
+    return $Call.ByID(12415951, title);
+}
+
+/**
  * ChooseLogDir 弹出原生目录选择框，返回所选目录（取消返回空串）。
  */
 export function ChooseLogDir(): $CancellablePromise<string> {
@@ -133,7 +141,8 @@ export function ClearSnifferFlows(): $CancellablePromise<void> {
 }
 
 /**
- * CloseCaptureOverlay 关闭浮层窗口并复位会话状态。
+ * CloseCaptureOverlay 兼容旧调用名：彻底关闭并丢弃浮层窗口（异常收场时用），
+ * 下次截图会冷建一个新窗口。
  */
 export function CloseCaptureOverlay(): $CancellablePromise<void> {
     return $Call.ByID(499562145);
