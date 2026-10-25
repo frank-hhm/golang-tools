@@ -131,6 +131,7 @@ import { IconCheckCircleFill, IconExclamationCircleFill } from "@arco-design/web
 import { useToolEvents, type ToolItem } from "./events";
 import { useToolWindow } from "./useToolWindow";
 import { arcoIconComp as iconComp, isIconfontIcon, normalizeToolIcon } from "@/utils/tool-icon";
+import { isToolAvailable } from "@/utils/caps";
 
 interface ToolRow extends ToolItem {
   id?: string;
@@ -153,12 +154,15 @@ async function loadTools() {
   try {
     const cfg = await GoTools?.GetConfig();
     const list: any[] = cfg?.tools || [];
-    const next = list.map((t) => ({
-      id: t.id, key: t.key, name: t.name, path: t.path || undefined,
-      event: t.event || undefined, single: !!t.single, fullscreen: !!t.fullscreen,
-      disableFullscreen: !!t.disableFullscreen,
-      width: t.width || undefined, height: t.height || undefined, icon: normalizeToolIcon(t.icon), shortcut: t.shortcut,
-    }));
+    const next = list
+      // 内嵌浏览器（WebView2）与截图（Win32 抓屏）在非桌面构建里没有对应绑定，直接不显示
+      .filter((t) => isToolAvailable(t.path, t.event))
+      .map((t) => ({
+        id: t.id, key: t.key, name: t.name, path: t.path || undefined,
+        event: t.event || undefined, single: !!t.single, fullscreen: !!t.fullscreen,
+        disableFullscreen: !!t.disableFullscreen,
+        width: t.width || undefined, height: t.height || undefined, icon: normalizeToolIcon(t.icon), shortcut: t.shortcut,
+      }));
     const sig = JSON.stringify(next);
     if (sig === toolsSig) return;
     toolsSig = sig;

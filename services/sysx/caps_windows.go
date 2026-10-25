@@ -10,9 +10,10 @@ import "os/exec"
 // 绿色版布局是本项目在 Windows 上的既有约定，因此 PkgMode 为 green。
 func detectCaps() Capabilities {
 	c := Capabilities{
-		OS:         "windows",
-		InitSystem: "direct",
-		PkgMode:    "green",
+		OS:            "windows",
+		InitSystem:    "direct",
+		PkgMode:       "green",
+		NativeWindows: nativeWindows,
 	}
 	// 粗探测：PATH 里有 docker.exe 就认为 Docker 可用（真正能否连上由 tools/docker 的探测决定）
 	if _, err := exec.LookPath("docker.exe"); err == nil {

@@ -15,9 +15,10 @@ import (
 //   - 是否 root：写 /etc/systemd/system 与启停系统服务都需要 root，非 root 时回落直接托管。
 func detectCaps() Capabilities {
 	c := Capabilities{
-		OS:         "linux",
-		InitSystem: "direct",
-		PkgMode:    "hybrid", // 优先用系统包，缺了再回落自带绿色版
+		OS:            "linux",
+		InitSystem:    "direct",
+		PkgMode:       "hybrid", // 优先用系统包，缺了再回落自带绿色版
+		NativeWindows: nativeWindows,
 	}
 	if os.Geteuid() == 0 {
 		c.IsRoot = true

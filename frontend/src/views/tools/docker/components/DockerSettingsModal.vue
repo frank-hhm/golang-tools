@@ -126,14 +126,20 @@
                     <template v-if="tab === 'mirror'">
                         引擎当前{{ daemonCfg.engineUp ? '在运行' : '未运行' }}；重启会断开容器（除非重新启动它们）
                     </template>
-                    <template v-else>密码用 Windows DPAPI 加密保存在本机，明文不出后端</template>
+                    <!-- 仓库密码的存储强度按平台如实告知：Linux 上没有 DPAPI 等价物 -->
+                    <template v-else>
+                        {{ caps.os === 'windows'
+                            ? '密码用 Windows DPAPI 加密保存在本机，明文不出后端'
+                            : '密码随配置文件保存在服务器上（无 DPAPI 等价物，不提供加密），请靠文件权限保护' }}
+                    </template>
                 </a-typography-text>
                 <a-space :size="8">
                     <template v-if="tab === 'mirror'">
                         <a-button size="small" @click="onVisible(false)">关闭</a-button>
                         <a-button size="small" :loading="daemonSaving" @click="saveDaemon(false)">保存</a-button>
-                        <!-- 重启引擎会断开所有运行中的容器，属敏感操作 -->
-                        <a-popconfirm content="保存并重启 Docker 引擎？所有运行中的容器会随之中断（不自动拉起）。"
+                        <!-- 重启引擎会断开所有运行中的容器，属敏感操作；Linux 上引擎由 systemd 托管，面板不代劳 -->
+                        <a-popconfirm v-if="caps.nativeWindows"
+                            content="保存并重启 Docker 引擎？所有运行中的容器会随之中断（不自动拉起）。"
                             type="warning" position="lt" :disabled="daemonSaving" @ok="saveDaemon(true)">
                             <a-button size="small" status="warning" :loading="daemonSaving">
                                 保存并重启引擎
@@ -161,6 +167,10 @@
 import { computed, getCurrentInstance, reactive, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import MirrorTable from "./MirrorTable.vue";
+import { useCaps } from "@/utils/caps";
+
+/** 平台能力：重启引擎只在能开原生窗口的桌面版里提供 */
+const caps = useCaps();
 
 const props = defineProps<{ visible: boolean }>();
 

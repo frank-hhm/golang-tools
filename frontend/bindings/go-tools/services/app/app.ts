@@ -21,6 +21,9 @@ import * as config$0 from "../config/models.js";
 import * as sysinfo$0 from "../sysinfo/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as sysx$0 from "../sysx/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as browser$0 from "../../tools/browser/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -1019,6 +1022,16 @@ export function ExportConfig(): $CancellablePromise<string> {
  */
 export function GetAppLogo(): $CancellablePromise<string> {
     return $Call.ByID(1282478875);
+}
+
+/**
+ * GetCapabilities 返回平台能力快照，供前端按能力渲染。
+ * 
+ * 前端不再靠 os 字符串硬编码分支：能不能开原生窗口、服务是不是 systemd 托管、
+ * 包管理走绿色版还是系统包，全都读这里。字段定义见 sysx.Capabilities。
+ */
+export function GetCapabilities(): $CancellablePromise<sysx$0.Capabilities> {
+    return $Call.ByID(1695827559);
 }
 
 /**

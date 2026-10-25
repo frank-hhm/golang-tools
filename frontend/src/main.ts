@@ -11,6 +11,7 @@ import "@/styles/index.scss"
 import * as Utils from '@/utils'
 import { setupGoMessage } from '@/utils/gomessage'
 import { initTheme, syncThemeFromConfig } from '@/utils/theme'
+import { loadCaps } from '@/utils/caps'
 import * as GoToolsBindings from "bindings/go-tools/services/app/index";
 import { ScreenshotService as GoScreenshot } from "bindings/go-tools/tools/screenshot/index";
 
@@ -35,7 +36,9 @@ app.config.globalProperties.$GoTools = {
     ScreenshotService: GoScreenshot,
 };
 
-router.isReady().then(() => {
+router.isReady().then(async () => {
+    // 平台能力必须先于挂载拿到：各页面据此决定显不显示 Windows 专属入口（安装引擎、WSL2、截图…）
+    await loadCaps()
     app.mount("#app")
     // 主题：同步应用本地记忆（多窗口即时同步），再用后端配置作为首次运行回退
     initTheme()

@@ -25,14 +25,15 @@
                 <a-button size="small" @click="emit('open-settings')">
                     <template #icon><icon-settings /></template>仓库
                 </a-button>
-                <a-button size="small" v-if="engine.isDesktop" @click="emit('open-switch')">
+                <a-button size="small" v-if="caps.nativeWindows && engine.isDesktop" @click="emit('open-switch')">
                     <template #icon><icon-swap /></template>切换后端
                 </a-button>
                 <!-- 引擎在跑、或正在启动等待时都能叫停：会结束 Docker Desktop 进程并提权停 com.docker.service -->
                 <a-popconfirm
                     :content="setupBusy === 'start' ? '停止正在进行的启动？已开始的拉取/启动会被中断。' : '停止 Docker 引擎？所有运行中的容器会被中断，Docker Desktop 与 com.docker.service 都会结束。'"
                     type="warning" position="lt" :disabled="setupBusy === 'stop'" @ok="emit('stop-engine')">
-                    <a-button size="small" v-if="engine.available || setupBusy === 'start' || setupBusy === 'stop'"
+                    <a-button size="small"
+                        v-if="caps.nativeWindows && (engine.available || setupBusy === 'start' || setupBusy === 'stop')"
                         status="danger" :loading="setupBusy === 'stop'" :disabled="setupBusy === 'stop'">
                         <template #icon><icon-poweroff /></template>{{ setupBusy === 'start' ? '停止启动' : (setupBusy === 'stop' ? '停止中' : '停止引擎') }}
                     </a-button>
@@ -100,8 +101,8 @@
             </div>
             <a-alert v-if="engine.error" type="error" class="setup-alert err-alert">{{ engine.error }}</a-alert>
 
-            <!-- ---------- 安装 / 启动向导 ---------- -->
-            <div class="setup-block">
+            <!-- ---------- 安装 / 启动向导（仅 Windows 桌面版） ---------- -->
+            <div v-if="caps.nativeWindows" class="setup-block">
                 <div class="setup-head">
                     <span class="setup-title">
                         <icon-experiment /> {{ env.dockerInstalled ? '启动 Docker 引擎' : '安装 Docker Desktop' }}
@@ -281,6 +282,22 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 非桌面构建（Linux / Web 模式）：引擎交给系统包管理器和 systemd，面板只负责连上去 -->
+            <div v-else class="setup-block">
+                <div class="setup-head">
+                    <span class="setup-title">
+                        <icon-exclamation-circle /> 引擎由系统服务管理
+                    </span>
+                </div>
+                <div class="mode-hint">
+                    <div>本面板不接管引擎的安装与启停：装包、开机自启都交给系统，面板只通过
+                        <span class="mono">{{ caps.os === 'windows' ? '命名管道' : 'unix socket' }}</span> 连上去。</div>
+                    <div>1. 安装引擎：<span class="mono">yum install -y docker-ce</span>（或 apt 装 docker.io）</div>
+                    <div>2. 启动并开机自启：<span class="mono">systemctl enable --now docker</span></div>
+                    <div>3. 当前用户需在 docker 组内，或以 root 运行本面板，否则读不到 /var/run/docker.sock</div>
+                </div>
+            </div>
         </div>
     </a-card>
 </template>
@@ -289,6 +306,10 @@
 import { computed, getCurrentInstance, nextTick, onMounted, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { beLabel, fmtBytes } from "../helpers";
+import { useCaps } from "@/utils/caps";
+
+/** 平台能力：安装向导、WSL2、后端切换、引擎启停都只在能开原生窗口的桌面版里出现 */
+const caps = useCaps();
 
 const props = defineProps<{
     /** 引擎探测结果（页面持有，定时刷新） */

@@ -15,7 +15,7 @@ import (
 
 // detectCaps 兜底探测：一律直接托管、绿色版布局。
 func detectCaps() Capabilities {
-	return Capabilities{InitSystem: "direct", PkgMode: "green"}
+	return Capabilities{InitSystem: "direct", PkgMode: "green", NativeWindows: nativeWindows}
 }
 
 // platformProc 兜底平台走直接托管。

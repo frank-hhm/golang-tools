@@ -449,6 +449,7 @@ import { Message } from "@arco-design/web-vue";
 import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
 import iconData from "@/components/common/select-icon-modal/icon.json";
 import { applyTheme, type ThemeMode } from "@/utils/theme";
+import { useCaps } from "@/utils/caps";
 import {
     arcoIconComp as iconComp,
     DEFAULT_TOOL_ICONS,
@@ -459,6 +460,8 @@ import {
 
 const { proxy } = getCurrentInstance() as any;
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+/** 平台能力：决定哪些设置分类（浮动球、浏览器空间）给不给入口 */
+const caps = useCaps();
 
 interface BuiltinDef {
     key: string;
@@ -529,17 +532,22 @@ const saving = ref(false);
 let saveTimer = 0;
 let saveChain: Promise<void> = Promise.resolve();
 
-/** 设置分类：左侧导航与右侧面板标题共用 */
-const SETTING_TABS = [
-    { key: "general", label: "通用", icon: "IconSettings" },
-    { key: "paths", label: "目录", icon: "IconFolder" },
-    { key: "ball", label: "浮动球", icon: "IconDesktop" },
-    { key: "browser", label: "浏览器", icon: "IconCompass" },
-    { key: "config", label: "配置", icon: "IconSync" },
-    { key: "tools", label: "工具", icon: "IconApps" },
-];
+/**
+ * 设置分类：左侧导航与右侧面板标题共用。
+ * 浮动球与浏览器默认设置只在能开原生窗口的桌面版里有意义，Web 模式下直接不给入口。
+ */
+const SETTING_TABS = computed(() =>
+    [
+        { key: "general", label: "通用", icon: "IconSettings", desktopOnly: false },
+        { key: "paths", label: "目录", icon: "IconFolder", desktopOnly: false },
+        { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
+        { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
+        { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
+        { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
+    ].filter((t) => !t.desktopOnly || caps.nativeWindows),
+);
 const activeTab = ref("general");
-const activeTabMeta = computed(() => SETTING_TABS.find((t) => t.key === activeTab.value) || SETTING_TABS[0]);
+const activeTabMeta = computed(() => SETTING_TABS.value.find((t) => t.key === activeTab.value) || SETTING_TABS.value[0]);
 
 /** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
 function onThemeChange(val: any) {

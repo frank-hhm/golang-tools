@@ -2,6 +2,12 @@
 
 package docker
 
+import (
+	"fmt"
+
+	"go-tools/services/sysx"
+)
+
 // ============================================================
 // Docker 管理 - 非 Windows 平台未实现的能力
 //
@@ -31,12 +37,53 @@ func BuildInstallerURL(string) string { return "" }
 func InstallArgs(bool) string         { return "" }
 func AbortSetup() error               { return errUnsupported }
 
-// CheckEnv 非 Windows 没有 Desktop 后端需要体检
-func CheckEnv(string) (EnvCheck, error) {
-	return EnvCheck{
-		Backend: Backend{Name: "unknown", Label: "未知", Source: "非 Windows 平台，由系统包管理器维护"},
-		Notes:   []string{"非 Windows 平台请用 systemctl 管理 Docker 服务"},
-	}, errUnsupported
+// CheckEnv 非 Windows 平台的体检：不碰安装包，只如实报告引擎能不能连、连的哪个端点，
+// 以及连不上时最该查的三件事。这里恰恰是排查“为什么面板连不到 docker”最有用的地方，
+// 所以不返回 errUnsupported，前端也不必把它当失败展示。
+func CheckEnv(installDir string) (EnvCheck, error) {
+	caps := sysx.Caps()
+	env := EnvCheck{
+		InstallerDir: installDir,
+		Backend: Backend{
+			Name:   "native",
+			Label:  "原生",
+			Source: "Linux 上容器直接跑在宿主内核上，没有 WSL2 / Hyper-V 这类虚拟化后端",
+		},
+	}
+
+	info, err := GetEngineStatus()
+	if err != nil || !info.Available {
+		reason := info.Error
+		if err != nil {
+			reason = err.Error()
+		}
+		if reason == "" {
+			reason = "未连上 daemon"
+		}
+		env.Notes = []string{
+			fmt.Sprintf("引擎不可达：%s", reason),
+			"排查顺序：1) 服务在跑吗 → systemctl status docker；2) 有权限读 socket 吗 → ls -l /var/run/docker.sock（非 root 需在 docker 组）；3) 装了吗 → docker version",
+			"本面板不管引擎的安装与启停，yum/apt 装好、systemctl enable --now docker 之后这里会自动接上",
+		}
+		return env, nil
+	}
+
+	env.DockerInstalled = true
+	env.EngineAvailable = true
+	env.PipeExists = true
+	env.DockerVersion = info.Version
+	env.Notes = []string{
+		fmt.Sprintf("引擎已连接：Docker %s（API %s）", info.Version, info.APIVersion),
+		fmt.Sprintf("端点：%s", info.Endpoint),
+		fmt.Sprintf("运行环境：%s/%s，init=%s，root=%v", caps.OS, caps.Arch, caps.InitSystem, caps.IsRoot),
+	}
+	if !caps.IsRoot {
+		env.Notes = append(env.Notes, "当前非 root：靠 docker 组成员身份访问 socket；容器挂载出来的文件属主仍可能是 root")
+	}
+	if caps.InitSystem != "systemd" {
+		env.Notes = append(env.Notes, "未检测到 systemd：引擎可能是被手工拉起的，开机自启需自行配置")
+	}
+	return env, nil
 }
 
 func ProbeInstaller(string) (ProbeInfo, error)         { return ProbeInfo{}, errUnsupported }

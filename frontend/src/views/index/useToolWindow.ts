@@ -1,5 +1,6 @@
 import { getCurrentInstance } from "vue";
 import router from "@/router";
+import { isNativeWindows } from "@/utils/caps";
 
 /** 新窗口打开选项 */
 export interface OpenToolWindowOptions {
@@ -43,6 +44,12 @@ export function useToolWindow() {
         const fullPath = disableFullscreen
             ? path + (path.includes("?") ? "&" : "?") + "fs=0"
             : path;
+        // Web 运行模式（Linux / -tags server）没有原生窗口：直接走页面内路由，
+        // 不必先调一次注定失败的 OpenToolWindow 再靠异常回退（那样控制台会刷告警）。
+        if (!isNativeWindows()) {
+            await router.push(fullPath);
+            return;
+        }
         try {
             if (typeof $GoTools?.OpenToolWindow !== "function") {
                 throw new Error("OpenToolWindow 不可用");

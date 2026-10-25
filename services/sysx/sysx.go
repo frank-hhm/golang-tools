@@ -34,6 +34,12 @@ type Capabilities struct {
 	IsRoot     bool   `json:"isRoot"`     // Linux 上是否 root（决定能否写 systemd unit）
 	HasDocker  bool   `json:"hasDocker"`  // 能否连上 Docker Engine
 	PkgMode    string `json:"pkgMode"`    // green：自带绿色版；system：系统包；hybrid：优先系统包再回落自带
+	// NativeWindows 表示当前构建能真正弹出原生窗口。
+	//
+	// Windows 桌面版为 true；-tags server 的 Web 运行模式与 Linux 上都是 false——
+	// Wails 在这两种构建里照样编译通过、NewWithOptions 也不报错，只是窗口不会真的出现，
+	// 前端必须靠这个字段决定"开新窗口"还是"页面内路由"。
+	NativeWindows bool `json:"nativeWindows"`
 }
 
 // String 便于日志一行打全平台信息。
