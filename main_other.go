@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !server
 
 package main
 
@@ -7,10 +7,15 @@ import (
 	"os"
 )
 
-// go-tools 的完整功能依赖 Windows 平台能力（Win32 浮动球、全局热键、托盘、截图选屏、
-// PHP/MySQL/Redis 本地服务管理等），实现见 main.go / app.go（go:build windows）。
-// 本文件仅为非 Windows 平台提供可编译的占位入口，避免交叉编译/IDE 分析时报“缺少 main 函数”。
+// 非 Windows 又没有 -tags server 时的占位入口。
+//
+// 两条真正可用的构建是：
+//   - Windows 桌面版：go build .（main.go）
+//   - Linux/容器无头版：go build -tags server .（main_server.go）
+//
+// 本文件只保证在其它组合下 go build ./... 不会报“缺少 main 函数”，
+// 真跑起来会直接退出并提示该用哪个 tag。
 func main() {
-	fmt.Fprintln(os.Stderr, "go-tools 仅支持 Windows 平台")
+	fmt.Fprintln(os.Stderr, "go-tools 在非 Windows 平台需要 -tags server 构建（go build -tags server .）")
 	os.Exit(1)
 }

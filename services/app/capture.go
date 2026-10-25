@@ -78,7 +78,7 @@ func (a *App) OpenCaptureOverlay() error {
 	// 帧先存好再处置窗口：冷建时页面 mount 后会自己来拉（GetCaptureFrame），
 	// 预热窗口则靠下面的事件告知“有新帧”。顺序反了会拉到上一轮的旧帧。
 	a.capMu.Lock()
-	a.capFrame = frame
+	a.plat.capFrame = frame
 	a.capReady = false
 	a.capMu.Unlock()
 
@@ -255,7 +255,7 @@ func (a *App) PrewarmCaptureOverlay() {
 func (a *App) GetCaptureFrame() *screenshot.CaptureFrame {
 	a.capMu.Lock()
 	defer a.capMu.Unlock()
-	return a.capFrame
+	return a.plat.capFrame
 }
 
 // CaptureReady 浮层已完成首帧渲染，可以亮出来了。
@@ -387,7 +387,7 @@ func (a *App) OpenPinnedImage(data string, x, y, w, h int) (int, error) {
 		return 0, fmt.Errorf("选区尺寸非法")
 	}
 	a.capMu.Lock()
-	f := a.capFrame
+	f := a.plat.capFrame
 	a.capMu.Unlock()
 	dpr := 1.0
 	if f != nil && f.DPR > 0 {
@@ -491,7 +491,7 @@ func (a *App) captureReadyWatchdog(gen uint64) {
 func (a *App) hideCaptureOverlay() {
 	a.capMu.Lock()
 	w := a.capWin
-	a.capFrame = nil
+	a.plat.capFrame = nil
 	a.capReady = false
 	a.capBusy = false
 	a.capMu.Unlock()
@@ -505,7 +505,7 @@ func (a *App) destroyCaptureOverlay() {
 	a.capMu.Lock()
 	w := a.capWin
 	a.capWin = nil
-	a.capFrame = nil
+	a.plat.capFrame = nil
 	a.capReady = false
 	a.capBusy = false
 	a.capMu.Unlock()

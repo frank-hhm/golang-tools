@@ -10,7 +10,12 @@ package docker
 // ============================================================
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"go-tools/appdirs"
 )
 
 const (
@@ -145,3 +150,34 @@ func ProbeMirrors(raws []string, sample string) []MirrorProbe {
 // 非 Windows 没有真实探测，也就没有可叫停的任务
 func CancelMirrorProbe(string) bool { return false }
 func CancelMirrorProbes() int       { return 0 }
+
+/* ============================ 容器内终端 ============================ */
+
+// ExecStream 容器内交互流。Windows 走 Docker Engine 的 exec 升级连接，
+// 非 Windows 平台没有实现，这里只保证签名一致，让 tools/term 能跨平台编译。
+type ExecStream struct{}
+
+func (s *ExecStream) Resize(rows, cols int) error { return errUnsupported }
+func (s *ExecStream) Read(p []byte) (int, error)  { return 0, errUnsupported }
+func (s *ExecStream) Write(p []byte) (int, error) { return 0, errUnsupported }
+func (s *ExecStream) Close() error                { return nil }
+
+// OpenExec 在容器里起交互 shell，非 Windows 平台不可用。
+func OpenExec(containerID string, argv []string, rows, cols int) (*ExecStream, error) {
+	return nil, errUnsupported
+}
+
+/* ============================ 导出 / 导入 ============================ */
+
+// DefaultExportPath 导出镜像的默认落盘位置：<数据目录>/docker/exports/<repo>-<tag>-<时间>.tar
+// 与 windows 实现同规则，仅目录分隔符随平台变化。
+func DefaultExportPath(ref string) string {
+	dir, err := appdirs.Data("docker")
+	if err != nil {
+		dir = os.TempDir()
+	} else {
+		dir = filepath.Join(dir, "exports")
+	}
+	name := strings.NewReplacer("/", "_", ":", "-", "\\", "_").Replace(ref)
+	return filepath.Join(dir, name+"-"+time.Now().Format("20060102-150405")+".tar")
+}

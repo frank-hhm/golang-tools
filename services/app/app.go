@@ -1,5 +1,3 @@
-//go:build windows
-
 package app
 
 import (
@@ -10,6 +8,7 @@ import (
 	"go-tools/appdirs"
 	"go-tools/services/applog"
 	"go-tools/services/config"
+	"go-tools/services/sysx"
 	"go-tools/services/winui"
 	"go-tools/tools/docker"
 	"go-tools/tools/mysql"
@@ -19,24 +18,19 @@ import (
 	"go-tools/tools/php"
 	"go-tools/tools/portcheck"
 	"go-tools/tools/redis"
-	"go-tools/tools/screenshot"
 	"go-tools/tools/sniffer"
 	"go-tools/tools/term"
 	"go-tools/tools/usbserial"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
-	"golang.org/x/sys/windows"
 )
 
 // App struct
@@ -65,14 +59,13 @@ type App struct {
 	notifyMu  sync.Mutex
 	notifyWin application.Window // 系统风格通知卡片（屏幕右下角，驻留至手动关闭）
 
-	// 截图选区浮层（WebView 版）：Go 侧只持有冻结帧与窗口句柄
+	// 截图选区浮层（WebView 版）：Go 侧只持有窗口句柄
 	capMu    sync.Mutex
-	capWinMu sync.Mutex               // 串行化浮层窗口的创建（启动预热与热键调起可能撞在一起）
-	capFrame *screenshot.CaptureFrame // 抓屏结果，供浮层页面拉取
-	capWin   application.Window       // 全屏浮层窗口（首次冷建，之后隐藏复用，不每次重建）
-	capBusy  bool                     // 一次截图进行中，拒绝重入
-	capReady bool                     // 浮层已回报本次冻结帧就绪，看门狗据此判断要不要销毁
-	capGen   uint64                   // 截图轮次：兜底定时器只处置自己那一轮，不得误杀已完结的浮层
+	capWinMu sync.Mutex         // 串行化浮层窗口的创建（启动预热与热键调起可能撞在一起）
+	capWin   application.Window // 全屏浮层窗口（首次冷建，之后隐藏复用，不每次重建）
+	capBusy  bool               // 一次截图进行中，拒绝重入
+	capReady bool               // 浮层已回报本次冻结帧就绪，看门狗据此判断要不要销毁
+	capGen   uint64             // 截图轮次：兜底定时器只处置自己那一轮，不得误杀已完结的浮层
 
 	// 图钉置顶：每张钉住的截图开一个无边框置顶小窗，id → 图片数据/窗口
 	pinMu   sync.Mutex
@@ -86,6 +79,10 @@ type App struct {
 	tray        *application.SystemTray
 	defaultLogo []byte      // 内置默认 logo PNG 字节
 	quitting    atomic.Bool // 为 true 时表示真正退出，关闭钩子不再拦截隐藏
+
+	// 平台专属字段：Windows 侧有截图冻结帧，其它平台为空结构体。
+	// 抽到这里是为了让 App 本身留在无标签文件，server 构建能复用同一份。
+	plat platformState
 }
 
 // videoSaveSession 录制完成后分块上传的视频缓冲（用于原生“另存为”写盘）
@@ -1784,9 +1781,8 @@ func (a *App) MySQLOpenSQLLogDir() error {
 	if _, err := os.Stat(dir); err != nil {
 		_ = os.MkdirAll(dir, 0o755)
 	}
-	cmd := exec.Command("explorer.exe", dir)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err := cmd.Start(); err != nil {
+	// 走 sysx：Windows 用 explorer，Linux 用 xdg-open，不必在调用处写平台分支
+	if err := sysx.Open().Dir(dir); err != nil {
 		applog.Errorf("mysql", "打开 SQL 日志目录失败: %v", err)
 		return err
 	}
@@ -1975,24 +1971,6 @@ func (a *App) ToastClose() {
 		a.toastWin = nil
 	}
 	a.toastMu.Unlock()
-}
-
-// workAreaDIP 返回主显示器工作区（已排除任务栏）的 DIP 坐标（left, top, right, bottom），
-// 按系统 DPI 将物理像素换算为 Wails 窗口使用的 DIP
-func workAreaDIP() (int, int, int, int) {
-	user32 := windows.NewLazySystemDLL("user32.dll")
-	dpi := uintptr(96)
-	if r, _, _ := user32.NewProc("GetDpiForSystem").Call(); r > 0 {
-		dpi = r
-	}
-	scale := float64(dpi) / 96.0
-	var rc struct {
-		Left, Top, Right, Bottom int32
-	}
-	const spiGetWorkArea = 0x0030
-	user32.NewProc("SystemParametersInfoW").Call(spiGetWorkArea, 0, uintptr(unsafe.Pointer(&rc)), 0)
-	return int(float64(rc.Left) / scale), int(float64(rc.Top) / scale),
-		int(float64(rc.Right) / scale), int(float64(rc.Bottom) / scale)
 }
 
 // ShowNotification 在屏幕右下角弹出一张系统风格的通知卡片（仿 Windows 通知：
@@ -2318,49 +2296,11 @@ func (a *App) OpenLogDir() error {
 	if _, err := os.Stat(dir); err != nil {
 		_ = os.MkdirAll(dir, 0o755)
 	}
-	cmd := exec.Command("explorer.exe", dir)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err := cmd.Start(); err != nil {
+	// 走 sysx：Windows 用 explorer，Linux 用 xdg-open
+	if err := sysx.Open().Dir(dir); err != nil {
 		applog.Errorf("log", "打开日志目录失败: %v", err)
 		return err
 	}
-	return nil
-}
-
-/* ---------------- 系统通知中心（Windows 原生 Toast） ---------------- */
-
-// toastPSScript 通过环境变量 TOAST_TITLE / TOAST_CONTENT 发送 WinRT Toast 的
-// PowerShell 脚本（Windows 10+ 内建能力，无需任何依赖；标题+正文两行模板）
-const toastPSScript = `
-$t = $env:TOAST_TITLE
-$c = $env:TOAST_CONTENT
-[void][Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]
-[void][Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime]
-$tpl = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-$txts = $tpl.SelectNodes("//text")
-$txts.Item(0).AppendChild($tpl.CreateTextNode($t)) > $null
-$txts.Item(1).AppendChild($tpl.CreateTextNode($c)) > $null
-$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("go-tools")
-$toast = [Windows.UI.Notifications.ToastNotification]::new($tpl)
-$notifier.Show($toast)
-`
-
-// ShowSystemNotification 直接调用 Windows 系统通知中心弹原生 Toast
-// （系统右下角渲染、自动消失、可进入操作中心/专注助手），异步执行不阻塞调用方。
-func (a *App) ShowSystemNotification(title string, content string) error {
-	if title == "" {
-		title = "go-tools"
-	}
-	go func() {
-		// 脚本经 stdin 传入（-Command -），避免命令行引号转义问题
-		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-			"-ExecutionPolicy", "Bypass", "-Command", "-")
-		cmd.Stdin = strings.NewReader(toastPSScript)
-		// 内容经环境变量传递，避免命令行注入/转义问题
-		cmd.Env = append(os.Environ(), "TOAST_TITLE="+title, "TOAST_CONTENT="+content)
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 不闪现 PowerShell 控制台窗口
-		_ = cmd.Run()
-	}()
 	return nil
 }
 
