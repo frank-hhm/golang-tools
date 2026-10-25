@@ -24,6 +24,7 @@ const TOOLS = [
     { key: "Colorpicker", menu_name: "颜色取色器", path: "tools/colorpicker", component: () => import('@/views/tools/colorpicker/index.vue') },
     { key: "Speedtest", menu_name: "网速测速", path: "tools/speedtest", component: () => import('@/views/tools/speedtest/index.vue') },
     { key: "Browser", menu_name: "浏览器", path: "tools/browser", component: () => import('@/views/tools/browser/index.vue') },
+    { key: "Disk", menu_name: "磁盘管理", path: "tools/disk", component: () => import('@/views/tools/disk/index.vue') },
     { key: "Settings", menu_name: "设置", path: "tools/settings", component: () => import('@/views/tools/settings/index.vue') },
 
 ];

@@ -64,6 +64,7 @@ export const DEFAULT_TOOL_ICONS: Record<string, string> = {
     php: "icon-php",
     nginx: "icon-ngnix",
     docker: "computer",
+    disk: "folder",
     npm: "icon-npm",
     settings: "settings",
 };

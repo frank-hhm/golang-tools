@@ -24,6 +24,9 @@ import * as sysinfo$0 from "../sysinfo/models.js";
 import * as browser$0 from "../../tools/browser/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as disk$0 from "../../tools/disk/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as docker$0 from "../../tools/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -388,6 +391,156 @@ export function ClosePinnedImage(id: number): $CancellablePromise<void> {
  */
 export function ConnectionStatus(): $CancellablePromise<usbserial$0.ConnStatus> {
     return $Call.ByID(950516773);
+}
+
+/**
+ * DiskCopy 把一批路径复制到目标目录。
+ */
+export function DiskCopy(paths: string[] | null, dstDir: string): $CancellablePromise<number> {
+    return $Call.ByID(1921545799, paths, dstDir);
+}
+
+/**
+ * DiskDelete 删除一批路径；permanent=false 走系统回收站，true 直接删。
+ */
+export function DiskDelete(paths: string[] | null, permanent: boolean): $CancellablePromise<number> {
+    return $Call.ByID(2888539397, paths, permanent);
+}
+
+/**
+ * DiskDirSize 递归计算目录/文件大小（列表里"计算"操作与属性面板用）。
+ */
+export function DiskDirSize(path: string): $CancellablePromise<number> {
+    return $Call.ByID(877367792, path);
+}
+
+/**
+ * DiskDownload 把文件另存到本机别处（桌面版的"下载"）。
+ * 
+ * 多选时返回实际保存的数量（逐个弹保存框太吵，这里只处理单个；
+ * 多选请在列表里用"复制"）。
+ */
+export function DiskDownload(path: string): $CancellablePromise<string> {
+    return $Call.ByID(4105428874, path);
+}
+
+/**
+ * DiskDrives 枚举本机盘符（含容量与使用率），页面顶部总览用。
+ */
+export function DiskDrives(): $CancellablePromise<disk$0.Drive[] | null> {
+    return $Call.ByID(2651215831);
+}
+
+/**
+ * DiskFavorites 读取收藏的目录。
+ */
+export function DiskFavorites(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3919466623);
+}
+
+/**
+ * DiskHome 默认浏览起点（用户主目录）。
+ */
+export function DiskHome(): $CancellablePromise<string> {
+    return $Call.ByID(2190781765);
+}
+
+/**
+ * DiskList 浏览目录；path 为空时回到用户主目录。
+ */
+export function DiskList(path: string): $CancellablePromise<disk$0.Listing> {
+    return $Call.ByID(1529718518, path);
+}
+
+/**
+ * DiskMkdir 新建目录，返回新目录路径。
+ */
+export function DiskMkdir(parent: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(2286280449, parent, name);
+}
+
+/**
+ * DiskMove 把一批路径移动到目标目录。
+ */
+export function DiskMove(paths: string[] | null, dstDir: string): $CancellablePromise<number> {
+    return $Call.ByID(1583193687, paths, dstDir);
+}
+
+/**
+ * DiskNewFile 新建空文件，返回文件路径。
+ */
+export function DiskNewFile(parent: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(3431253234, parent, name);
+}
+
+/**
+ * DiskOpenFile 用系统默认程序打开文件。
+ */
+export function DiskOpenFile(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3864152932, path);
+}
+
+/**
+ * DiskOpenInExplorer 在资源管理器里定位到该路径。
+ */
+export function DiskOpenInExplorer(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3915014082, path);
+}
+
+/**
+ * DiskOpenShell 在目录里打开命令行。
+ */
+export function DiskOpenShell(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3791822804, path);
+}
+
+/**
+ * DiskOpenTrash 打开系统回收站（删除走回收站，得有个地方去看）。
+ */
+export function DiskOpenTrash(): $CancellablePromise<void> {
+    return $Call.ByID(3972451112);
+}
+
+/**
+ * DiskRename 同级改名，返回新路径。
+ */
+export function DiskRename(path: string, newName: string): $CancellablePromise<string> {
+    return $Call.ByID(2173317636, path, newName);
+}
+
+/**
+ * DiskSaveFavorites 覆盖保存收藏列表。
+ */
+export function DiskSaveFavorites(list: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2559939452, list);
+}
+
+/**
+ * DiskSearch 按名称搜索；includeSub=false 只搜当前层。
+ */
+export function DiskSearch(root: string, keyword: string, includeSub: boolean): $CancellablePromise<disk$0.Entry[] | null> {
+    return $Call.ByID(128854450, root, keyword, includeSub);
+}
+
+/**
+ * DiskSearchContent 在文本文件里搜索内容，返回命中行（有内置上限，不会扫爆磁盘）。
+ */
+export function DiskSearchContent(root: string, keyword: string, includeSub: boolean): $CancellablePromise<disk$0.Match[] | null> {
+    return $Call.ByID(935364075, root, keyword, includeSub);
+}
+
+/**
+ * DiskUpload 选本机文件复制到当前目录（桌面版的"上传"），返回复制进来的路径。
+ */
+export function DiskUpload(dstDir: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3866204175, dstDir);
+}
+
+/**
+ * DiskUploadFolder 选本机目录整棵复制到当前目录。
+ */
+export function DiskUploadFolder(dstDir: string): $CancellablePromise<string> {
+    return $Call.ByID(2525059451, dstDir);
 }
 
 /**

@@ -188,6 +188,7 @@ func DefaultConfig() AppConfig {
 			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "code", Single: true, Fullscreen: true, Quick: true},
 			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1200, Height: 800},
 			{ID: "browser", Key: "browser", Name: "浏览器", Path: "/tools/browser", Icon: "computer", Single: true, Fullscreen: true},
+			{ID: "disk", Key: "disk", Name: "磁盘管理", Path: "/tools/disk", Icon: "folder", Single: true, Width: 1360, Height: 860},
 		},
 	}
 }
@@ -441,6 +442,7 @@ func normalizeConfig(cfg *AppConfig) {
 		{"npm", "npm", "Npm管理", "/tools/npm", "icon-npm"},
 		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-wangluo1"},
 		{"browser", "browser", "浏览器", "/tools/browser", "computer"},
+		{"disk", "disk", "磁盘管理", "/tools/disk", "folder"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -466,6 +468,10 @@ func normalizeConfig(cfg *AppConfig) {
 				// 浏览器面板直接满屏：地址栏/标签栏由前端自画，别留空白边
 				newTool.Width, newTool.Height = 0, 0
 				newTool.Fullscreen = true
+			}
+			if extra.key == "disk" {
+				// 文件管理器列多：默认给大一点的窗口，不留空白边
+				newTool.Width, newTool.Height = 1360, 860
 			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}

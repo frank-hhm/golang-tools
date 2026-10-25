@@ -52,7 +52,8 @@
         <!-- 导航条：空间 → 后退/前进/刷新 → 地址栏 -->
         <div class="bar">
             <div class="space-wrap">
-                <a-select v-model="spaceId" class="space" size="small" :options="spaceOptions" @change="switchSpace" />
+                <a-select v-model="spaceId" class="space" size="small" :options="spaceOptions"
+                    @change="switchSpace" @popup-visible-change="onSpacePopupVisible" />
             </div>
             <a-tooltip content="后退">
                 <a-button size="small" :disabled="!activeTab?.canGoBack" @click="back">
@@ -356,6 +357,22 @@ const onTabChange = async (tabId: string) => {
     } catch (e: any) {
         Message.error(String(e?.message || e));
         await syncTabs();
+    }
+};
+
+/**
+ * 空间下拉展开前后显隐原生网页区。
+ *
+ * 下拉列表虽然 teleport 到 body（不受 .bar 的 overflow 影响），但网页区是 Go 侧挂的
+ * WebView2 真窗口，永远盖在 HTML 之上：列表只要越过导航条下沿就被它压掉，看着像被切掉一半。
+ * 所以展开时先藏网页区，收起再显示（和设置抽屉同一套处理）。
+ */
+const onSpacePopupVisible = async (visible: boolean) => {
+    if (!spaceId.value) return;
+    try {
+        await GoTools.BrowserSetVisible(spaceId.value, !visible);
+    } catch {
+        /* 空间还没建好时没有可藏的东西 */
     }
 };
 
