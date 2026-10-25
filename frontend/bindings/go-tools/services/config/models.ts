@@ -9,6 +9,7 @@ export interface AppConfig {
     "ball": BallConfig;
     "general": GeneralConfig;
     "paths": PathsConfig;
+    "browser": BrowserConfig;
     "tools": ToolConfig[] | null;
 
     /**
@@ -45,6 +46,89 @@ export interface BallConfig {
      * 是否已记录位置；false 时启动停靠工作区右下角
      */
     "hasPos": boolean;
+}
+
+/**
+ * BrowserConfig 自研浏览器（嵌入式 WebView2 网页区）的全局配置。
+ * 
+ * 所有字段都在 config.json 里，随整份应用配置一起上传/同步云端：
+ * 在别的机器上下载回来即可得到同样的空间与代理设置（profile 目录里的登录态
+ * 属于运行时数据，不进配置）。
+ */
+export interface BrowserConfig {
+    /**
+     * 是否启用浏览器面板（关掉不影响其他工具）
+     */
+    "enabled": boolean;
+
+    /**
+     * 全局首页，空间未单独设置时使用
+     */
+    "homepage": string;
+
+    /**
+     * 地址栏搜索模板，%s 会被替换为查询词
+     */
+    "searchURL": string;
+
+    /**
+     * 启动时默认打开的空间 ID
+     */
+    "defaultSpace": string;
+
+    /**
+     * 空间列表（至少一个）
+     */
+    "spaces": BrowserSpace[] | null;
+}
+
+/**
+ * BrowserSpace 一个浏览器空间。
+ * 
+ * 空间是本程序浏览器的隔离单位：一个空间 = 一套独立的 WebView2 profile
+ * （cookie/登录态/缓存互不相通）+ 一套独立的代理参数（出口 IP 互不相通）。
+ * 同一空间内的多个标签页共享登录态；跨空间不共享。
+ */
+export interface BrowserSpace {
+    /**
+     * 稳定标识（同时用作 profile 子目录名）
+     */
+    "id": string;
+
+    /**
+     * 显示名，如"工作""测试"
+     */
+    "name": string;
+
+    /**
+     * 空间首页；空 = 用全局 browser.homepage
+     */
+    "homepage": string;
+
+    /**
+     * 代理，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080；空 = 直连
+     */
+    "proxy": string;
+
+    /**
+     * ProxyBypass 代理绕过列表（Chrome 语法），如 "localhost,127.0.0.1,*.local"
+     */
+    "proxyBypass": string;
+
+    /**
+     * 自定义 UA；空 = 默认
+     */
+    "userAgent": string;
+
+    /**
+     * profile 目录；空 = <数据目录>/browser/<id>
+     */
+    "profileDir": string;
+
+    /**
+     * DisableWebSecurity 关掉同源策略（仅调试空间用，换空间/重启程序后生效）
+     */
+    "disableWebSecurity": boolean;
 }
 
 /**

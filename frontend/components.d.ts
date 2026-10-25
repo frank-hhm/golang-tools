@@ -23,6 +23,8 @@ declare module '@vue/runtime-core' {
     StatIcon: typeof import('./src/components/common/stat-icon/index.vue')['default']
     TermConsole: typeof import('./src/components/business/term-console/index.vue')['default']
     ThemeSwitch: typeof import('./src/components/common/theme-switch/index.vue')['default']
+    TitleBar: typeof import('./src/components/common/title-bar/index.vue')['default']
+    ToolIcon: typeof import('./src/components/common/tool-icon/index.vue')['default']
     WinTitleBar: typeof import('./src/components/layouts/WinTitleBar.vue')['default']
   }
 }

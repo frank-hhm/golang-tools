@@ -21,6 +21,9 @@ import * as config$0 from "../config/models.js";
 import * as sysinfo$0 from "../sysinfo/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as browser$0 from "../../tools/browser/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as docker$0 from "../../tools/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -77,6 +80,95 @@ export function BallClose(): $CancellablePromise<void> {
  */
 export function BallOpen(): $CancellablePromise<void> {
     return $Call.ByID(1105901190);
+}
+
+/**
+ * BrowserAttach 让指定空间挂到调用方的窗口上：首次调用会创建 WebView2 环境
+ * （冷启动约 200~400ms），之后同一空间只做矩形更新与导航。
+ * 
+ * spaceID 为空时用配置里的默认空间；windowName 为空时退回单例窗口名。
+ * x/y/w/h 为网页区矩形（CSS 像素，相对窗口客户区）。
+ */
+export function BrowserAttach(spaceID: string, windowName: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
+    return $Call.ByID(2001320792, spaceID, windowName, x, y, w, h);
+}
+
+/**
+ * BrowserClose 关闭一个空间（释放 profile 锁与内存）；页面切空间/退出时调用。
+ */
+export function BrowserClose(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(2023231655, spaceID);
+}
+
+/**
+ * BrowserCloseAll 关闭全部空间。
+ */
+export function BrowserCloseAll(): $CancellablePromise<void> {
+    return $Call.ByID(1879912706);
+}
+
+/**
+ * BrowserDevTools 打开该空间的开发者工具（独立窗口）。
+ */
+export function BrowserDevTools(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(3250434155, spaceID);
+}
+
+/**
+ * BrowserEval 在页面里执行一段脚本（地址栏取标题、读取选中文本等轻量操作用）。
+ */
+export function BrowserEval(spaceID: string, script: string): $CancellablePromise<void> {
+    return $Call.ByID(1038581467, spaceID, script);
+}
+
+/**
+ * BrowserNavigate 导航到 url（http/https/file 或 about:blank）。
+ */
+export function BrowserNavigate(spaceID: string, url: string): $CancellablePromise<void> {
+    return $Call.ByID(4193098034, spaceID, url);
+}
+
+/**
+ * BrowserOpenWindow 打开浏览器工具窗口（首页卡片/托盘菜单统一入口，
+ * 前端也可直接调，省得各处拼参数）。
+ */
+export function BrowserOpenWindow(): $CancellablePromise<void> {
+    return $Call.ByID(4293481549);
+}
+
+/**
+ * BrowserRuntime 返回 WebView2 运行时版本；返回空串表示本机不可用（前端据此提示）。
+ */
+export function BrowserRuntime(): $CancellablePromise<string> {
+    return $Call.ByID(1515948943);
+}
+
+/**
+ * BrowserRuntimeInfo 返回运行时版本与浏览器配置里当前空间数量（页面顶部状态条用）。
+ */
+export function BrowserRuntimeInfo(): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(3590807963);
+}
+
+/**
+ * BrowserSetBounds 更新网页区矩形（窗口缩放/拖动分隔条时高频调用，走异步投递）。
+ */
+export function BrowserSetBounds(spaceID: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
+    return $Call.ByID(2203052442, spaceID, x, y, w, h);
+}
+
+/**
+ * BrowserSpaces 返回浏览器全局配置里的空间列表（含代理等，供页面切换空间时展示）。
+ */
+export function BrowserSpaces(): $CancellablePromise<config$0.BrowserSpace[] | null> {
+    return $Call.ByID(2950666494);
+}
+
+/**
+ * BrowserStats 返回资源占用快照：空间数 + 本程序空间下的 WebView2 进程数与常驻内存。
+ */
+export function BrowserStats(): $CancellablePromise<browser$0.Stat> {
+    return $Call.ByID(1850874760);
 }
 
 /**

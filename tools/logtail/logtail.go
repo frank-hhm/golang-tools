@@ -61,7 +61,7 @@ func Lines(path string, n int) ([]string, error) {
 	var (
 		collected []byte
 		pos       = fi.Size()
-		cut       = false // 是否只读到了文件的一部分（首行是半行）
+		cut       = false // 没读到文件开头（首行可能只是半行）
 	)
 	nl := []byte{'\n'}
 	for pos > 0 {
@@ -77,7 +77,6 @@ func Lines(path string, n int) ([]string, error) {
 		collected = append(buf, collected...)
 		// 多要一个换行：末尾不带换行的最后一行不算分隔符，少一个就会缺行
 		if bytes.Count(collected, nl) > n {
-			cut = pos > 0
 			break
 		}
 		if len(collected) >= maxTailBytes {
@@ -87,10 +86,18 @@ func Lines(path string, n int) ([]string, error) {
 	}
 
 	lines := strings.Split(strings.TrimRight(string(collected), "\r\n"), "\n")
+	// Windows 下的日志普遍是 CRLF：按 \n 切完每行末尾还挂着一个 \r，
+	// 面板里看着像多一个空白字符，解析数字（如 access.log 统计）也会被带 \r 的字段干扰
+	for i, l := range lines {
+		if strings.HasSuffix(l, "\r") {
+			lines[i] = l[:len(l)-1]
+		}
+	}
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
-		cut = pos > 0 && len(lines) == n // 仍在块中间开头时才标省略号
 	}
+	// 只有“从块中间开始的那半行真的被留着”时才标省略号：
+	// 正常情况下它会被裁掉（我们只要最后 n 行），留着的不该带假标记
 	if cut && len(lines) > 0 {
 		lines[0] = "…" + lines[0]
 	}

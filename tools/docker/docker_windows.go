@@ -1206,19 +1206,25 @@ func pumpLogs(id string, s *logStream, resp *http.Response, tty bool) {
 		if _, err := io.ReadFull(br, hdr[:]); err != nil {
 			return
 		}
-		size := int(binary.BigEndian.Uint32(hdr[4:8]))
-		if size <= 0 || size > 1<<22 {
+		size := int64(binary.BigEndian.Uint32(hdr[4:8]))
+		if size <= 0 {
 			continue
 		}
-		buf := make([]byte, size)
-		if _, err := io.ReadFull(br, buf); err != nil {
-			return
-		}
-		for _, line := range strings.Split(strings.TrimRight(string(buf), "\r\n"), "\n") {
-			appendLog(id, s, line)
-		}
-		if closed(s) {
-			return
+		// 按帧流式逐行读：不把整帧一次入内存（容器一行刷 100MB 时那就是 100MB 分配），
+		// 也不能像以前那样“超过 4MB 就跳过”—— 跳过等于没消费帧体，
+		// 后面的字节会被当成帧头解析，日志从这开始全乱
+		fr := bufio.NewReaderSize(io.LimitReader(br, size), 64*1024)
+		for {
+			line, err := fr.ReadString('\n')
+			if line != "" {
+				appendLog(id, s, strings.TrimRight(line, "\r\n"))
+			}
+			if err != nil {
+				break // 帧读完（或读错）：下面继续下一帧头
+			}
+			if closed(s) {
+				return
+			}
 		}
 	}
 }

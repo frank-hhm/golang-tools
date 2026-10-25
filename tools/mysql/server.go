@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 )
 

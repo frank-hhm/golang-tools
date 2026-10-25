@@ -2,6 +2,9 @@
     <div class="basic-layout">
         <!-- 自绘标题栏：复用公共 WinTitleBar（拖动/no-drag 与样式均在组件内），这里仅提供主窗口特有按钮 -->
         <WinTitleBar :title="appTitle">
+            <template #icon>
+                <img v-if="appLogo" :src="appLogo" class="tb-logo" alt="" />
+            </template>
             <common-theme-switch />
             <a-tooltip content="设置">
                 <a-button size="small" @click="openSettings"><icon-settings /></a-button>
@@ -23,13 +26,15 @@ import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 
 /**
  * 主窗口基础布局（无边框）。
- * 顶部为自绘标题栏：左侧应用名，右侧暗黑切换开关、“设置”入口与“关闭”按钮
+ * 顶部为自绘标题栏：左侧应用 Logo + 应用名，右侧暗黑切换开关、“设置”入口与“关闭”按钮
  * （与工具窗口 BlankLayout 样式一致；关闭主窗口由后端 WindowClosing 钩子拦截，隐藏到托盘而非退出）。
  */
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const { openToolWindow } = useToolWindow();
 
 const appTitle = ref("Tools");
+// 应用 Logo：自定义路径优先、否则内置默认，由后端统一返回 base64（同浮动球用的那张）
+const appLogo = ref("");
 
 function openSettings() {
     openToolWindow("/tools/settings", "设置", { single: true });
@@ -43,12 +48,19 @@ async function loadTitle() {
     } catch { /* */ }
 }
 
+async function loadLogo() {
+    try {
+        appLogo.value = (await GoTools?.GetAppLogo()) || "";
+    } catch { /* 取不到就不画 Logo，标题栏文字仍在 */ }
+}
+
 let off: (() => void) | null = null;
 onMounted(() => {
     loadTitle();
-    // 设置页改名后即时同步标题栏
+    loadLogo();
+    // 设置页改名/换 Logo 后即时同步标题栏
     try {
-        const r = Events.On("config:saved", () => { void loadTitle(); });
+        const r = Events.On("config:saved", () => { void loadTitle(); void loadLogo(); });
         if (typeof r === "function") off = r as () => void;
     } catch { /* */ }
 });

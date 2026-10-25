@@ -229,6 +229,8 @@ func (a *App) ServiceShutdown() error {
 	php.StopAll()
 	nginx.StopAll()
 	npm.StopAll()
+	// 浏览器空间：销毁 controller 并释放 profile 锁（不然下次启动会报目录被占用）
+	a.BrowserCloseAll()
 	return nil
 }
 

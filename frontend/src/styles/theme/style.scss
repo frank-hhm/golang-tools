@@ -122,3 +122,20 @@
 .srv-docker-off {
     margin: 8px 10px 0;
 }
+
+/******标题栏左侧图标（WinTitleBar 的 #icon）********/
+/* 标题栏高 40px：图标与应用 Logo 统一 18px，且不被 flex 压扁 */
+.tb-logo {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    object-fit: contain;
+    border-radius: var(--base-radius-small);
+}
+
+/* common-tool-icon 渲染出来的字体图标 / Arco 图标：字体粗细不参与标题的加粗 */
+.tb-icon {
+    flex: none;
+    line-height: 1;
+    font-weight: normal;
+}

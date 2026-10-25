@@ -7,6 +7,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
 	github.com/shirou/gopsutil/v3 v3.24.5
+	github.com/wailsapp/go-webview2 v1.0.22
 	github.com/wailsapp/wails/v3 v3.0.0-beta.12
 	go.bug.st/serial v1.8.0
 	golang.org/x/crypto v0.53.0
@@ -35,3 +36,8 @@ require (
 )
 
 // replace github.com/wailsapp/wails/v2 v2.14.0 => C:\Users\Administrator\go\pkg\mod
+
+// 嵌入式浏览器用的 WebView2 宿主：官方 v1.0.22 的本地副本，只改了两处
+// （见 third_party/go-webview2/pkg/edge/chromium.go 的 errorCallback 注释、
+// ICoreWebView2Controller.Close 的补充）。升级时整目录替换 + 重打这两处补丁。
+replace github.com/wailsapp/go-webview2 => ./third_party/go-webview2

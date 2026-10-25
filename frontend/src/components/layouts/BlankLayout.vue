@@ -2,6 +2,10 @@
     <div class="blank-layout">
         <!-- 自绘标题栏：无边框窗口下由前端提供标题、视图菜单与窗口按钮（公共组件） -->
         <WinTitleBar :title="title">
+            <template #icon>
+                <common-tool-icon v-if="toolIcon" :name="toolIcon" :size="18" />
+                <img v-else-if="appLogo" :src="appLogo" class="tb-logo" alt="" />
+            </template>
             <common-theme-switch />
             <a-tooltip content="刷新">
                 <a-button size="small" @click="reload"><icon-refresh /></a-button>
@@ -26,20 +30,43 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, getCurrentInstance, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { Window } from "@wailsio/runtime";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import { DEFAULT_TOOL_ICONS, normalizeToolIcon } from "@/utils/tool-icon";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 
 /**
  * 空白布局：用于 Wails 原生新窗口（/win 前缀）。
- * 采用无边框窗口，标题栏自绘：左侧标题，右侧“视图”菜单与最小化/最大化/关闭按钮。
+ * 采用无边框窗口，标题栏自绘：左侧工具图标 + 标题，右侧“视图”菜单与最小化/最大化/关闭按钮。
  * 全屏时该标题栏随内容铺满显示器，菜单依旧可见。
  */
+const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const route = useRoute();
 const { openToolWindow } = useToolWindow();
 const title = computed(() => (route.meta?.menu_name as string) || "go-tools");
+
+/** 标题栏图标：用该工具在功能配置里的图标（含用户自定义），配置里没有再退内置默认表 */
+const toolIcon = ref("");
+/** 默认表也没收录（如 demo 路由）时拿应用 Logo 兜底，不让标题栏左侧空着一块 */
+const appLogo = ref("");
+
+async function loadIcon() {
+    // 工具窗路由带 /win 前缀，而功能配置里存的是 /tools/xxx，比对前先去掉
+    const path = route.path.replace(/^\/win(?=\/)/, "");
+    const key = path.split("/").filter(Boolean).pop() || "";
+    try {
+        const cfg = await GoTools?.GetConfig();
+        const hit = (cfg?.tools || []).find((t: any) => t.path === path);
+        toolIcon.value = normalizeToolIcon(hit?.icon) || DEFAULT_TOOL_ICONS[key] || "";
+        if (!toolIcon.value) appLogo.value = (await GoTools?.GetAppLogo()) || "";
+    } catch {
+        /* 图标只是标题栏的装饰，读不到配置就不画，不影响窗口使用 */
+    }
+}
+
+onMounted(loadIcon);
 
 // 当前页即设置页时，视图菜单不再重复展示“设置”入口
 const isSettingsPage = computed(() => route.path.includes("/tools/settings"));

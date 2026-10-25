@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -77,14 +78,60 @@ type ToolSettings struct {
 	SQLLogDir     string `json:"sqlLogDir"`     // SQL 日志目录；空 = 默认（程序目录下 logs）
 }
 
+// BrowserSpace 一个浏览器空间。
+//
+// 空间是本程序浏览器的隔离单位：一个空间 = 一套独立的 WebView2 profile
+// （cookie/登录态/缓存互不相通）+ 一套独立的代理参数（出口 IP 互不相通）。
+// 同一空间内的多个标签页共享登录态；跨空间不共享。
+type BrowserSpace struct {
+	ID       string `json:"id"`       // 稳定标识（同时用作 profile 子目录名）
+	Name     string `json:"name"`     // 显示名，如"工作""测试"
+	Homepage string `json:"homepage"` // 空间首页；空 = 用全局 browser.homepage
+	Proxy    string `json:"proxy"`    // 代理，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080；空 = 直连
+	// ProxyBypass 代理绕过列表（Chrome 语法），如 "localhost,127.0.0.1,*.local"
+	ProxyBypass string `json:"proxyBypass"`
+	UserAgent   string `json:"userAgent"`  // 自定义 UA；空 = 默认
+	ProfileDir  string `json:"profileDir"` // profile 目录；空 = <数据目录>/browser/<id>
+	// DisableWebSecurity 关掉同源策略（仅调试空间用，换空间/重启程序后生效）
+	DisableWebSecurity bool `json:"disableWebSecurity"`
+}
+
+// BrowserConfig 自研浏览器（嵌入式 WebView2 网页区）的全局配置。
+//
+// 所有字段都在 config.json 里，随整份应用配置一起上传/同步云端：
+// 在别的机器上下载回来即可得到同样的空间与代理设置（profile 目录里的登录态
+// 属于运行时数据，不进配置）。
+type BrowserConfig struct {
+	Enabled      bool           `json:"enabled"`      // 是否启用浏览器面板（关掉不影响其他工具）
+	Homepage     string         `json:"homepage"`     // 全局首页，空间未单独设置时使用
+	SearchURL    string         `json:"searchURL"`    // 地址栏搜索模板，%s 会被替换为查询词
+	DefaultSpace string         `json:"defaultSpace"` // 启动时默认打开的空间 ID
+	Spaces       []BrowserSpace `json:"spaces"`       // 空间列表（至少一个）
+}
+
 // AppConfig 应用总配置
 type AppConfig struct {
 	Log          LogConfig               `json:"log"`
 	Ball         BallConfig              `json:"ball"`
 	General      GeneralConfig           `json:"general"`
 	Paths        PathsConfig             `json:"paths"`
+	Browser      BrowserConfig           `json:"browser"`
 	Tools        []ToolConfig            `json:"tools"`
 	ToolSettings map[string]ToolSettings `json:"toolSettings"` // 工具级设置，键为工具 Key（如 mysql）
+}
+
+// defaultBrowserConfig 浏览器默认配置：一个直连的默认空间。
+// 不预置任何代理，避免用户不知情地把流量导到不存在的端口上。
+func defaultBrowserConfig() BrowserConfig {
+	return BrowserConfig{
+		Enabled:      true,
+		Homepage:     "about:blank",
+		SearchURL:    "https://www.bing.com/search?q=%s",
+		DefaultSpace: "default",
+		Spaces: []BrowserSpace{
+			{ID: "default", Name: "默认空间"},
+		},
+	}
 }
 
 var (
@@ -100,6 +147,7 @@ func DefaultConfig() AppConfig {
 		Log:     LogConfig{Enabled: true, Level: "info", Path: ""},
 		Ball:    BallConfig{Enabled: true},
 		General: GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: "light"},
+		Browser: defaultBrowserConfig(),
 		ToolSettings: map[string]ToolSettings{
 			// MySQL：默认开启 SQL 日志，目录留空走 DefaultSQLLogDir
 			"mysql": {SQLLogEnabled: true},
@@ -125,6 +173,7 @@ func DefaultConfig() AppConfig {
 			{ID: "docker", Key: "docker", Name: "Docker管理", Path: "/tools/docker", Icon: "computer", Single: true, Width: 1200, Height: 800},
 			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "code", Single: true, Fullscreen: true, Quick: true},
 			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1200, Height: 800},
+			{ID: "browser", Key: "browser", Name: "浏览器", Path: "/tools/browser", Icon: "computer", Single: true, Fullscreen: true},
 		},
 	}
 }
@@ -169,6 +218,82 @@ func InitAppDirs(cfg AppConfig) {
 	}
 }
 
+// normalizeBrowserConfig 补齐浏览器配置：至少保留一个空间、ID 唯一、
+// 默认空间/首页/搜索模板非空。全部是幂等的修正，不会覆盖用户填的值。
+func normalizeBrowserConfig(b *BrowserConfig) {
+	if strings.TrimSpace(b.Homepage) == "" {
+		b.Homepage = "about:blank"
+	}
+	if strings.TrimSpace(b.SearchURL) == "" {
+		b.SearchURL = "https://www.bing.com/search?q=%s"
+	}
+
+	seen := make(map[string]bool, len(b.Spaces))
+	out := make([]BrowserSpace, 0, len(b.Spaces))
+	for i := range b.Spaces {
+		sp := b.Spaces[i]
+		sp.ID = strings.TrimSpace(sp.ID)
+		if sp.ID == "" {
+			sp.ID = "space" + strconv.Itoa(i+1)
+		}
+		if seen[sp.ID] {
+			// 重复 ID 会让两个空间共用一个 profile，必须拆开
+			sp.ID = sp.ID + "-" + strconv.Itoa(i+1)
+		}
+		seen[sp.ID] = true
+		sp.Name = strings.TrimSpace(sp.Name)
+		if sp.Name == "" {
+			sp.Name = sp.ID
+		}
+		sp.Proxy = strings.TrimSpace(sp.Proxy)
+		sp.ProxyBypass = strings.TrimSpace(sp.ProxyBypass)
+		sp.UserAgent = strings.TrimSpace(sp.UserAgent)
+		sp.ProfileDir = strings.TrimSpace(sp.ProfileDir)
+		out = append(out, sp)
+	}
+	if len(out) == 0 {
+		out = defaultBrowserConfig().Spaces
+		seen = map[string]bool{out[0].ID: true}
+	}
+	b.Spaces = out
+	if !seen[b.DefaultSpace] {
+		b.DefaultSpace = out[0].ID
+	}
+}
+
+// BrowserSpaceByID 按 ID 取空间；id 为空时取默认空间。
+func BrowserSpaceByID(cfg AppConfig, id string) (BrowserSpace, bool) {
+	if strings.TrimSpace(id) == "" {
+		id = cfg.Browser.DefaultSpace
+	}
+	for _, sp := range cfg.Browser.Spaces {
+		if sp.ID == id {
+			return sp, true
+		}
+	}
+	return BrowserSpace{}, false
+}
+
+// BrowserProfileDir 返回空间的 profile 目录（不存在则创建）。
+// 空 ProfileDir 落到 <数据目录>/browser/<空间ID>，跟其他服务数据同样受 paths 配置控制。
+func BrowserProfileDir(sp BrowserSpace) (string, error) {
+	if sp.ProfileDir != "" {
+		if err := os.MkdirAll(sp.ProfileDir, 0o755); err != nil {
+			return "", err
+		}
+		return sp.ProfileDir, nil
+	}
+	base, err := appdirs.Data("browser")
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, sp.ID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 // legacyToolIcons 旧版默认数据中不存在于 Arco 的图标 → 当前图标，避免历史配置图标空白。
 var legacyToolIcons = map[string]string{
 	"color-picker": "palette",
@@ -196,6 +321,7 @@ func normalizeConfig(cfg *AppConfig) {
 	cfg.Paths.Plugins = strings.TrimSpace(cfg.Paths.Plugins)
 	cfg.Paths.Data = strings.TrimSpace(cfg.Paths.Data)
 	cfg.Paths.Logs = strings.TrimSpace(cfg.Paths.Logs)
+	normalizeBrowserConfig(&cfg.Browser)
 	switch cfg.General.Theme {
 	case "light", "dark", "auto":
 	default:
@@ -209,7 +335,7 @@ func normalizeConfig(cfg *AppConfig) {
 			cfg.Tools[i].Icon = fixed
 		}
 	}
-	// 补齐存量配置中缺失的新增默认工具（仅限 php/nginx/npm/docker/speedtest，尊重用户手动移除的其他工具）
+	// 补齐存量配置中缺失的新增默认工具（仅限下面列出的，尊重用户手动移除的其他工具）
 	for _, extra := range []struct{ id, key, name, path, icon string }{
 		{"php", "php", "PHP管理", "/tools/php", "icon-php"},
 		{"nginx", "nginx", "Nginx管理", "/tools/nginx", "icon-ngnix"},
@@ -217,6 +343,7 @@ func normalizeConfig(cfg *AppConfig) {
 		{"term", "term", "终端连接", "/tools/term", "code"},
 		{"npm", "npm", "Npm管理", "/tools/npm", "icon-npm"},
 		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-wangluo1"},
+		{"browser", "browser", "浏览器", "/tools/browser", "computer"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -238,6 +365,11 @@ func normalizeConfig(cfg *AppConfig) {
 			if extra.key == "speedtest" {
 				newTool.Width, newTool.Height = 1080, 720
 			}
+			if extra.key == "browser" {
+				// 浏览器面板直接满屏：地址栏/标签栏由前端自画，别留空白边
+				newTool.Width, newTool.Height = 0, 0
+				newTool.Fullscreen = true
+			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}
 	}
@@ -249,6 +381,9 @@ func normalizeConfig(cfg *AppConfig) {
 func LoadAppConfig() AppConfig {
 	cfg := DefaultConfig()
 	firstRun := false
+	// 老版本配置里没有 browser 段：规范化后补写一次，让 config.json 始终是完整的
+	// （整份配置要能上传/同步到云端，缺段会导致同步后丢设置）。
+	needBrowserSection := false
 	if path, err := configFilePath(); err == nil {
 		if _, serr := os.Stat(path); serr != nil && os.IsNotExist(serr) {
 			firstRun = true
@@ -262,6 +397,12 @@ func LoadAppConfig() AppConfig {
 				cfg.Ball = loaded.Ball
 				cfg.General = loaded.General
 				cfg.Paths = loaded.Paths
+				// 老配置里没有 browser 段：只要读到了空间列表或首页就认为用户配置过
+				if loaded.Browser.Homepage != "" || len(loaded.Browser.Spaces) > 0 {
+					cfg.Browser = loaded.Browser
+				} else if !firstRun {
+					needBrowserSection = true
+				}
 				if len(loaded.Tools) > 0 {
 					cfg.Tools = loaded.Tools
 				}
@@ -284,6 +425,13 @@ func LoadAppConfig() AppConfig {
 		_, _ = writeAppConfigLocked(cfg)
 		appCfgWriteMu.Unlock()
 		applog.Infof("config", "首次启动：已生成默认配置与全局目录（plugins/data/logs + 服务子目录）")
+	} else if needBrowserSection {
+		// 老配置升级：把新增的 browser 段（空间/代理/首页）补写回文件，
+		// 这样设置页与将来的云同步看到的是同一份完整配置。
+		appCfgWriteMu.Lock()
+		_, _ = writeAppConfigLocked(cfg)
+		appCfgWriteMu.Unlock()
+		applog.Infof("config", "配置升级：已补写 browser 段")
 	}
 	return cfg
 }

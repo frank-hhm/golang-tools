@@ -4,6 +4,8 @@
 export type {
     AppConfig,
     BallConfig,
+    BrowserConfig,
+    BrowserSpace,
     GeneralConfig,
     LogConfig,
     PathsConfig,

@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 )
 
@@ -1313,15 +1314,8 @@ func Logs(id string, n int) ([]string, error) {
 					dir = d
 				}
 			}
-			data, err := os.ReadFile(filepath.Join(dir, "server.log"))
-			if err != nil {
-				return nil, nil
-			}
-			lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-			if len(lines) > n {
-				lines = lines[len(lines)-n:]
-			}
-			return lines, nil
+			// server.log 只在没跟踪到进程时做兼容读取，取尾巴不该整本入堆
+			return logtail.Lines(filepath.Join(dir, "server.log"), n)
 		}
 	}
 	return nil, fmt.Errorf("实例不存在: %s", id)

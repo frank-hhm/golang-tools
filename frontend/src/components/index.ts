@@ -8,6 +8,8 @@ import CommonBadge from '@/components/common/badge/index.vue'
 import CommonModalTip from '@/components/common/modal-tip/index.vue'
 import CommonDockerOff from '@/components/common/docker-off/index.vue'
 import CommonStatIcon from '@/components/common/stat-icon/index.vue'
+import CommonTitleBar from '@/components/common/title-bar/index.vue'
+import CommonToolIcon from '@/components/common/tool-icon/index.vue'
 import BodyViewer from '@/components/business/body-viewer/index.vue'
 import DockerImages from '@/components/business/docker-images/index.vue'
 
@@ -37,6 +39,10 @@ export const ComponentsPlugin: Plugin = {
         // common-stat-icon：指标卡自绘 SVG 图标（cpu/mem/uptime/go/disk/net），
         // value 传 0-100 时按数据驱动形态：CPU 脉冲频率、内存液位、磁盘进度条
         app.component('common-stat-icon', CommonStatIcon);
+        // common-title-bar：页面往全局标题栏注入内容，#title 靠左（紧跟标题）、#extra 靠右（全局按钮前）
+        app.component('common-title-bar', CommonTitleBar);
+        // common-tool-icon：渲染功能配置里的图标值（icon-xxx 字体图标 / Arco 图标名两种写法都认）
+        app.component('common-tool-icon', CommonToolIcon);
         // select-icon-modal：图标选择弹层，通过 type 属性切换图标源
         //  - type="iconfont"（默认）：本地字体图标，emit `icon-xxx`
         //  - type="arco"：Arco Design 图标库，emit 图标名（如 camera / clock-circle）
@@ -47,4 +53,4 @@ export const ComponentsPlugin: Plugin = {
         app.component('docker-images', DockerImages);
     },
 };
-export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, selectIconModal, BodyViewer, DockerImages };
+export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonTitleBar, CommonToolIcon, selectIconModal, BodyViewer, DockerImages };

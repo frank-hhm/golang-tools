@@ -238,6 +238,7 @@ const statCards = computed<StatCard[]>(() => {
     },
   ];
 });
+/** 只在用户主动点刷新（与首次进入）时亮：后台轮询不碰它，否则按钮每 5 秒转一下 */
 const sysLoading = ref(false);
 const svcFilter = ref<"all" | "redis" | "mysql" | "php" | "nginx" | "npm" | "docker">("all");
 const svcToggling = ref<string | null>(null);
@@ -282,11 +283,28 @@ function openServiceDetail(s: any) {
   try { Events.Emit("tool:select-inst", { type: s.type, id: String(s.id) }); } catch { /* */ }
 }
 
-async function refreshSysInfo() {
-  sysLoading.value = true;
-  try { sysInfo.value = await GoTools?.GetSystemInfo(); } catch { /* */ }
-  sysLoading.value = false;
+// GetSystemInfo 要逐个问服务状态，慢起来可以超过 5s 轮询间隔，不允许上一轮还没回来就叠加下一轮
+let sysInflight = false;
+
+/**
+ * 拉一次系统信息。
+ * @param silent 后台轮询走静默路径：不动刷新按钮的 loading，也不在失败时抹掉已有数据
+ */
+async function loadSysInfo(silent = false) {
+  if (sysInflight) return;
+  sysInflight = true;
+  if (!silent) sysLoading.value = true;
+  try {
+    sysInfo.value = await GoTools?.GetSystemInfo();
+  } catch { /* 取不到就继续用上一次的数据，下一轮再试 */ }
+  finally {
+    sysInflight = false;
+    sysLoading.value = false;
+  }
 }
+
+/** 刷新按钮：用户主动动作，亮 loading 作为反馈 */
+function refreshSysInfo() { void loadSysInfo(false); }
 
 async function toggleService(s: any) {
   svcToggling.value = s.id;
@@ -304,7 +322,7 @@ async function toggleService(s: any) {
       const fn = (GoTools as any)?.[startMap[s.type] || ""];
       if (fn) await fn(s.id);
     }
-    await refreshSysInfo();
+    await loadSysInfo(true);
   } catch (e) { /* */ }
   svcToggling.value = null;
 }
@@ -343,10 +361,17 @@ function listen(name: string, cb: (id: string) => void) {
 
 let sysTimer: ReturnType<typeof setInterval> | null = null;
 
+/** 后台轮询：静默路径（不闪刷新按钮）；窗口隐藏/收进托盘时干脆不查，不白耗后端 */
+function pollSysInfo() {
+  if (!document.hidden) void loadSysInfo(true);
+}
+
 onMounted(async () => {
   await loadTools();
   refreshSysInfo();
-  sysTimer = setInterval(refreshSysInfo, 5000);
+  sysTimer = setInterval(pollSysInfo, 5000);
+  // 从隐藏态恢复时补一次，不让卡片停在隐藏前的数据
+  document.addEventListener("visibilitychange", pollSysInfo);
   listen("ball:action", activateById);
   listen("tool:activate", activateById);
   // 设置页保存工具列表后刷新快捷操作（新增/删除/改名称/改图标等）
@@ -354,6 +379,7 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   if (sysTimer) clearInterval(sysTimer);
+  document.removeEventListener("visibilitychange", pollSysInfo);
   cancels.forEach((f) => { try { f(); } catch { /* */ } });
   cancels.length = 0;
 });
