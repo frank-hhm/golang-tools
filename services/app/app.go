@@ -340,6 +340,12 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 	if a.app == nil {
 		return fmt.Errorf("应用尚未初始化")
 	}
+	// Web 运行模式（-tags server）下 Wails 的 Window 是空实现，NewWithOptions
+	// 什么都不做却返回成功；前端 useToolWindow 正是靠“报错”才回退到 router.push，
+	// 所以这里必须显式报错，否则点了工具图标页面上毫无反应。
+	if !nativeWindowsAvailable {
+		return fmt.Errorf("%w：Web 运行模式没有原生窗口，请在当前页面用路由打开 %s", sysx.ErrUnsupported, path)
+	}
 	if path == "" {
 		return fmt.Errorf("path 不能为空")
 	}
