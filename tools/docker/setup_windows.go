@@ -57,32 +57,7 @@ const (
 	browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 )
 
-/* ============================ 小工具 ============================ */
-
-// humanSize 体积口语化（进度与提示都用 MB 表达）
-func humanSize(n int64) string {
-	if n < 0 {
-		return "未知大小"
-	}
-	if n < 1024*1024 {
-		return fmt.Sprintf("%.1f KB", float64(n)/1024)
-	}
-	return fmt.Sprintf("%.1f MB", float64(n)/1024/1024)
-}
-
-// truncate 按 rune 截断，避免把中文切成半个字节序列
-func truncate(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max]) + "…"
-}
-
-// oneLine 压平换行：体检状态这类要显示在单行里的原文
-func oneLine(s string) string {
-	return strings.Join(strings.Fields(s), " ")
-}
+/* ============================ 安装引导 ============================ */
 
 // LicenseNotes 安装前需如实告知的要点，前端挂在感叹号悬停提示里逐行展示（不含糊其辞）
 func LicenseNotes() []string {

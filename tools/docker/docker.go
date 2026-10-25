@@ -1,12 +1,16 @@
-//go:build windows
-
 package docker
 
 // ============================================================
-// Docker 管理 - 对外能力面（Windows 实现）
+// Docker 管理 - 对外能力面
 //
 // 全部为包级函数，由 services/app 的 DockerSrv* 方法委托，供前端调用；
 // 同时导出给 tools/mysql 复用（容器化实例生命周期）。
+//
+// 与平台无关：引擎通信走 client.go 的 HTTP 层，Windows 是命名管道、
+// Linux 是 unix socket，差异都在 client_windows.go / client_other.go 里。
+// 管理 Docker Desktop 安装、DPAPI 凭据加密这类 Windows 专属能力仍在
+// setup_windows.go / backend_windows.go / registry_windows.go，非 Windows
+// 由 docker_other.go 补同签名桩。
 //
 // 约定：由本工具创建的容器统一打标签
 //   go-tools=<工具名>  go-tools.instance=<实例ID>
