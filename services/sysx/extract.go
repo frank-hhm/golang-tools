@@ -151,22 +151,28 @@ func writeReader(target string, r io.Reader, perm os.FileMode) error {
 // 绝对路径一律拒绝而不是剥掉前导 /：带这类条目的包基本可以判定为恶意或损坏，
 // 直接报错让安装失败，比静默改写路径安全（剥前缀虽不越界，但会掩盖问题）。
 //
-// 两道检查都得做：归档名总是以 / 分隔，所以先用 path.IsAbs 拦 POSIX 绝对路径；
-// 到了 Windows 上 FilePath 的绝对路径语义不一样（\etc\passwd 不算绝对），
-// 还得再过一遍 filepath.IsAbs / VolumeName。
+// 安全判断统一按 / 分隔的名字做，事先把 \ 也归一成 /：
+//   - 归档条目规范上总是 / 分隔，但 Windows 打包工具常写成 \；
+//   - Linux 上 \ 是合法文件名字符，不归一的话 `..\evil` 会被当成普通文件名
+//     放行——不越界但两端行为不一致，同一份包会有两种结果。
+//
+// 归一只用于判断；落盘仍用原始名字，避免把 POSIX 下合法的 a\b 改写成 a/b。
+//
+// 判断全程用 path 包（POSIX 语义）而不是 filepath：filepath 的语义随 GOOS 变，
+// 那样同一份断言在 Windows 上通过不等于 Linux 也通过，测试就失去意义了。
 func safeJoin(dst, name string) (string, error) {
-	if path.IsAbs(name) || strings.HasPrefix(name, `/`) || strings.HasPrefix(name, `\`) {
+	norm := strings.ReplaceAll(name, `\`, "/")
+	if path.IsAbs(norm) || filepath.VolumeName(filepath.FromSlash(norm)) != "" {
 		return "", fmt.Errorf("归档内含绝对路径: %s", name)
 	}
+	probe := path.Clean(norm)
+	if probe == ".." || strings.HasPrefix(probe, "../") {
+		return "", fmt.Errorf("归档内含非法路径: %s", name)
+	}
+
 	clean := filepath.Clean(filepath.FromSlash(name))
 	if clean == "." || clean == "" {
 		return dst, nil
-	}
-	if filepath.IsAbs(clean) || filepath.VolumeName(clean) != "" {
-		return "", fmt.Errorf("归档内含绝对路径: %s", name)
-	}
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("归档内含非法路径: %s", name)
 	}
 	target := filepath.Join(dst, clean)
 	rel, err := filepath.Rel(dst, target)

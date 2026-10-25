@@ -54,6 +54,10 @@ func TestSafeJoin(t *testing.T) {
 		{name: "深层穿越", in: "a/../../evil", bad: true},
 		{name: "绝对路径", in: "/etc/passwd", bad: true},
 		{name: "反斜杠穿越", in: `..\evil`, bad: true},
+		{name: "反斜杠深层穿越", in: `a\..\..\evil`, bad: true},
+		// 反斜杠包在 Linux 上是合法文件名字符，但在 Windows 上是分隔符；
+		// 两端都得接受（不越界），且落盘位置必须在 dst 内。
+		{name: "含反斜杠的普通路径", in: `docs\readme.txt`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
