@@ -265,6 +265,11 @@ tasks:
         msg: "garble is required for obfuscated builds. Install it with: go install mvdan.cc/garble@v0.16.0 (requires Go 1.24+). See https://github.com/burrowers/garble/releases for version/toolchain compatibility."
     cmds:
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}-server{{exeExt}}"'
+    # server 模式不用 GUI，但 Wails 的 internal/assetserver/webview 里 linux 的 cgo
+    # 文件只约束 `linux && cgo && !android`，没有 !server；Linux 上 cgo 默认开着，
+    # 不关掉就会去找 gtk4 / webkitgtk-6.0，报 pkg-config 找不到而编译失败。
+    env:
+      CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
     vars:
       BUILD_FLAGS: '-tags server{{if eq .DEV "true"}}{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -buildvcs=false -gcflags=all="-l"{{else}},production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
 
