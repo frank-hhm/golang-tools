@@ -1,5 +1,3 @@
-//go:build windows
-
 package app
 
 // ============================================================
@@ -8,6 +6,11 @@ package app
 // 记录 CRUD 走 TermListHosts / TermSaveHost / TermDeleteHost；
 // 会话走 TermOpenSSH → TermWrite / TermResize / TermClose，
 // 远端输出与断线经 term:data / term:exit 事件推送（见 main.go 的事件注册）。
+//
+// 底层 tools/term 是纯 Go（SSH / Docker exec）且已跨平台，所以这个文件
+// 不再加 windows 约束：Linux 的 server 模式里终端是真实可用的功能，
+// 不是桩。唯一的 Windows 味是 TermChooseKeyFile 的原生选文件框，
+// server 模式下 Wails 的 Dialog 是空实现，前端应允许手输路径。
 // ============================================================
 
 import (

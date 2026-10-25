@@ -1,5 +1,3 @@
-//go:build windows
-
 package sysinfo
 
 import (
@@ -103,8 +101,8 @@ func Snapshot() *SystemInfo {
 	runtime.ReadMemStats(&ms)
 	info.AppMemAlloc = ms.Alloc
 
-	// 磁盘（C: 盘使用率）
-	if du, err := disk.Usage("C:"); err == nil {
+	// 磁盘（取样路径按平台定义在 rootfs_*.go：Windows 是 C:，其它平台是 /）
+	if du, err := disk.Usage(rootFS); err == nil {
 		info.DiskTotal = du.Total
 		info.DiskUsed = du.Used
 		info.DiskPercent = du.UsedPercent

@@ -1,18 +1,15 @@
-//go:build windows
-
 package app
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"go-tools/services/applog"
 	"go-tools/services/config"
+	"go-tools/services/sysx"
 )
 
 /*
@@ -113,15 +110,14 @@ func (a *App) ImportConfig() (string, error) {
 	return path, nil
 }
 
-// OpenConfigDir 在资源管理器中打开配置文件所在目录（手工备份/替换 config.json 用）。
+// OpenConfigDir 在文件管理器中打开配置文件所在目录（手工备份/替换 config.json 用）。
 func (a *App) OpenConfigDir() error {
 	dir, err := config.ConfigDir()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("explorer.exe", dir)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err := cmd.Start(); err != nil {
+	// 走 sysx：Windows 用 explorer，Linux 用 xdg-open，调用处不写平台分支
+	if err := sysx.Open().Dir(dir); err != nil {
 		applog.Errorf("config", "打开配置目录失败: %v", err)
 		return err
 	}

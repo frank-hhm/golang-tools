@@ -1,5 +1,3 @@
-//go:build windows
-
 package app
 
 import (
@@ -20,6 +18,11 @@ import (
   1. 把参数校验一遍（空路径、目标目录不存在）；
   2. 把"用户选择了什么"这类桌面交互（打开/保存对话框）接过来；
   3. 危险操作留一条日志（删了哪些、移动到哪），出问题能倒查。
+
+全部文件操作都在 tools/disk（它已按 drive_windows.go / drive_other.go 分平台），
+所以这里不加 windows 约束：Linux 的 server 模式里磁盘管理是真能用的。
+只有 DiskOpenFile / DiskUpload / DiskDownload 用到原生文件对话框，server 模式下
+Wails 的 Dialog 是空实现，前端应当允许手输路径。
 */
 
 // DiskDrives 枚举本机盘符（含容量与使用率），页面顶部总览用。

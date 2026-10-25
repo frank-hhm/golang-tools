@@ -18,8 +18,5 @@ func (a *App) destroyCaptureOverlay() {}
 // BrowserCloseAll 非 Windows 没有内嵌浏览器窗口。
 func (a *App) BrowserCloseAll() {}
 
-// activeBackgroundCount 非 Windows 没有录制/截图这类后台窗口，恒为 0。
-func (a *App) activeBackgroundCount() int { return 0 }
-
 // TryActivateNativeTool 非 Windows 没有原生工具窗口可激活，恒为 false。
 func (a *App) TryActivateNativeTool(toolID string) bool { return false }

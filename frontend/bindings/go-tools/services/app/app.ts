@@ -1972,7 +1972,7 @@ export function OpenCaptureOverlay(): $CancellablePromise<void> {
 }
 
 /**
- * OpenConfigDir 在资源管理器中打开配置文件所在目录（手工备份/替换 config.json 用）。
+ * OpenConfigDir 在文件管理器中打开配置文件所在目录（手工备份/替换 config.json 用）。
  */
 export function OpenConfigDir(): $CancellablePromise<void> {
     return $Call.ByID(217538284);
