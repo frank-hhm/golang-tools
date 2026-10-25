@@ -95,7 +95,8 @@ func main() {
 			application.NewService(appInstance),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			// 包一层 gzip：主包 1.6MB，公网直传容易中途被截断导致白屏
+			Handler: gzipAssets(application.AssetFileServerFS(assets), assets),
 		},
 		// Host/Port 留空即由 Wails 的默认值与 WAILS_SERVER_HOST / WAILS_SERVER_PORT 决定
 		Server: application.ServerOptions{},
