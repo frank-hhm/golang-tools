@@ -13,7 +13,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/shirou/gopsutil/v3/process"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
@@ -22,12 +21,6 @@ var (
 	globalEngine *Engine         // 1. 创建一个全局的抓包引擎实例
 	engineMutex  sync.Mutex      // 2. 使用互斥锁保护全局实例，防止并发问题
 	packetCh     chan PacketInfo // 3. 创建一个全局的数据包通道
-
-	// --- 新增的全局变量 ---
-	portProcessMap = make(map[uint16]string) // 用于存储 端口 -> 进程名 的映射
-	mapMutex       sync.RWMutex              // 用于保护 portProcessMap 的读写锁
-	mapCtx         context.Context           // 用于控制映射更新协程的生命周期
-	mapCancel      context.CancelFunc        // 用于停止映射更新协程
 )
 
 // Config 抓包配置
@@ -252,6 +245,8 @@ func (e *Engine) Start(ctx context.Context, packetChan chan<- PacketInfo) error 
 		e.wg.Add(1)
 		go e.captureDevice(captureCtx, device, bpfFilter, packetChan)
 	}
+	// 端口归属跟 MITM 共用一份采样（以前这里自己每秒全量扫一遍 PID，纯重复开销）
+	startSharedPortMap(captureCtx)
 
 	return nil
 }
@@ -388,15 +383,13 @@ func isWellKnownPort(port uint16) bool {
 	return false
 }
 
-// getProcessByPort 根据端口获取关联进程名
+// getProcessByPort 根据端口获取关联进程名（本地端口优先：发包方才是归属对象）
 func getProcessByPort(srcPort, dstPort uint16) string {
-	mapMutex.RLock()
-	defer mapMutex.RUnlock()
-	if name, ok := portProcessMap[srcPort]; ok {
-		return name
+	if p := lookupPort(srcPort); p.Name != "" {
+		return p.Name
 	}
-	if name, ok := portProcessMap[dstPort]; ok {
-		return name
+	if p := lookupPort(dstPort); p.Name != "" {
+		return p.Name
 	}
 	return ""
 }
@@ -607,71 +600,8 @@ func GetPcapDeviceName(standardName string) (string, error) {
 	return "", fmt.Errorf("未找到网卡 [%s] 对应的 Npcap 抓包设备", standardName)
 }
 
-// startPortProcessMapUpdater 启动一个后台协程，定期更新端口到进程名的映射表
-func startPortProcessMapUpdater(ctx context.Context) {
-	go func() {
-		ticker := time.NewTicker(1 * time.Second) // 每秒更新一次
-		defer ticker.Stop()
-
-		// 立即执行一次，避免启动后有一秒的空白期
-		updatePortProcessMap()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				updatePortProcessMap()
-			}
-		}
-	}()
-}
-
-// updatePortProcessMap 扫描所有进程，构建端口到进程名的映射表
-func updatePortProcessMap() {
-	newMap := make(map[uint16]string)
-
-	// 获取所有进程的 PID
-	pids, err := process.Pids()
-	if err != nil {
-		return
-	}
-
-	for _, pid := range pids {
-		p, err := process.NewProcess(pid)
-		if err != nil {
-			// 进程可能已退出，忽略错误
-			continue
-		}
-
-		// 获取进程名
-		name, err := p.Name()
-		if err != nil {
-			continue
-		}
-
-		// 获取该进程的所有网络连接
-		conns, err := p.Connections()
-		if err != nil || len(conns) == 0 {
-			continue
-		}
-
-		// 遍历连接，将本地端口和进程名存入新映射表
-		for _, conn := range conns {
-			// --- 修复开始 ---
-			// 在 gopsutil v3 中，conn.Laddr 是一个结构体，可以直接访问 Port 字段
-			localPort := uint16(conn.Laddr.Port)
-			if localPort > 0 {
-				newMap[localPort] = name
-			}
-		}
-	}
-
-	// 原子性地替换旧映射表
-	mapMutex.Lock()
-	portProcessMap = newMap
-	mapMutex.Unlock()
-}
+// 端口→进程归属的采样已收进 procmap.go：以前这里另有一份「每秒全量扫 PID」的实现，
+// 且从没人调用过（startPortProcessMapUpdater 无引用），真跑起来就是与 MITM 各扫一份。
 
 // PortTaken 报告代理监听端口能否使用：先看各工具实例的登记端口，再看系统里是否已被监听。
 // 返回非空字符串即占用原因，空串表示可用。

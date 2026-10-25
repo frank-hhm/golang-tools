@@ -294,20 +294,11 @@ func dockerStart(cfg *InstanceConfig) error {
 		cfg.Port, strings.Join(dockerLogTail(id, 12), "\n"))
 }
 
-// watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐）
+// watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐）。
+// 交给 docker 包的共享看护：引擎一时问不到（管道忙/熔断/自更新）时按运行中处理并退避，
+// 只有容器真的停了或被删除才摘除——否则一次抖动就把还在跑的实例从进程表抹掉。
 func watchDockerExit(instID, containerID string, p *srvRunning) {
-	go func() {
-		tick := time.NewTicker(1500 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			<-tick.C
-			st, err := docker.InspectContainer(containerID)
-			if err != nil || !st.Running {
-				forgetSrv(instID, p)
-				return
-			}
-		}
-	}()
+	docker.WatchContainerExit(containerID, func() { forgetSrv(instID, p) })
 }
 
 // forgetSrv 从进程表摘除该实例（幂等：只有仍指向同一对象时才删）

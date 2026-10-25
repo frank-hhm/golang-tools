@@ -116,3 +116,9 @@
 .com-state.is-dim {
     color: var(--color-text-3);
 }
+
+/******docker 引擎告示（common-docker-off）********/
+/* 各工具页左侧「本地服务」卡片的 body 是 padding:0，告示自己补一点外边距，别贴着实例列表边 */
+.srv-docker-off {
+    margin: 8px 10px 0;
+}

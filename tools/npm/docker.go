@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"go-tools/tools/docker"
+	"go-tools/tools/logtail"
 )
 
 const (
@@ -450,20 +451,10 @@ func dockerRemove(cfg *InstanceConfig) error {
 	return nil
 }
 
-// watchDockerExit 跟踪容器退出（退出即从跟踪表摘除，与本地模式 Shutdown 语义对齐）
+// watchDockerExit 跟踪容器退出（退出即从跟踪表摘除，与本地模式 Shutdown 语义对齐）。
+// 引擎一时问不到（管道忙/熔断/自更新）时由共享看护退避重试，不误判为退出。
 func watchDockerExit(instID, containerID string, r *dockerRun) {
-	go func() {
-		tick := time.NewTicker(1500 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			<-tick.C
-			st, err := docker.InspectContainer(containerID)
-			if err != nil || !st.Running {
-				forgetDocker(instID, r)
-				return
-			}
-		}
-	}()
+	docker.WatchContainerExit(containerID, func() { forgetDocker(instID, r) })
 }
 
 /* ============================ 日志与状态 ============================ */
@@ -478,15 +469,7 @@ func dockerLogTail(id string, n int) []string {
 
 // dockerErrTail 宿主机侧 error.log 尾部（容器里 nginx 起不来的原因基本都在这里）
 func dockerErrTail(prefix string, n int) string {
-	data, err := os.ReadFile(filepath.Join(prefix, "logs", "error.log"))
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return strings.Join(lines, "\n")
+	return logtail.Tail(filepath.Join(prefix, "logs", "error.log"), n)
 }
 
 // dockerFailTail 起不来时能拿到的证据：宿主侧 error.log 尾部 + 容器输出
@@ -522,30 +505,58 @@ func dockerLogsBlend(cfg *InstanceConfig, prefix string, n int) ([]string, error
 	return append([]string{"—— 容器输出 ——"}, logs...), nil
 }
 
+// accessCursor 某个实例的 access.log 已读位置与累计值
+type accessCursor struct {
+	size     int64
+	requests int64
+	bytes    int64
+}
+
+var (
+	accessMu      sync.Mutex
+	accessCursors = map[string]*accessCursor{}
+)
+
+// accessCursorMax 缓存条目上限：正常等于实例个数，防实例被删后目录键无限积累
+const accessCursorMax = 256
+
 // dockerAccessStat 从 access.log 统计请求数与响应字节：
 // 容器模式没有内置 Go 服务器的原子计数器，但日志格式末尾固定是
-// status / body_bytes_sent / request_time，按行尾取数即可（$request 含空格也不影响）
+// status / body_bytes_sent / request_time，按行尾取数即可（$request 含空格也不影响）。
+// 状态面板是轮询的，所以按偏移只读新增部分：不每轮重读整本日志，
+// 也不把一段日志整体留在内存里（以前几百 MB 的 access.log 每次轮询都全量入堆）。
 func dockerAccessStat(prefix string) (requests int64, bytes int64) {
-	data, err := os.ReadFile(filepath.Join(prefix, "logs", "access.log"))
-	if err != nil {
-		return 0, 0
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	path := filepath.Join(prefix, "logs", "access.log")
+	key := filepath.Clean(path)
+	accessMu.Lock()
+	defer accessMu.Unlock()
+	cur := accessCursors[key]
+	if cur == nil {
+		if len(accessCursors) >= accessCursorMax {
+			for k := range accessCursors {
+				delete(accessCursors, k)
+			}
 		}
+		cur = &accessCursor{}
+		accessCursors[key] = cur
+	}
+	next, err := logtail.Scan(path, cur.size, func(line string) {
 		fields := strings.Fields(line)
 		if len(fields) < 3 {
-			continue
+			return
 		}
-		requests++
+		cur.requests++
 		// 倒数第二段是 body_bytes_sent；304/HEAD 会写成 "-"，跳过即可
-		if v, err := strconv.ParseInt(fields[len(fields)-2], 10, 64); err == nil && v > 0 {
-			bytes += v
+		if v, perr := strconv.ParseInt(fields[len(fields)-2], 10, 64); perr == nil && v > 0 {
+			cur.bytes += v
 		}
+	})
+	if err != nil {
+		// 读不动（日志被占用等）：拿已有的累计值继续展示，不让状态面板报错
+		return cur.requests, cur.bytes
 	}
-	return requests, bytes
+	cur.size = next
+	return cur.requests, cur.bytes
 }
 
 // fillDockerStatus 补充 Docker 模式的状态字段。

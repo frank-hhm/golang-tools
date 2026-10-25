@@ -270,7 +270,7 @@ func PushImage(ref string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		return imageOpFail("push", ref, apiError(resp.StatusCode, data))
 	}
 	dec := json.NewDecoder(resp.Body)
@@ -347,7 +347,7 @@ func ExportImage(ref, outPath string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		return "", imageOpFail("export", ref, apiError(resp.StatusCode, data))
 	}
 	f, err := os.Create(part)
@@ -421,7 +421,7 @@ func ImportImage(tarPath, ref string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		return "", imageOpFail("import", ref, apiError(resp.StatusCode, data))
 	}
 	dec := json.NewDecoder(resp.Body)
@@ -522,7 +522,7 @@ func BuildImage(dir, dockerfile, tag string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		return "", imageOpFail("build", tag, apiError(resp.StatusCode, data))
 	}
 	dec := json.NewDecoder(resp.Body)
@@ -657,7 +657,7 @@ func PruneImages(all bool) (PruneReport, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		return PruneReport{}, apiError(resp.StatusCode, data)
 	}
 	var out struct {

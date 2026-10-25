@@ -29,11 +29,14 @@
                     <template #icon><icon-swap /></template>切换后端
                 </a-button>
                 <!-- 引擎在跑、或正在启动等待时都能叫停：会结束 Docker Desktop 进程并提权停 com.docker.service -->
-                <a-button size="small" v-if="engine.available || setupBusy === 'start' || setupBusy === 'stop'"
-                    status="danger" :loading="setupBusy === 'stop'" :disabled="setupBusy === 'stop'"
-                    @click="emit('stop-engine')">
-                    <template #icon><icon-poweroff /></template>{{ setupBusy === 'start' ? '停止启动' : '停止引擎' }}
-                </a-button>
+                <a-popconfirm
+                    :content="setupBusy === 'start' ? '停止正在进行的启动？已开始的拉取/启动会被中断。' : '停止 Docker 引擎？所有运行中的容器会被中断，Docker Desktop 与 com.docker.service 都会结束。'"
+                    type="warning" position="lt" :disabled="setupBusy === 'stop'" @ok="emit('stop-engine')">
+                    <a-button size="small" v-if="engine.available || setupBusy === 'start' || setupBusy === 'stop'"
+                        status="danger" :loading="setupBusy === 'stop'" :disabled="setupBusy === 'stop'">
+                        <template #icon><icon-poweroff /></template>{{ setupBusy === 'start' ? '停止启动' : (setupBusy === 'stop' ? '停止中' : '停止引擎') }}
+                    </a-button>
+                </a-popconfirm>
                 <a-button size="small" :loading="engineLoading" @click="emit('refresh')">
                     <template #icon><icon-refresh /></template>刷新
                 </a-button>
@@ -83,18 +86,30 @@
             </a-descriptions-item>
         </a-descriptions>
         <div v-else class="engine-empty">
-            <a-empty :image="false" description="无法连接 Docker 引擎" />
-            <a-alert v-if="engine.error" type="error" class="setup-alert">{{ engine.error }}</a-alert>
-            <!-- 说清它还在探：引擎一应答面板就自己接上，不用用户去点刷新 -->
-            <div v-if="probeAt" class="probe-at">
-                最近一次探测 {{ probeAt }}；引擎起来后会自动接上（也可点右上角「刷新」立刻重试）
+            <!-- 空态不用 a-empty 大插画：一块状态条 + 一行探测说明就够，下面直接接启动向导 -->
+            <div class="off-state">
+                <span class="off-icon"><icon-poweroff /></span>
+                <div class="off-main">
+                    <div class="off-title">无法连接 Docker 引擎</div>
+                    <div class="off-sub">
+                        <template v-if="probeAt">最近一次探测 {{ probeAt }}，每 5 秒自动重试</template>
+                        <template v-else>正在探测引擎端点…</template>
+                        <span class="off-sep">·</span>引擎起来后本面板自动接上，无需手动刷新
+                    </div>
+                </div>
             </div>
+            <a-alert v-if="engine.error" type="error" class="setup-alert err-alert">{{ engine.error }}</a-alert>
 
             <!-- ---------- 安装 / 启动向导 ---------- -->
             <div class="setup-block">
                 <div class="setup-head">
                     <span class="setup-title">
                         <icon-experiment /> {{ env.dockerInstalled ? '启动 Docker 引擎' : '安装 Docker Desktop' }}
+                    </span>
+                    <span class="setup-head-extra">
+                        <a-tag size="small" :color="env.dockerInstalled ? 'orange' : 'gray'">
+                            {{ env.dockerInstalled ? '已安装 · 未运行' : '未安装' }}
+                        </a-tag>
                         <!-- 协议与代价不设勾选门禁，改为感叹号悬停如实提示 -->
                         <a-tooltip v-if="licenseNotes.length" position="bottom" :content-style="{ maxWidth: '460px' }">
                             <template #content>
@@ -111,10 +126,14 @@
 
                 <!-- 已安装只差拉起，不必再谈下载 -->
                 <template v-if="env.dockerInstalled">
-                    <a-alert type="normal" class="setup-alert">
-                        已安装 <span class="mono">{{ env.dockerExePath }}</span>
-                        ，但引擎未应答。可直接拉起 Docker Desktop 并等待就绪（首次启动约 1-2 分钟）。
-                    </a-alert>
+                    <!-- 一条信息行代替整块 alert：路径 + 现状 + 预期耗时，不占三行高度 -->
+                    <div class="setup-hint">
+                        <span class="hint-label">安装位置</span>
+                        <a-tooltip :content="env.dockerExePath" :disabled="!env.dockerExePath">
+                            <span class="mono hint-path">{{ env.dockerExePath }}</span>
+                        </a-tooltip>
+                        <span class="hint-sub">引擎未应答，拉起后等待就绪（首次约 1-2 分钟）</span>
+                    </div>
                     <a-space :size="8" class="setup-row">
                         <a-button size="small" :loading="setupBusy === 'start'"
                             :disabled="setupBusy === 'start'" @click="emit('start-engine')">
@@ -233,20 +252,31 @@
                     </div>
                 </template>
 
-                <div v-if="setupStage" class="setup-prog">
-                    <a-progress :percent="setupPercent / 100" size="small"
+                <div v-if="setupStage" class="setup-prog" :class="'st-' + setupStage">
+                    <div class="prog-head">
+                        <span class="prog-label">
+                            <com-badge :status="setupStage === 'error' ? 'danger' : (setupStage === 'done' ? 'success' : 'processing')"
+                                :animated="setupStage !== 'done' && setupStage !== 'error'" />
+                            {{ setupStage === 'error' ? '执行失败' : (setupStage === 'done' ? '已完成' : '进行中') }}
+                        </span>
+                        <span class="prog-pct">{{ setupPercent }}%</span>
+                    </div>
+                    <!-- 百分比自己画：进度条自带文字会把 100% 撑成一条很长的绿条，显得很重 -->
+                    <a-progress :percent="setupPercent / 100" size="small" :show-text="false"
                         :status="setupStage === 'error' ? 'danger' : (setupStage === 'done' ? 'success' : 'normal')" />
                     <div class="setup-note">{{ setupNote }}</div>
                 </div>
 
                 <div v-if="setupLogs.length" class="setup-logs">
                     <div class="setup-head">
-                        <span class="setup-title"><icon-history /> 安装日志</span>
-                        <a-button size="small" @click="emit('clear-logs')">
+                        <span class="setup-subtitle">
+                            <icon-history /> 安装日志 <span class="count-pill">{{ setupLogs.length }}</span>
+                        </span>
+                        <a-button size="small" type="text" @click="emit('clear-logs')">
                             <template #icon><icon-delete /></template>清空
                         </a-button>
                     </div>
-                    <div class="setup-log-box">
+                    <div ref="logBoxRef" class="setup-log-box">
                         <div v-for="(l, i) in setupLogs" :key="'sl' + i" class="log-line">{{ l }}</div>
                     </div>
                 </div>
@@ -256,7 +286,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, ref, watch } from "vue";
+import { computed, getCurrentInstance, nextTick, onMounted, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { beLabel, fmtBytes } from "../helpers";
 
@@ -319,6 +349,15 @@ const effectiveUrl = ref("");
 const probeInfo = ref<any>(null);
 const probeErr = ref("");
 const probeLoading = ref(false);
+const logBoxRef = ref<HTMLElement | null>(null);
+
+/** 日志追加后自动贴底：安装过程盯着的是最后一行，不该让用户手动滑 */
+watch(() => props.setupLogs.length, () => {
+    nextTick(() => {
+        const el = logBoxRef.value;
+        if (el) el.scrollTop = el.scrollHeight;
+    });
+});
 
 /** 引擎配了哪些镜像加速器：拉取超时时的第一手线索 */
 const mirrorList = computed<string[]>(() => props.engine?.registryMirrors ?? []);
@@ -430,9 +469,58 @@ onMounted(() => {
     cursor: help;
 }
 
-/* 引擎不可用引导 */
+/* 引擎不可用：状态条取代 a-empty 大插画，高度至少省一半 */
 .engine-empty {
-    padding: var(--base-radius-default) 0;
+    padding: 2px 0;
+}
+
+.off-state {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
+}
+
+.off-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border-radius: 50%;
+    font-size: 18px;
+    color: rgb(var(--danger-6));
+    background: rgba(var(--danger-6), 0.12);
+}
+
+.off-title {
+    font-size: var(--base-size-default);
+    font-weight: 500;
+    color: var(--color-text-1);
+}
+
+.off-sub {
+    margin-top: 2px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+    line-height: 1.6;
+}
+
+.off-sep {
+    margin: 0 6px;
+    color: var(--color-text-4);
+}
+
+/* 引擎原始报错（候选端点、命名管道）很长：限高滚动，不把卡片撑开 */
+.err-alert :deep(.arco-alert-content) {
+    max-height: 66px;
+    overflow-y: auto;
+    word-break: break-all;
 }
 
 /* 探活时刻：小字附在后面，只为说明「一直在跟踪」，不抢主体信息 */
@@ -442,11 +530,13 @@ onMounted(() => {
     color: var(--color-text-3);
 }
 
-/* 安装向导：体检块与安装块 */
+/* 安装向导：整块做成浅底面板，与上方状态条分层 */
 .setup-block {
-    margin-top: var(--base-radius-large);
-    padding-top: var(--base-radius-default);
-    border-top: 1px solid var(--color-fill-3);
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
 }
 
 .setup-head {
@@ -457,10 +547,64 @@ onMounted(() => {
     margin-bottom: var(--base-radius-default);
 }
 
+.setup-head-extra {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .setup-title {
     font-size: var(--base-size-default);
     font-weight: 500;
     color: var(--color-text-1);
+}
+
+.setup-subtitle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+.count-pill {
+    padding: 0 6px;
+    border-radius: 8px;
+    background: var(--color-fill-2);
+    color: var(--color-text-3);
+    font-size: 11px;
+    line-height: 16px;
+}
+
+/* 已安装提示：单行信息条，路径过长就截断，悬停看全 */
+.setup-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-bg-2);
+    font-size: var(--base-size-small);
+}
+
+.hint-label {
+    color: var(--color-text-3);
+    flex: none;
+}
+
+.hint-path {
+    max-width: 420px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-2);
+}
+
+.hint-sub {
+    color: var(--color-text-3);
 }
 
 .setup-alert {
@@ -525,7 +669,32 @@ onMounted(() => {
 }
 
 .setup-prog {
-    margin-top: var(--base-radius-default);
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-bg-2);
+}
+
+.prog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.prog-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+.prog-pct {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+    font-variant-numeric: tabular-nums;
 }
 
 .setup-note {
@@ -536,15 +705,16 @@ onMounted(() => {
 }
 
 .setup-logs {
-    margin-top: var(--base-radius-default);
+    margin-top: 10px;
 }
 
 .setup-log-box {
-    height: 140px;
+    height: 120px;
     overflow-y: auto;
-    background: var(--color-fill-1);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-border-1);
     border-radius: var(--base-radius-default);
-    padding: var(--base-radius-default) var(--base-radius-large);
+    padding: 6px 10px;
 }
 
 .log-line {
@@ -554,6 +724,12 @@ onMounted(() => {
     line-height: 1.7;
     word-break: break-all;
     white-space: pre-wrap;
+}
+
+/* 整行可读：悬停给一条浅底，长日志里定位不跑偏 */
+.log-line:hover {
+    background: var(--color-fill-2);
+    border-radius: 3px;
 }
 
 .mono {

@@ -25,6 +25,11 @@ const maxBodyCapture = 512 * 1024
 // 重开窗口时通过 GetSnifferFlows 回填；服务停止即清空。
 const maxFlowBuffer = 3000
 
+// maxFlowBytes 后台缓冲的字节预算。条数上限挡不住「每条都带着满 512KB 响应体」：
+// 3000 条×（req+resp 各 512KB，再经 base64 胀 1.37 倍）理论上是 GB 级，
+// 刷一页面图片就能把内存顶上去。文本流每条才几 KB，这道预算不会伤到历史条数。
+const maxFlowBytes = 32 << 20
+
 // Flow 一次完整的 HTTP(S) 请求/响应记录
 type Flow struct {
 	ID          int64  `json:"id"`
@@ -75,9 +80,10 @@ type Mitm struct {
 	conns   map[net.Conn]struct{}
 	stopped bool
 
-	// 后台环形缓冲：前端窗口不在时也不丢数据（受 maxFlowBuffer 限制）
-	flowsMu  sync.Mutex
-	flowsBuf []Flow
+	// 后台环形缓冲：前端窗口不在时也不丢数据（受 maxFlowBuffer / maxFlowBytes 双重限制）
+	flowsMu    sync.Mutex
+	flowsBuf   []Flow
+	flowsBytes int64
 }
 
 // NewMitm 创建引擎（加载或生成根 CA）
@@ -88,7 +94,7 @@ func NewMitm() (*Mitm, error) {
 	}
 	return &Mitm{
 		ca:      ca,
-		procMap: &ProcessMap{},
+		procMap: sharedPorts, // 与 pcap 抓包共用的端口归属采样，两边同时开也只扫一份
 		conns:   make(map[net.Conn]struct{}),
 		transport: &http.Transport{
 			Proxy:                 nil,
@@ -178,6 +184,8 @@ func (m *Mitm) untrackConn(c net.Conn) {
 
 func (m *Mitm) acceptLoop() {
 	defer m.wg.Done()
+	// 退避时长：监听器没关但本轮 Accept 失败时用它空转保护
+	var tempDelay time.Duration
 	for {
 		conn, err := m.listener.Accept()
 		if err != nil {
@@ -185,9 +193,25 @@ func (m *Mitm) acceptLoop() {
 			case <-m.ctx.Done():
 				return
 			default:
-				continue
 			}
+			// 句柄耗尽、连接被重置这类临时错误会立刻返回：不睡一下就变成
+			// 满速空转的死循环，把一个核吃满还把错误日志刷爆（与 http.Server 同做法）
+			if tempDelay == 0 {
+				tempDelay = 5 * time.Millisecond
+			} else {
+				tempDelay *= 2
+			}
+			if tempDelay > time.Second {
+				tempDelay = time.Second
+			}
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-time.After(tempDelay):
+			}
+			continue
 		}
+		tempDelay = 0
 		m.wg.Add(1)
 		go func(c net.Conn) {
 			defer m.wg.Done()
@@ -369,10 +393,19 @@ func (m *Mitm) capture(proto string, req *http.Request, reqBody []byte, resp *ht
 	}
 
 	// 先缓冲后推送：即使抓包窗口已关闭（无监听者），数据也保留在内存供回填
+	size := int64(len(reqBodyStr) + len(respBodyStr) + len(reqHdrs) + len(respHdrs))
 	m.flowsMu.Lock()
 	m.flowsBuf = append(m.flowsBuf, f)
-	if over := len(m.flowsBuf) - maxFlowBuffer; over > 0 {
-		m.flowsBuf = m.flowsBuf[over:]
+	m.flowsBytes += size
+	// 双重上限：条数与字节都从最旧的一条开始丢，至少留下刚进来的这一条
+	for len(m.flowsBuf) > 1 && (len(m.flowsBuf) > maxFlowBuffer || m.flowsBytes > maxFlowBytes) {
+		drop := m.flowsBuf[0]
+		m.flowsBuf[0] = Flow{} // 断引用：不然整块底层数组会一直拽着已丢弃的大报文体
+		m.flowsBuf = m.flowsBuf[1:]
+		m.flowsBytes -= int64(len(drop.RequestBody) + len(drop.ResponseBody))
+	}
+	if m.flowsBytes < 0 {
+		m.flowsBytes = 0
 	}
 	m.flowsMu.Unlock()
 }
@@ -390,6 +423,7 @@ func (m *Mitm) Flows() []Flow {
 func (m *Mitm) ResetFlows() {
 	m.flowsMu.Lock()
 	m.flowsBuf = nil
+	m.flowsBytes = 0
 	m.flowsMu.Unlock()
 }
 

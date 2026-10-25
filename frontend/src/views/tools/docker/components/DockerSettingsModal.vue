@@ -132,14 +132,21 @@
                     <template v-if="tab === 'mirror'">
                         <a-button size="small" @click="onVisible(false)">关闭</a-button>
                         <a-button size="small" :loading="daemonSaving" @click="saveDaemon(false)">保存</a-button>
-                        <a-button size="small" status="warning" :loading="daemonSaving" @click="saveDaemon(true)">
-                            保存并重启引擎
-                        </a-button>
+                        <!-- 重启引擎会断开所有运行中的容器，属敏感操作 -->
+                        <a-popconfirm content="保存并重启 Docker 引擎？所有运行中的容器会随之中断（不自动拉起）。"
+                            type="warning" position="lt" :disabled="daemonSaving" @ok="saveDaemon(true)">
+                            <a-button size="small" status="warning" :loading="daemonSaving">
+                                保存并重启引擎
+                            </a-button>
+                        </a-popconfirm>
                     </template>
                     <template v-else>
                         <a-button v-if="regForm.id" size="small" @click="resetRegForm">放弃编辑</a-button>
-                        <a-button v-if="regForm.id && regHasPass" size="small" status="danger" :loading="regSaving"
-                            @click="clearRegPassword">清除密码</a-button>
+                        <a-popconfirm content="清除这个仓库已保存的密码？之后拉/推私有镜像需重新录入。" type="warning"
+                            position="lt" :disabled="regSaving" @ok="clearRegPassword">
+                            <a-button v-if="regForm.id && regHasPass" size="small" status="danger" :loading="regSaving">
+                                清除密码</a-button>
+                        </a-popconfirm>
                         <a-button size="small" :loading="regSaving" @click="saveRegistry">
                             {{ regForm.id ? '保存修改' : '新增仓库' }}
                         </a-button>

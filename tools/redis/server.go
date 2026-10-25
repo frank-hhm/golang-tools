@@ -1033,6 +1033,8 @@ func isProcessRunning(id string, port int, password string) bool {
 		return false
 	}
 	defer c.Close()
+	// 探活不能等：端口上接了但不回话时，2 秒内判否，不把状态轮询卡死
+	c.SetCmdTimeout(2 * time.Second)
 	_, err = c.Command("PING")
 	return err == nil
 }
@@ -1269,6 +1271,7 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 		return st, nil // 未运行不算错误
 	}
 	defer c.Close()
+	c.SetCmdTimeout(5 * time.Second) // INFO 在负载高的实例上不快，但也不能无限期卡住面板
 	st.Running = true
 	info, err := c.Command("INFO")
 	if err == nil {

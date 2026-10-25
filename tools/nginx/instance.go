@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 
 	"github.com/shirou/gopsutil/v3/process"
@@ -753,13 +754,11 @@ func SaveConfigText(id, text string) error {
 /* ============================ 小工具 ============================ */
 
 func tailLines(path string, n int) []string {
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
+	// 取尾部几行却把整本 access/error 日志读进内存：面板每几秒一轮，
+	// 这是内存曲线被顶上去的主要来源，改成只读末尾一段
+	lines, err := logtail.Lines(path, n)
+	if err != nil {
 		return nil
-	}
-	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
 	}
 	return lines
 }

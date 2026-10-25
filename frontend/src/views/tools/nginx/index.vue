@@ -10,6 +10,8 @@
                         <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
                     </div>
                 </template>
+                <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
+                <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="Nginx" />
                 <a-list :bordered="false" size="small">
                     <a-list-item v-for="inst in instances" :key="inst.id"
                         :class="{ 'inst-active': selectedId === inst.id }" @click="selectInst(inst.id)">
@@ -19,7 +21,13 @@
                             <a-tooltip :content="inst.name + ':' + inst.port">
                                 <span class="conn-name">{{ inst.name }}</span>
                             </a-tooltip>
-                            <a-tag v-if="inst.mode === 'docker'" color="purple" size="small">{{ inst.image || 'Docker' }}</a-tag>
+                            <a-tooltip v-if="inst.mode === 'docker'"
+                                :content="imgMissing(inst.image)
+                                    ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                                    : `镜像 ${inst.image}：这就是该实例的 Nginx 版本`">
+                                <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'" size="small">Docker
+                                    {{ imgTag(inst.image) }}</a-tag>
+                            </a-tooltip>
                             <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
                         </a-space>
                         <template #actions>
@@ -58,7 +66,9 @@
                     <a-space>
                         <com-badge :status="selState?.running ? 'success' : 'normal'" :animated="!!selState?.running" />
                         <span>{{ selCfg?.name }}</span>
-                        <a-tag v-if="isDockerSel" color="purple" size="small">{{ selState?.image || selCfg?.image || 'Docker' }}</a-tag>
+                        <a-tooltip v-if="isDockerSel" :content="selState?.image || selCfg?.image || ''">
+                            <a-tag color="purple" size="small">Docker {{ imgTag(selState?.image || selCfg?.image || '') }}</a-tag>
+                        </a-tooltip>
                         <a-tag v-else color="arcoblue" size="small">v{{ selState?.version || selCfg?.version }}</a-tag>
                         <a-tag color="arcoblue" size="small">:{{ selCfg?.port }}</a-tag>
                         <a-tag v-if="selCfg?.sslPort" color="orange" size="small">https :{{ selCfg.sslPort }}</a-tag>
@@ -66,14 +76,18 @@
                 </template>
                 <template #extra>
                     <a-space>
-                        <a-button size="small" :disabled="selState?.running"
+                        <a-button size="small" :disabled="selState?.running || stopBusy"
                             @click="doStart">启动</a-button>
-                        <a-button size="small" status="danger" :disabled="!selState?.running"
-                            @click="doStop">停止</a-button>
-                        <a-button size="small" @click="doRestart">重启</a-button>
+                        <!-- 停止会断开正在服务的请求，先气泡确认；按钮转 loading 显示「停止中」 -->
+                        <a-popconfirm :content="`停止实例「${selCfg?.name}」？正在处理的请求会中断。`" type="warning"
+                            position="lt" :disabled="!selState?.running || stopBusy" @ok="doStop">
+                            <a-button size="small" status="danger" :disabled="!selState?.running || stopBusy"
+                                :loading="stopBusy">{{ stopBusy ? '停止中' : '停止' }}</a-button>
+                        </a-popconfirm>
+                        <a-button size="small" :disabled="stopBusy" @click="doRestart">重启</a-button>
                         <a-tooltip
                             :content="isDockerSel ? '容器模式没有 nginx -s reload：重载 = 重启容器（会短暂中断），新配置随之生效' : 'nginx -s reload 平滑重载配置'">
-                            <a-button size="small" :disabled="!selState?.running" @click="doReload">重载</a-button>
+                            <a-button size="small" :disabled="!selState?.running || stopBusy" @click="doReload">重载</a-button>
                         </a-tooltip>
                     </a-space>
                 </template>
@@ -157,7 +171,11 @@
 
     <!-- 新建/编辑实例 -->
     <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520"
-        @before-ok="saveInstance">
+        :body-style="{ maxHeight: '72vh' }" @before-ok="saveInstance">
+        <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错；吸顶不占表单位 -->
+        <common-modal-tip v-if="instForm.mode === 'docker' && dockerErr" :text="dockerErr">
+          <a-button size="small" @click="openDockerWindow">打开 Docker 面板</a-button>
+        </common-modal-tip>
         <a-form :model="instForm" layout="vertical" class="inst-form">
             <a-form-item field="name" label="实例名称" required>
                 <a-input v-model="instForm.name" placeholder="如 site-dev" />
@@ -214,9 +232,6 @@
                     </a-form-item>
                 </a-col>
             </a-row>
-            <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错 -->
-            <a-alert v-if="instForm.mode === 'docker' && dockerErr" type="warning" style="margin-bottom: 12px">
-                {{ dockerErr }}</a-alert>
             <a-row :gutter="12">
                 <a-col v-if="instForm.mode === 'docker'" :span="8">
                     <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-nginx-实例ID">
@@ -248,9 +263,16 @@
     </a-modal>
 
     <!-- 版本管理 -->
+    <!-- 固定高度：三个页签内容高矮不一，不钉住的话切一下弹窗就跳一次高度 -->
     <a-modal v-model:visible="versionsVisible" title="Nginx 版本管理" :width="780" :footer="false" unmount-on-close
-        :body-style="{ padding: '12px 16px', maxHeight: '72vh', overflowY: 'auto' }">
-        <div class="ver-block">
+        :body-style="{ padding: '12px 16px', height: 'min(600px, calc(100vh - 220px))', overflowY: 'auto' }">
+        <!-- 类型切换：本地 / 线上 / Docker 只看一类，不用在长弹窗里找 -->
+        <a-radio-group class="ver-tab" size="medium" v-model="verTab" type="button">
+            <a-radio value="local">本地版本 {{ localVersions.length }}</a-radio>
+            <a-radio value="remote">线上可安装 {{ remoteVersions.length }}</a-radio>
+            <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
+        </a-radio-group>
+        <div v-show="verTab === 'local'" class="ver-block">
             <div class="ver-title">本地可用版本</div>
             <a-table :data="localVersions" size="small" :pagination="false" row-key="version" :scroll="{ x: '100%', y: 200 }"
                 :columns="[
@@ -263,8 +285,11 @@
                     <a-tag size="small" :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : 'orange'">{{ srcLabel(record.source) }}</a-tag>
                 </template>
                 <template #ops="{ record }">
-                    <a-button size="small" status="danger" :disabled="record.source === 'bundled'"
-                        @click="removeVersion(record)">删除</a-button>
+                    <a-popconfirm :content="`确定删除 Nginx ${record.version}？若仍有实例引用该版本会被拒绝。`"
+                        type="warning" position="lt" :disabled="record.source === 'bundled'"
+                        @ok="removeVersion(record)">
+                        <a-button size="small" status="danger" :disabled="record.source === 'bundled'">删除</a-button>
+                    </a-popconfirm>
                 </template>
             </a-table>
             <a-row class="add-local" :gutter="8">
@@ -279,8 +304,13 @@
                 </a-col>
             </a-row>
         </div>
-        <a-divider style="margin: 12px 0" />
-        <div class="ver-block">
+        <!-- Docker 镜像与容器：Docker 实例的「版本」就是镜像 tag（nginx:1.27-alpine） -->
+        <div v-show="verTab === 'docker'">
+            <docker-images keyword="nginx" tool-label="Nginx" repo="nginx" :presets="nginxImagePresets"
+                :instances="instances" :states="states" @create="newInstanceFromImage" @use="editInstanceById"
+                @changed="refreshStates" />
+        </div>
+        <div v-show="verTab === 'remote'" class="ver-block">
             <div class="ver-title">
                 线上版本
                 <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">刷新</a-button>
@@ -360,6 +390,13 @@ interface InstConfig {
     mode: string; image: string; containerName: string;
 }
 
+/** Docker 实例的版本就是镜像 tag：列表里只展示 tag（1.27-alpine），完整镜像名走 tooltip */
+function imgTag(image: string): string {
+    const s = String(image || "");
+    const i = s.indexOf(":");
+    return i >= 0 ? s.slice(i + 1) : (s || "Docker");
+}
+
 /* ============================ 状态 ============================ */
 const instances = ref<InstConfig[]>([]);
 const states = reactive<Record<string, any>>({});
@@ -387,6 +424,12 @@ const sslPortError = ref("");
 const instVisible = ref(false);
 
 const versionsVisible = ref(false);
+/** 版本管理弹窗的类型切换：本地 / 线上 / Docker 只看一类 */
+const verTab = ref<"local" | "remote" | "docker">("local");
+/** 有多少实例跑在容器里（它们的版本由镜像 tag 决定，不占本机版本库） */
+const dockerInstCount = computed(() => instances.value.filter((i) => i.mode === "docker").length);
+/** 版本管理里 Docker 镜像的常用 tag：alpine 体积小、且镜像内目录约定完整 */
+const nginxImagePresets = ["nginx:alpine", "nginx:stable-alpine", "nginx:1.27-alpine", "nginx:1.26-alpine", "nginx:alpine-slim", "nginx:1.27"];
 const localVersions = ref<any[]>([]);
 const remoteVersions = ref<any[]>([]);
 const remoteLoading = ref(false);
@@ -402,10 +445,21 @@ const confText = ref("");
 const confInstDocker = computed(() => instances.value.find((i) => i.id === confInstId.value)?.mode === "docker");
 
 /* Docker 模式表单：镜像候选只列本机已有的 nginx 系镜像（不猜预置 tag），为空就引导去拉 */
-const dockerImages = ref<string[]>([]);
+/* 名字不能回退成 dockerImages：script setup 下 kebab 标签 docker-images 会优先拿同名 setup 变量当组件，整个 Docker 区会渲染成空白 */
+const dockerImageList = ref<string[]>([]);
 const dockerImagesLoading = ref(false);
 const dockerErr = ref("");
-const imageOptions = computed(() => Array.from(new Set<string>(dockerImages.value)));
+const imageOptions = computed(() => Array.from(new Set<string>(dockerImageList.value)));
+
+/** 只刷新镜像清单（不写表单）：用来标记实例引用的镜像本机是否还在 */
+async function probeDockerImages() {
+    try { dockerImageList.value = (await GoTools.NginxSrvDockerImages()) || []; }
+    catch (e) { /* 引擎未就绪就不做校验，免得误报 */ }
+}
+/** 镜像清单非空且不含它 → 悬空引用（镜像被删了，实例还指着） */
+function imgMissing(image: string): boolean {
+    return !!image && dockerImageList.value.length > 0 && !dockerImageList.value.includes(image);
+}
 
 const { openToolWindow } = useToolWindow();
 
@@ -494,6 +548,8 @@ function startLogPolling() {
 }
 
 /* ============================ 实例操作 ============================ */
+/** 停止中：停止要等守护进程退出（容器模式更慢），期间锁定按钮防连点 */
+const stopBusy = ref(false);
 async function doStart() {
     const c = selCfg.value; if (!c) return;
     try { await GoTools.NginxSrvStart(c.id); Message.success(`实例 ${c.name} 已启动`); }
@@ -502,8 +558,11 @@ async function doStart() {
 }
 async function doStop() {
     const c = selCfg.value; if (!c) return;
+    if (stopBusy.value) return;
+    stopBusy.value = true;
     try { await GoTools.NginxSrvStop(c.id); Message.success(`实例 ${c.name} 已停止`); }
     catch (e: any) { Message.error("停止失败: " + (e?.message || e)); }
+    finally { stopBusy.value = false; }
     refreshStates();
 }
 async function doRestart() {
@@ -603,13 +662,31 @@ async function onModeChange(v: any) {
     loadDockerEngine();
 }
 
+/** 版本管理里点「新建实例」：直接以该镜像开一个 Docker 实例 */
+async function newInstanceFromImage(image: string) {
+    versionsVisible.value = false;
+    await openInstModal();
+    instForm.mode = "docker";
+    instForm.image = image;
+    await onModeChange("docker");
+}
+
+/** 版本管理里点「使用实例」：从镜像视角转去改该实例的版本（镜像） */
+async function editInstanceById(id: string) {
+    const inst = instances.value.find((i) => i.id === id);
+    if (!inst) return;
+    versionsVisible.value = false;
+    selectInst(id);
+    await openInstModal(inst);
+}
+
 async function loadImageOptions() {
     dockerImagesLoading.value = true;
-    try { dockerImages.value = (await GoTools.NginxSrvDockerImages()) || []; }
-    catch (e) { dockerImages.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
+    try { dockerImageList.value = (await GoTools.NginxSrvDockerImages()) || []; }
+    catch (e) { dockerImageList.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
     dockerImagesLoading.value = false;
     // 还没选值且有候选时先填第一个，省一步点击
-    if (instForm.mode === "docker" && !instForm.image && dockerImages.value.length) instForm.image = dockerImages.value[0];
+    if (instForm.mode === "docker" && !instForm.image && dockerImageList.value.length) instForm.image = dockerImageList.value[0];
 }
 
 async function loadDockerEngine() {
@@ -681,17 +758,42 @@ async function saveInstance(): Promise<boolean> {
         }
     } catch (e) { /* 探测失败不阻断，后端兜底 */ }
     try {
+        // 编辑前先记下原配置：切了版本/镜像且实例在跑，容器里还是旧版本，得重启才生效
+        const old = instForm.id ? instances.value.find((i) => i.id === instForm.id) : null;
+        const switched = !!old && (old.mode !== instForm.mode || old.image !== instForm.image || old.version !== instForm.version);
+        const wasRunning = !!old && !!states[old.id]?.running;
         await GoTools.NginxSrvSaveInstance({ ...instForm });
         Message.success(instForm.mode === "docker"
             ? "已保存；容器里的 nginx.conf 默认监听 80/443，改这里只改宿主端口"
             : "已保存，首次启动会按表单生成 nginx.conf");
-        await loadInstances(); return true;
+        await loadInstances();
+        if (switched && wasRunning) setTimeout(() => askRestartAfterSwitch({ ...instForm }), 240);
+        return true;
     } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); return false; }
+}
+
+/** 切了版本/镜像又没重启：跑着的还是旧版本，问一句要不要现在就换过去 */
+function askRestartAfterSwitch(inst: InstConfig) {
+    const what = inst.mode === "docker" ? `镜像 ${inst.image}` : `Nginx ${inst.version}`;
+    Modal.confirm({
+        title: "版本已切换",
+        content: `${what} 已写入配置，但实例「${inst.name}」还在跑旧版本；重启后才会生效（期间会短暂中断服务）。`,
+        okText: "立即重启",
+        cancelText: "稍后手动重启",
+        onOk: async () => {
+            try {
+                await GoTools.NginxSrvRestart(inst.id);
+                Message.success(`实例 ${inst.name} 已重启，新版本已生效`);
+            } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
+            refreshStates();
+        },
+    });
 }
 
 /* ============================ 版本管理 ============================ */
 async function openVersionsModal() {
     versionsVisible.value = true;
+    verTab.value = "local";
     loadLocalVersions();
     if (!pluginsDirVal.value) {
         try { pluginsDirVal.value = (await GoTools.NginxSrvPluginsDir()) || ""; } catch (e) { /* ignore */ }
@@ -714,16 +816,9 @@ async function installVersion(r: any) {
         Message.error("安装失败: " + (e?.message || e));
     }
 }
-function removeVersion(v: any) {
-    Modal.warning({
-        title: "删除版本",
-        content: `确定删除 Nginx ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`,
-        hideCancel: false,
-        onOk: async () => {
-            try { await GoTools.NginxSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
-            catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
-        },
-    });
+async function removeVersion(v: any) {
+    try { await GoTools.NginxSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
+    catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
 }
 async function chooseLocalDir() {
     try { const dir = await GoTools.NginxSrvChooseDir(); if (dir) localDirInput.value = dir; }
@@ -757,6 +852,8 @@ async function saveConfText() {
 /* ============================ 生命周期 ============================ */
 onMounted(async () => {
     await loadInstances();
+    // 镜像清单不进表单，只用来标记「实例引用的镜像本机已没有」
+    probeDockerImages();
     // 主页点击服务实例进入（?inst=）：选中该实例展示详情
     const wantId = String(route.query.inst ?? "");
     if (wantId && instances.value.some((i) => i.id === wantId)) selectInst(wantId);
@@ -956,6 +1053,12 @@ onUnmounted(() => {
     white-space: pre-wrap;
     word-break: break-all;
     line-height: 1.6;
+}
+
+/* 版本管理弹窗的类型切换：与下方内容留一行间距（原本靠分隔线撑开的节奏） */
+.ver-tab {
+    display: flex;
+    margin-bottom: 12px;
 }
 
 .ver-block .ver-title {

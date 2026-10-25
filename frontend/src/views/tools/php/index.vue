@@ -10,6 +10,8 @@
                         <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
                     </div>
                 </template>
+                <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
+                <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="PHP" />
                 <a-list :bordered="false" size="small">
                     <a-list-item v-for="inst in instances" :key="inst.id"
                         :class="{ 'inst-active': selectedId === inst.id }" @click="selectInst(inst.id)">
@@ -19,8 +21,12 @@
                             <a-tooltip :content="inst.name + ':' + inst.port">
                                 <span class="conn-name">{{ inst.name }}</span>
                             </a-tooltip>
-                            <a-tooltip v-if="inst.mode === 'docker'" :content="inst.image">
-                                <a-tag color="purple" size="small">{{ inst.image || 'Docker' }}</a-tag>
+                            <a-tooltip v-if="inst.mode === 'docker'"
+                                :content="imgMissing(inst.image)
+                                    ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                                    : `镜像 ${inst.image}：这就是该实例的 PHP 版本`">
+                                <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'" size="small">Docker
+                                    {{ imgTag(inst.image) }}</a-tag>
                             </a-tooltip>
                             <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
                         </a-space>
@@ -57,18 +63,24 @@
                         <com-badge :status="selState?.running ? 'success' : 'normal'" :animated="!!selState?.running" />
                         <span>{{ selCfg?.name }}</span>
                         <a-tooltip v-if="isDockerSel" :content="selCfg?.image || ''">
-                            <a-tag color="purple" size="small">Docker {{ selCfg?.image }} :{{ selCfg?.port }}</a-tag>
+                            <a-tag color="purple" size="small">Docker {{ imgTag(selCfg?.image || '') }} · :{{ selCfg?.port }}</a-tag>
                         </a-tooltip>
                         <a-tag v-else color="arcoblue" size="small">php -S :{{ selCfg?.port }}</a-tag>
                     </a-space>
                 </template>
                 <template #extra>
                     <a-space>
-                        <a-button size="small" :disabled="selState?.running || startBusy"
+                        <a-button size="small" :disabled="selState?.running || startBusy || stopBusy"
                             :loading="startBusy" @click="doStart">启动</a-button>
-                        <a-button size="small" status="danger" :disabled="!selState?.running"
-                            @click="doStop">停止</a-button>
-                        <a-button size="small" :loading="startBusy" @click="doRestart">重启</a-button>
+                        <!-- 停止会断开正在服务的请求，先气泡确认；按钮转 loading 显示「停止中」 -->
+                        <a-popconfirm :content="`停止实例「${selCfg?.name}」？正在处理的请求会中断。`" type="warning"
+                            position="lt" :disabled="!selState?.running || stopBusy" @ok="doStop">
+                            <a-button size="small" status="danger"
+                                :disabled="!selState?.running || startBusy || stopBusy" :loading="stopBusy">
+                                {{ stopBusy ? '停止中' : '停止' }}</a-button>
+                        </a-popconfirm>
+                        <a-button size="small" :disabled="stopBusy" :loading="startBusy" @click="doRestart">
+                            {{ startBusy ? '重启中' : '重启' }}</a-button>
                     </a-space>
                 </template>
                 <div class="detail-grid">
@@ -162,7 +174,11 @@
 
     <!-- 新建/编辑实例 -->
     <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="560"
-        @before-ok="saveInstance">
+        :body-style="{ maxHeight: '72vh' }" @before-ok="saveInstance">
+        <!-- 引擎没起：吸顶提示只占一行，不随错误串长度把弹窗撑高，也不推动表单字段 -->
+        <common-modal-tip v-if="instForm.mode === 'docker' && dockerErr" :text="dockerErr">
+          <a-button size="small" @click="openDockerWindow">打开 Docker 面板</a-button>
+        </common-modal-tip>
         <a-form :model="instForm" layout="vertical" class="inst-form">
             <a-row :gutter="12">
                 <a-col :span="24">
@@ -248,10 +264,6 @@
                     </a-form-item>
                 </a-col>
 
-                <a-col v-if="instForm.mode === 'docker' && dockerErr" :span="24">
-                    <a-alert type="warning" style="margin-bottom: 12px">{{ dockerErr }}</a-alert>
-                </a-col>
-
                 <a-col :span="24">
                     <a-form-item field="docRoot" label="站点根目录"
                         tooltip="留空则使用程序目录 data/www/实例名；Docker 模式会挂载进容器 /var/www/html">
@@ -270,19 +282,16 @@
     </a-modal>
 
     <!-- 版本管理 -->
+    <!-- 固定高度：三个页签内容高矮不一，不钉住的话切一下弹窗就跳一次高度 -->
     <a-modal v-model:visible="versionsVisible" title="PHP 版本管理" :width="880" :footer="false" unmount-on-close
-        :body-style="{ padding: '12px 16px', maxHeight: '72vh', overflowY: 'auto' }">
-        <!-- 顶部概览 -->
+        :body-style="{ padding: '12px 16px', height: 'min(600px, calc(100vh - 220px))', overflowY: 'auto' }">
+        <!-- 顶部：类型切换（原本只是三个计数，现在点哪类就只看哪类，弹窗不用来回滚） -->
         <div class="vm-summary">
-            <div class="vm-sum-item">
-                <span class="vm-sum-num">{{ localVersions.length }}</span>
-                <span class="vm-sum-label">本地版本</span>
-            </div>
-            <a-divider direction="vertical" style="margin: 0" />
-            <div class="vm-sum-item">
-                <span class="vm-sum-num">{{ remoteVersions.length }}</span>
-                <span class="vm-sum-label">线上可安装</span>
-            </div>
+            <a-radio-group size="medium" v-model="verTab" type="button">
+                <a-radio value="local">本地版本 {{ localVersions.length }}</a-radio>
+                <a-radio value="remote">线上可安装 {{ remoteVersions.length }}</a-radio>
+                <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
+            </a-radio-group>
             <div class="vm-sum-item vm-sum-dir">
                 <span class="vm-sum-label">插件目录</span>
                 <a-tooltip :content="pluginsDirVal || '加载中…'">
@@ -293,7 +302,7 @@
         </div>
 
         <!-- 本地可用版本：固定高度滚动 -->
-        <div class="vm-section">
+        <div v-show="verTab === 'local'" class="vm-section">
             <div class="vm-head">
                 <span class="vm-head-title"><icon-desktop /> 本地可用版本</span>
                 <div class="vm-head-ops">
@@ -315,8 +324,10 @@
                     <a-tooltip :content="v.path">
                         <span class="vm-path">{{ v.path }}</span>
                     </a-tooltip>
-                    <a-button size="small" status="danger" :disabled="v.source === 'bundled'"
-                        @click="removeVersion(v)">删除</a-button>
+                    <a-popconfirm :content="`确定删除 PHP ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`"
+                        type="warning" position="lt" :disabled="v.source === 'bundled'" @ok="removeVersion(v)">
+                        <a-button size="small" status="danger" :disabled="v.source === 'bundled'">删除</a-button>
+                    </a-popconfirm>
                 </div>
             </div>
             <a-row class="add-local" :gutter="8">
@@ -332,8 +343,15 @@
             </a-row>
         </div>
 
+        <!-- Docker 镜像与容器：Docker 实例的「版本」就是镜像 tag（php:8.3-cli），这里直接当一个版本源来管 -->
+        <div v-show="verTab === 'docker'">
+            <docker-images class="vm-docker" keyword="php" tool-label="PHP" repo="php" :presets="phpImagePresets"
+                :instances="instances" :states="states" @create="newInstanceFromImage" @use="editInstanceById"
+                @changed="refreshStates" />
+        </div>
+
         <!-- 线上版本：固定高度滚动 -->
-        <div class="vm-section">
+        <div v-show="verTab === 'remote'" class="vm-section">
             <div class="vm-head">
                 <span class="vm-head-title"><icon-cloud /> 线上版本（windows.php.net）</span>
                 <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">
@@ -388,8 +406,8 @@
             <div class="vm-tip">离线安装：将 php zip（如 php-8.3.36-nts-Win32-vs16-x64.zip）放入插件目录后刷新本地版本即可。</div>
         </div>
 
-        <!-- 任务日志：固定高度滚动 -->
-        <div class="vm-section" style="margin-bottom:0">
+        <!-- 任务日志：固定高度滚动；Docker 页签不涉及下载/安装，不占这一块地方 -->
+        <div v-show="verTab !== 'docker'" class="vm-section" style="margin-bottom:0">
             <div class="vm-head">
                 <span class="vm-head-title"><icon-file /> 任务日志</span>
                 <a-button size="small" :disabled="installLogs.length === 0" @click="installLogs = []">清空</a-button>
@@ -536,8 +554,11 @@
                     <a-space :size="4">
                         <a-button v-if="record.matchable && !record.installed" size="small"
                             :disabled="record.busy" @click="installRemoteExt(record.name)">安装并启用</a-button>
-                        <a-button v-if="record.downloaded && !record.busy" size="small" status="danger"
-                            @click="removeRemoteExt(record.name)">删除</a-button>
+                        <a-popconfirm v-if="record.downloaded && !record.busy"
+                            :content="`删除已下载的扩展 ${record.name}？DLL 文件会被移除，内置 DLL 不受影响。`"
+                            type="warning" position="lt" @ok="removeRemoteExt(record.name)">
+                            <a-button size="small" status="danger" :loading="record.busy">删除</a-button>
+                        </a-popconfirm>
                     </a-space>
                 </template>
             </a-table>
@@ -579,6 +600,13 @@ const GoTools = (getCurrentInstance() as any)?.appContext.config.globalPropertie
 
 interface InstConfig { id: string; name: string; version: string; port: number; nts: boolean; docRoot: string; router: string; enableLogs: boolean; mode: string; image: string; containerName: string }
 
+/** Docker 实例的版本就是镜像 tag：列表里只展示 tag（8.3-cli），完整镜像名走 tooltip */
+function imgTag(image: string): string {
+    const s = String(image || "");
+    const i = s.indexOf(":");
+    return i >= 0 ? s.slice(i + 1) : (s || "Docker");
+}
+
 /* ============================ 状态 ============================ */
 const instances = ref<InstConfig[]>([]);
 const states = reactive<Record<string, any>>({});
@@ -599,11 +627,22 @@ const selState = computed(() => (selectedId.value ? states[selectedId.value] : n
 const isDockerSel = computed(() => selCfg.value?.mode === "docker");
 
 /* Docker 模式表单：镜像候选只列本机已安装的 php 系镜像（不猜预置 tag），列表为空就引导去安装 */
-const dockerImages = ref<string[]>([]);
+/* 名字不能回退成 dockerImages：script setup 下 kebab 标签 docker-images 会优先拿同名 setup 变量当组件，整个 Docker 区会渲染成空白 */
+const dockerImageList = ref<string[]>([]);
 const dockerImagesLoading = ref(false);
 const dockerErr = ref("");
 const pullNote = ref("");
-const imageOptions = computed(() => Array.from(new Set<string>(dockerImages.value)));
+const imageOptions = computed(() => Array.from(new Set<string>(dockerImageList.value)));
+
+/** 只刷新镜像清单（不写表单）：用来标记实例引用的镜像本机是否还在 */
+async function probeDockerImages() {
+    try { dockerImageList.value = (await GoTools.PhpSrvDockerImages()) || []; }
+    catch (e) { /* 引擎未就绪就不做校验，免得误报 */ }
+}
+/** 镜像清单非空且不含它 → 悬空引用（镜像被删了，实例还指着） */
+function imgMissing(image: string): boolean {
+    return !!image && dockerImageList.value.length > 0 && !dockerImageList.value.includes(image);
+}
 
 const instForm = reactive<InstConfig>({
     id: "", name: "", version: "", port: 8088, nts: true, docRoot: "", router: "", enableLogs: true,
@@ -613,7 +652,13 @@ const instForm = reactive<InstConfig>({
 const portError = ref("");
 const instVisible = ref(false);
 
+/** 版本管理概览：有多少实例在用容器（它们的版本由镜像 tag 决定，不占本机版本库） */
+const dockerInstCount = computed(() => instances.value.filter((i) => i.mode === "docker").length);
+/** 版本管理弹窗的类型切换：本地 / 线上 / Docker 只看一类 */
+const verTab = ref<"local" | "remote" | "docker">("local");
 const versionsVisible = ref(false);
+/** 版本管理里 Docker 镜像的常用 tag：容器内跑 php -S 只认 cli 变体，所以 cli 排前面 */
+const phpImagePresets = ["php:8.4-cli", "php:8.3-cli", "php:8.2-cli", "php:8.1-cli", "php:8.4-apache", "php:8.3-zts-cli"];
 const localVersions = ref<any[]>([]);
 const remoteVersions = ref<any[]>([]);
 const remoteLoading = ref(false);
@@ -720,11 +765,11 @@ function isDockerOf(id: string): boolean {
 }
 async function loadImageOptions() {
     dockerImagesLoading.value = true;
-    try { dockerImages.value = (await GoTools.PhpSrvDockerImages()) || []; }
-    catch (e) { dockerImages.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
+    try { dockerImageList.value = (await GoTools.PhpSrvDockerImages()) || []; }
+    catch (e) { dockerImageList.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
     dockerImagesLoading.value = false;
     // 还没选值且有候选时先填第一个，省一步点击
-    if (instForm.mode === "docker" && !instForm.image && dockerImages.value.length) instForm.image = dockerImages.value[0];
+    if (instForm.mode === "docker" && !instForm.image && dockerImageList.value.length) instForm.image = dockerImageList.value[0];
 }
 async function loadDockerEngine() {
     try {
@@ -815,6 +860,8 @@ function startLogPolling() {
 
 /* ============================ 实例操作 ============================ */
 const startBusy = ref(false);
+/** 停止中：停止走的是守护进程退出，Docker 模式可能等几秒，期间禁止重入 */
+const stopBusy = ref(false);
 /** 启动（本地拉进程，Docker 建容器；首次可能需拉镜像数分钟，进度靠 docker:pull 事件） */
 async function doStartId(id: string, name: string) {
     if (!id || startBusy.value) return;
@@ -837,8 +884,11 @@ async function doStart() {
 }
 async function doStop() {
     const c = selCfg.value; if (!c) return;
+    if (startBusy.value || stopBusy.value) return;
+    stopBusy.value = true;
     try { await GoTools.PhpSrvStop(c.id); Message.success(`实例 ${c.name} 已停止`); }
     catch (e: any) { Message.error("停止失败: " + (e?.message || e)); }
+    finally { stopBusy.value = false; }
     refreshStates();
 }
 async function doRestart() {
@@ -922,6 +972,24 @@ async function onModeChange(v: any) {
     loadImageOptions();
     loadDockerEngine();
 }
+
+/** 版本管理里点「新建实例」：直接以该镜像开一个 Docker 实例（端口仍走可用端口探测） */
+async function newInstanceFromImage(image: string) {
+    versionsVisible.value = false;
+    await openInstModal();
+    instForm.mode = "docker";
+    instForm.image = image;
+    await onModeChange("docker");
+}
+
+/** 版本管理里点「使用实例」：从镜像视角转去改该实例的版本（镜像） */
+async function editInstanceById(id: string) {
+    const inst = instances.value.find((i) => i.id === id);
+    if (!inst) return;
+    versionsVisible.value = false;
+    selectInst(id);
+    await openInstModal(inst);
+}
 async function checkPortTaken() {
     if (!instForm.port) { portError.value = ""; return; }
     try {
@@ -954,14 +1022,39 @@ async function saveInstance(): Promise<boolean> {
         }
     } catch (e) { /* 探测失败不阻断，后端保存时兜底 */ }
     try {
+        // 编辑前先记下原配置：切了版本/镜像且实例在跑，容器里还是旧版本，得重启才生效
+        const old = instForm.id ? instances.value.find((i) => i.id === instForm.id) : null;
+        const switched = !!old && (old.mode !== instForm.mode || old.image !== instForm.image || old.version !== instForm.version);
+        const wasRunning = !!old && !!states[old.id]?.running;
         await GoTools.PhpSrvSaveInstance({ ...instForm });
-        Message.success("已保存"); await loadInstances(); return true;
+        Message.success("已保存"); await loadInstances();
+        if (switched && wasRunning) setTimeout(() => askRestartAfterSwitch({ ...instForm }), 240);
+        return true;
     } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); return false; }
+}
+
+/** 切了版本/镜像又没重启：跑着的还是旧版本，问一句要不要现在就换过去 */
+function askRestartAfterSwitch(inst: InstConfig) {
+    const what = inst.mode === "docker" ? `镜像 ${inst.image}` : `PHP ${inst.version}`;
+    Modal.confirm({
+        title: "版本已切换",
+        content: `${what} 已写入配置，但实例「${inst.name}」还在跑旧版本；重启后才会生效（期间会短暂中断服务）。`,
+        okText: "立即重启",
+        cancelText: "稍后手动重启",
+        onOk: async () => {
+            try {
+                await GoTools.PhpSrvRestart(inst.id);
+                Message.success(`实例 ${inst.name} 已重启，新版本已生效`);
+            } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
+            refreshStates();
+        },
+    });
 }
 
 /* ============================ 版本管理 ============================ */
 async function openVersionsModal() {
     versionsVisible.value = true;
+    verTab.value = "local";
     loadLocalVersions();
     if (!pluginsDirVal.value) {
         try { pluginsDirVal.value = (await GoTools.PhpSrvPluginsDir()) || ""; } catch (e) { /* ignore */ }
@@ -1014,16 +1107,9 @@ function showInstallError(version: string, note: string) {
         onClose: () => { errModalOpen = false; },
     });
 }
-function removeVersion(v: any) {
-    Modal.warning({
-        title: "删除版本",
-        content: `确定删除 PHP ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`,
-        hideCancel: false,
-        onOk: async () => {
-            try { await GoTools.PhpSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
-            catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
-        },
-    });
+async function removeVersion(v: any) {
+    try { await GoTools.PhpSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
+    catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
 }
 async function chooseLocalDir() {
     try { const dir = await GoTools.PhpSrvChooseDir(); if (dir) localDirInput.value = dir; }
@@ -1183,6 +1269,8 @@ function onPullEvent(raw: any) {
 /* ============================ 生命周期 ============================ */
 onMounted(async () => {
     await loadInstances();
+    // 镜像清单不进表单，只用来标记「实例引用的镜像本机已没有」
+    probeDockerImages();
     // 主页点击服务实例进入（?inst=）：选中该实例展示详情
     const wantId = String(route.query.inst ?? "");
     if (wantId && instances.value.some((i) => i.id === wantId)) selectInst(wantId);

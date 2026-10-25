@@ -110,6 +110,14 @@ type memoCell struct {
 	val any
 }
 
+const (
+	// memoMaxCells 缓存条数上限：key 里带容器 ID/镜像 ID，容器反复建删时
+	// 只增不减会把整个 inspect 结果、日志尾巴长期撑在内存里
+	memoMaxCells = 512
+	// memoIdleExpiry 超过条数时优先淘汰这么久没用过的条目
+	memoIdleExpiry = 5 * time.Minute
+)
+
 var (
 	memoMu    sync.Mutex
 	memoCells = map[string]*memoCell{}
@@ -119,12 +127,41 @@ var (
 func memoCellOf(key string) *memoCell {
 	memoMu.Lock()
 	defer memoMu.Unlock()
-	c := memoCells[key]
-	if c == nil {
-		c = &memoCell{}
-		memoCells[key] = c
+	if c := memoCells[key]; c != nil {
+		return c
 	}
+	if len(memoCells) >= memoMaxCells {
+		memoEvictIdleLocked()
+	}
+	// 全是热的（一个高频面板就能把 key 占满）：整表推倒，宁可缓存归零也不无上限长
+	if len(memoCells) >= memoMaxCells {
+		for k, c := range memoCells {
+			c.mu.Lock()
+			c.val, c.at = nil, time.Time{}
+			c.mu.Unlock()
+			delete(memoCells, k)
+		}
+	}
+	c := &memoCell{}
+	memoCells[key] = c
 	return c
+}
+
+// memoEvictIdleLocked 淘汰长时间未命中的条目（调用方已持 memoMu）。
+// 先清空 val 再删 key：其他地方可能还握着一只 *memoCell，不能让它拖着报文体。
+func memoEvictIdleLocked() {
+	now := time.Now()
+	for k, c := range memoCells {
+		c.mu.Lock()
+		idle := c.at.IsZero() || now.Sub(c.at) > memoIdleExpiry
+		if idle {
+			c.val = nil
+		}
+		c.mu.Unlock()
+		if idle {
+			delete(memoCells, k)
+		}
+	}
 }
 
 // apiInvalidate 作废全部读缓存（任何写操作之后调用）

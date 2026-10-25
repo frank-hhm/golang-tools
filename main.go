@@ -18,6 +18,7 @@ import (
 	"go-tools/tools/redis"
 	"go-tools/tools/screenshot"
 	"go-tools/tools/sniffer"
+	"go-tools/tools/term"
 	"go-tools/tools/usbserial"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -68,6 +69,9 @@ func init() {
 	application.RegisterEvent[docker.PullProgress]("docker:pull")
 	application.RegisterEvent[docker.ContainerLogLine]("docker:serverlog")
 	application.RegisterEvent[docker.SetupProgress]("docker:setup")
+	// 终端会话：输出流与断开通知
+	application.RegisterEvent[term.DataEvent]("term:data")
+	application.RegisterEvent[term.ExitEvent]("term:exit")
 }
 
 func main() {
@@ -146,6 +150,11 @@ func main() {
 		app.Event.Emit(name, data...)
 	})
 
+	// 注入事件发射器，使 term 包可将远端终端输出实时推送给前端
+	term.SetEmitter(func(name string, data ...any) {
+		app.Event.Emit(name, data...)
+	})
+
 	// Create a new window with the necessary options.
 	// 'Title' is the title of the window.
 	// 'Mac' options tailor the window when running on macOS.
@@ -194,6 +203,11 @@ func main() {
 
 	// Run the application. This blocks until the application has been exited.
 	err := app.Run()
+
+	// 兜底收尾：正常退出时服务的 ServiceShutdown 已经关过一遍（幂等）。
+	// 这里再补一手，避免将来有哪条退出路径绕过服务生命周期，
+	// 把远端 shell 一直挂在服务器上。
+	term.CloseAll()
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {

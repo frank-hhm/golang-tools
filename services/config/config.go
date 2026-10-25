@@ -123,6 +123,7 @@ func DefaultConfig() AppConfig {
 			{ID: "php", Key: "php", Name: "PHP管理", Path: "/tools/php", Icon: "icon-php", Single: true, Width: 1200, Height: 800},
 			{ID: "nginx", Key: "nginx", Name: "Nginx管理", Path: "/tools/nginx", Icon: "icon-ngnix", Single: true, Width: 1200, Height: 800},
 			{ID: "docker", Key: "docker", Name: "Docker管理", Path: "/tools/docker", Icon: "computer", Single: true, Width: 1200, Height: 800},
+			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "code", Single: true, Fullscreen: true, Quick: true},
 			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1200, Height: 800},
 		},
 	}
@@ -213,6 +214,7 @@ func normalizeConfig(cfg *AppConfig) {
 		{"php", "php", "PHP管理", "/tools/php", "icon-php"},
 		{"nginx", "nginx", "Nginx管理", "/tools/nginx", "icon-ngnix"},
 		{"docker", "docker", "Docker管理", "/tools/docker", "computer"},
+		{"term", "term", "终端连接", "/tools/term", "code"},
 		{"npm", "npm", "Npm管理", "/tools/npm", "icon-npm"},
 		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-wangluo1"},
 	} {

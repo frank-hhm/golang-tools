@@ -34,6 +34,9 @@ import type * as screenshot$0 from "../../../../../go-tools/tools/screenshot/mod
 import type * as sniffer$0 from "../../../../../go-tools/tools/sniffer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as term$0 from "../../../../../go-tools/tools/term/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as usbserial$0 from "../../../../../go-tools/tools/usbserial/models.js";
 
 declare module "@wailsio/runtime" {
@@ -55,6 +58,8 @@ declare module "@wailsio/runtime" {
             "serial:data": usbserial$0.SerialData;
             "serial:status": usbserial$0.ConnStatusEvent;
             "sniffer:flow": sniffer$0.Flow;
+            "term:data": term$0.DataEvent;
+            "term:exit": term$0.ExitEvent;
             "time": string;
             "tool:activate": string;
             "ui:message": app$0.UIMessage;

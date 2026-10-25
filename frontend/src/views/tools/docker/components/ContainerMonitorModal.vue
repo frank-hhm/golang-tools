@@ -1,52 +1,94 @@
 <template>
-    <!-- 容器实时监控：页面只传容器身份，采样与绘制都在弹窗内闭环，关掉即停 -->
-    <a-modal :visible="visible" :title="`【${name || id || '容器'}】实时监控`" :width="980" :ok-text="'关闭'"
-        :hide-cancel="true" @ok="close" @cancel="close">
-        <div ref="boxRef" class="mon">
+    <!-- 容器实时监控：页面只传容器身份，采样与绘制都在弹窗内闭环，关掉即停。
+         区块统一用 a-card 承载（标题走 #title、窗口选择/当前值走 #extra），曲线交给 ECharts：
+         悬停即出坐标轴提示，比自绘 canvas 多一份“看得回历史”的能力 -->
+    <a-modal :visible="visible" :title="`【${name || id || '容器'}】实时监控`" :width="1080" :ok-text="'关闭'"
+        :hide-cancel="true" :body-style="{ height: '596px', overflow: 'auto' }" @ok="close" @cancel="close">
+        <div class="mon">
             <!-- 先给结论再看曲线：限额与瞬时流量放最上面 -->
-            <div class="mon-base">
-                <div class="mon-base-item">
-                    <span class="k">内存限额</span>
-                    <b>{{ memLimitText }}</b>
-                </div>
-                <div class="mon-base-item">
-                    <span class="k">流量情况</span>
-                    <b>上行 {{ fmtRate(netTxRate) }} · 下行 {{ fmtRate(netRxRate) }}</b>
-                </div>
-                <div class="mon-base-item">
-                    <span class="k">采集</span>
-                    <b>{{ samples.length }} 点 / 秒级</b>
-                </div>
-            </div>
+            <a-card class="card-head-tool mon-base" size="small">
+                <template #title>基础信息</template>
+                <template #extra>
+                    <!-- 窗口只决定“看多长”，采样一直在存，切窗口不丢数据 -->
+                    <a-radio-group v-model="windowSec" type="button" size="small">
+                        <a-radio :value="60">1 分钟</a-radio>
+                        <a-radio :value="300">5 分钟</a-radio>
+                        <a-radio :value="600">10 分钟</a-radio>
+                    </a-radio-group>
+                </template>
+
+                <a-row :gutter="[24, 6]">
+                    <a-col :xs="24" :sm="12" :md="8">
+                        <div class="bi">
+                            <span class="k">内存限额</span>
+                            <b>{{ memLimitText }}</b>
+                        </div>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                        <div class="bi">
+                            <span class="k">流量情况</span>
+                            <b>上行 {{ fmtRate(netTxRate) }} · 下行 {{ fmtRate(netRxRate) }}</b>
+                        </div>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                        <div class="bi">
+                            <span class="k">采集</span>
+                            <b>{{ samples.length }} 点 · {{ windowLabel }}</b>
+                        </div>
+                    </a-col>
+                </a-row>
+            </a-card>
 
             <!-- 采样失败的常见原因：容器刚停或正在重启。不弹 toast，来回 1 秒一次会刷屏 -->
-            <a-alert v-if="err" type="warning" :content="err" />
+            <!-- Alert 没有 content 属性，正文必须走默认插槽，否则渲染出空白条 -->
+            <a-alert v-if="err" type="warning">{{ err }}</a-alert>
 
-            <div class="mon-grid">
-                <div class="mon-card">
-                    <div class="mon-head"><span>CPU</span><span class="mon-val">{{ cpuText }}</span></div>
-                    <canvas ref="cpuRef" class="mon-canvas"></canvas>
-                </div>
-                <div class="mon-card">
-                    <div class="mon-head"><span>内存</span><span class="mon-val">{{ memText }}</span></div>
-                    <canvas ref="memRef" class="mon-canvas"></canvas>
-                </div>
-                <div class="mon-card">
-                    <div class="mon-head"><span>磁盘IO</span><span class="mon-val">{{ diskText }}</span></div>
-                    <canvas ref="diskRef" class="mon-canvas"></canvas>
-                </div>
-                <div class="mon-card">
-                    <div class="mon-head"><span>网络IO</span><span class="mon-val">{{ netText }}</span></div>
-                    <canvas ref="netRef" class="mon-canvas"></canvas>
-                </div>
+            <div ref="gridRef" class="mon-grid">
+                <a-card class="card-head-tool chart-card" size="small">
+                    <template #title>CPU</template>
+                    <template #extra>
+                        <a-tooltip :content="cpuText"><span class="mon-val">{{ cpuText }}</span></a-tooltip>
+                    </template>
+                    <div ref="cpuRef" class="mon-chart"></div>
+                </a-card>
+                <a-card class="card-head-tool chart-card" size="small">
+                    <template #title>内存</template>
+                    <template #extra>
+                        <a-tooltip :content="memText"><span class="mon-val">{{ memText }}</span></a-tooltip>
+                    </template>
+                    <div ref="memRef" class="mon-chart"></div>
+                </a-card>
+                <a-card class="card-head-tool chart-card" size="small">
+                    <template #title>磁盘IO</template>
+                    <template #extra>
+                        <a-tooltip :content="diskText"><span class="mon-val">{{ diskText }}</span></a-tooltip>
+                    </template>
+                    <div ref="diskRef" class="mon-chart"></div>
+                </a-card>
+                <a-card class="card-head-tool chart-card" size="small">
+                    <template #title>网络IO</template>
+                    <template #extra>
+                        <a-tooltip :content="netText"><span class="mon-val">{{ netText }}</span></a-tooltip>
+                    </template>
+                    <div ref="netRef" class="mon-chart"></div>
+                </a-card>
             </div>
         </div>
     </a-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import dayjs from "dayjs";
+import * as echarts from "echarts/core";
+import type { ECharts } from "echarts/core";
+import { LineChart } from "echarts/charts";
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { CanvasRenderer } from "echarts/renderers";
 import { fmtBytes } from "../helpers";
+
+// 按需注册：只引折线图 + 网格/图例/提示，别整包引入（echarts 全量会多背几百 KB）
+echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 const props = defineProps<{
     visible: boolean;
@@ -59,20 +101,34 @@ const emit = defineEmits<{ (e: "update:visible", v: boolean): void }>();
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
-/** 图表窗口：1 秒 1 个采样点，60 点 = 最近一分钟 */
-const MAX = 60;
-/** 后端原始采样（累计计数器也在这里，速率在绘制时按相邻点求差） */
+/** 采样上限：1 秒 1 点，600 点 = 最近 10 分钟（窗口选择只决定显示多长，数据一直留着） */
+const HISTORY = 600;
+/** 后端原始采样（累计计数器也在这里，速率在渲染时按相邻点求差） */
 const samples = ref<any[]>([]);
 const err = ref("");
 
-const boxRef = ref<HTMLElement>();
-const cpuRef = ref<HTMLCanvasElement>();
-const memRef = ref<HTMLCanvasElement>();
-const diskRef = ref<HTMLCanvasElement>();
-const netRef = ref<HTMLCanvasElement>();
+/** 显示窗口（秒）：默认 5 分钟，够看一次抖动又不至于挤成一团 */
+const windowSec = ref(300);
+const windowLabel = computed(() =>
+    windowSec.value === 60 ? "最近 1 分钟" : windowSec.value === 300 ? "最近 5 分钟" : "最近 10 分钟"
+);
+
+const gridRef = ref<HTMLElement>();
+const cpuRef = ref<HTMLElement>();
+const memRef = ref<HTMLElement>();
+const diskRef = ref<HTMLElement>();
+const netRef = ref<HTMLElement>();
+
+type ChartKey = "cpu" | "mem" | "disk" | "net";
+const KEYS: ChartKey[] = ["cpu", "mem", "disk", "net"];
+const charts: Partial<Record<ChartKey, ECharts>> = {};
 
 let timer: any = null;
 let inflight = false;
+let ro: ResizeObserver | null = null;
+let sizeTimer: any = null;
+/** 关闭后的延迟销毁：等淡出动画走完，否则图上会先白一下 */
+let closeTimer: any = null;
 
 const last = computed<any>(() => samples.value[samples.value.length - 1] || null);
 
@@ -89,6 +145,11 @@ const netText = computed(() => `上行 ${fmtRate(netTxRate.value)} · 下行 ${f
 
 function fmtRate(v: number): string {
     return v > 0 ? fmtBytes(v) + "/s" : "0 B/s";
+}
+
+/** 刻度/提示用：fmtBytes 把 0 写成 "-"，坐标轴原点得写 0 B */
+function fmtByte(v: number): string {
+    return v > 0 ? fmtBytes(v) : "0 B";
 }
 
 /* ============================ 速率 ============================ */
@@ -109,29 +170,35 @@ function currentRate(key: string): number {
     return dt > 0 && dv >= 0 ? dv / dt : 0;
 }
 
-/** 整段窗口的速率序列（与采样点一一对应，首点无前值时记 0） */
-function rateSeries(key: string): number[] {
-    const out: number[] = [];
+/* ============================ 图表 ============================ */
+
+type Point = [number, number];
+
+/** 原值序列：直接按时间轴取 [时间, 值] */
+function valuePoints(key: string): Point[] {
+    return samples.value.map((s) => [s.at, s[key] || 0] as Point);
+}
+
+/** 累计计数器的差分成速率序列（首点无前值记 0） */
+function ratePoints(key: string): Point[] {
+    const out: Point[] = [];
     for (let i = 0; i < samples.value.length; i++) {
         if (i === 0) {
-            out.push(0);
+            out.push([samples.value[i].at, 0]);
             continue;
         }
         const dt = (samples.value[i].at - samples.value[i - 1].at) / 1000;
         const dv = (samples.value[i][key] || 0) - (samples.value[i - 1][key] || 0);
-        out.push(dt > 0 && dv >= 0 ? dv / dt : 0);
+        out.push([samples.value[i].at, dt > 0 && dv >= 0 ? dv / dt : 0]);
     }
     return out;
 }
 
-/* ============================ 绘制 ============================ */
-
-type Series = { name: string; color: string; data: number[] };
-
-/** 主题色从 CSS 变量取：换主题后下一次重绘就跟着变，不用在这里写死色值 */
+/** 主题色取 CSS 变量（读 body，暗黑主题的变量集挂在 body 上）；换主题后下一帧就跟着变 */
 function token(name: string, fallback: string): string {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return v ? `rgb(${v})` : fallback;
+    const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+    if (!v) return fallback;
+    return /^(#|rgb|hsl)/i.test(v) ? v : `rgb(${v})`;
 }
 
 /** 把上界抬到"好看"的刻度（1/2/2.5/5/10 × 10^n） */
@@ -145,163 +212,216 @@ function niceMax(v: number, floor = 1): number {
     return mag * 10;
 }
 
-function maxOf(series: number[][]): number {
+function maxOf(series: Point[][]): number {
     let m = 0;
-    for (const s of series) for (const v of s) if (v > m) m = v;
+    for (const s of series) for (const p of s) if (p[1] > m) m = p[1];
     return m;
 }
 
-/** 左/中/右三个时间标签（与数据点对齐，空数据不给标签） */
-function xTimes(): string[] {
+function elOf(key: ChartKey): HTMLElement | undefined {
+    if (key === "cpu") return cpuRef.value;
+    if (key === "mem") return memRef.value;
+    if (key === "disk") return diskRef.value;
+    return netRef.value;
+}
+
+/** 首次打开时建实例；已存在就留着复用（关闭只是 dispose，重开再建） */
+function ensureCharts() {
+    for (const k of KEYS) {
+        const el = elOf(k);
+        if (!el || charts[k]) continue;
+        charts[k] = echarts.init(el);
+    }
+}
+
+function disposeCharts() {
+    for (const k of KEYS) {
+        charts[k]?.dispose();
+        charts[k] = undefined;
+    }
+}
+
+function resizeCharts() {
+    for (const k of KEYS) charts[k]?.resize();
+}
+
+interface ChartCfg {
+    series: { name: string; color: string; data: Point[] }[];
+    /** Y 轴上限 */
+    yMax: number;
+    /** Y 轴刻度文案（要短） */
+    axisFmt: (v: number) => string;
+    /** 悬停提示里的数值文案（可以更长，带单位） */
+    tipFmt: (v: number) => string;
+    xMin: number;
+    xMax: number;
+}
+
+function applyChart(key: ChartKey, cfg: ChartCfg) {
+    const chart = charts[key];
+    if (!chart) return;
+
+    const labelColor = token("--color-text-3", "#86909c");
+    const textColor = token("--color-text-1", "#1d2129");
+    const gridColor = token("--color-border-2", "#e5e6eb");
+    const axisColor = token("--color-text-4", "#c9cdd4");
+    const popupBg = token("--color-bg-popup", "#ffffff");
+    const { axisFmt, tipFmt } = cfg;
+
+    chart.setOption({
+        animation: false,
+        textStyle: { color: labelColor, fontSize: 11 },
+        grid: { left: 4, right: 12, top: 26, bottom: 0, containLabel: true },
+        legend: {
+            top: 0,
+            left: "center",
+            icon: "circle",
+            itemWidth: 8,
+            itemHeight: 8,
+            itemGap: 16,
+            textStyle: { color: labelColor, fontSize: 11 },
+        },
+        tooltip: {
+            trigger: "axis",
+            backgroundColor: popupBg,
+            borderColor: gridColor,
+            borderWidth: 1,
+            padding: [6, 10],
+            extraCssText: "border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.18);",
+            axisPointer: {
+                type: "line",
+                lineStyle: { color: axisColor, width: 1, type: "dashed" },
+                // 轴上的时间标签也跟着亮：截图里那个蓝色小框就是它
+                label: {
+                    show: true,
+                    backgroundColor: token("--primary-6", "#165dff"),
+                    color: "#fff",
+                    padding: [2, 6],
+                    borderRadius: 4,
+                    formatter: (p: any) => dayjs(p.value).format("HH:mm:ss"),
+                },
+            },
+            // 与截图一致：第一行时间，下面每序列一行「圆点 + 名称：值」
+            formatter: (ps: any) => {
+                const arr: any[] = Array.isArray(ps) ? ps : [ps];
+                if (!arr.length) return "";
+                const head = `<div style="color:${labelColor};margin-bottom:3px">时间：${dayjs(arr[0].value?.[0]).format("YYYY-MM-DD HH:mm:ss")}</div>`;
+                const rows = arr
+                    .map(
+                        (p: any) =>
+                            `<div style="display:flex;align-items:center;gap:6px;color:${textColor}">` +
+                            `<i style="width:8px;height:8px;border-radius:50%;background:${p.color};display:inline-block"></i>` +
+                            `<span>${p.seriesName}：${tipFmt(Number(p.value?.[1]) || 0)}</span></div>`
+                    )
+                    .join("");
+                return head + rows;
+            },
+        },
+        xAxis: {
+            type: "time",
+            min: cfg.xMin,
+            max: cfg.xMax,
+            axisLine: { lineStyle: { color: gridColor } },
+            axisTick: { show: false },
+            // hideOverlap：窗口拉长后时间标签会互相压字，让它自己抽稀
+            axisLabel: { color: labelColor, hideOverlap: true, formatter: (v: any) => dayjs(v).format("HH:mm:ss") },
+            splitLine: { show: false },
+        },
+        yAxis: {
+            type: "value",
+            min: 0,
+            max: cfg.yMax,
+            splitNumber: 4,
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { color: labelColor, formatter: (v: any) => axisFmt(Number(v)) },
+            splitLine: { lineStyle: { color: gridColor, opacity: 0.6 } },
+        },
+        series: cfg.series.map((s) => ({
+            name: s.name,
+            type: "line",
+            showSymbol: false,
+            smooth: false,
+            lineStyle: { width: 1.5, color: s.color },
+            itemStyle: { color: s.color },
+            areaStyle: { opacity: 0.1, color: s.color },
+            emphasis: { focus: "series" },
+            data: s.data,
+        })),
+    });
+}
+
+/** 重画全部四张图：窗口按最近采样点倒推，右端贴住最后一个点 */
+function renderAll() {
+    ensureCharts();
+
     const n = samples.value.length;
-    if (!n) return ["", "", ""];
-    const at = (i: number) => {
-        const idx = Math.max(0, Math.min(n - 1, i));
-        return new Date(samples.value[idx].at).toLocaleTimeString("zh-CN", { hour12: false });
-    };
-    return [at(0), at(Math.floor((n - 1) / 2)), at(n - 1)];
-}
+    const now = Date.now();
+    const lastAt = n ? samples.value[n - 1].at : now;
+    const firstAt = n ? samples.value[0].at : now;
+    const span = windowSec.value * 1000;
+    // 数据还没攒满时不要空出一大段：左端跟着最早的点走；一点都没有就先占满整个窗口
+    const xMin = n ? Math.max(firstAt, lastAt - span) : lastAt - span;
+    const xMax = lastAt;
+    const clip = (list: Point[]) => (n ? list.filter((p) => p[0] >= xMin) : list);
 
-/**
- * 一张折线图：横向网格 + 左侧刻度 + 底部三个时间 + 顶部居中图例。
- * 画布尺寸按 CSS 尺寸 × DPI 重设，避免 125%/150% 缩放下发糊
- */
-function paint(canvas: HTMLCanvasElement | undefined, series: Series[], max: number, fmt: (v: number) => string) {
-    if (!canvas) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if (!w || !h) return; // 弹窗还没展开/被隐藏时没有尺寸，等下一次 tick 再画
-    const dpr = window.devicePixelRatio || 1;
-    const pw = Math.round(w * dpr);
-    const ph = Math.round(h * dpr);
-    if (canvas.width !== pw || canvas.height !== ph) {
-        canvas.width = pw;
-        canvas.height = ph;
-    }
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    const labelColor = token("--color-text-3", "rgb(134, 144, 156)");
-    const gridColor = token("--color-border-2", "rgb(229, 230, 235)");
-    const padL = 58;
-    const padR = 10;
-    const padT = 24;
-    const padB = 22;
-    const cw = Math.max(10, w - padL - padR);
-    const ch = Math.max(10, h - padT - padB);
-    const rows = 4;
-
-    ctx.font = '11px "Segoe UI", system-ui, sans-serif';
-    ctx.textBaseline = "middle";
-
-    // 横向网格 + 左侧刻度（自上而下从 max 到 0）
-    for (let i = 0; i <= rows; i++) {
-        const y = padT + (ch * i) / rows;
-        ctx.strokeStyle = gridColor;
-        ctx.globalAlpha = i === rows ? 0.9 : 0.45;
-        ctx.beginPath();
-        ctx.moveTo(padL, y);
-        ctx.lineTo(padL + cw, y);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = labelColor;
-        ctx.textAlign = "right";
-        ctx.fillText(fmt(max * (1 - i / rows)), padL - 8, y);
-    }
-
-    // 底部三个时间点
-    const times = xTimes();
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = labelColor;
-    times.forEach((t, i) => {
-        if (!t) return;
-        const x = padL + (cw * i) / 2;
-        ctx.textAlign = i === 0 ? "left" : i === 2 ? "right" : "center";
-        ctx.fillText(t, x, padT + ch + 6);
-    });
-
-    // 折线：新点贴右，数据不满一屏时左边留白，像常见的实时监控那样从右往左长
-    const span = MAX - 1;
-    for (const s of series) {
-        const n = s.data.length;
-        if (!n) continue;
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        for (let i = 0; i < n; i++) {
-            const x = padL + (cw * (span - n + 1 + i)) / span;
-            const y = padT + ch - (Math.min(Math.max(s.data[i], 0), max) / max) * ch;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-        // 线尾一个实心点：一眼看出当前值在哪
-        const tipY = padT + ch - (Math.min(Math.max(s.data[n - 1], 0), max) / max) * ch;
-        ctx.fillStyle = s.color;
-        ctx.beginPath();
-        ctx.arc(padL + cw, tipY, 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    // 图例：圆点 + 名称，居中放在绘图区上方
-    const widths = series.map((s) => ctx.measureText(s.name).width + 16);
-    let lx = padL + (cw - widths.reduce((a, b) => a + b, 0) - (series.length - 1) * 12) / 2;
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "left";
-    series.forEach((s, i) => {
-        ctx.fillStyle = s.color;
-        ctx.beginPath();
-        ctx.arc(lx + 4, padT / 2, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = labelColor;
-        ctx.fillText(s.name, lx + 12, padT / 2);
-        lx += widths[i] + 12;
-    });
-}
-
-function drawAll() {
-    const blue = token("--blue-6", "rgb(22, 93, 255)");
-    const pink = token("--magenta-6", "rgb(217, 91, 199)");
-    const green = token("--green-6", "rgb(0, 180, 42)");
-    const orange = token("--orange-6", "rgb(255, 125, 0)");
+    const blue = token("--blue-6", "#165dff");
+    const pink = token("--magenta-6", "#d950c7");
+    const green = token("--green-6", "#00b42a");
+    const orange = token("--orange-6", "#ff7d00");
 
     // CPU 固定 0~100%：动态上限会让"几乎没占用"看起来也像有起伏
-    paint(cpuRef.value, [{ name: "CPU", color: blue, data: samples.value.map((s) => s.cpuPercent || 0) }], 100,
-        (v) => `${Math.round(v)}%`);
+    applyChart("cpu", {
+        series: [{ name: "CPU", color: blue, data: clip(valuePoints("cpuPercent")) }],
+        yMax: 100,
+        axisFmt: (v) => `${Math.round(v)}%`,
+        tipFmt: (v) => `${v.toFixed(1)}%`,
+        xMin,
+        xMax,
+    });
 
-    const memUsed = samples.value.map((s) => s.memUsed || 0);
-    const memCache = samples.value.map((s) => s.memCache || 0);
+    const memUsed = clip(valuePoints("memUsed"));
+    const memCache = clip(valuePoints("memCache"));
     const memLimit = last.value?.memLimit || 0;
-    paint(memRef.value,
-        [
+    applyChart("mem", {
+        series: [
             { name: "内存", color: blue, data: memUsed },
             { name: "缓存", color: pink, data: memCache },
         ],
-        memLimit > 0 ? memLimit : niceMax(maxOf([memUsed, memCache]), 1024),
-        (v) => fmtBytes(v) === "-" ? "0" : fmtBytes(v));
+        yMax: memLimit > 0 ? memLimit : niceMax(maxOf([memUsed, memCache]), 1024),
+        axisFmt: (v) => fmtByte(v),
+        tipFmt: (v) => fmtByte(v),
+        xMin,
+        xMax,
+    });
 
-    const dRead = rateSeries("diskRead");
-    const dWrite = rateSeries("diskWrite");
-    paint(diskRef.value,
-        [
+    const dRead = clip(ratePoints("diskRead"));
+    const dWrite = clip(ratePoints("diskWrite"));
+    applyChart("disk", {
+        series: [
             { name: "读取", color: pink, data: dRead },
             { name: "写入", color: green, data: dWrite },
         ],
-        niceMax(maxOf([dRead, dWrite]), 1024),
-        (v) => (v >= 1024 ? fmtBytes(v) : `${Math.round(v)} B`));
+        yMax: niceMax(maxOf([dRead, dWrite]), 1024),
+        axisFmt: (v) => fmtByte(v),
+        tipFmt: (v) => fmtRate(v),
+        xMin,
+        xMax,
+    });
 
-    const nRx = rateSeries("netRx");
-    const nTx = rateSeries("netTx");
-    paint(netRef.value,
-        [
+    const nRx = clip(ratePoints("netRx"));
+    const nTx = clip(ratePoints("netTx"));
+    applyChart("net", {
+        series: [
             { name: "上行", color: orange, data: nTx },
             { name: "下行", color: blue, data: nRx },
         ],
-        niceMax(maxOf([nRx, nTx]), 1024),
-        (v) => (v >= 1024 ? fmtBytes(v) : `${Math.round(v)} B`));
+        yMax: niceMax(maxOf([nRx, nTx]), 1024),
+        axisFmt: (v) => fmtByte(v),
+        tipFmt: (v) => fmtRate(v),
+        xMin,
+        xMax,
+    });
 }
 
 /* ============================ 采样 ============================ */
@@ -325,7 +445,7 @@ async function tick() {
         const m = await GoTools.DockerSrvContainerMetrics(props.id);
         if (m) {
             samples.value.push(m);
-            if (samples.value.length > MAX) samples.value.splice(0, samples.value.length - MAX);
+            if (samples.value.length > HISTORY) samples.value.splice(0, samples.value.length - HISTORY);
             err.value = "";
         }
     } catch (e: any) {
@@ -333,32 +453,67 @@ async function tick() {
         err.value = "采样失败：" + (e?.message || e);
     } finally {
         inflight = false;
-        drawAll();
+        renderAll();
         if (props.visible) timer = setTimeout(tick, 1000);
     }
 }
+
+/** 容器换了或换窗口：重画即可，采样不重启 */
+watch(windowSec, () => renderAll());
 
 watch(
     () => props.visible,
     async (v) => {
         stop();
-        if (!v) return;
+        ro?.disconnect();
+        ro = null;
+        if (sizeTimer) {
+            clearTimeout(sizeTimer);
+            sizeTimer = null;
+        }
+        if (!v) {
+            closeTimer = setTimeout(() => {
+                closeTimer = null;
+                disposeCharts();
+            }, 260);
+            return;
+        }
+        if (closeTimer) {
+            clearTimeout(closeTimer);
+            closeTimer = null;
+        }
+        disposeCharts(); // 重开一律重建，避开指向已移除节点的旧实例
         samples.value = [];
         err.value = "";
         await nextTick();
-        drawAll(); // 先把坐标轴画出来，别让用户盯着空白
+        ensureCharts();
+        renderAll(); // 先把坐标轴画出来，别让用户盯着空白
+        bindResize();
+        // 弹窗展开动画结束后再量一次宽度：首帧初始化时容器可能还是 0 宽
+        sizeTimer = setTimeout(resizeCharts, 320);
         tick();
     }
 );
+
+/** 弹窗宽度固定，但窗口缩放/系统缩放会改容器宽：交给 ResizeObserver 重排 */
+function bindResize() {
+    const el = gridRef.value;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    ro = new ResizeObserver(() => resizeCharts());
+    ro.observe(el);
+}
 
 function close() {
     emit("update:visible", false);
 }
 
-onMounted(() => window.addEventListener("resize", drawAll));
 onBeforeUnmount(() => {
     stop();
-    window.removeEventListener("resize", drawAll);
+    if (sizeTimer) clearTimeout(sizeTimer);
+    if (closeTimer) clearTimeout(closeTimer);
+    ro?.disconnect();
+    ro = null;
+    disposeCharts();
 });
 </script>
 
@@ -369,72 +524,67 @@ onBeforeUnmount(() => {
     gap: 10px;
 }
 
-/* 基础信息条：一行放完，窄窗口自动换行 */
-.mon-base {
+/* 基础信息：卡片头里放窗口选择，正文一行放完，窄窗自动按栅格换行 */
+.mon-base :deep(.arco-card-body) {
+    padding: 8px 14px;
+}
+
+.bi {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px 28px;
-    align-items: center;
-    padding: 8px 12px;
-    border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-small);
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
     font-size: 13px;
 }
 
-.mon-base-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.mon-base-item .k {
+.bi .k {
     color: var(--color-text-3);
     flex: none;
 }
 
-.mon-base-item b {
+.bi b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 500;
     color: var(--color-text-1);
     font-variant-numeric: tabular-nums;
 }
 
+/* 2×2 图表栅格：窄窗（<860px）单列堆叠，避免曲线被压成一条 */
 .mon-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
 }
 
-.mon-card {
-    border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-small);
-    padding: 6px 8px 2px;
-    min-width: 0;
+.chart-card :deep(.arco-card-body) {
+    padding: 4px 6px 2px;
 }
 
-.mon-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 2px 2px;
-    font-size: 13px;
-    color: var(--color-text-2);
-}
-
+/* 当前值：卡片头右上的小字，长了省略，悬停看全 */
 .mon-val {
     font-size: var(--base-size-small);
     color: var(--color-text-3);
     font-variant-numeric: tabular-nums;
+    max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
 }
 
-/* 画布高度固定，宽度跟卡片走（重绘时按 clientWidth 重设像素尺寸） */
-.mon-canvas {
-    display: block;
+/* 图表容器：宽度跟卡片走，高度固定；ECharts 自己按容器尺寸渲染 */
+.mon-chart {
     width: 100%;
-    height: 190px;
+    height: 176px;
+}
+
+@media (max-width: 860px) {
+    .mon-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>

@@ -21,6 +21,7 @@ import (
 	"go-tools/tools/redis"
 	"go-tools/tools/screenshot"
 	"go-tools/tools/sniffer"
+	"go-tools/tools/term"
 	"go-tools/tools/usbserial"
 	"net/url"
 	"os"
@@ -40,13 +41,17 @@ import (
 
 // App struct
 type App struct {
-	app      *application.App
-	ctx      context.Context
-	engine   *sniffer.Engine
-	packetCh chan sniffer.PacketInfo
+	app *application.App
+	ctx context.Context
 
-	snifferMu      sync.Mutex
-	mitm           *sniffer.Mitm
+	snifferMu sync.Mutex
+	mitm      *sniffer.Mitm
+
+	// pcap 抓包的消费协程：每调一次 StartCaptureSniffer 就起一个，
+	// 不留个收场把手的话，上一轮那个会永远阻塞在已经没人写的 channel 上
+	capPktMu     sync.Mutex
+	capPktCancel context.CancelFunc
+
 	snifferRunning bool
 
 	recMu         sync.Mutex
@@ -215,8 +220,10 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	return nil
 }
 
-// ServiceShutdown 应用退出时停止所有由本程序拉起的本地服务实例（Redis + MySQL + PHP + Nginx + npm 静态站点）。
+// ServiceShutdown 应用退出时停止所有由本程序拉起的本地服务实例（Redis + MySQL + PHP + Nginx + npm 静态站点），
+// 并把还开着的终端会话全部断开：终端没有本地进程可停，不主动关的话远端会一直挂着一条 shell。
 func (a *App) ServiceShutdown() error {
+	term.CloseAll()
 	redis.StopAll()
 	mysql.StopAll()
 	php.StopAll()
@@ -477,18 +484,29 @@ func (a *App) StartCaptureSniffer(devices []string, protocols []string, ports []
 	fmt.Println("[Sniffer] 抓包已成功启动，开始监听数据包...")
 
 	// 启动后台协程，将抓到的包实时推送到前端
+	a.capPktMu.Lock()
+	if a.capPktCancel != nil {
+		a.capPktCancel() // 上一轮再起抓包：先把它消费协程掉，别堆僵尸
+	}
+	pktCtx, pktCancel := context.WithCancel(a.ctx)
+	a.capPktCancel = pktCancel
+	a.capPktMu.Unlock()
+
 	go func() {
-		for pkt := range packetCh {
-			if pkt.Request != nil {
-				fmt.Printf("[Sniffer] %s %s%s -> %s:%d\n", pkt.Request.Method, pkt.Request.Host, pkt.Request.URL, pkt.DstIP, pkt.DstPort)
-			} else if pkt.Response != nil {
-				fmt.Printf("[Sniffer] HTTP Response %s from %s:%d\n", pkt.Response.Status, pkt.SrcIP, pkt.SrcPort)
-			} else {
-				fmt.Printf("[Sniffer] %s %s:%d -> %s:%d [%s]\n", pkt.Protocol, pkt.SrcIP, pkt.SrcPort, pkt.DstIP, pkt.DstPort, pkt.Flags)
+		defer pktCancel()
+		for {
+			select {
+			case <-pktCtx.Done():
+				return
+			case pkt, ok := <-packetCh:
+				if !ok {
+					return
+				}
+				// 这里以前每包一次 fmt.Printf：控制台写入是同步系统调用，
+				// 千包/秒时它比推送本身还贵，而面板根本不看这些输出
+				a.app.Event.Emit("packet:update", pkt)
 			}
-			a.app.Event.Emit("packet:update", pkt)
 		}
-		fmt.Println("[Sniffer] 数据包通道已关闭，抓包协程退出。")
 	}()
 
 	return nil
@@ -498,6 +516,12 @@ func (a *App) StartCaptureSniffer(devices []string, protocols []string, ports []
 func (a *App) StopCaptureSniffer() {
 	// 3. 调用 sniffer 包的 StopCapture 函数
 	sniffer.StopCapture()
+	a.capPktMu.Lock()
+	if a.capPktCancel != nil {
+		a.capPktCancel()
+		a.capPktCancel = nil
+	}
+	a.capPktMu.Unlock()
 }
 
 /* ================= MITM 代理抓包（HTTP/HTTPS 解密） ================= */
@@ -1058,6 +1082,14 @@ func (a *App) DockerSrvProbeMirror(mirrorURL, sample string) docker.MirrorProbe 
 func (a *App) DockerSrvProbeMirrors(mirrorURLs []string, sample string) []docker.MirrorProbe {
 	return docker.ProbeMirrors(mirrorURLs, sample)
 }
+
+// DockerSrvCancelMirrorProbe 叫停某个站正在跑的测速；返回 false 表示它已经测完了
+func (a *App) DockerSrvCancelMirrorProbe(mirrorURL string) bool {
+	return docker.CancelMirrorProbe(mirrorURL)
+}
+
+// DockerSrvCancelMirrorProbes 叫停所有在跑的测速（「全部测速」整批），返回叫停的个数
+func (a *App) DockerSrvCancelMirrorProbes() int { return docker.CancelMirrorProbes() }
 
 // DockerSrvContainerLogs 读容器日志尾部 n 行（含已停止容器）
 func (a *App) DockerSrvContainerLogs(id string, lines int) ([]string, error) {

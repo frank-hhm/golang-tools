@@ -10,6 +10,7 @@ const TOOLS = [
     { key: "Php", menu_name: "PHP管理", path: "tools/php", component: () => import('@/views/tools/php/index.vue') },
     { key: "Nginx", menu_name: "Nginx管理", path: "tools/nginx", component: () => import('@/views/tools/nginx/index.vue') },
     { key: "Docker", menu_name: "Docker管理", path: "tools/docker", component: () => import('@/views/tools/docker/index.vue') },
+    { key: "Term", menu_name: "终端连接", path: "tools/term", component: () => import('@/views/tools/term/index.vue') },
     { key: "Npm", menu_name: "npm管理", path: "tools/npm", component: () => import('@/views/tools/npm/index.vue') },
     { key: "Timestamp", menu_name: "时间戳转换", path: "tools/timestamp", component: () => import('@/views/tools/timestamp/index.vue') },
     { key: "Strrandom", menu_name: "随机字符串生成", path: "tools/strrandom", component: () => import('@/views/tools/strrandom/index.vue') },

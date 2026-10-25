@@ -690,7 +690,7 @@ func rawRequestNoGate(method, path string, query url.Values, body any, longLived
 
 // decodeResponse 按状态码处理响应，2xx 且 out 非 nil 时解码 JSON
 func decodeResponse(resp *http.Response, out any) error {
-	data, err := io.ReadAll(resp.Body)
+	data, over, err := readCapped(resp.Body, apiResponseMax)
 	if err != nil {
 		e := unavailableErr(err)
 		apiTrip(e) // 拿到响应头但读 body 也超时：同样是引擎卡住，要进静默窗口
@@ -699,6 +699,11 @@ func decodeResponse(resp *http.Response, out any) error {
 	if resp.StatusCode >= 400 {
 		return apiError(resp.StatusCode, data)
 	}
+	// 正常 JSON 不会到这个量级；撞上限说明对方不是给我们的应答（或被劫持），
+	// 继续读只会把内存吃掉一大块，直接报错收场
+	if over {
+		return fmt.Errorf("Docker 响应超过 %d MB，本次已放弃读取（请缩小查询范围）", apiResponseMax>>20)
+	}
 	if out == nil || len(data) == 0 {
 		return nil
 	}
@@ -706,6 +711,26 @@ func decodeResponse(resp *http.Response, out any) error {
 		return fmt.Errorf("解析 Docker 响应失败: %v", err)
 	}
 	return nil
+}
+
+const (
+	// apiResponseMax 一次普通 API 应答的字节上限（防“一个响应吃掉几 GB”）
+	apiResponseMax = 32 << 20
+	// apiErrBodyMax 错误体只用来提取 message，超过这个长度就没必要读了
+	apiErrBodyMax = 1 << 20
+)
+
+// readCapped 读满上限就停，并告知是否超长。宁可少一截也不能让一次无上限
+// 的 ReadAll 把进程顶到 OOM（多读 1 字节用来判别是否真的到了头）。
+func readCapped(r io.Reader, limit int64) ([]byte, bool, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return data, false, err
+	}
+	if int64(len(data)) <= limit {
+		return data, false, nil
+	}
+	return data[:limit], true, nil
 }
 
 // apiError 把 Docker 的错误体（{"message":"..."}）翻成可读信息
@@ -722,14 +747,8 @@ func apiError(status int, data []byte) error {
 	if len(msg) > 300 {
 		msg = msg[:300] + "…"
 	}
-	switch status {
-	case http.StatusNotFound:
-		return fmt.Errorf("Docker 中不存在该对象: %s", msg)
-	case http.StatusConflict:
-		return fmt.Errorf("Docker 操作冲突: %s", msg)
-	default:
-		return fmt.Errorf("Docker API 错误(%d): %s", status, msg)
-	}
+	// 带上状态码返回：看护容器退出的调用方需要分清「404 对象没了」与「引擎一时答不上」
+	return apiStatusErr(status, msg)
 }
 
 // unavailableErr 把底层拨号/IO 错误统一成引擎不可达提示（保留原始信息便于排查）

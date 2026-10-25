@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 )
 
@@ -388,18 +389,9 @@ func Logs(id string, n int) ([]string, error) {
 
 // tailFile 文件尾部 n 行；文件还不存在返回空（面板当成“暂无日志”）
 func tailFile(path string, n int) ([]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return lines, nil
+	// 以前为了拿尾巴 n 行把整个 access.log 读进内存再拆分：站点跑几天就是几百 MB，
+	// 日志面板一刷新就是一次几百 MB 瞬时分配。改成只读末尾一段。
+	return logtail.Lines(path, n)
 }
 
 // PortTaken 报告端口是否不可用于（新）站点：被其它已登记实例的端口占用，或已被进程监听。

@@ -107,6 +107,17 @@ type QueryResult struct {
 	Note     string           `json:"note"`
 }
 
+// maxQueryRows 一次查询取回并交给前端的行数上限（与 TableData 的分页 size 无关）
+const maxQueryRows = 5000
+
+// rowNote 查询结果的可读说明；截断时必须写明是“前 N 行”而不是“N 行”
+func rowNote(n int, truncated bool) string {
+	if truncated {
+		return fmt.Sprintf("前 %d 行（结果已截断，请加 LIMIT/WHERE 收窄）", n)
+	}
+	return fmt.Sprintf("%d 行", n)
+}
+
 /* ============================ 连接管理 ============================ */
 
 var (
@@ -121,6 +132,80 @@ type txEntry struct {
 	tx       *sql.Tx
 	connID   string
 	database string
+	at       time.Time // 最后一次活动时刻：闲置超时的事务由巡检回收
+}
+
+// txIdleMax 事务闲置上限。前端事务面板关掉后再也不会 Commit/Rollback，
+// 这些僵尸事务每条都钉住连接池里的一条（池只有 5 条），几次之后普通查询
+// 就全部排在外面等超时——看起来像“MySQL 卡住了”，其实是连接被占光。
+const txIdleMax = 30 * time.Minute
+
+var (
+	txReaperMu sync.Mutex
+	txReaperOn bool
+)
+
+// startTxReaper 首次开事务时拉一个 1 分钟一巡的后台；全局再无连接与事务时自己收摊
+func startTxReaper() {
+	txReaperMu.Lock()
+	if txReaperOn {
+		txReaperMu.Unlock()
+		return
+	}
+	txReaperOn = true
+	txReaperMu.Unlock()
+
+	go func() {
+		defer func() {
+			txReaperMu.Lock()
+			txReaperOn = false
+			txReaperMu.Unlock()
+		}()
+		tick := time.NewTicker(time.Minute)
+		defer tick.Stop()
+		for {
+			<-tick.C
+			for _, tx := range txReapIdle() {
+				_ = tx.Rollback()
+			}
+			mu.Lock()
+			idle := len(conns) == 0 && len(txs) == 0
+			mu.Unlock()
+			if idle {
+				return
+			}
+		}
+	}()
+}
+
+// txReapIdle 摘出闲置过久的事务并返回待回滚的 *sql.Tx（回滚在锁外做，不拿 mu 等网络）
+func txReapIdle() []*sql.Tx {
+	mu.Lock()
+	var dead []*sql.Tx
+	for id, e := range txs {
+		if time.Since(e.at) < txIdleMax {
+			continue
+		}
+		delete(txs, id)
+		dead = append(dead, e.tx)
+	}
+	mu.Unlock()
+	return dead
+}
+
+// txForgetConn 连接关闭时作废它上面的事务，不然 txs 里长期拖着已失效的 *sql.Tx
+func txForgetConn(connID string) []*sql.Tx {
+	mu.Lock()
+	var dead []*sql.Tx
+	for id, e := range txs {
+		if e.connID != connID {
+			continue
+		}
+		delete(txs, id)
+		dead = append(dead, e.tx)
+	}
+	mu.Unlock()
+	return dead
 }
 
 func dsnOf(cfg ConnConfig, database string) string {
@@ -157,21 +242,35 @@ func Open(cfg ConnConfig) error {
 		return fmt.Errorf("连接失败: %w", err)
 	}
 	mu.Lock()
-	if old, ok := conns[cfg.ID]; ok {
-		old.Close()
+	old, hadOld := conns[cfg.ID]
+	if hadOld {
+		delete(conns, cfg.ID)
 	}
 	conns[cfg.ID] = db
 	mu.Unlock()
+	if hadOld {
+		old.Close()
+		for _, tx := range txForgetConn(cfg.ID) {
+			_ = tx.Rollback()
+		}
+	}
 	return nil
 }
 
 // Close 关闭并移除连接。
 func Close(id string) error {
 	mu.Lock()
-	defer mu.Unlock()
-	if db, ok := conns[id]; ok {
-		db.Close()
+	db, ok := conns[id]
+	if ok {
 		delete(conns, id)
+	}
+	mu.Unlock()
+	if ok {
+		db.Close()
+	}
+	// 连接没了，它上的事务也就成了钉住资源的空壳
+	for _, tx := range txForgetConn(id) {
+		_ = tx.Rollback()
 	}
 	return nil
 }
@@ -496,7 +595,7 @@ func TableData(id, database, table, filter, orderBy string, desc bool, page, siz
 		return res, err
 	}
 	defer rows.Close()
-	if err := scanRows(rows, &res); err != nil {
+	if _, err := scanRows(rows, &res, maxQueryRows); err != nil {
 		return res, err
 	}
 	res.Affected = total
@@ -620,11 +719,12 @@ func Execute(id, database, sqlText string) (QueryResult, error) {
 			return res, err
 		}
 		defer rows.Close()
-		if err := scanRows(rows, &res); err != nil {
+		truncated, err := scanRows(rows, &res, maxQueryRows)
+		if err != nil {
 			logSQL(id, database, sqlText, time.Since(start), 0, "", err)
 			return res, err
 		}
-		res.Note = fmt.Sprintf("%d 行", len(res.Rows))
+		res.Note = rowNote(len(res.Rows), truncated)
 		logSQL(id, database, sqlText, time.Since(start), 0, res.Note, nil)
 	default:
 		r, err := execLogged(db, id, database, sqlText)
@@ -689,8 +789,10 @@ func BeginTx(id, database string) (string, error) {
 	mu.Lock()
 	txSeq++
 	txID := fmt.Sprintf("tx-%d-%d", time.Now().UnixNano(), txSeq)
-	txs[txID] = &txEntry{db: db, tx: tx, connID: id, database: database}
+	txs[txID] = &txEntry{db: db, tx: tx, connID: id, database: database, at: time.Now()}
 	mu.Unlock()
+	// 事务只会在前端面板关着的时候静静挂着，靠巡检把闲置的收掉，不然连接池会被占干
+	startTxReaper()
 	return txID, nil
 }
 
@@ -699,6 +801,9 @@ func TxExecute(txID, sqlText string) (QueryResult, error) {
 	res := QueryResult{}
 	mu.Lock()
 	entry, ok := txs[txID]
+	if ok {
+		entry.at = time.Now() // 有心跳就不算闲置，巡检只收真正没人管的事务
+	}
 	mu.Unlock()
 	if !ok {
 		return res, fmt.Errorf("事务不存在或已结束")
@@ -713,11 +818,12 @@ func TxExecute(txID, sqlText string) (QueryResult, error) {
 			return res, err
 		}
 		defer rows.Close()
-		if err := scanRows(rows, &res); err != nil {
+		truncated, err := scanRows(rows, &res, maxQueryRows)
+		if err != nil {
 			logSQL(entry.connID, entry.database, sqlText, time.Since(start), 0, "", err)
 			return res, err
 		}
-		res.Note = fmt.Sprintf("%d 行", len(res.Rows))
+		res.Note = rowNote(len(res.Rows), truncated)
 		logSQL(entry.connID, entry.database, sqlText, time.Since(start), 0, res.Note, nil)
 	} else {
 		r, err := entry.tx.Exec(sqlText)
@@ -837,21 +943,29 @@ func firstWord(s string) string {
 	return s
 }
 
-// scanRows 将 *sql.Rows 扫描进 QueryResult。
-func scanRows(rows *sql.Rows, res *QueryResult) error {
+// scanRows 将 *sql.Rows 扫描进 QueryResult，最多取 limit 行（limit<=0 不限）。
+// 返回是否因超上限而截断：调用方要把这件事告诉用户，不能默默少给。
+// 没有这道闸，SELECT * FROM 大表 会把整表读进内存再 JSON 序列化发给前端，
+// 百万行就是几 GB 堆 + 前端渲染卡死。
+func scanRows(rows *sql.Rows, res *QueryResult, limit int) (bool, error) {
+	truncated := false
 	cols, err := rows.Columns()
 	if err != nil {
-		return err
+		return false, err
 	}
 	res.Columns = cols
 	for rows.Next() {
+		if limit > 0 && len(res.Rows) >= limit {
+			truncated = true
+			break
+		}
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range vals {
 			ptrs[i] = &vals[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			return err
+			return truncated, err
 		}
 		m := map[string]any{}
 		for i, c := range cols {
@@ -862,7 +976,7 @@ func scanRows(rows *sql.Rows, res *QueryResult) error {
 	if res.Rows == nil {
 		res.Rows = []map[string]any{}
 	}
-	return rows.Err()
+	return truncated, rows.Err()
 }
 
 // normalize 将驱动返回值规范化为可 JSON 序列化的值。

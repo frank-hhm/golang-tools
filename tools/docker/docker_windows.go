@@ -831,7 +831,7 @@ func PullImage(image string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		e := pullHint(apiError(resp.StatusCode, data))
 		applog.Errorf("docker", "拉取失败 %s（HTTP %d）: %v", image, resp.StatusCode, e)
 		emit("docker:pull", PullProgress{Image: image, Stage: "error", Note: e.Error()})
@@ -1063,10 +1063,12 @@ func GetContainerLogs(id string, n int) ([]string, error) {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode >= 400 {
-			data, _ := io.ReadAll(resp.Body)
+			data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 			return nil, apiError(resp.StatusCode, data)
 		}
-		data, err := io.ReadAll(resp.Body)
+		// tail=N 只限制行数、不限行宽：容器把一行拼到 100MB 时，不封顶就是一次
+		// 100MB 的 ReadAll，而且面板还在秒级轮询同一个尾巴。读到上限就按截断处理。
+		data, over, err := readCapped(resp.Body, logTailMaxBytes)
 		if err != nil {
 			return nil, unavailableErr(err)
 		}
@@ -1082,9 +1084,15 @@ func GetContainerLogs(id string, n int) ([]string, error) {
 		if len(lines) > n {
 			lines = lines[len(lines)-n:]
 		}
+		if over {
+			lines = append(lines, fmt.Sprintf("（日志过长，已在 %d MB 处截断）", logTailMaxBytes>>20))
+		}
 		return lines, nil
 	})
 }
+
+// logTailMaxBytes 一次取容器日志尾巴的字节上限（tail 只数行，不数行宽）
+const logTailMaxBytes = 16 << 20
 
 // StreamContainerLogs 开启日志跟随（幂等）：行进环形缓冲并推 "docker:serverlog" 事件
 func StreamContainerLogs(id string) error {
@@ -1112,7 +1120,7 @@ func StreamContainerLogs(id string) error {
 		return err
 	}
 	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, apiErrBodyMax))
 		resp.Body.Close()
 		e := apiError(resp.StatusCode, data)
 		logMu.Lock()

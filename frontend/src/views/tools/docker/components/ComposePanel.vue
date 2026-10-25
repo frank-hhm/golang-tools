@@ -44,21 +44,27 @@
                 </div>
 
                 <div class="cp-foot">
-                    <a-button size="small" :loading="busy" :disabled="busy || p.running >= p.total"
+                    <a-button size="small" :loading="isAct(p, 'start')" :disabled="busy || p.running >= p.total"
                         @click="emit('action', p, 'start')">
-                        <template #icon><icon-play-arrow /></template>启动
+                        <template #icon><icon-play-arrow /></template>{{ isAct(p, 'start') ? '启动中' : '启动' }}
                     </a-button>
-                    <a-button size="small" :loading="busy" :disabled="busy || !p.running"
-                        @click="emit('action', p, 'stop')">
-                        <template #icon><icon-pause /></template>停止
-                    </a-button>
-                    <a-button size="small" :loading="busy" :disabled="busy" @click="emit('action', p, 'restart')">
-                        <template #icon><icon-refresh /></template>重启
-                    </a-button>
+                    <!-- 停止/重启会批量断开项目内所有服务，先气泡确认 -->
+                    <a-popconfirm :content="`停止项目「${p.name}」下的 ${p.total} 个容器？服务会随之中断。`"
+                        type="warning" position="lt" :disabled="busy" @ok="emit('action', p, 'stop')">
+                        <a-button size="small" :loading="isAct(p, 'stop')" :disabled="busy || !p.running">
+                            <template #icon><icon-pause /></template>{{ isAct(p, 'stop') ? '停止中' : '停止' }}
+                        </a-button>
+                    </a-popconfirm>
+                    <a-popconfirm :content="`重启项目「${p.name}」的 ${p.total} 个容器？会先停再起，期间不可访问。`"
+                        type="warning" position="lt" :disabled="busy" @ok="emit('action', p, 'restart')">
+                        <a-button size="small" :loading="isAct(p, 'restart')" :disabled="busy">
+                            <template #icon><icon-refresh /></template>{{ isAct(p, 'restart') ? '重启中' : '重启' }}
+                        </a-button>
+                    </a-popconfirm>
                     <a-popconfirm :content="`移除项目「${p.name}」的 ${p.total} 个容器？容器会先停再删，卷与网络不动。`"
-                        type="warning" position="lt" @ok="emit('action', p, 'down')">
-                        <a-button size="small" status="danger" :loading="busy" :disabled="busy">
-                            <template #icon><icon-delete /></template>移除容器
+                        type="warning" position="lt" :disabled="busy" @ok="emit('action', p, 'down')">
+                        <a-button size="small" status="danger" :loading="isAct(p, 'down')" :disabled="busy">
+                            <template #icon><icon-delete /></template>{{ isAct(p, 'down') ? '移除中' : '移除容器' }}
                         </a-button>
                     </a-popconfirm>
                     <span class="cp-time">创建于 {{ fmtUnix(p.created) }}</span>
@@ -71,12 +77,19 @@
 <script setup lang="ts">
 import { fmtUnix } from "../helpers";
 
-defineProps<{
+const props = defineProps<{
     projects: any[];
     loading: boolean;
     /** 有批量操作在跑：按钮统一置灰，避免对着同一个项目连点 */
     busy: boolean;
+    /** 正在执行的项目动作：只给当前项目显示「停止中」这类文案 */
+    busyOn?: { name: string; action: string } | null;
 }>();
+
+/** 该项目是否正在执行指定动作 */
+function isAct(p: any, action: string): boolean {
+    return props.busyOn?.name === p.name && props.busyOn?.action === action;
+}
 
 const emit = defineEmits<{
     (e: "action", project: any, action: "start" | "stop" | "restart" | "down"): void;

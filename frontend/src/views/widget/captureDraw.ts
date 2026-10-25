@@ -158,6 +158,8 @@ export function shouldAppendPoint(pts: Pt[], p: Pt, minDist = 2): boolean {
 export function shapeIsMeaningful(s: Shape): boolean {
     if (s.tool === 'text') return (s.text ?? '').length > 0
     if (s.tool === 'pen') return s.pts.length >= 2
+    // 箭头只看长度：正横/正竖拖出来的箭头外接矩有一条边为 0，按矩形判会被丢掉
+    if (s.tool === 'arrow') return Math.hypot(s.pts[1].x - s.pts[0].x, s.pts[1].y - s.pts[0].y) >= 4
     const n = normalizeRect({ x1: s.pts[0].x, y1: s.pts[0].y, x2: s.pts[1].x, y2: s.pts[1].y })
     return n.x2 - n.x1 >= 2 && n.y2 - n.y1 >= 2
 }
@@ -265,7 +267,10 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): st
     return out.length ? out : ['']
 }
 
-/** 箭头：主线 + 两端 30° 的箭头翼，头部长度随线宽放大 */
+/**
+ * 箭头：实心三角头 + 圆头杆（微信/企微截图那种“粗杆实心箭”的观感）。
+ * 头长随线宽放大，短箭头则把头顶多压到总长的一半，保证尖端之外还看得见杆。
+ */
 export function drawArrow(
     ctx: CanvasRenderingContext2D,
     from: Pt,
@@ -281,22 +286,23 @@ export function drawArrow(
         ctx.fill()
         return
     }
-    const angle = Math.atan2(dy, dx)
-    const head = Math.max(8, lw * 3)
-    // 主线画到头部根部，否则箭头会戳出尖之外
-    const bx = to.x - Math.cos(angle) * head * 0.6
-    const by = to.y - Math.sin(angle) * head * 0.6
+    const ux = dx / len
+    const uy = dy / len
+    // 头：长约 4.5 个杆径，底半宽 0.44 头长（尖角约 45°）；短箭头最多占 55%
+    const head = Math.max(6, Math.min(Math.max(9, lw * 4.5), len * 0.58))
+    const half = head * 0.44
+    // 杆画进头里 0.8 个头长：圆端被三角盖住，不会从尖端戳出来
     ctx.beginPath()
     ctx.moveTo(from.x, from.y)
-    ctx.lineTo(bx, by)
+    ctx.lineTo(to.x - ux * head * 0.8, to.y - uy * head * 0.8)
     ctx.stroke()
-    for (const sign of [-1, 1]) {
-        const a2 = angle + (sign * Math.PI) / 6
-        ctx.beginPath()
-        ctx.moveTo(to.x, to.y)
-        ctx.lineTo(to.x - Math.cos(a2) * head, to.y - Math.sin(a2) * head)
-        ctx.stroke()
-    }
+    // 头：尖端就是终点，底边垂直于杆
+    ctx.beginPath()
+    ctx.moveTo(to.x, to.y)
+    ctx.lineTo(to.x - ux * head - uy * half, to.y - uy * head + ux * half)
+    ctx.lineTo(to.x - ux * head + uy * half, to.y - uy * head - ux * half)
+    ctx.closePath()
+    ctx.fill()
 }
 
 /**

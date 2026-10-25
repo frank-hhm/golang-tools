@@ -23,7 +23,7 @@ import (
 // 各基础目录下按实际服务预建的子目录
 var (
 	pluginServices = []string{"php", "nginx", "mysql", "redis", "npm"}
-	dataServices   = []string{"php", "nginx", "mysql", "redis", "npm", "www", "screenshots", "videos"}
+	dataServices   = []string{"php", "nginx", "mysql", "redis", "npm", "term", "www", "screenshots", "videos"}
 	logServices    = []string{"app", "php", "nginx", "mysql", "redis", "npm"}
 )
 

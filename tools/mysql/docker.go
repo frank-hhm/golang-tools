@@ -206,29 +206,25 @@ func dockerStart(cfg *InstanceConfig) error {
 		int(budget.Seconds()), cfg.Port, strings.Join(dockerLogTail(id, 10), "\n"))
 }
 
-// watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐）
+// watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐）。
+// 改由 docker 包的共享看护负责：引擎一时问不到不等于容器没了，退避重试，
+// 避免 Desktop 抖一下就把还在跑的 MySQL 从进程表里抹掉。
 func watchDockerExit(instID, containerID string, p *srvRunning) {
-	go func() {
-		tick := time.NewTicker(1500 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			<-tick.C
-			st, err := docker.InspectContainer(containerID)
-			if err != nil || !st.Running {
-				srvRunMu.Lock()
-				if srvProcs[instID] == p {
-					delete(srvProcs, instID)
-				}
-				srvRunMu.Unlock()
-				select {
-				case <-p.done:
-				default:
-					close(p.done)
-				}
-				return
-			}
-		}
-	}()
+	docker.WatchContainerExit(containerID, func() { forgetSrv(instID, p) })
+}
+
+// forgetSrv 从进程表摘除该实例并关 done 通道（幂等：只有仍指向同一对象时才删）
+func forgetSrv(instID string, p *srvRunning) {
+	srvRunMu.Lock()
+	if srvProcs[instID] == p {
+		delete(srvProcs, instID)
+	}
+	srvRunMu.Unlock()
+	select {
+	case <-p.done:
+	default:
+		close(p.done)
+	}
 }
 
 // dockerStop 停止容器：优先进程表，退回按标签查找

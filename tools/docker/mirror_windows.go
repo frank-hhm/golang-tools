@@ -58,6 +58,25 @@ var manifestAccepts = strings.Join([]string{
 // 故意不返回 error：探不通本身就是结果，绑定面按 error 返回会额外打一条 ERR，
 // 把「这个站不行」混进程序异常里反而看不清。
 func ProbeMirror(raw, sample string) MirrorProbe {
+	return probeMirrorTracked(context.Background(), raw, sample)
+}
+
+// probeMirrorTracked 把这次探测登记进可取消表：一个不给数据的站要等满 8+12+10 秒，
+// 界面上的「测速」按钮在探测中必须能叫停，否则用户只能干看着。
+func probeMirrorTracked(parent context.Context, raw, sample string) MirrorProbe {
+	if parent.Err() != nil {
+		return mirrorCancelled(MirrorProbe{Url: strings.TrimSpace(raw)})
+	}
+	ctx, cancel := context.WithCancel(parent)
+	registerMirrorProbe(raw, cancel)
+	defer func() {
+		unregisterMirrorProbe(raw)
+		cancel()
+	}()
+	return probeMirror(ctx, raw, sample)
+}
+
+func probeMirror(parent context.Context, raw, sample string) MirrorProbe {
 	base, err := mirrorBaseURL(raw)
 	if err != nil {
 		return MirrorProbe{
@@ -77,11 +96,14 @@ func ProbeMirror(raw, sample string) MirrorProbe {
 	cli.Timeout = 0 // 三段各有自己的截止时间，别让整条请求共用一个 15 秒
 
 	// ---------- 1. 连通 ----------
-	cctx, ccancel := context.WithTimeout(context.Background(), mirrorConnectTO)
+	cctx, ccancel := context.WithTimeout(parent, mirrorConnectTO)
 	defer ccancel()
 	t0 := time.Now()
 	resp, err := mirrorGet(cctx, cli, base+"/v2/", nil)
 	if err != nil {
+		if mirrorStopped(parent) {
+			return mirrorCancelled(p)
+		}
 		p.Stage, p.Label, p.Hint = "connect", "连不上 "+p.Host, mirrorNetHint(err)
 		applog.Warnf("docker", "加速站探测 %s 连通失败: %v", base, err)
 		return p
@@ -96,8 +118,11 @@ func ProbeMirror(raw, sample string) MirrorProbe {
 	}
 
 	// ---------- 2. 清单 ----------
-	man, err := mirrorManifest(cli, base, repo, tag)
+	man, err := mirrorManifest(parent, cli, base, repo, tag)
 	if err != nil {
+		if mirrorStopped(parent) {
+			return mirrorCancelled(p)
+		}
 		p.Stage, p.Label, p.Hint = "manifest", "清单取不到", mirrorErrorHint(err)
 		applog.Warnf("docker", "加速站探测 %s 清单失败(%s:%s): %v", base, repo, tag, err)
 		return p
@@ -116,12 +141,15 @@ func ProbeMirror(raw, sample string) MirrorProbe {
 	p.Layer, p.BlobSize = shortDigest(blob.Digest), blob.Size
 
 	// ---------- 3. 层数据 ----------
-	bctx, bcancel := context.WithTimeout(context.Background(), mirrorBlobTO)
+	bctx, bcancel := context.WithTimeout(parent, mirrorBlobTO)
 	defer bcancel()
 	tb := time.Now()
 	bresp, err := mirrorGet(bctx, cli, fmt.Sprintf("%s/v2/%s/blobs/%s", base, repo, blob.Digest),
 		map[string]string{"Range": fmt.Sprintf("bytes=0-%d", mirrorProbeRange-1)})
 	if err != nil {
+		if mirrorStopped(parent) {
+			return mirrorCancelled(p)
+		}
 		p.Stage, p.Label, p.Hint = "blob", "层数据请求发不出去", mirrorErrorHint(err)
 		applog.Warnf("docker", "加速站探测 %s 层数据失败(层 %s): %v", base, p.Layer, err)
 		return p
@@ -142,9 +170,16 @@ func ProbeMirror(raw, sample string) MirrorProbe {
 	p.Mbps = float64(got) * 8 / 1e6 / secs
 	p.Stage = "blob"
 	if rerr != nil && got < mirrorEmptyBytes {
+		// 用户点了「停止」时读循环也会报中断，不能当成站点不给数据
+		if mirrorStopped(parent) {
+			return mirrorCancelled(p)
+		}
 		p.Stage, p.Label, p.Hint = "blob", "层数据读取中断", mirrorErrorHint(rerr)
 		applog.Warnf("docker", "加速站探测 %s 层数据中断(层 %s): %v", base, p.Layer, rerr)
 		return p
+	}
+	if mirrorStopped(parent) {
+		return mirrorCancelled(p)
 	}
 	mirrorVerdict(&p)
 	applog.Infof("docker", "加速站探测 %s 结论 %s：%s（连通 %dms，清单 %dms，首字节 %dms，%.1f Mbps，取样 %s:%s 层 %s）",
@@ -152,8 +187,16 @@ func ProbeMirror(raw, sample string) MirrorProbe {
 	return p
 }
 
-// ProbeMirrors 一次探完多个站（界面上的「全部测速」）：并发有限，结果按传入顺序回
+// ProbeMirrors 一次探完多个站（界面上的「全部测速」）：并发有限，结果按传入顺序回。
+// 整批登记成一个可取消任务：停止后还在排队的站点直接回「已停止」，不会继续跑完。
 func ProbeMirrors(raws []string, sample string) []MirrorProbe {
+	ctx, cancel := context.WithCancel(context.Background())
+	registerMirrorProbe(mirrorBatchKey, cancel)
+	defer func() {
+		unregisterMirrorProbe(mirrorBatchKey)
+		cancel()
+	}()
+
 	out := make([]MirrorProbe, len(raws))
 	sem := make(chan struct{}, mirrorProbeWorkers)
 	var wg sync.WaitGroup
@@ -163,11 +206,72 @@ func ProbeMirrors(raws []string, sample string) []MirrorProbe {
 		go func(i int, u string) {
 			defer func() { <-sem }()
 			defer wg.Done()
-			out[i] = ProbeMirror(u, sample)
+			out[i] = probeMirrorTracked(ctx, u, sample)
 		}(i, u)
 	}
 	wg.Wait()
 	return out
+}
+
+/* ============================ 叫停注册表 ============================ */
+
+var (
+	mirrorProbeMu   sync.Mutex
+	mirrorProbeStop = map[string]context.CancelFunc{}
+)
+
+// mirrorBatchKey 是「全部测速」整批的键；单个站用地址原文，两者不会撞
+const mirrorBatchKey = "*"
+
+func mirrorProbeKey(raw string) string { return strings.TrimSpace(raw) }
+
+func registerMirrorProbe(raw string, cancel context.CancelFunc) {
+	mirrorProbeMu.Lock()
+	mirrorProbeStop[mirrorProbeKey(raw)] = cancel
+	mirrorProbeMu.Unlock()
+}
+
+func unregisterMirrorProbe(raw string) {
+	mirrorProbeMu.Lock()
+	delete(mirrorProbeStop, mirrorProbeKey(raw))
+	mirrorProbeMu.Unlock()
+}
+
+// CancelMirrorProbe 停掉某个站正在跑的探测；没在跑返回 false（界面据此提示「已经测完了」）
+func CancelMirrorProbe(raw string) bool {
+	mirrorProbeMu.Lock()
+	cancel, ok := mirrorProbeStop[mirrorProbeKey(raw)]
+	mirrorProbeMu.Unlock()
+	if ok && cancel != nil {
+		cancel()
+	}
+	return ok
+}
+
+// CancelMirrorProbes 停掉所有在跑的探测（含「全部测速」整批），返回叫停的个数
+func CancelMirrorProbes() int {
+	mirrorProbeMu.Lock()
+	pending := make([]context.CancelFunc, 0, len(mirrorProbeStop))
+	for _, c := range mirrorProbeStop {
+		pending = append(pending, c)
+	}
+	mirrorProbeMu.Unlock()
+	for _, c := range pending {
+		c()
+	}
+	return len(pending)
+}
+
+// mirrorStopped 这次探测是不是被用户叫停的：叫停时请求会以 context 错误返回，
+// 不能当成「连不上 / 读中断 / 不给数据」报到界面上
+func mirrorStopped(parent context.Context) bool {
+	return parent != nil && parent.Err() != nil
+}
+
+func mirrorCancelled(p MirrorProbe) MirrorProbe {
+	p.Grade, p.Stage, p.Label = "cancel", "cancel", "已停止测速"
+	p.Hint = "手动中止，这一段没有结论；需要的话再点一次测速"
+	return p
 }
 
 /* ============================ 结论分级 ============================ */
@@ -342,11 +446,11 @@ type manifestDoc struct {
 }
 
 // mirrorManifest 取清单：多架构索引先落到本机这一份（linux/amd64），再取它的层列表
-func mirrorManifest(cli *http.Client, base, repo, tag string) (manifestDoc, error) {
+func mirrorManifest(parent context.Context, cli *http.Client, base, repo, tag string) (manifestDoc, error) {
 	var man manifestDoc
 	hdr := map[string]string{"Accept": manifestAccepts}
 	u := fmt.Sprintf("%s/v2/%s/manifests/%s", base, repo, tag)
-	resp, err := mirrorGet(mirrorCtx(mirrorManifestTO), cli, u, hdr)
+	resp, err := mirrorGet(mirrorCtx(parent, mirrorManifestTO), cli, u, hdr)
 	if err != nil {
 		return man, err
 	}
@@ -372,7 +476,7 @@ func mirrorManifest(cli *http.Client, base, repo, tag string) (manifestDoc, erro
 		}
 	}
 	u2 := fmt.Sprintf("%s/v2/%s/manifests/%s", base, repo, sub)
-	resp2, err := mirrorGet(mirrorCtx(mirrorManifestTO), cli, u2, hdr)
+	resp2, err := mirrorGet(mirrorCtx(parent, mirrorManifestTO), cli, u2, hdr)
 	if err != nil {
 		return man, err
 	}
@@ -389,10 +493,10 @@ func mirrorManifest(cli *http.Client, base, repo, tag string) (manifestDoc, erro
 	return inner, nil
 }
 
-// mirrorCtx 给一段独立的截止时间。cancel 不立即 defer 是因为响应体还要继续读，
-// 由发起探测的那一层统一 defer 收尾。
-func mirrorCtx(d time.Duration) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), d)
+// mirrorCtx 给一段独立的截止时间（继承外层的取消信号）。cancel 不立即 defer 是因为
+// 响应体还要继续读，由发起探测的那一层统一收尾。
+func mirrorCtx(parent context.Context, d time.Duration) context.Context {
+	ctx, cancel := context.WithTimeout(parent, d)
 	_ = cancel // 到期自动回收；不保留 cancel 是因为请求完成后由上层统一释放
 	return ctx
 }

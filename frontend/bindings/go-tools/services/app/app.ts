@@ -45,6 +45,9 @@ import * as screenshot$0 from "../../tools/screenshot/models.js";
 import * as sniffer$0 from "../../tools/sniffer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as term$0 from "../../tools/term/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as usbserial$0 from "../../tools/usbserial/models.js";
 
 /**
@@ -208,6 +211,20 @@ export function DockerSrvBuildInstallerURL(input: string): $CancellablePromise<s
  */
 export function DockerSrvCancelImageOp(target: string): $CancellablePromise<string> {
     return $Call.ByID(4163725584, target);
+}
+
+/**
+ * DockerSrvCancelMirrorProbe 叫停某个站正在跑的测速；返回 false 表示它已经测完了
+ */
+export function DockerSrvCancelMirrorProbe(mirrorURL: string): $CancellablePromise<boolean> {
+    return $Call.ByID(3362148265, mirrorURL);
+}
+
+/**
+ * DockerSrvCancelMirrorProbes 叫停所有在跑的测速（「全部测速」整批），返回叫停的个数
+ */
+export function DockerSrvCancelMirrorProbes(): $CancellablePromise<number> {
+    return $Call.ByID(1393538094);
 }
 
 /**
@@ -2282,6 +2299,69 @@ export function StopCaptureSniffer(): $CancellablePromise<void> {
  */
 export function StopSnifferProxy(): $CancellablePromise<void> {
     return $Call.ByID(3926363566);
+}
+
+/**
+ * TermChooseKeyFile 弹原生文件选择框选 SSH 私钥，取消返回空串
+ */
+export function TermChooseKeyFile(): $CancellablePromise<string> {
+    return $Call.ByID(4222580509);
+}
+
+/**
+ * TermClose 主动关闭会话
+ */
+export function TermClose(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(2893216063, sessionID);
+}
+
+/**
+ * TermDeleteHost 删除记录，返回更新后的完整列表
+ */
+export function TermDeleteHost(id: string): $CancellablePromise<term$0.Host[] | null> {
+    return $Call.ByID(3900509968, id);
+}
+
+/**
+ * TermListHosts 终端连接记录列表（密码字段恒为空）
+ */
+export function TermListHosts(): $CancellablePromise<term$0.Host[] | null> {
+    return $Call.ByID(1622853180);
+}
+
+/**
+ * TermOpenDocker 在容器内打开一条交互终端（复用同一套会话/事件通道）
+ */
+export function TermOpenDocker(containerID: string, title: string, cols: number, rows: number): $CancellablePromise<term$0.SessionInfo> {
+    return $Call.ByID(3218499685, containerID, title, cols, rows);
+}
+
+/**
+ * TermOpenSSH 按记录打开一条 SSH 终端会话，返回会话句柄
+ */
+export function TermOpenSSH(hostID: string, cols: number, rows: number): $CancellablePromise<term$0.SessionInfo> {
+    return $Call.ByID(3712154377, hostID, cols, rows);
+}
+
+/**
+ * TermResize 前端终端尺寸变化时同步远端 PTY
+ */
+export function TermResize(sessionID: string, cols: number, rows: number): $CancellablePromise<void> {
+    return $Call.ByID(1377306573, sessionID, cols, rows);
+}
+
+/**
+ * TermSaveHost 新增/更新一条记录，返回更新后的完整列表
+ */
+export function TermSaveHost(h: term$0.Host): $CancellablePromise<term$0.Host[] | null> {
+    return $Call.ByID(1237442486, h);
+}
+
+/**
+ * TermWrite 终端按键输入（data 为 Base64）
+ */
+export function TermWrite(sessionID: string, data: string): $CancellablePromise<void> {
+    return $Call.ByID(1664547608, sessionID, data);
 }
 
 /**

@@ -10,7 +10,6 @@ package docker
 // ============================================================
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -19,7 +18,9 @@ const (
 	LabelInstance = "go-tools.instance"
 )
 
-var errUnsupported = fmt.Errorf("非 Windows 平台暂不支持 Docker 管理")
+// errUnsupported 直接复用平台无关的 ErrUnsupported：看护协程靠 errors.Is 认出
+// 「这台机器压根不支持 Docker」，不会把它当成引擎抖动而无休止地重试
+var errUnsupported = ErrUnsupported
 
 func GetEngineStatus() (EngineInfo, error) {
 	return EngineInfo{Error: errUnsupported.Error()}, nil
@@ -140,3 +141,7 @@ func ProbeMirrors(raws []string, sample string) []MirrorProbe {
 	}
 	return out
 }
+
+// 非 Windows 没有真实探测，也就没有可叫停的任务
+func CancelMirrorProbe(string) bool { return false }
+func CancelMirrorProbes() int       { return 0 }

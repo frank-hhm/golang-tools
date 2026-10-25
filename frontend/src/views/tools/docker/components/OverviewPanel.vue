@@ -18,7 +18,8 @@
                 <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
                     <div class="stat-card" :class="{ 'is-off': !c.ready }">
                         <div class="stat-circle" :class="'tone-' + c.tone">
-                            <component :is="c.icon" :size="22" />
+                            <!-- 自绘 SVG 图标：形状随指标语义变，动画语言与首页指标卡一致 -->
+                            <common-stat-icon :name="c.icon" :value="c.p" :size="24" />
                         </div>
                         <div class="stat-info">
                             <div class="stat-head">
@@ -35,9 +36,11 @@
             </a-row>
         </a-card>
 
-        <a-card class="card-head-tool ov-card">
+        <!-- fill：容器列表吃掉可视区剩下的高度，卡片墙过多时在卡片内部滚，卡片下沿不会悬空 -->
+        <a-card class="card-head-tool ov-card fill">
             <template #title>
                 <span class="ov-title">容器列表</span>
+                <span v-if="filtered.length" class="ov-count">{{ filtered.length }}</span>
             </template>
             <template #extra>
                 <a-space :size="8" wrap>
@@ -78,6 +81,8 @@
                         <div class="cc-time">创建时间：{{ fmtTime(c.created) }}</div>
                         <!-- 卡片整体可点：一句“监控/日志 →”把去向说清楚，别让人靠猜 -->
                         <a-button class="cc-open" size="mini">{{ isRunning(c) ? '监控' : '日志' }}</a-button>
+                        <!-- 终端单独一个入口（会拦掉冒泡，不然卡片点击会盖过去） -->
+                        <a-button v-if="isRunning(c)" class="cc-open" size="mini" @click.stop="emit('open-term', c)">终端</a-button>
                     </a-space>
 
                     <div class="cc-bars">
@@ -108,12 +113,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 // 卡片图标走单文件导入，别从 icon 的 barrel 里拿（会把整套图标都带进包）
-import IconArchive from "@arco-design/web-vue/es/icon/icon-archive";
-import IconCloud from "@arco-design/web-vue/es/icon/icon-cloud";
 import IconComputer from "@arco-design/web-vue/es/icon/icon-computer";
-import IconLayers from "@arco-design/web-vue/es/icon/icon-layers";
-import IconStorage from "@arco-design/web-vue/es/icon/icon-storage";
-import IconWifi from "@arco-design/web-vue/es/icon/icon-wifi";
 import dayjs from "dayjs";
 import { fmtBytes } from "../helpers";
 
@@ -137,6 +137,7 @@ const emit = defineEmits<{
     (e: "refresh"): void;
     (e: "open-monitor", c: any): void;
     (e: "open-logs", c: any): void;
+    (e: "open-term", c: any): void;
 }>();
 
 /* ============================ 资源概览 ============================ */
@@ -147,7 +148,10 @@ interface StatCard {
     value: string;
     sub: string;
     ready: boolean;
-    icon: any;
+    /** 图标名，见 common-stat-icon（container / compose / image / network / volume / registry） */
+    icon: string;
+    /** 活跃比例 0-100：容器=运行占比、网络=有容器接入占比、存储卷=在用占比 */
+    p?: number;
     /** stat-circle 的色调后缀（tone-blue / tone-cyan ...） */
     tone: string;
     tip: string;
@@ -170,7 +174,8 @@ const cards = computed<StatCard[]>(() => {
             value: String(props.containers.length),
             sub: `${running} 个运行中`,
             ready: true,
-            icon: IconComputer,
+            icon: "container",
+            p: props.containers.length ? (running / props.containers.length) * 100 : 0,
             tone: "blue",
             tip: running !== props.containers.length ? "统计范围跟随容器页的「显示已停止」开关" : "",
         },
@@ -180,7 +185,7 @@ const cards = computed<StatCard[]>(() => {
             value: String(props.composes.length),
             sub: `${projOn} 个全部运行`,
             ready: true,
-            icon: IconLayers,
+            icon: "compose",
             tone: "purple",
             tip: ctrInProjects
                 ? `按 com.docker.compose.* 标签聚合，共 ${ctrInProjects} 个容器；Engine API 没有 compose 端点`
@@ -192,7 +197,7 @@ const cards = computed<StatCard[]>(() => {
             value: String(props.images.length),
             sub: imgSize > 0 ? `占用空间 ${fmtBytes(imgSize)}` : "占用空间未知",
             ready: true,
-            icon: IconStorage,
+            icon: "image",
             tone: "cyan",
             tip: imgSize > 0 ? "本地镜像层体积合计（多 tag 共用层会重复计）" : "",
         },
@@ -202,7 +207,8 @@ const cards = computed<StatCard[]>(() => {
             value: String(props.networks.length),
             sub: `自定义 ${customNets} 个`,
             ready: true,
-            icon: IconWifi,
+            icon: "network",
+            p: props.networks.length ? (netsOn / props.networks.length) * 100 : 0,
             tone: "orange",
             tip: netsOn ? `${netsOn} 个网络里有容器接入` : "暂无容器接入任何网络",
         },
@@ -212,7 +218,8 @@ const cards = computed<StatCard[]>(() => {
             value: String(props.volumes.length),
             sub: `${volsOn} 个在用`,
             ready: true,
-            icon: IconArchive,
+            icon: "volume",
+            p: props.volumes.length ? (volsOn / props.volumes.length) * 100 : 0,
             tone: "green",
             tip: volsOn !== props.volumes.length ? "其余卷没有任何容器引用，可在存储卷页清理" : "全部卷都有容器引用",
         },
@@ -222,7 +229,7 @@ const cards = computed<StatCard[]>(() => {
             value: String(props.registries.length),
             sub: "已配置的仓库",
             ready: true,
-            icon: IconCloud,
+            icon: "registry",
             tone: "blue",
             tip: "",
         },
@@ -277,6 +284,42 @@ function fmtTime(unixSec: number): string {
     flex-direction: column;
     gap: var(--base-margin);
     padding: var(--base-padding);
+    /* 撑满可视区：内容少时由容器列表卡拉伸到底，内容多时整体照常超出去给外层滚 */
+    min-height: 100%;
+    box-sizing: border-box;
+}
+
+/* 概览卡按内容高度，容器列表卡占剩余 */
+.ov-card {
+    flex: none;
+}
+
+.ov-card.fill {
+    flex: 1;
+    /* 窗口很矮时保底高度，再矮就交给外层滚动，不把卡片压成一条 */
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Arco 卡片默认是 block：要让它垂直分配空间，本体与 body 都得是 flex 列 */
+.ov-card.fill :deep(.arco-card-body) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.ov-count {
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: var(--color-fill-2);
+    color: var(--color-text-3);
+    font-size: 11px;
+    font-weight: normal;
+    line-height: 16px;
+    vertical-align: 1px;
 }
 
 .ov-title {
@@ -400,15 +443,25 @@ function fmtTime(unixSec: number): string {
 }
 
 .ov-empty {
+    flex: 1;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 24px 0;
 }
 
-/* 容器卡片墙：与首页 svc-cards 同款栅格（随宽度自适应，卡片少时靠左不拉伸） */
+/* 容器卡片墙：与首页 svc-cards 同款栅格（随宽度自适应，卡片少时靠左不拉伸）
+   高度吃掉卡片 body 的剩余空间并在内部滚动，避免把整页顶高 */
 .cc-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: var(--base-margin);
     align-content: start;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
 }
 
 .cc {

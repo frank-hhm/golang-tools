@@ -401,31 +401,53 @@ func drawRect(dst *image.RGBA, x1, y1, x2, y2 int, r, g, b uint8, lw int) {
 	}
 }
 
+// drawArrow 实心三角头 + 粗杆，比例与预览路径 dibArrow / 前端 drawArrow 一致：
+// 头长约 4.5 个线宽、底半宽 0.44 头长，杆画进头里 0.8 头长，圆端不会戳出尖端。
 func drawArrow(dst *image.RGBA, x1, y1, x2, y2 int, r, g, b uint8, lw int) {
-	dx := x2 - x1
-	dy := y2 - y1
-	length := math.Sqrt(float64(dx*dx + dy*dy))
+	dx, dy := float64(x2-x1), float64(y2-y1)
+	length := math.Hypot(dx, dy)
 	if length < 1 {
 		return
 	}
+	ux, uy := dx/length, dy/length
+	head := math.Max(6, math.Min(math.Max(9, float64(lw)*4.5), length*0.58))
+	half := head * 0.44
 
-	ux := float64(dx) / length
-	uy := float64(dy) / length
+	drawLine(dst, x1, y1, x2-int(ux*head*0.8), y2-int(uy*head*0.8), r, g, b, lw)
 
-	for t := 0.0; t <= length; t += 0.5 {
-		px := x1 + int(ux*t)
-		py := y1 + int(uy*t)
-		drawDot(dst, px, py, r, g, b, lw)
+	tipX, tipY := float64(x2), float64(y2)
+	baseX, baseY := tipX-ux*head, tipY-uy*head
+	fillTriangle(dst,
+		tipX, tipY,
+		baseX-uy*half, baseY+ux*half,
+		baseX+uy*half, baseY-ux*half,
+		r, g, b)
+}
+
+// fillTriangle 逐像素判重心填充实心三角形（箭头头部），坐标允许小数
+func fillTriangle(dst *image.RGBA, x1, y1, x2, y2, x3, y3 float64, r, g, b uint8) {
+	bounds := dst.Bounds()
+	minX := max(bounds.Min.X, int(math.Floor(math.Min(x1, math.Min(x2, x3)))))
+	maxX := min(bounds.Max.X-1, int(math.Ceil(math.Max(x1, math.Max(x2, x3)))))
+	minY := max(bounds.Min.Y, int(math.Floor(math.Min(y1, math.Min(y2, y3)))))
+	maxY := min(bounds.Max.Y-1, int(math.Ceil(math.Max(y1, math.Max(y2, y3)))))
+
+	for py := minY; py <= maxY; py++ {
+		fy := float64(py) + 0.5
+		for px := minX; px <= maxX; px++ {
+			fx := float64(px) + 0.5
+			e1 := triCross(x1, y1, x2, y2, fx, fy)
+			e2 := triCross(x2, y2, x3, y3, fx, fy)
+			e3 := triCross(x3, y3, x1, y1, fx, fy)
+			if (e1 >= 0 && e2 >= 0 && e3 >= 0) || (e1 <= 0 && e2 <= 0 && e3 <= 0) {
+				dst.SetRGBA(px, py, color.RGBA{R: r, G: g, B: b, A: 255})
+			}
+		}
 	}
+}
 
-	size := math.Max(8, float64(lw)*3)
-	angle := math.Atan2(float64(dy), float64(dx))
-
-	for _, delta := range []float64{-math.Pi / 6, math.Pi / 6} {
-		ax := x2 - int(size*math.Cos(angle+delta))
-		ay := y2 - int(size*math.Sin(angle+delta))
-		drawLine(dst, x2, y2, ax, ay, r, g, b, lw)
-	}
+func triCross(ax, ay, bx, by, px, py float64) float64 {
+	return (bx-ax)*(py-ay) - (by-ay)*(px-ax)
 }
 
 func drawMosaic(dst *image.RGBA, x1, y1, x2, y2, size int) {

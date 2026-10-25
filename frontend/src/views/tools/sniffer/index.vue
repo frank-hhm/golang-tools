@@ -15,9 +15,12 @@
                         </template>
                         <template #extra>
                             <a-space>
-                                <a-button size="small" :disabled="!flows.length" @click="clearAll">
-                                    <template #icon><icon-delete /></template>
-                                </a-button>
+                                <a-popconfirm content="清空当前抓到的所有请求？未保存的会话会丢失。" type="warning"
+                                    position="lt" :disabled="!flows.length" @ok="clearAll">
+                                    <a-button size="small" :disabled="!flows.length">
+                                        <template #icon><icon-delete /></template>
+                                    </a-button>
+                                </a-popconfirm>
                                 <a-button size="small" v-if="!running" @click="onStart">
                                     <template #icon><icon-play-arrow /></template>
                                 </a-button>

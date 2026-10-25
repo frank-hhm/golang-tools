@@ -45,7 +45,9 @@
         <div v-if="sel && !toolbarHidden" ref="barRef" class="cap-bar" :style="barStyle" @mousedown.stop>
             <div class="cap-main">
                 <a-tooltip v-for="t in TOOLS" :key="t.tool" :content="t.tip" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" @click="pickTool(t.tool)">
+                    <!-- 选中态单独给类：a-button 的 text 样式会压住背景，靠 type=primary 又与全局规范相左 -->
+                    <a-button size="small" type="text" class="cap-tool" :class="{ on: tool === t.tool }"
+                        @click="pickTool(t.tool)">
                         <component :is="t.icon" v-if="t.icon" />
                         <!-- Arco 没有空心矩形/椭圆/T 字，按其 48 网格 + 4px 圆头描边补齐 -->
                         <svg v-else class="cap-svg" viewBox="0 0 48 48">
@@ -1409,6 +1411,14 @@ function blurAll() {
     border-radius: 3px;
     border: 1px solid rgba(255, 255, 255, .35);
     box-sizing: border-box;
+}
+
+/* 选中的绘图工具：主色底 + 白图标，与子栏里选中的线宽/字号一套观感；
+   a-button 的 text 背景和 hover 都会盖回来，背景与字色都要压住 */
+.cap-tool.on,
+.cap-tool.on:hover {
+    background: rgb(var(--primary-6)) !important;
+    color: #fff !important;
 }
 
 /* 颜色选中态：a-button 本身不加自定义形状，只给一个背景表示已选 */

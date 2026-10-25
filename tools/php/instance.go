@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 )
 
@@ -595,13 +596,10 @@ func pidsByName(name string) []int {
 /* ============================ 小工具 ============================ */
 
 func tailLines(path string, n int) []string {
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
+	// 只取末尾几行却把整个日志读进内存，是面板轮询里最大的瞬时分配源
+	lines, err := logtail.Lines(path, n)
+	if err != nil {
 		return nil
-	}
-	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
 	}
 	return lines
 }

@@ -116,13 +116,13 @@ type annotState struct {
 
 	// 工具栏布局：bar* 是主工具栏，sub* 是子工具栏（线宽/颜色）。
 	// 两者必须分开保存——子栏可能翻转到主栏上侧，混用会破坏命中判定。
-	sw, sh             int
-	barX, barY, barW   int
-	subX, subY, subW   int
-	toolBtns           []btnArea
-	actBtns            []btnArea
-	subBtns            []btnArea
-	subVisible         bool
+	sw, sh           int
+	barX, barY, barW int
+	subX, subY, subW int
+	toolBtns         []btnArea
+	actBtns          []btnArea
+	subBtns          []btnArea
+	subVisible       bool
 
 	sel image.Rectangle // 当前选区（屏幕坐标）
 }
@@ -296,8 +296,8 @@ func (a *annotState) onClick(x, y int32) (bool, bool, bool) {
 				a.shapes = append(a.shapes, Shape{
 					Type: ToolMosaic,
 					X1:   int32(a.sel.Min.X), Y1: int32(a.sel.Min.Y),
-					X2:   int32(a.sel.Max.X), Y2: int32(a.sel.Max.Y),
-					LW:   10,
+					X2: int32(a.sel.Max.X), Y2: int32(a.sel.Max.Y),
+					LW: 10,
 				})
 			}
 			return true, false, false
@@ -412,6 +412,9 @@ func (a *annotState) endDraw() {
 	ok := false
 	if s.Type == ToolPen {
 		ok = len(s.Pts) > 1
+	} else if s.Type == ToolArrow {
+		// 箭头按长度判：正横/正竖拖出来的箭头外接矩有一条边为 0
+		ok = math.Hypot(float64(s.X2-s.X1), float64(s.Y2-s.Y1)) >= 4
 	} else {
 		ok = abs32(s.X2-s.X1) >= 2 && abs32(s.Y2-s.Y1) >= 2
 	}
@@ -496,21 +499,63 @@ func dibEllipse(dib []byte, sw, sh, x1, y1, x2, y2, lw int, r, g, b byte) {
 	}
 }
 
-// dibArrow 直线 + 两端夹角 ±30° 的箭头（头部长度随线宽放大）。
-// 参数与成品路径 drawArrow 保持一致，避免预览与成品的箭头大小/张角不一致。
+// dibArrow 实心三角头 + 粗杆（与前端 captureDraw.ts 的 drawArrow 同一套比例）：
+// 头长约 4.5 个线宽、底半宽 0.44 头长，杆画进头里 0.8 头长，保证圆端不戳出尖端。
 func dibArrow(dib []byte, sw, sh, x1, y1, x2, y2, lw int, r, g, b byte) {
-	dx, dy := x2-x1, y2-y1
-	length := math.Hypot(float64(dx), float64(dy))
+	dx, dy := float64(x2-x1), float64(y2-y1)
+	length := math.Hypot(dx, dy)
 	if length < 1 {
+		dibDot(dib, sw, sh, x2, y2, lw, r, g, b)
 		return
 	}
-	dibLine(dib, sw, sh, x1, y1, x2, y2, lw, r, g, b)
+	ux, uy := dx/length, dy/length
+	head := math.Max(6, math.Min(math.Max(9, float64(lw)*4.5), length*0.58))
+	half := head * 0.44
 
-	size := math.Max(8, float64(lw)*3)
-	angle := math.Atan2(float64(dy), float64(dx))
-	for _, d := range []float64{-math.Pi / 6, math.Pi / 6} {
-		dibLine(dib, sw, sh, x2, y2,
-			x2-int(size*math.Cos(angle+d)), y2-int(size*math.Sin(angle+d)), lw, r, g, b)
+	dibLine(dib, sw, sh, x1, y1, x2-int(ux*head*0.8), y2-int(uy*head*0.8), lw, r, g, b)
+
+	tipX, tipY := float64(x2), float64(y2)
+	baseX, baseY := tipX-ux*head, tipY-uy*head
+	dibFillTri(dib, sw, sh,
+		tipX, tipY,
+		baseX-uy*half, baseY+ux*half,
+		baseX+uy*half, baseY-ux*half,
+		r, g, b)
+}
+
+// dibFillTri 实心三角形（箭头头部）：只扫包围盒，逐像素判三条边的叉积是否同号
+func dibFillTri(dib []byte, sw, sh int, x1, y1, x2, y2, x3, y3 float64, r, g, b byte) {
+	minX := int(math.Floor(math.Min(x1, math.Min(x2, x3))))
+	maxX := int(math.Ceil(math.Max(x1, math.Max(x2, x3))))
+	minY := int(math.Floor(math.Min(y1, math.Min(y2, y3))))
+	maxY := int(math.Ceil(math.Max(y1, math.Max(y2, y3))))
+	if minX < 0 {
+		minX = 0
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxX > sw-1 {
+		maxX = sw - 1
+	}
+	if maxY > sh-1 {
+		maxY = sh - 1
+	}
+	for py := minY; py <= maxY; py++ {
+		fy := float64(py) + 0.5
+		for px := minX; px <= maxX; px++ {
+			fx := float64(px) + 0.5
+			e1 := triCross(x1, y1, x2, y2, fx, fy)
+			e2 := triCross(x2, y2, x3, y3, fx, fy)
+			e3 := triCross(x3, y3, x1, y1, fx, fy)
+			if (e1 >= 0 && e2 >= 0 && e3 >= 0) || (e1 <= 0 && e2 <= 0 && e3 <= 0) {
+				o := (py*sw + px) * 4
+				dib[o] = b
+				dib[o+1] = g
+				dib[o+2] = r
+				dib[o+3] = 255
+			}
+		}
 	}
 }
 

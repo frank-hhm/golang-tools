@@ -154,7 +154,10 @@
                             <template #extra>
                                 <a-space>
                                     <span class="hint hint-inline">快捷键为系统全局热键</span>
-                                    <a-button size="small" @click="resetTools">恢复默认列表</a-button>
+                                    <a-popconfirm content="恢复默认功能列表？自定义的增删与排序会被覆盖。" type="warning"
+                                        position="lt" @ok="resetTools">
+                                        <a-button size="small">恢复默认列表</a-button>
+                                    </a-popconfirm>
                                     <a-button size="small" @click="openAdd">
                                         <template #icon><icon-plus /></template>新增功能
                                     </a-button>

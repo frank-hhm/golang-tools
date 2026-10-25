@@ -51,6 +51,8 @@
                                 </a-button>
                             </div>
                         </template>
+                        <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
+                        <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="Redis" />
                         <a-list :bordered="false" size="small">
                             <a-list-item v-for="inst in srvInstances" :key="inst.id">
                                 <a-space>
@@ -60,8 +62,12 @@
                                         <span class="conn-name">{{ inst.name }}</span>
                                     </a-tooltip>
                                     <!-- 容器实例不占本机版本库，用镜像 tag 标身份 -->
-                                    <a-tooltip v-if="inst.mode === 'docker'" :content="inst.image || 'Docker'">
-                                        <a-tag color="purple">{{ inst.image || 'Docker' }}</a-tag>
+                                    <a-tooltip v-if="inst.mode === 'docker'"
+                                        :content="imgMissing(inst.image)
+                                            ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                                            : `镜像 ${inst.image}：这就是该实例的 Redis 版本`">
+                                        <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'">Docker
+                                            {{ imgTag(inst.image) }}</a-tag>
                                     </a-tooltip>
                                     <a-tag v-else color="arcoblue">v{{ inst.version }}</a-tag>
                                 </a-space>
@@ -193,7 +199,10 @@
                                     <a-tooltip :content="k.key">
                                         <div class="key-name">{{ k.key }}</div>
                                     </a-tooltip>
-                                    <icon-delete class="key-del" @click.stop="delKey(k.key)" />
+                                    <a-popconfirm :content="`确定删除键「${k.key}」？删除后不可恢复。`" type="warning"
+                                        position="lt" @ok="delKey(k.key)">
+                                        <icon-delete class="key-del" @click.stop />
+                                    </a-popconfirm>
                                 </div>
                                 <a-empty v-if="st.keys.length === 0" :image="false" description="无键" />
                             </div>
@@ -226,8 +235,11 @@
                                     </a-button>
                                     <a-button size="small" @click="copyValue()"><template
                                             #icon><icon-copy /></template>复制值</a-button>
-                                    <a-button size="small" status="danger" @click="delKey(st.selectedKey)"><template
-                                            #icon><icon-delete /></template></a-button>
+                                    <a-popconfirm :content="`确定删除键「${st.selectedKey}」？删除后不可恢复。`" type="warning"
+                                        position="lt" @ok="delKey(st.selectedKey)">
+                                        <a-button size="small" status="danger"><template
+                                                #icon><icon-delete /></template></a-button>
+                                    </a-popconfirm>
                                 </a-space>
                             </template>
                             <div class="kd-body">
@@ -391,10 +403,19 @@
         </a-form>
     </a-modal>
 
-    <!-- 本地服务：版本管理 -->
-    <a-modal v-model:visible="versionsVisible" title="Redis 版本管理" :width="680" :footer="false">
+    <!-- 本地服务：版本管理（宽度 820：Docker 镜像表带上「使用实例」列后 680 会横向溢出） -->
+    <!-- 固定高度：三个页签内容高矮不一，不钉住的话切一下弹窗就跳一次高度 -->
+    <a-modal v-model:visible="versionsVisible" title="Redis 版本管理" :width="820" :footer="false"
+        :body-style="{ height: 'min(600px, calc(100vh - 220px))', overflowY: 'auto' }">
         <a-space direction="vertical" fill :size="12">
+            <!-- 类型切换：本地 / 线上 / Docker 只看一类，不用在长弹窗里找 -->
+            <a-radio-group size="medium" v-model="verTab" type="button">
+                <a-radio value="local">已安装版本 {{ localVersions.length }}</a-radio>
+                <a-radio value="remote">在线可安装 {{ remoteVersions.length }}</a-radio>
+                <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
+            </a-radio-group>
             <!-- 已安装版本 -->
+            <div v-show="verTab === 'local'">
             <a-card size="small" :body-style="{ padding: '8px 12px' }">
                 <template #title><span class="ver-sec-title"><icon-storage /> 已安装版本</span></template>
                 <div class="ver-scroll">
@@ -406,8 +427,10 @@
                         <a-tooltip :content="v.path">
                             <span class="ver-path">{{ v.path }}</span>
                         </a-tooltip>
-                        <a-button size="small" status="danger" :disabled="v.source === 'bundled'"
-                            @click="removeVersion(v)">删除</a-button>
+                        <a-popconfirm :content="`确定删除 Redis ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`"
+                            type="warning" position="lt" :disabled="v.source === 'bundled'" @ok="removeVersion(v)">
+                            <a-button size="small" status="danger" :disabled="v.source === 'bundled'">删除</a-button>
+                        </a-popconfirm>
                     </div>
                     <a-empty v-if="localVersions.length === 0" :image="false" description="尚未安装任何版本，可从下方在线安装或添加本机目录" />
                 </div>
@@ -419,8 +442,17 @@
                 </div>
                 <div class="ver-hint">离线安装：将 redis zip 放入 <span class="mono">{{ srvServersDir }}</span> 后点「安装」即可</div>
             </a-card>
+            </div>
+
+            <!-- Docker 镜像与容器：Docker 实例的「版本」就是镜像 tag（redis:7.4-alpine） -->
+            <div v-show="verTab === 'docker'">
+                <docker-images keyword="redis" tool-label="Redis" repo="redis" :presets="redisImagePresets"
+                    :instances="srvInstances" :states="srvStates" :reload-key="verReload" @create="newInstanceFromImage"
+                    @use="editSrvById" @changed="refreshSrvStates" />
+            </div>
 
             <!-- 在线版本 -->
+            <div v-show="verTab === 'remote'">
             <a-card size="small" :body-style="{ padding: '8px 12px' }">
                 <template #title>
                     <span class="ver-sec-title"><icon-cloud /> 在线版本（GitHub redis-windows 发行版，&gt;=7.0）</span>
@@ -453,7 +485,9 @@
                         </a-button>
                     </div>
                     <div v-if="p.stage === 'error' && p.note" class="inst-err">
-                        <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
+                        <a-tooltip :content="p.note" position="tl">
+                            <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
+                        </a-tooltip>
                     </div>
                 </div>
             </a-card>
@@ -470,11 +504,17 @@
                     <a-empty v-if="installLogs.length === 0" :image="false" description="暂无安装记录" />
                 </div>
             </a-card>
+            </div>
         </a-space>
     </a-modal>
 
     <!-- 本地服务：实例编辑 -->
-    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520" @ok="saveInstance">
+    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520"
+        :body-style="{ maxHeight: '72vh' }" @ok="saveInstance">
+        <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错；吸顶不占表单位 -->
+        <common-modal-tip v-if="instForm.mode === 'docker' && dockerErr" :text="dockerErr">
+          <a-button size="small" @click="openDockerWindow">打开 Docker 面板</a-button>
+        </common-modal-tip>
         <a-form :model="instForm" layout="vertical" class="inst-form">
             <a-form-item field="name" label="实例名称">
                 <a-input v-model="instForm.name" placeholder="例如 local-dev" />
@@ -532,9 +572,6 @@
                     </a-form-item>
                 </a-col>
             </a-row>
-            <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错 -->
-            <a-alert v-if="instForm.mode === 'docker' && dockerErr" type="warning"
-                style="margin-bottom: 12px">{{ dockerErr }}</a-alert>
             <a-row :gutter="12">
                 <a-col :span="12">
                     <a-form-item field="port" label="端口" :error="portError"
@@ -834,20 +871,17 @@ async function saveKey() {
     }
 }
 
-function delKey(key: string) {
-    Modal.warning({
-        title: "删除键",
-        content: `确定删除「${key}」？`,
-        hideCancel: false,
-        onOk: async () => {
-            await GoTools.RedisDeleteKeys(st.activeTab, [key]);
-            if (st.selectedKey === key) {
-                st.selectedKey = "";
-                st.keyValue = { type: "", ttl: -1, str: "", hash: {}, list: [], set: [], zset: [] };
-            }
-            reloadKeys();
-        },
-    });
+async function delKey(key: string) {
+    try {
+        await GoTools.RedisDeleteKeys(st.activeTab, [key]);
+        if (st.selectedKey === key) {
+            st.selectedKey = "";
+            st.keyValue = { type: "", ttl: -1, str: "", hash: {}, list: [], set: [], zset: [] };
+        }
+        reloadKeys();
+    } catch (e: any) {
+        Message.error("删除失败: " + (e?.message || e));
+    }
 }
 
 function openAddKey() {
@@ -1026,6 +1060,16 @@ interface SrvInstanceConfig {
     mode: string; image: string; containerName: string;
 }
 
+/** Docker 实例的版本就是镜像 tag：列表里只展示 tag（7.4-alpine），完整镜像名走 tooltip */
+function imgTag(image: string): string {
+    const s = String(image || "");
+    const i = s.indexOf(":");
+    return i >= 0 ? s.slice(i + 1) : (s || "Docker");
+}
+
+/** 版本管理里 Docker 镜像区的常用 tag：alpine 体积小，官方长期维护 */
+const redisImagePresets = ["redis:7.4-alpine", "redis:7.4", "redis:7.2-alpine", "redis:7.2", "redis:alpine", "redis:7.0-alpine"];
+
 const srvInstances = ref<SrvInstanceConfig[]>([]);
 const srvStates = reactive<Record<string, any>>({});
 const localVersions = ref<any[]>([]);
@@ -1034,6 +1078,12 @@ const remoteLoading = ref(false);
 const installProgress = reactive<Record<string, any>>({});
 const installLogs = ref<string[]>([]);
 const versionsVisible = ref(false);
+/** 版本管理里 Docker 镜像区的刷新信号：弹窗不销毁，每次打开自增一次触发重拉 */
+const verReload = ref(0);
+/** 版本管理弹窗的类型切换：本地 / 线上 / Docker 只看一类 */
+const verTab = ref<"local" | "remote" | "docker">("local");
+/** 有多少实例跑在容器里（它们的版本由镜像 tag 决定，不占本机版本库） */
+const dockerInstCount = computed(() => srvInstances.value.filter((i: any) => i.mode === "docker").length);
 const instVisible = ref(false);
 const logsVisible = ref(false);
 const localDirInput = ref("");
@@ -1051,10 +1101,21 @@ const instForm = reactive<SrvInstanceConfig>({
 const portError = ref("");
 
 /* Docker 模式表单：镜像候选只列本机已装好的 redis 系镜像（不猜预置 tag），列表为空就引导去安装 */
-const dockerImages = ref<string[]>([]);
+/* 名字不能回退成 dockerImages：script setup 下 kebab 标签 docker-images 会优先拿同名 setup 变量当组件，整个 Docker 区会渲染成空白 */
+const dockerImageList = ref<string[]>([]);
 const dockerImagesLoading = ref(false);
 const dockerErr = ref("");
-const imageOptions = computed(() => Array.from(new Set<string>(dockerImages.value)));
+const imageOptions = computed(() => Array.from(new Set<string>(dockerImageList.value)));
+
+/** 只刷新镜像清单（不写表单）：用来标记实例引用的镜像本机是否已拉取 */
+async function probeDockerImages() {
+    try { dockerImageList.value = (await GoTools.RedisSrvDockerImages()) || []; }
+    catch (e) { /* 引擎未就绪就不做校验，免得误报 */ }
+}
+/** 清单非空且不含它 → 本机还没有；启动时会自动拉 */
+function imgMissing(image: string): boolean {
+    return !!image && dockerImageList.value.length > 0 && !dockerImageList.value.includes(image);
+}
 
 const installedSet = computed(() => new Set<string>(localVersions.value.map((v: any) => v.version)));
 
@@ -1114,6 +1175,8 @@ async function refreshSrvStates() {
 
 async function openVersionsModal() {
     versionsVisible.value = true;
+    verTab.value = "local";
+    verReload.value++;
     loadLocalVersions();
     if (!srvServersDir.value) {
         try { srvServersDir.value = (await GoTools.RedisSrvServersDir()) || ""; } catch (e) { /* ignore */ }
@@ -1143,16 +1206,9 @@ function retryInstall(ver: string) {
     installVersion({ version: ver });
 }
 
-function removeVersion(v: any) {
-    Modal.warning({
-        title: "删除版本",
-        content: `确定删除 Redis ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`,
-        hideCancel: false,
-        onOk: async () => {
-            try { await GoTools.RedisSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
-            catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
-        },
-    });
+async function removeVersion(v: any) {
+    try { await GoTools.RedisSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
+    catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
 }
 
 async function chooseLocalDir() {
@@ -1199,13 +1255,30 @@ async function onModeChange(v: any) {
     loadDockerEngine();
 }
 
+/** 版本管理里点「新建实例」：直接以该镜像开一个 Docker 实例（端口仍走可用端口探测） */
+async function newInstanceFromImage(image: string) {
+    versionsVisible.value = false;
+    await openInstModal();
+    instForm.mode = "docker";
+    instForm.image = image;
+    await onModeChange("docker");
+}
+
+/** 版本管理里点「使用实例」：从镜像视角转去改该实例的版本（镜像） */
+async function editSrvById(id: string) {
+    const inst = srvInstances.value.find((i) => i.id === id);
+    if (!inst) return;
+    versionsVisible.value = false;
+    await openInstModal(inst);
+}
+
 async function loadImageOptions() {
     dockerImagesLoading.value = true;
-    try { dockerImages.value = (await GoTools.RedisSrvDockerImages()) || []; }
-    catch (e) { dockerImages.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
+    try { dockerImageList.value = (await GoTools.RedisSrvDockerImages()) || []; }
+    catch (e) { dockerImageList.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
     dockerImagesLoading.value = false;
     // 还没选值且有候选时先填第一个，省一步点击
-    if (instForm.mode === "docker" && !instForm.image && dockerImages.value.length) instForm.image = dockerImages.value[0];
+    if (instForm.mode === "docker" && !instForm.image && dockerImageList.value.length) instForm.image = dockerImageList.value[0];
 }
 
 async function loadDockerEngine() {
@@ -1248,9 +1321,34 @@ async function saveInstance() {
         }
     } catch (e) { /* 探测失败不阻断，后端兜底 */ }
     try {
+        // 编辑前先记下原配置：切了版本/镜像且实例在跑，容器里还是旧版本，得重启才生效
+        const old = instForm.id ? srvInstances.value.find((i) => i.id === instForm.id) : null;
+        const switched = !!old && (old.mode !== instForm.mode || old.image !== instForm.image || old.version !== instForm.version);
+        const wasRunning = !!old && !!srvStates[old.id]?.running;
         await GoTools.RedisSrvSaveInstance({ ...instForm });
         instVisible.value = false; Message.success("已保存"); await loadSrvInstances();
+        if (switched && wasRunning) setTimeout(() => askRestartAfterSwitch({ ...instForm }), 240);
     } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); }
+}
+
+/** 切了版本/镜像又没重启：跑着的还是旧版本，问一句要不要现在就换过去 */
+function askRestartAfterSwitch(inst: SrvInstanceConfig) {
+    const what = inst.mode === "docker" ? `镜像 ${inst.image}` : `Redis ${inst.version}`;
+    Modal.confirm({
+        title: "版本已切换",
+        content: `${what} 已写入配置，但实例「${inst.name}」还在跑旧版本；重启后才会生效（期间会短暂中断服务）。`,
+        okText: "立即重启",
+        cancelText: "稍后手动重启",
+        onOk: async () => {
+            try {
+                // Redis 没有单独的 restart，停完再起
+                await GoTools.RedisSrvStop(inst.id);
+                await GoTools.RedisSrvStart(inst.id);
+                Message.success(`实例 ${inst.name} 已重启，新版本已生效`);
+            } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
+            loadSrvInstances();
+        },
+    });
 }
 
 async function onSrvAction(v: string, inst: SrvInstanceConfig) {
@@ -1314,6 +1412,8 @@ async function openLogs(inst: SrvInstanceConfig) {
 onMounted(async () => {
     await loadConnections();
     await loadSrvInstances();
+    // 镜像清单不进表单，只用来标记「实例引用的镜像本机还没拉」
+    probeDockerImages();
     // 主页点击服务实例进入（?inst=）：直接打开该实例的日志/状态详情
     const wantId = String(route.query.inst ?? "");
     if (wantId) {
@@ -1898,6 +1998,15 @@ onUnmounted(() => {
 .inst-err {
     padding: var(--base-radius-default) 0 0 0;
     word-break: break-all;
+    white-space: pre-wrap;
+}
+
+/* 安装失败原因常带着下载地址：两行截断，不把版本弹窗撑高；完整内容悬停看 */
+.inst-err :deep(.arco-alert-content) {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     white-space: pre-wrap;
 }
 

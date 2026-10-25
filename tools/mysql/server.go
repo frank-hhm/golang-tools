@@ -1233,15 +1233,8 @@ func Logs(id string, n int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(filepath.Join(instDir, "mysql.err"))
-	if err != nil {
-		return nil, nil // 尚无日志
-	}
-	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return lines, nil
+	// mysql.err 可以长到几百 MB，取尾巴不该整本入堆
+	return logtail.Lines(filepath.Join(instDir, "mysql.err"), n)
 }
 
 // SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3306）：
@@ -1277,15 +1270,11 @@ func dirIsEmpty(dir string) (bool, error) {
 
 // errTail 读 mysql.err 尾部 k 行（拼进错误信息，免跳页面排查）
 func errTail(errPath string, k int) string {
-	data, err := os.ReadFile(errPath)
-	if err != nil || len(data) == 0 {
+	t := logtail.Tail(errPath, k)
+	if t == "" {
 		return ""
 	}
-	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
-	if len(lines) > k {
-		lines = lines[len(lines)-k:]
-	}
-	return "—— mysql.err 尾部 ——\n" + strings.Join(lines, "\n")
+	return "—— mysql.err 尾部 ——\n" + t
 }
 
 /* ============================ my.ini 生成 ============================ */

@@ -24,8 +24,7 @@
                 <a-col v-for="c in statCards" :key="c.label" :span="8">
                   <div class="stat-card">
                     <div class="stat-circle" :class="c.circle">
-                      <component v-if="c.comp" :is="c.comp" :size="24" />
-                      <span v-else class="icon" :class="c.icon"></span>
+                      <common-stat-icon :name="c.icon" :value="c.p" :size="26" />
                     </div>
                     <div class="stat-info">
                       <div class="stat-head">
@@ -126,9 +125,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, type Component } from "vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
-import { IconCheckCircleFill, IconExclamationCircleFill, IconStorage } from "@arco-design/web-vue/es/icon";
+import { IconCheckCircleFill, IconExclamationCircleFill } from "@arco-design/web-vue/es/icon";
 import { useToolEvents, type ToolItem } from "./events";
 import { useToolWindow } from "./useToolWindow";
 import { arcoIconComp as iconComp, isIconfontIcon, normalizeToolIcon } from "@/utils/tool-icon";
@@ -186,6 +185,9 @@ function activateById(id: string) {
 /* ==================== 系统信息 ==================== */
 const sysInfo = ref<any>(null);
 
+/** 图标名，对应 common-stat-icon 内置的六套图形 */
+type StatIconName = "cpu" | "mem" | "uptime" | "go" | "disk" | "net";
+
 /** 统计卡片数据源：模板只保留一份卡片结构，新增/调整卡片只改这里 */
 interface StatCard {
   circle: string;
@@ -193,41 +195,44 @@ interface StatCard {
   big: string;
   unit?: string;
   detail: string;
-  /** iconfont 字体图标类名（与 comp 二选一） */
-  icon?: string;
-  /** Arco 图标组件（与 icon 二选一，如内存卡片） */
-  comp?: Component;
+  /** 图标名（见 common-stat-icon） */
+  icon: StatIconName;
+  /** 数据驱动进度 0-100：CPU 脉冲频率 / 内存液位 / 磁盘进度条 */
+  p?: number;
 }
 const statCards = computed<StatCard[]>(() => {
   const s = sysInfo.value;
   return [
     {
-      circle: "stat-circle-cpu", icon: "icon-cpu-1", label: "CPU",
+      circle: "stat-circle-cpu", icon: "cpu", label: "CPU",
       big: s ? s.cpuUsage.toFixed(1) : "--", unit: "%",
       detail: s ? s.cpuCores + " 核 · " + s.cpuThreads + " 线程" : "",
+      p: s?.cpuUsage,
     },
     {
-      circle: "stat-circle-mem", comp: IconStorage, label: "内存",
+      circle: "stat-circle-mem", icon: "mem", label: "内存",
       big: s ? s.memPercent.toFixed(1) : "--", unit: "%",
       detail: s ? fmtBytes(s.memUsed) + " / " + fmtBytes(s.memTotal) : "",
+      p: s?.memPercent,
     },
     {
-      circle: "stat-circle-up", icon: "icon-yunhangjianshi", label: "运行时间",
+      circle: "stat-circle-up", icon: "uptime", label: "运行时间",
       big: s ? fmtUptime(s.uptime) : "--",
       detail: s ? "开机 " + fmtBootTime(s.bootTime) : "",
     },
     {
-      circle: "stat-circle-go", icon: "icon-golang", label: "Go 运行时",
+      circle: "stat-circle-go", icon: "go", label: "Go 运行时",
       big: s ? String(s.goroutines) : "--", unit: " 协程",
       detail: s ? "堆 " + fmtBytes(s.appMemAlloc) : "",
     },
     {
-      circle: "stat-circle-disk", icon: "icon-yingpan", label: "磁盘 C:",
+      circle: "stat-circle-disk", icon: "disk", label: "磁盘 C:",
       big: s ? s.diskPercent.toFixed(1) : "--", unit: "%",
       detail: s ? fmtBytes(s.diskUsed) + " / " + fmtBytes(s.diskTotal) : "",
+      p: s?.diskPercent,
     },
     {
-      circle: "stat-circle-net", icon: "icon-wangluo1", label: "网络",
+      circle: "stat-circle-net", icon: "net", label: "网络",
       big: s ? fmtBytes(s.netSent + s.netRecv) : "--", unit: " 累计",
       detail: s ? "↑ " + fmtBytes(s.netSent) + "  ↓ " + fmtBytes(s.netRecv) : "",
     },
@@ -384,9 +389,6 @@ onUnmounted(() => {
   justify-content: center;
   font-size: var(--base-size-large-x);
   flex-shrink: 0;
-  .icon {
-    font-size:30px;
-  }
 }
 
 .stat-circle-cpu {

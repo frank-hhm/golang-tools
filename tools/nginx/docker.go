@@ -396,20 +396,10 @@ func dockerFailTail(id, prefix string) string {
 	return strings.Join(parts, "\n")
 }
 
-// watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐：退出即从进程表摘除）
+// watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐：退出即从进程表摘除）。
+// 引擎一时问不到（管道忙/熔断/自更新）时由共享看护退避重试，不误判为退出。
 func watchDockerExit(instID, containerID string, p *srvRunning) {
-	go func() {
-		tick := time.NewTicker(1500 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			<-tick.C
-			st, err := docker.InspectContainer(containerID)
-			if err != nil || !st.Running {
-				forgetSrv(instID, p)
-				return
-			}
-		}
-	}()
+	docker.WatchContainerExit(containerID, func() { forgetSrv(instID, p) })
 }
 
 // forgetSrv 从进程表摘除该实例并关 done 通道（幂等：只有仍指向同一对象时才删）

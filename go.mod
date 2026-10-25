@@ -9,6 +9,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/wailsapp/wails/v3 v3.0.0-beta.12
 	go.bug.st/serial v1.8.0
+	golang.org/x/crypto v0.53.0
 	golang.org/x/sys v0.46.0
 	golang.org/x/text v0.39.0
 )

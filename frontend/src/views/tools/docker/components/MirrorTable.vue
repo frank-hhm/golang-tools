@@ -62,10 +62,16 @@
                 <a-table-column title="操作" :width="190" align="right" fixed="right">
                     <template #cell="{ record, rowIndex }">
                         <a-space>
-                            <a-tooltip content="测这个站能不能下动数据" position="tl">
-                                <a-button size="small" :loading="pending === record.url"
-                                    :disabled="!!pending && pending !== record.url" @click="probeOne(record.url)">
-                                    <template #icon><icon-thunderbolt /></template>测速
+                            <a-tooltip :content="pending === record.url ? '正在测，点一下立刻停下' : '测这个站能不能下动数据'" position="tl">
+                                <a-button size="small" :status="pending === record.url ? 'danger' : 'normal'"
+                                    :loading="pending === record.url && stopping"
+                                    :disabled="!!pending && pending !== record.url"
+                                    @click="pending === record.url ? stopOne(record.url) : probeOne(record.url)">
+                                    <template #icon>
+                                        <icon-poweroff v-if="pending === record.url" />
+                                        <icon-thunderbolt v-else />
+                                    </template>
+                                    {{ pending === record.url ? (stopping ? '停止中' : '停止') : '测速' }}
                                 </a-button>
                             </a-tooltip>
                             <a-tooltip content="上移（第一位是线上默认来源）" position="tl">
@@ -95,9 +101,14 @@
         <a-space :size="6" class="mt-tools">
             <a-input v-model="sampleInput" size="small" class="mt-sample" placeholder="取样镜像，默认 library/alpine"
                 allow-clear />
-            <a-button size="small" :loading="pending === '*'" :disabled="!rows.length"
-                @click="probeAll">
-                <template #icon><icon-thunderbolt /></template>全部测速
+            <a-button size="small" :status="pending === '*' ? 'danger' : 'normal'"
+                :loading="pending === '*' && stopping" :disabled="!rows.length || (!!pending && pending !== '*')"
+                @click="pending === '*' ? stopAll() : probeAll()">
+                <template #icon>
+                    <icon-poweroff v-if="pending === '*'" />
+                    <icon-thunderbolt v-else />
+                </template>
+                {{ pending === '*' ? (stopping ? '停止中' : '停止全部') : '全部测速' }}
             </a-button>
             <a-button size="small" :disabled="!graded().length" @click="sortBySpeed">
                 <template #icon><icon-sort /></template>按测速结果排序
@@ -137,6 +148,8 @@ const sampleInput = ref("");
 const results = ref<Record<string, any>>({});
 /** '' 空闲 / 具体地址 单测中 / "*" 全部测速中 */
 const pending = ref("");
+/** 已点过「停止」，等后端把这次的探测调用退回（按钮文案不再来回跳） */
+const stopping = ref(false);
 
 const rows = computed<any[]>(() =>
     (props.modelValue || []).map((url) => ({ url, p: results.value[url] || null }))
@@ -176,13 +189,35 @@ async function probeOne(url: string) {
     pending.value = url;
     try {
         const p = await GoTools.DockerSrvProbeMirror(url, sampleInput.value.trim());
-        results.value = { ...results.value, [url]: p };
-        if (p?.grade === "fail" || p?.grade === "empty") Message.warning(`${hostOf(url)}：${p?.label || "探不通"}`);
-        else Message.success(`${hostOf(url)}：${p?.label || "测完了"}`);
+        // 叫停过的这一段没有结论：不写入结果，保留上一次的结论
+        if (p?.grade === "cancel") {
+            Message.info(`${hostOf(url)}：已停止测速`);
+        } else {
+            results.value = { ...results.value, [url]: p };
+            if (p?.grade === "fail" || p?.grade === "empty") Message.warning(`${hostOf(url)}：${p?.label || "探不通"}`);
+            else Message.success(`${hostOf(url)}：${p?.label || "测完了"}`);
+        }
     } catch (e: any) {
         Message.error("测速失败: " + String(e?.message || e));
     }
     pending.value = "";
+    stopping.value = false;
+}
+
+/** 叫停单站：后端 ctx 一取消，上面那个阻塞的 probeOne 会立刻带着 cancel 结果返回 */
+async function stopOne(url: string) {
+    if (stopping.value) return;
+    stopping.value = true;
+    try {
+        const ok = await GoTools.DockerSrvCancelMirrorProbe(url);
+        if (!ok) {
+            stopping.value = false;
+            Message.info(`${hostOf(url)}：已经测完了`);
+        }
+    } catch (e: any) {
+        stopping.value = false;
+        Message.error("停止失败: " + String(e?.message || e));
+    }
 }
 
 async function probeAll() {
@@ -192,18 +227,37 @@ async function probeAll() {
     try {
         const ps = (await GoTools.DockerSrvProbeMirrors(list, sampleInput.value.trim())) || [];
         const next: Record<string, any> = {};
-        for (const p of ps) if (p?.url) next[p.url] = p;
+        for (const p of ps) if (p?.url && p.grade !== "cancel") next[p.url] = p;
         results.value = { ...results.value, ...next };
-        const bad = list.filter((u) => ["fail", "empty"].includes(next[u]?.grade));
-        if (bad.length) {
-            Message.warning(`${list.length} 个站里有 ${bad.length} 个不能正常下载：${bad.map(hostOf).join("、")}`);
-        } else {
-            Message.success(`${list.length} 个站都能下到数据`);
+        const stopped = ps.filter((p) => p?.grade === "cancel").length;
+        const done = list.filter((u) => !!next[u]);
+        const bad = done.filter((u) => ["fail", "empty"].includes(next[u]?.grade));
+        if (stopped) {
+            Message.info(`已停止 ${stopped} 个站的测速，这些站不覆盖上一次的结论`);
+        } else if (bad.length) {
+            Message.warning(`${done.length} 个站里有 ${bad.length} 个不能正常下载：${bad.map(hostOf).join("、")}`);
+        } else if (done.length) {
+            Message.success(`${done.length} 个站都能下到数据`);
         }
     } catch (e: any) {
         Message.error("测速失败: " + String(e?.message || e));
     }
     pending.value = "";
+    stopping.value = false;
+}
+
+/** 叫停整批：还在排队的站会直接回「已停止」，不再挨个跑满三个阶段 */
+async function stopAll() {
+    if (stopping.value) return;
+    stopping.value = true;
+    try {
+        const n = await GoTools.DockerSrvCancelMirrorProbes();
+        if (n > 0) Message.info(`已叫停 ${n} 个在跑的测速`);
+        else stopping.value = false;
+    } catch (e: any) {
+        stopping.value = false;
+        Message.error("停止失败: " + String(e?.message || e));
+    }
 }
 
 /** 显式点一下才重排：不背着自己改顺序，用户配的优先级才有据可查 */
@@ -236,7 +290,7 @@ function hostOf(u: string) {
 }
 
 const gradeText = (g: string) =>
-    g === "ok" ? "可下载" : g === "slow" ? "能下但慢" : g === "empty" ? "不给数据" : g === "fail" ? "不可用" : "未知";
+    g === "ok" ? "可下载" : g === "slow" ? "能下但慢" : g === "empty" ? "不给数据" : g === "cancel" ? "已停止" : g === "fail" ? "不可用" : "未知";
 /** 结论语义色：圆点与文字共用一套，替代原来的 a-tag color */
 const gradeStatus = (g: string): "success" | "warning" | "danger" | "normal" =>
     g === "ok" ? "success" : g === "slow" ? "warning" : g === "fail" || g === "empty" ? "danger" : "normal";

@@ -77,9 +77,9 @@ func TestNpmVersionFromImage(t *testing.T) {
 	cases := []struct{ image, want string }{
 		{"nginx:1.27.4-alpine", "1.27.4"},
 		{"nginx:1.27", "1.27"},
-		{"nginx:alpine", ""},   // tag 不是版本号
-		{"nginx:latest", ""},   // 同上
-		{"", ""},               // 空镜像
+		{"nginx:alpine", ""},                // tag 不是版本号
+		{"nginx:latest", ""},                // 同上
+		{"", ""},                            // 空镜像
 		{"a.com:5000/nginx:1.2.3", "1.2.3"}, // 带仓库端口的镜像
 	}
 	for _, c := range cases {
@@ -144,7 +144,7 @@ func TestNpmDockerConfText(t *testing.T) {
 	cfg := &InstanceConfig{Port: 3000, SPA: true, Directory: true}
 	text := dockerConfText(cfg)
 	for _, want := range []string{
-		"listen       80;",                 // 容器端口，不是宿主端口
+		"listen       80;", // 容器端口，不是宿主端口
 		`root         "/usr/share/nginx/html";`,
 		"autoindex on;",
 		"try_files $uri $uri/ /index.html;",

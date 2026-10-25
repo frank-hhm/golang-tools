@@ -8,6 +8,8 @@
           <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
         </div>
       </template>
+      <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
+      <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="MySQL" />
       <a-list :bordered="false" size="small">
         <a-list-item v-for="inst in srvInstances" :key="inst.id">
           <a-space>
@@ -16,8 +18,11 @@
             <a-tooltip :content="inst.name + ':' + inst.port">
               <span class="conn-name">{{ inst.name }}</span>
             </a-tooltip>
-            <a-tooltip v-if="inst.mode === 'docker'" :content="inst.image || 'Docker'">
-              <a-tag color="purple">{{ inst.image || 'Docker' }}</a-tag>
+            <a-tooltip v-if="inst.mode === 'docker'"
+              :content="imgMissing(inst.image)
+                ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                : `镜像 ${inst.image}：这就是该实例的 MySQL 版本`">
+              <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'">Docker {{ imgTag(inst.image) }}</a-tag>
             </a-tooltip>
             <a-tag v-else color="arcoblue">v{{ inst.version }}</a-tag>
           </a-space>
@@ -47,9 +52,19 @@
     </a-card>
 
     <!-- 版本管理（对齐 Redis：a-space vertical fill + 三张 a-card，标题带图标、操作移 #extra、空态用 a-empty） -->
-    <a-modal v-model:visible="versionsVisible" title="MySQL 版本管理" :width="680" :footer="false">
+    <!-- 宽度 820：Docker 镜像表带上「使用实例」列后 680 会横向溢出 -->
+    <!-- 固定高度：三个页签内容高矮不一，不钉住的话切一下弹窗就跳一次高度（Docker 页里还有两张表） -->
+    <a-modal v-model:visible="versionsVisible" title="MySQL 版本管理" :width="820" :footer="false"
+        :body-style="{ height: 'min(600px, calc(100vh - 220px))', overflowY: 'auto' }">
       <a-space direction="vertical" fill :size="12">
+        <!-- 类型切换：本地 / 线上 / Docker 只看一类，不用在长弹窗里找 -->
+        <a-radio-group size="medium" v-model="verTab" type="button">
+          <a-radio value="local">已安装版本 {{ localVersions.length }}</a-radio>
+          <a-radio value="remote">在线可安装 {{ remoteVersions.length }}</a-radio>
+          <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
+        </a-radio-group>
         <!-- 已安装版本 -->
+        <div v-show="verTab === 'local'">
         <a-card size="small" :body-style="{ padding: '8px 12px' }">
           <template #title><span class="ver-sec-title"><icon-storage /> 已安装版本</span></template>
           <div class="ver-scroll">
@@ -76,8 +91,17 @@
           <div class="ver-hint">离线安装：将 mysql-[ver]-winx64.zip 放入 <span class="mono">{{ srvPluginsDir }}</span> 后点「安装」即可
           </div>
         </a-card>
+        </div>
+
+        <!-- Docker 镜像与容器：Docker 实例的「版本」就是镜像 tag（mysql:8.4） -->
+        <div v-show="verTab === 'docker'">
+          <docker-images keyword="mysql" tool-label="MySQL" repo="mysql" :presets="IMAGE_PRESETS"
+            :instances="srvInstances" :states="srvStates" :reload-key="verReload" @create="newInstanceFromImage"
+            @use="editSrvById" @changed="refreshSrvStates" />
+        </div>
 
         <!-- 在线版本 -->
+        <div v-show="verTab === 'remote'">
         <a-card size="small" :body-style="{ padding: '8px 12px' }">
           <template #title>
             <span class="ver-sec-title"><icon-cloud /> 在线版本（cdn.mysql.com 官方 zip，包体约 230MB / 解压约 1.5GB）</span>
@@ -109,7 +133,9 @@
               </a-button>
             </div>
             <div v-if="p.stage === 'error' && p.note" class="inst-err">
-              <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
+              <a-tooltip :content="p.note" position="tl">
+                <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
+              </a-tooltip>
             </div>
           </div>
         </a-card>
@@ -126,12 +152,18 @@
             <a-empty v-if="installLogs.length === 0" :image="false" description="暂无安装记录" />
           </div>
         </a-card>
+        </div>
       </a-space>
     </a-modal>
 
     <!-- 实例编辑 -->
-    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="460" @ok="saveInstance">
-      <a-form :model="instForm" layout="vertical">
+    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="460"
+      :body-style="{ maxHeight: '72vh' }" @ok="saveInstance">
+      <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错；吸顶不占表单位 -->
+      <common-modal-tip v-if="instForm.mode === 'docker' && dockerErr" :text="dockerErr">
+        <a-button size="small" @click="openDockerWindow">打开 Docker 面板</a-button>
+      </common-modal-tip>
+      <a-form :model="instForm" layout="vertical" class="inst-form">
         <a-form-item field="name" label="实例名称">
           <a-input v-model="instForm.name" placeholder="例如 local-dev" />
         </a-form-item>
@@ -154,11 +186,31 @@
           </a-col>
         </a-row>
         <a-row v-else :gutter="12">
-          <a-col :span="12">
-            <a-form-item field="image" label="镜像" tooltip="本地没有该镜像时启动会自动拉取；引擎离线时启动会报错并引导去 Docker 面板">
-              <a-select v-model="instForm.image" placeholder="如 mysql:8.4" allow-create filterable>
-                <a-option v-for="im in imageOptions" :key="im" :value="im" />
-              </a-select>
+          <a-col :span="24">
+            <a-form-item class="img-item" field="image" label="镜像" required>
+              <div class="img-row">
+                <a-select v-model="instForm.image" class="img-select" placeholder="选择已拉取镜像" allow-create filterable
+                  :loading="dockerImagesLoading">
+                  <!-- 自闭合的 a-option 没有文字，下拉里会全是空白行 —— 显式写上文字 -->
+                  <a-option v-for="im in imageOptions" :key="im" :value="im">{{ im }}</a-option>
+                  <template #empty>
+                    <a-empty :image="false" description="无可用镜像" />
+                  </template>
+                </a-select>
+                <!-- 配镜像时随手打开 Docker 管理窗口（拉取 / 看进度） -->
+                <a-tooltip content="打开 Docker 管理窗口：拉镜像、看拉取进度">
+                  <a-button size="small" class="img-open" @click="openDockerWindow">
+                    <template #icon><icon-storage /></template>
+                  </a-button>
+                </a-tooltip>
+              </div>
+              <template #help>
+                <span v-if="dockerImagesLoading">正在读取本地镜像…</span>
+                <span v-else-if="!imageOptions.length && !instForm.image" class="img-none">
+                  本地无可用镜像，<a-link @click="openDockerWindow">点击去安装</a-link>
+                </span>
+                <span v-else>本地没有该镜像时，启动会自动拉取</span>
+              </template>
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -235,6 +287,7 @@ import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactiv
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
+import { useToolWindow } from "@/views/index/useToolWindow";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -250,6 +303,13 @@ interface SrvConnConfig {
   user: string; password: string; database: string
 }
 
+/** Docker 实例的版本就是镜像 tag：列表里只展示 tag（8.4），完整镜像名走 tooltip */
+function imgTag(image: string): string {
+  const s = String(image || "");
+  const i = s.indexOf(":");
+  return i >= 0 ? s.slice(i + 1) : (s || "Docker");
+}
+
 const emit = defineEmits<{ (e: "connect", cfg: SrvConnConfig): void }>();
 
 const srvInstances = ref<SrvInstanceConfig[]>([]);
@@ -260,6 +320,12 @@ const remoteLoading = ref(false);
 const installProgress = reactive<Record<string, any>>({});
 const installLogs = ref<string[]>([]);
 const versionsVisible = ref(false);
+/** 版本管理弹窗的类型切换：本地 / 线上 / Docker 只看一类 */
+const verTab = ref<"local" | "remote" | "docker">("local");
+/** 有多少实例跑在容器里（它们的版本由镜像 tag 决定，不占本机版本库） */
+const dockerInstCount = computed(() => srvInstances.value.filter((i: any) => i.mode === "docker").length);
+/** 版本管理里 Docker 镜像区的刷新信号：弹窗不销毁，每次打开自增一次触发重拉 */
+const verReload = ref(0);
 const instVisible = ref(false);
 const logsVisible = ref(false);
 const localDirInput = ref("");
@@ -278,17 +344,66 @@ const portError = ref("");
 
 /* Docker 模式的镜像候选：本地已有镜像 tag（需引擎在线）+ 官方常用 tag 兑底 */
 const IMAGE_PRESETS = ["mysql:8.4", "mysql:8.0", "mysql:5.7", "mariadb:11", "percona:8.0"];
-const dockerImages = ref<string[]>([]);
+/* 名字不能回退成 dockerImages：script setup 下 kebab 标签 docker-images 会优先拿同名 setup 变量当组件，整个 Docker 区会渲染成空白 */
+const dockerImageList = ref<string[]>([]);
 const defaultImage = ref(IMAGE_PRESETS[0]);
-const imageOptions = computed(() => Array.from(new Set<string>([...dockerImages.value, ...IMAGE_PRESETS])));
+const imageOptions = computed(() => Array.from(new Set<string>([...dockerImageList.value, ...IMAGE_PRESETS])));
+const dockerImagesLoading = ref(false);
+/** 引擎不可用原因：填 Docker 模式表单时先报出来，别等启动那一步 */
+const dockerErr = ref("");
+const { openToolWindow } = useToolWindow();
+
+/** 只刷新镜像清单（不写表单）：用来标记实例引用的镜像本机是否已拉取 */
+async function probeDockerImages() {
+  try { dockerImageList.value = (await GoTools.MySQLSrvDockerImages()) || []; }
+  catch (e) { /* 引擎未就绪就不做校验，免得误报 */ }
+}
+/** 清单非空且不含它 → 本机还没有；启动时会自动拉 */
+function imgMissing(image: string): boolean {
+  return !!image && dockerImageList.value.length > 0 && !dockerImageList.value.includes(image);
+}
 
 async function loadImageOptions() {
-  try { dockerImages.value = (await GoTools.MySQLSrvDockerImages()) || []; }
-  catch (e) { dockerImages.value = []; } // 引擎不可用时仅展示预置 tag
+  dockerImagesLoading.value = true;
+  try { dockerImageList.value = (await GoTools.MySQLSrvDockerImages()) || []; }
+  catch (e) { dockerImageList.value = []; } // 引擎不可用时仅展示预置 tag
+  dockerImagesLoading.value = false;
+}
+
+/** 引擎就绪与否：复用 Docker 服务的状态接口（不可达也返回，带可读 error） */
+async function loadDockerEngine() {
+  try {
+    const info = await GoTools.DockerSrvEngineStatus();
+    dockerErr.value = info?.available ? "" : (info?.error || "Docker 引擎不可用");
+  } catch (e: any) { dockerErr.value = e?.message || String(e); }
+}
+
+/** 打开 Docker 管理窗口（独立 webview，单例复用）：拉镜像、看拉取进度、管容器 */
+function openDockerWindow() {
+  openToolWindow("/tools/docker", "Docker管理", { single: true, width: 1200, height: 800 });
 }
 
 function onModeChange(v: string | number | boolean) {
-  if (v === "docker" && !instForm.image) instForm.image = defaultImage.value;
+  if (v !== "docker") return;
+  if (!instForm.image) instForm.image = defaultImage.value;
+  loadImageOptions();
+  loadDockerEngine();
+}
+
+/** 版本管理里点「新建实例」：直接以该镜像开一个 Docker 实例 */
+function newInstanceFromImage(image: string) {
+  versionsVisible.value = false;
+  openInstModal();
+  instForm.mode = "docker";
+  instForm.image = image;
+}
+
+/** 版本管理里点「使用实例」：从镜像视角转去改该实例的版本（镜像） */
+function editSrvById(id: string) {
+  const inst = srvInstances.value.find((i: any) => i.id === id);
+  if (!inst) return;
+  versionsVisible.value = false;
+  openInstModal(inst);
 }
 
 const installedSet = computed(() => new Set<string>(localVersions.value.map((v: any) => v.version)));
@@ -367,6 +482,8 @@ async function refreshSrvStates(silent = false) {
 
 async function openVersionsModal() {
   versionsVisible.value = true;
+  verTab.value = "local";
+  verReload.value++;
   loadLocalVersions();
   if (!srvPluginsDir.value) {
     try { srvPluginsDir.value = (await GoTools.MySQLSrvPluginsDir()) || ""; } catch (e) { /* ignore */ }
@@ -415,6 +532,7 @@ async function addLocalDir() {
 
 function openInstModal(inst?: SrvInstanceConfig) {
   portError.value = "";
+  dockerErr.value = "";
   if (inst) {
     // 历史配置无 mode/image/containerName 字段，先给默认值再覆盖
     Object.assign(instForm, { mode: "local", image: "", containerName: "" }, { ...inst });
@@ -427,6 +545,7 @@ function openInstModal(inst?: SrvInstanceConfig) {
   }
   if (localVersions.value.length === 0) loadLocalVersions();
   loadImageOptions();
+  if (instForm.mode === "docker") loadDockerEngine();
   instVisible.value = true;
 }
 
@@ -457,9 +576,34 @@ async function saveInstance() {
     }
   } catch (e) { /* 探测失败不阻断，后端兜底 */ }
   try {
+    // 编辑前先记下原配置：切了版本/镜像且实例在跑，容器里还是旧版本，得重启才生效
+    const old = instForm.id ? srvInstances.value.find((i) => i.id === instForm.id) : null;
+    const switched = !!old && (old.mode !== instForm.mode || old.image !== instForm.image || old.version !== instForm.version);
+    const wasRunning = !!old && !!srvStates[old.id]?.running;
     await GoTools.MySQLSrvSaveInstance({ ...instForm });
     instVisible.value = false; Message.success("已保存"); await loadSrvInstances();
+    if (switched && wasRunning) setTimeout(() => askRestartAfterSwitch({ ...instForm }), 240);
   } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); }
+}
+
+/** 切了版本/镜像又没重启：跑着的还是旧版本，问一句要不要现在就换过去 */
+function askRestartAfterSwitch(inst: SrvInstanceConfig) {
+  const what = inst.mode === "docker" ? `镜像 ${inst.image}` : `MySQL ${inst.version}`;
+  Modal.confirm({
+    title: "版本已切换",
+    content: `${what} 已写入配置，但实例「${inst.name}」还在跑旧版本；重启后才会生效（期间会短暂中断服务）。`,
+    okText: "立即重启",
+    cancelText: "稍后手动重启",
+    onOk: async () => {
+      try {
+        // MySQL 没有单独的 restart，停完再起；停止失败就不硬起，免得端口冲突
+        await GoTools.MySQLSrvStop(inst.id);
+        await GoTools.MySQLSrvStart(inst.id);
+        Message.success(`实例 ${inst.name} 已重启，新版本已生效`);
+      } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
+      refreshSrvStates();
+    },
+  });
 }
 
 async function onSrvAction(v: string, inst: SrvInstanceConfig) {
@@ -530,6 +674,8 @@ async function openLogs(inst: SrvInstanceConfig) {
 
 onMounted(async () => {
   await loadSrvInstances();
+  // 镜像清单不进表单，只用来标记「实例引用的镜像本机还没拉」
+  probeDockerImages();
   try { defaultImage.value = (await GoTools.MySQLSrvDefaultImage()) || IMAGE_PRESETS[0]; } catch (e) { /* ignore */ }
   // 主页点击服务实例进入（?inst=）：直接打开该实例的日志/状态详情
   const wantId = String(route.query.inst ?? "");
@@ -768,6 +914,14 @@ onUnmounted(() => {
   word-break: break-all;
 }
 
+/* 安装失败原因常带着下载地址：两行截断，不把版本弹窗撑高；完整内容悬停看 */
+.inst-err :deep(.arco-alert-content) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* 安装日志：随主题自适应的控制台风格面板 */
 .inst-log {
   max-height: 130px;
@@ -836,5 +990,46 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   margin-top: var(--base-radius-large);
+}
+
+/* Docker 镜像行：下拉占满剩余宽度，右侧一个方形按钮打开 Docker 管理窗口
+ * Arco 的竖排表单项内容区默认按内容宽度收缩（align-items: flex-start），空下拉会被挤成一个小方块，
+ * 这里显式把内容区拉成整栏宽 */
+.inst-form :deep(.img-item .arco-form-item-wrapper-col) {
+  align-items: stretch;
+}
+
+.inst-form :deep(.img-item .arco-form-item-content) {
+  width: 100%;
+}
+
+.img-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.img-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.img-open {
+  flex: none;
+  width: 32px;
+  padding: 0;
+}
+
+/* 本地没有镜像时的提示：橙色一点，提醒可以点进去装 */
+.img-none {
+  color: rgb(var(--orange-6));
+}
+
+/* #help 里的“去安装”链接：跟提示文字同字号，不把行高撑开 */
+.img-none :deep(.arco-link) {
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
 }
 </style>

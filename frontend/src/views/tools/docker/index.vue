@@ -29,41 +29,60 @@
             <a-checkbox v-model="showAll" @change="loadContainers()">显示已停止</a-checkbox>
           </template>
           <template v-else-if="tab === 'image'">
-            <!-- 本地 / 线上视角：与表头同排，切视角只换列不换表 -->
-            <a-radio-group :model-value="imgScope" type="button" size="medium" @change="onScope">
-              <a-radio value="local"><icon-storage />本地（{{ images.length }}）</a-radio>
-              <a-radio value="remote"><icon-cloud />线上</a-radio>
-            </a-radio-group>
-            <template v-if="imgScope === 'local'">
-              <a-button size="small" :disabled="busyOther" @click="openImport">
-                <template #icon><icon-upload /></template>导入
+            <!-- 搜索展开态：输入框独占工具条，其它操作先收起，避免挤成一团换行 -->
+            <template v-if="searchOpen">
+              <a-tag v-if="imgScope === 'remote'" size="small" color="arcoblue">线上</a-tag>
+              <a-input-search v-if="imgScope === 'remote'" ref="remoteSearchRef" v-model="remoteQuery"
+                class="search-box open" size="small" :placeholder="searchPlaceholder" allow-clear
+                @search="onRemoteSearch" @keydown.esc="closeSearch" />
+              <a-input v-else ref="pullInputRef" v-model="pullInput" class="pull-input open" size="small"
+                placeholder="镜像名，多个用空格/逗号分隔" allow-clear @press-enter="pullImage"
+                @keydown.esc="closeSearch">
+                <template #prefix><icon-search /></template>
+              </a-input>
+              <a-button v-if="imgScope === 'local'" size="small" :disabled="!engine.available"
+                @click="pullImage">
+                <template #icon><icon-download /></template>拉取
               </a-button>
-              <a-button size="small" :disabled="busyOther" @click="openBuild">
-                <template #icon><icon-tool /></template>构建
+              <a-button size="small" @click="closeSearch">
+                <template #icon><icon-close /></template>取消
               </a-button>
-              <a-popconfirm content="清理悬空镜像（<none>，且没有任何容器在用）？未被使用的带 tag 镜像不会被动。"
-                type="warning" position="lt" @ok="doPrune">
-                <a-button size="small" :disabled="busyOther">
-                  <template #icon><icon-delete /></template>清理
-                </a-button>
-              </a-popconfirm>
             </template>
+            <!-- 收起态：只留视角 + 常态操作 + 搜索图标，默认一行放得下 -->
             <template v-else>
-              <a-select v-model="remoteSource" size="small" class="src-select" :options="remoteSources"
+              <!-- 本地 / 线上视角：与表头同排，切视角只换列不换表 -->
+              <a-radio-group :model-value="imgScope" type="button" size="medium" @change="onScope">
+                <a-radio value="local"><icon-storage />本地（{{ images.length }}）</a-radio>
+                <a-radio value="remote"><icon-cloud />线上</a-radio>
+              </a-radio-group>
+              <template v-if="imgScope === 'local'">
+                <a-button size="small" :disabled="busyOther" @click="openImport">
+                  <template #icon><icon-upload /></template>导入
+                </a-button>
+                <a-button size="small" :disabled="busyOther" @click="openBuild">
+                  <template #icon><icon-tool /></template>构建
+                </a-button>
+                <a-popconfirm content="清理悬空镜像（<none>，且没有任何容器在用）？未被使用的带 tag 镜像不会被动。"
+                  type="warning" position="lt" @ok="doPrune">
+                  <a-button size="small" :disabled="busyOther">
+                    <template #icon><icon-delete /></template>清理
+                  </a-button>
+                </a-popconfirm>
+              </template>
+              <a-select v-else v-model="remoteSource" size="small" class="src-select" :options="remoteSources"
                 @change="onRemoteSource" />
-              <a-input-search v-model="remoteQuery" class="search-box" size="small" :placeholder="searchPlaceholder"
-                allow-clear @search="onRemoteSearch" />
+              <!-- 搜索/拉取入口：点开才出输入框，不在常态占宽 -->
+              <a-tooltip :content="imgScope === 'remote' ? '搜索线上镜像' : '按镜像名拉取（可一次多个）'" position="lt">
+                <a-button size="small" @click="openSearch">
+                  <template #icon><icon-search /></template>
+                </a-button>
+              </a-tooltip>
+              <!-- 任务入口：拉取中也能关掉弹窗去干别的，这里随时回来 -->
+              <a-button v-if="taskList.length" size="small" type="outline" @click="openTasks()">
+                <template #icon><icon-download /></template>
+                任务 {{ taskList.length }}<template v-if="runningCount">（{{ runningCount }} 进行中）</template>
+              </a-button>
             </template>
-            <a-input v-model="pullInput" size="small" class="pull-input" placeholder="镜像名，多个用空格/逗号分隔"
-              allow-clear @press-enter="pullImage" />
-            <a-button size="small" :disabled="!engine.available" @click="pullImage">
-              <icon-download /> 拉取
-            </a-button>
-            <!-- 任务入口：拉取中也能关掉弹窗去干别的，这里随时回来 -->
-            <a-button v-if="taskList.length" size="small" type="outline" @click="openTasks()">
-              <template #icon><icon-download /></template>
-              任务 {{ taskList.length }}<template v-if="runningCount">（{{ runningCount }} 进行中）</template>
-            </a-button>
           </template>
           <template v-else-if="tab === 'compose'">
             <!-- 编排是按容器标签聚合的，数量跟着容器走：这里只说口径，不放操作 -->
@@ -72,12 +91,12 @@
             </a-tooltip>
           </template>
           <template v-else-if="tab === 'network'">
-            <a-button size="small" :disabled="resBusy" @click="networkPanel?.open()">
+            <a-button size="small" :disabled="resBusy" @click="networkPanelRef?.open()">
               <template #icon><icon-plus /></template>新建网络
             </a-button>
           </template>
           <template v-else-if="tab === 'volume'">
-            <a-button size="small" :disabled="resBusy" @click="volumePanel?.open()">
+            <a-button size="small" :disabled="resBusy" @click="volumePanelRef?.open()">
               <template #icon><icon-plus /></template>新建卷
             </a-button>
             <a-popconfirm content="清理没有任何容器引用的存储卷？被容器挂着的卷不会被动。" type="warning" position="lt"
@@ -93,9 +112,13 @@
         </a-space>
       </template>
 
-      <!-- 未装引擎：整体降级为空态，操作按钮均置灰 -->
+      <!-- 未装引擎：列表区降级为一条说明，不再摆一大块空白 a-empty -->
       <div v-if="!engine.available" class="op-empty">
-        <a-empty :image="false" description="Docker 引擎不可用，容器、镜像与资源列表暂无法加载" />
+        <span class="op-empty-icon"><icon-storage /></span>
+        <div class="op-empty-text">
+          <div class="op-empty-title">引擎未就绪，列表暂不可用</div>
+          <div class="op-empty-sub">容器、镜像、网络与存储卷都靠 Docker 引擎取数，启动后这里会自动加载</div>
+        </div>
       </div>
 
       <template v-else>
@@ -108,13 +131,13 @@
         <div v-show="tab === 'overview'" class="pane pane-scroll">
           <overview-panel :containers="containers" :images="images" :registries="registries" :networks="networks"
             :volumes="volumes" :composes="composes" :loading="listLoading" :engine-label="engineLabel"
-            @refresh="refreshCurrent()" @open-monitor="openMonitor" @open-logs="openLogModal" />
+            @refresh="refreshCurrent()" @open-monitor="openMonitor" @open-logs="openLogModal" @open-term="openTerm" />
         </div>
 
         <!-- 容器 -->
         <div v-show="tab === 'container'" class="pane">
-          <container-table :data="containers" :loading="listLoading" @start="doStart" @stop="doStop"
-            @restart="doRestart" @rename="openRename" @logs="openLogModal" @monitor="openMonitor"
+          <container-table :data="containers" :loading="listLoading" :busy="ctrBusy" @start="doStart" @stop="doStop"
+            @restart="doRestart" @rename="openRename" @logs="openLogModal" @term="openTerm" @monitor="openMonitor"
             @remove="doRemove" />
         </div>
 
@@ -129,18 +152,18 @@
 
         <!-- 编排：按 compose 标签归组的项目（Engine API 没有 compose 端点） -->
         <div v-show="tab === 'compose'" class="pane">
-          <compose-panel :projects="composes" :loading="compLoading" :busy="resBusy" @action="composeAction" />
+          <compose-panel :projects="composes" :loading="compLoading" :busy="resBusy" :busy-on="compBusyOn" @action="composeAction" />
         </div>
 
         <!-- 网络 -->
         <div v-show="tab === 'network'" class="pane">
-          <network-panel ref="networkPanel" :networks="networks" :loading="netLoading" @create="createNetwork"
+          <network-panel ref="networkPanelRef" :networks="networks" :loading="netLoading" @create="createNetwork"
             @remove="removeNetwork" />
         </div>
 
         <!-- 存储卷 -->
         <div v-show="tab === 'volume'" class="pane">
-          <volume-panel ref="volumePanel" :volumes="volumes" :loading="volLoading" @create="createVolume"
+          <volume-panel ref="volumePanelRef" :volumes="volumes" :loading="volLoading" @create="createVolume"
             @remove="removeVolume" />
         </div>
       </template>
@@ -179,6 +202,9 @@
     <!-- ==================== 容器实时监控 ==================== -->
     <container-monitor-modal v-model:visible="monVisible" :id="monInst?.id || ''" :name="monInst?.name || ''" />
 
+    <!-- ==================== 容器终端（复用通用 term-console） ==================== -->
+    <container-term-modal v-model:visible="termVisible" :id="termInst?.id || ''" :name="termInst?.name || ''" />
+
     <!-- ==================== 重命名 ==================== -->
     <rename-modal v-model:visible="renameVisible" :current="renameOld" @submit="doRename" />
 
@@ -212,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import CacheKey from "@/constants/cache-key";
@@ -221,6 +247,7 @@ import ComposePanel from "./components/ComposePanel.vue";
 import ContainerLogModal from "./components/ContainerLogModal.vue";
 import ContainerMonitorModal from "./components/ContainerMonitorModal.vue";
 import ContainerTable from "./components/ContainerTable.vue";
+import ContainerTermModal from "./components/ContainerTermModal.vue";
 import DockerSettingsModal from "./components/DockerSettingsModal.vue";
 import EngineCard from "./components/EngineCard.vue";
 import EnvCheckModal from "./components/EnvCheckModal.vue";
@@ -277,8 +304,10 @@ const compLoading = ref(false);
 /** 网络 / 卷 / 编排的写操作进行中：按钮统一置灰，列表轮询也让路 */
 const resBusy = ref(false);
 // 新建表单挂在面板里，页面只通过 ref 打开它（表单状态不外溢到页面）
-const networkPanel = ref<any>(null);
-const volumePanel = ref<any>(null);
+// 名字必须带 Ref 后缀：script setup 下 kebab 标签 network-panel / volume-panel 会优先拿同名变量当组件，
+// 拿到的是 ref 的当前值（null）→ 整个面板渲染成空白
+const networkPanelRef = ref<any>(null);
+const volumePanelRef = ref<any>(null);
 
 type ResKind = "network" | "volume" | "compose";
 let resSig: Record<ResKind, string> = { network: "", volume: "", compose: "" };
@@ -780,18 +809,24 @@ async function pruneVolumes() {
 }
 
 const COMPOSE_VERB: Record<string, string> = { start: "启动", stop: "停止", restart: "重启", down: "移除" };
+/** 正在执行的编排动作：只让当前项目的按钮显示「停止中/移除中」 */
+const compBusyOn = ref<{ name: string; action: string } | null>(null);
 
 /** 批量动作逐个容器执行（Go 侧汇总文案）：失败不无条件报错，全部失败才算失败 */
 async function composeAction(p: any, action: "start" | "stop" | "restart" | "down") {
   if (resBusy.value) return;
   const verb = COMPOSE_VERB[action] || action;
   resBusy.value = true;
+  compBusyOn.value = { name: p.name, action };
   try {
     const msg = await GoTools.DockerSrvComposeAction(p.name, action);
     Message.success(msg || `已${verb} ${p.name}`);
   } catch (e: any) {
     Message.error(`${verb}失败: ` + (e?.message || e));
-  } finally { resBusy.value = false; }
+  } finally {
+    resBusy.value = false;
+    compBusyOn.value = null;
+  }
   // 编排动的是容器：项目与容器两份清单都要重拉
   await Promise.all([loadRes("compose"), loadContainers()]);
 }
@@ -799,36 +834,49 @@ async function composeAction(p: any, action: "start" | "stop" | "restart" | "dow
 /* ============================ 容器操作 ============================ */
 /** 容器动作进行中：暂停列表轮询，别在 daemon 忙着建/起容器时再去戳它 */
 let containerOpBusy = false;
+/** 单容器动作进度：id → start/stop/restart/remove。按钮据此显示「停止中」并锁住整行，防止连点 */
+const ctrBusy = reactive<Record<string, string>>({});
+
+/** 同一个容器同时只允许一个动作：并发下发会互相抢锁，docker 直接报 conflict */
+async function runCtrOp(c: any, op: "start" | "stop" | "restart" | "remove", fn: () => Promise<any>) {
+  if (ctrBusy[c.id]) return;
+  ctrBusy[c.id] = op;
+  containerOpBusy = true;
+  try {
+    await fn();
+    return true;
+  } catch (e: any) {
+    Message.error(`${CTR_VERB[op]}失败: ` + (e?.message || e));
+    return false;
+  } finally {
+    delete ctrBusy[c.id];
+    containerOpBusy = false;
+  }
+}
+
+const CTR_VERB: Record<string, string> = { start: "启动", stop: "停止", restart: "重启", remove: "删除" };
 
 async function doStart(c: any) {
-  containerOpBusy = true;
-  try { await GoTools.DockerSrvStartContainer(c.id); Message.success(`容器 ${c.name} 已启动`); }
-  catch (e: any) { Message.error("启动失败: " + (e?.message || e)); }
-  finally { containerOpBusy = false; }
+  const ok = await runCtrOp(c, "start", () => GoTools.DockerSrvStartContainer(c.id));
+  if (ok) Message.success(`容器 ${c.name} 已启动`);
   loadContainers();
 }
 
 async function doStop(c: any) {
-  containerOpBusy = true;
-  try { await GoTools.DockerSrvStopContainer(c.id, 10); Message.success(`容器 ${c.name} 已停止`); }
-  catch (e: any) { Message.error("停止失败: " + (e?.message || e)); }
-  finally { containerOpBusy = false; }
+  const ok = await runCtrOp(c, "stop", () => GoTools.DockerSrvStopContainer(c.id, 10));
+  if (ok) Message.success(`容器 ${c.name} 已停止`);
   loadContainers();
 }
 
 async function doRestart(c: any) {
-  containerOpBusy = true;
-  try { await GoTools.DockerSrvRestartContainer(c.id); Message.success(`容器 ${c.name} 已重启`); }
-  catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
-  finally { containerOpBusy = false; }
+  const ok = await runCtrOp(c, "restart", () => GoTools.DockerSrvRestartContainer(c.id));
+  if (ok) Message.success(`容器 ${c.name} 已重启`);
   loadContainers();
 }
 
 async function doRemove(c: any) {
-  containerOpBusy = true;
-  try { await GoTools.DockerSrvRemoveContainer(c.id, true); Message.success("容器已删除"); }
-  catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
-  finally { containerOpBusy = false; }
+  const ok = await runCtrOp(c, "remove", () => GoTools.DockerSrvRemoveContainer(c.id, true));
+  if (ok) Message.success("容器已删除");
   if (logInst.value?.id === c.id) closeLogModal();
   loadContainers();
 }
@@ -1226,6 +1274,25 @@ interface RemoteNotice {
 }
 
 const imgScope = ref<"local" | "remote">("local");
+
+/* 镜像工具条的搜索态：默认收起只露一个放大镜，点开才出输入框并把其它操作让位，
+   否则输入框 + 拉取 + 导入/构建/清理 一起抢宽度，会把按钮挤到第二行 */
+const searchOpen = ref(false);
+const pullInputRef = ref<any>(null);
+const remoteSearchRef = ref<any>(null);
+
+function openSearch() {
+  searchOpen.value = true;
+  // 展开后直接聚焦：点图标就是想打字，别再让用户点一次输入框
+  nextTick(() => {
+    const el = imgScope.value === "remote" ? remoteSearchRef.value : pullInputRef.value;
+    el?.focus?.();
+  });
+}
+
+function closeSearch() {
+  searchOpen.value = false;
+}
 const remoteSource = ref("hub");
 const remoteQuery = ref("");
 const remoteRows = ref<any[]>([]);
@@ -1592,6 +1659,16 @@ function openMonitor(c: any) {
   monVisible.value = true;
 }
 
+/* ============================ 容器终端 ============================ */
+// 弹窗内部建会话（docker exec），页面只负责把容器身份传过去
+const termVisible = ref(false);
+const termInst = ref<any>(null);
+
+function openTerm(c: any) {
+  termInst.value = c;
+  termVisible.value = true;
+}
+
 async function openLogModal(c: any) {
   logInst.value = c;
   logLines.value = [];
@@ -1771,6 +1848,16 @@ onUnmounted(() => {
   width: 200px;
 }
 
+/* 搜索展开态：其它操作已收起，输入框给足宽度；父级是 a-space 的 block item，
+   这里靠固定宽 + max-width 兜底，flex 不会被解析 */
+.search-box.open,
+.pull-input.open {
+  flex: none;
+  width: 360px;
+  max-width: 46vw;
+  min-width: 180px;
+}
+
 /* 后台刷新失败的静默提示：不参与 flex 拉伸，免得顶得表格高度跳动 */
 .list-err {
   flex: none;
@@ -1803,8 +1890,36 @@ onUnmounted(() => {
 }
 
 .op-empty {
-  padding: 40px 0;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px 0;
+  border-radius: var(--base-radius-large);
+}
+
+.op-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  font-size: 16px;
+  color: var(--color-text-3);
+  background: var(--color-fill-2);
+}
+
+.op-empty-title {
+  font-size: var(--base-size-default);
+  color: var(--color-text-2);
+}
+
+.op-empty-sub {
+  margin-top: 2px;
+  font-size: var(--base-size-small);
+  color: var(--color-text-3);
 }
 
 /* 工具条里的口径说明：右对齐小字，不抢按钮的位置 */
