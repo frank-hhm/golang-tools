@@ -2,7 +2,7 @@
     <a-row class="shot-page" :gutter="6">
         <!-- 左侧约 25%：截图操作 -->
         <a-col :span="5" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>截图操作</template>
                 <template #extra>
                     <a-tag size="small" :color="hasImage ? 'green' : 'gray'">
@@ -10,16 +10,16 @@
                     </a-tag>
                 </template>
                 <div class="side-body">
-                    <a-button type="primary" status="success" long @click="recapture">
+                    <a-button size="small" status="success" long @click="recapture">
                         <template #icon><icon-camera /></template>重新截图
                     </a-button>
-                    <a-button long :disabled="!hasImage" @click="copyImage">
+                    <a-button size="small" long :disabled="!hasImage" @click="copyImage">
                         <template #icon><icon-copy /></template>复制图片
                     </a-button>
-                    <a-button long :disabled="!hasImage" @click="saveFile">
+                    <a-button size="small" long :disabled="!hasImage" @click="saveFile">
                         <template #icon><icon-save /></template>另存为…
                     </a-button>
-                    <a-button long :disabled="!hasImage" @click="pinIt">
+                    <a-button size="small" long :disabled="!hasImage" @click="pinIt">
                         <template #icon><icon-pushpin /></template>图钉置顶
                     </a-button>
                     <a-divider style="margin: 4px 0" />
@@ -33,7 +33,7 @@
 
         <!-- 右侧：可编辑预览 -->
         <a-col :span="19" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>截图预览</span>
@@ -46,7 +46,7 @@
                     <div class="ed-bar">
                         <div class="ed-group">
                             <a-tooltip v-for="t in TOOLS" :key="t.tool" :content="t.tip" :mouse-enter-delay="600">
-                                <a-button size="mini" :type="tool === t.tool ? 'primary' : 'text'"
+                                <a-button size="small" :type="tool === t.tool ? 'primary' : 'text'"
                                     :disabled="!hasImage" @click="pickTool(t.tool)">
                                     <component :is="t.icon" v-if="t.icon" />
                                     <svg v-else class="ed-svg" viewBox="0 0 48 48">
@@ -57,7 +57,7 @@
                                 </a-button>
                             </a-tooltip>
                             <a-tooltip content="撤销 (Ctrl+Z)" :mouse-enter-delay="600">
-                                <a-button size="mini" type="text" :disabled="!shapes.length" @click="undo">
+                                <a-button size="small" :disabled="!shapes.length" @click="undo">
                                     <icon-undo />
                                 </a-button>
                             </a-tooltip>
@@ -67,21 +67,21 @@
 
                         <div class="ed-group">
                             <a-tooltip content="向左旋转 90°" :mouse-enter-delay="600">
-                                <a-button size="mini" type="text" :disabled="!hasImage" @click="rotate(-90)">
+                                <a-button size="small" :disabled="!hasImage" @click="rotate(-90)">
                                     <svg class="ed-svg" viewBox="0 0 48 48">
                                         <path d="M14 14l-6 6 6 6M8 20h16a12 12 0 1 1-12 12" />
                                     </svg>
                                 </a-button>
                             </a-tooltip>
                             <a-tooltip content="向右旋转 90°" :mouse-enter-delay="600">
-                                <a-button size="mini" type="text" :disabled="!hasImage" @click="rotate(90)">
+                                <a-button size="small" :disabled="!hasImage" @click="rotate(90)">
                                     <svg class="ed-svg" viewBox="0 0 48 48">
                                         <path d="M34 14l6 6-6 6M40 20H24a12 12 0 1 0 12 12" />
                                     </svg>
                                 </a-button>
                             </a-tooltip>
                             <a-tooltip content="裁剪" :mouse-enter-delay="600">
-                                <a-button size="mini" :type="cropMode ? 'primary' : 'text'" :disabled="!hasImage"
+                                <a-button size="small" :type="cropMode ? 'primary' : 'text'" :disabled="!hasImage"
                                     @click="toggleCrop">
                                     <svg class="ed-svg" viewBox="0 0 48 48">
                                         <path d="M14 6v28h28M6 14h28v28" />
@@ -93,40 +93,42 @@
                         <i class="ed-sep"></i>
 
                         <div class="ed-group ed-zoom">
-                            <a-button size="mini" type="text" :disabled="!hasImage" @click="zoomBy(1 / 1.25)">
+                            <a-button size="small" :disabled="!hasImage" @click="zoomBy(1 / 1.25)">
                                 <icon-minus />
                             </a-button>
-                            <span class="ed-zpct" @click="zoomFit" title="点击适应窗口">{{ Math.round(zoom * 100) }}%</span>
-                            <a-button size="mini" type="text" :disabled="!hasImage" @click="zoomBy(1.25)">
+                            <a-tooltip content="点击适应窗口" :mouse-enter-delay="400">
+                                <span class="ed-zpct" @click="zoomFit">{{ Math.round(zoom * 100) }}%</span>
+                            </a-tooltip>
+                            <a-button size="small" :disabled="!hasImage" @click="zoomBy(1.25)">
                                 <icon-plus />
                             </a-button>
                             <a-tooltip content="实际大小 (100%)" :mouse-enter-delay="600">
-                                <a-button size="mini" type="text" :disabled="!hasImage" @click="zoomReset">1:1</a-button>
+                                <a-button size="small" :disabled="!hasImage" @click="zoomReset">1:1</a-button>
                             </a-tooltip>
                         </div>
 
                         <div class="ed-spacer"></div>
 
                         <div class="ed-group" v-if="cropMode">
-                            <a-button size="mini" type="primary" :disabled="!cropSel" @click="applyCrop">应用裁剪</a-button>
-                            <a-button size="mini" type="text" status="danger" @click="cancelCrop">取消</a-button>
+                            <a-button size="small" :disabled="!cropSel" @click="applyCrop">应用裁剪</a-button>
+                            <a-button size="small" status="danger" @click="cancelCrop">取消</a-button>
                         </div>
                     </div>
 
                     <!-- 子栏：文字用字号，其余图形用线宽；都带配色 -->
                     <div v-if="showSub" class="ed-sub">
                         <template v-if="tool === 'text'">
-                            <a-button v-for="f in FONT_SIZES" :key="'fs' + f.v" size="mini"
+                            <a-button v-for="f in FONT_SIZES" :key="'fs' + f.v" size="small"
                                 :type="fontSize === f.v ? 'primary' : 'text'" @click="fontSize = f.v">{{ f.label }}</a-button>
                         </template>
                         <template v-else>
-                            <a-button v-for="(w, i) in LINE_WIDTHS" :key="'lw' + i" size="mini"
+                            <a-button v-for="(w, i) in LINE_WIDTHS" :key="'lw' + i" size="small"
                                 :type="lw === w ? 'primary' : 'text'" @click="lw = w">
                                 <i class="ed-dot" :style="{ width: 4 + i * 3 + 'px', height: 4 + i * 3 + 'px' }"></i>
                             </a-button>
                         </template>
                         <i class="ed-sep ed-sep-dark"></i>
-                        <a-button v-for="c in COLORS" :key="'cl' + c" size="mini" type="text"
+                        <a-button v-for="c in COLORS" :key="'cl' + c" size="small"
                             :class="{ 'ed-color-on': color === c }" @click="color = c">
                             <i class="ed-swatch" :style="{ background: c }"></i>
                         </a-button>
@@ -609,7 +611,6 @@ function onKey(e: KeyboardEvent) {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 .side-col {

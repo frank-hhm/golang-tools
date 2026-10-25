@@ -4,12 +4,13 @@
         <a-col :span="6" class="side-col">
             <a-row class="side-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>当前时间戳</template>
                         <template #extra>
-                            <a-tag size="small" :color="paused ? 'gray' : 'green'">
+                            <span class="com-state" :class="paused ? 'is-dim' : 'is-on'">
+                                <com-badge :status="paused ? 'normal' : 'success'" :animated="!paused" />
                                 {{ paused ? "已暂停" : "运行中" }}
-                            </a-tag>
+                            </span>
                         </template>
                         <div class="now-body">
                             <div class="now-value">
@@ -26,7 +27,7 @@
                                 <a-button size="small" @click="copyNow">
                                     <template #icon><icon-copy /></template>复制
                                 </a-button>
-                                <a-button size="small" type="primary" :status="paused ? 'success' : 'danger'"
+                                <a-button size="small" :status="paused ? 'success' : 'danger'"
                                     @click="togglePause">
                                     <template #icon>
                                         <icon-play-circle v-if="paused" />
@@ -39,7 +40,7 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>说明</template>
                         <div class="side-body">
                             <ul class="tips">
@@ -56,7 +57,7 @@
 
         <!-- 右侧：单个 / 批量转换 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>时间戳转换</span>
@@ -64,7 +65,7 @@
                     </a-space>
                 </template>
                 <template #extra>
-                    <a-radio-group v-model="view" type="button" size="small">
+                    <a-radio-group v-model="view" type="button" size="medium">
                         <a-radio value="single">单个转换</a-radio>
                         <a-radio value="batch">批量转换</a-radio>
                     </a-radio-group>
@@ -73,7 +74,7 @@
                     <!-- 单个转换：左右两块面板 -->
                     <a-row v-show="view === 'single'" :gutter="6" class="fill-row">
                         <a-col :span="12" class="pane-col">
-                            <a-card class="pane-card" size="small" :body-style="{ padding: 0 }">
+                            <a-card class="pane-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                                 <template #title>
                                     <span class="pane-title"><icon-clock-circle /> 时间戳 → 日期时间</span>
                                 </template>
@@ -101,13 +102,13 @@
                                     </a-row>
                                     <a-space :size="8">
                                         <a-button size="small" @click="fillCurrent">填入当前</a-button>
-                                        <a-button size="small" type="primary" status="success" @click="tsToDate">转换</a-button>
+                                        <a-button size="small" status="success" @click="tsToDate">转换</a-button>
                                     </a-space>
                                     <div class="pane-result">
                                         <div class="field-label">转换结果</div>
                                         <a-input :model-value="tsResult" placeholder="转换结果" readonly class="result-input">
                                             <template #append>
-                                                <a-button :disabled="!tsResult" @click="copyText(tsResult)">
+                                                <a-button size="small" :disabled="!tsResult" @click="copyText(tsResult)">
                                                     <template #icon><icon-copy /></template>
                                                 </a-button>
                                             </template>
@@ -117,7 +118,7 @@
                             </a-card>
                         </a-col>
                         <a-col :span="12" class="pane-col">
-                            <a-card class="pane-card" size="small" :body-style="{ padding: 0 }">
+                            <a-card class="pane-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                                 <template #title>
                                     <span class="pane-title"><icon-calendar /> 日期时间 → 时间戳</span>
                                 </template>
@@ -144,13 +145,13 @@
                                         </a-col>
                                     </a-row>
                                     <a-space :size="8">
-                                        <a-button size="small" type="primary" status="success" @click="dateToTs">转换</a-button>
+                                        <a-button size="small" status="success" @click="dateToTs">转换</a-button>
                                     </a-space>
                                     <div class="pane-result">
                                         <div class="field-label">转换结果</div>
                                         <a-input :model-value="dateResult" placeholder="转换结果" readonly class="result-input">
                                             <template #append>
-                                                <a-button :disabled="!dateResult" @click="copyText(dateResult)">
+                                                <a-button size="small" :disabled="!dateResult" @click="copyText(dateResult)">
                                                     <template #icon><icon-copy /></template>
                                                 </a-button>
                                             </template>
@@ -172,7 +173,7 @@
                                 <a-select v-model="batchTz" style="width: 170px">
                                     <a-option v-for="tz in TZ_LIST" :key="tz" :value="tz">{{ tz }}</a-option>
                                 </a-select>
-                                <a-button size="small" type="primary" status="success" @click="batchConvert">
+                                <a-button size="small" status="success" @click="batchConvert">
                                     <template #icon><icon-swap /></template>批量转换
                                 </a-button>
                             </a-space>
@@ -180,7 +181,7 @@
                         </div>
                         <a-row :gutter="6" class="fill-row">
                             <a-col :span="12" class="pane-col">
-                                <a-card class="pane-card" size="small" :body-style="{ padding: 0 }">
+                                <a-card class="pane-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                                     <template #title>
                                         <span class="pane-title">批量时间戳</span>
                                     </template>
@@ -194,12 +195,12 @@
                                 </a-card>
                             </a-col>
                             <a-col :span="12" class="pane-col">
-                                <a-card class="pane-card" size="small" :body-style="{ padding: 0 }">
+                                <a-card class="pane-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                                     <template #title>
                                         <span class="pane-title">转换结果</span>
                                     </template>
                                     <template #extra>
-                                        <a-button size="mini" type="text" :disabled="!batchOutput"
+                                        <a-button size="small" :disabled="!batchOutput"
                                             @click="copyText(batchOutput)">
                                             <template #icon><icon-copy /></template>复制结果
                                         </a-button>
@@ -420,7 +421,6 @@ const batchConvert = () => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列：上下两张卡片各占 50% 高 */

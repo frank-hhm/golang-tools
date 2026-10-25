@@ -5,8 +5,12 @@
       <div class="nc-head">
         <span class="nc-app-ic">G</span>
         <span class="nc-app">Tools</span>
-        <span class="nc-more btn-no-drag" title="更多">⋯</span>
-        <span class="nc-close btn-no-drag" title="关闭" @click="close">✕</span>
+        <a-tooltip content="更多">
+          <span class="nc-more btn-no-drag">⋯</span>
+        </a-tooltip>
+        <a-tooltip content="关闭">
+          <span class="nc-close btn-no-drag" @click="close">✕</span>
+        </a-tooltip>
       </div>
       <!-- 正文：标题 + 内容 -->
       <div class="nc-title">{{ title }}</div>

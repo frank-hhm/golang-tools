@@ -4,17 +4,13 @@
         <a-col :span="6" class="side-col">
             <a-row class="serial-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>
                             <a-space :size="6">
-                                <span class="led" :class="{ on: st.opened }" :title="st.opened ? '已连接' : '未连接'"></span>
+                                <com-badge :status="st.opened ? 'success' : 'danger'" :animated="st.opened"
+                                    :title="st.opened ? '已连接' : '未连接'"></com-badge>
                                 <span>连接配置</span>
                             </a-space>
-                        </template>
-                        <template #extra>
-                            <a-tag size="small" :color="st.opened ? 'green' : 'gray'">
-                                {{ st.opened ? "已连接" : "未连接" }}
-                            </a-tag>
                         </template>
                         <div class="side-body">
                             <div class="field">
@@ -29,7 +25,7 @@
                             </div>
 
                             <div class="field-actions">
-                                <a-button v-if="!st.opened" type="primary" status="success" size="small" long
+                                <a-button v-if="!st.opened" status="success" size="small" long
                                     @click="openConn">
                                     <template #icon><icon-play-arrow /></template>{{ openLabel }}
                                 </a-button>
@@ -84,7 +80,7 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>收发选项</template>
                         <div class="side-body">
                             <div class="opt-list">
@@ -115,7 +111,7 @@
 
         <!-- 右侧主区域：数据收发（接收铺满 + 底部发送） -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>数据收发</span>
@@ -148,7 +144,7 @@
                                     <template #icon><icon-history /></template>历史
                                 </a-button>
                             </a-space>
-                            <a-button type="primary" status="success" :disabled="!st.opened || !sendText"
+                            <a-button size="small" status="success" :disabled="!st.opened || !sendText"
                                 @click="doSend">
                                 <template #icon><icon-send /></template>发 送
                             </a-button>
@@ -521,7 +517,6 @@ onUnmounted(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列（a-col，约 30% 宽）：上下两张卡片各占 50% 高 */
@@ -605,21 +600,6 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-}
-
-.led {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #f53f3f;
-    box-shadow: 0 0 4px rgba(245, 63, 63, 0.6);
-    vertical-align: middle;
-}
-
-.led.on {
-    background: #00b42a;
-    box-shadow: 0 0 6px rgba(0, 180, 42, 0.7);
 }
 
 .unit {

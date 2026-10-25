@@ -8,29 +8,31 @@ export default {
 </script>
 <script lang="ts" setup>
 /**
- * Canvas 指针时钟（美化版，视觉对齐参考设计稿）：
- *  - 外圈粗圆环 + 表盘内阴影（ring 内侧一圈柔和暗色 inner shadow）
- *  - 粉色发光秒针（shadowBlur 光晕），连续平滑走动
+ * Canvas 指针时钟（贴合项目 Arco 主题，含暗黑模式）：
+ *  - 颜色属性缺省时读 Arco CSS 变量（--primary-6/--color-bg-2/--color-text-1/3），
+ *    浅色/暗黑切换（body[arco-theme] 变化）自动换肤；显式传值则固定配色
+ *  - 外圈粗圆环 + 表盘内阴影（内阴影随圆环颜色自动着色）
+ *  - 主色秒针带光晕，连续平滑走动；中心轴点同色
  *  - 盘面信息跑动：年份大字水印、"M月D日"、"星期X" 药丸徽章、"HH:mm:ss:百分秒" 毫秒跳动
  *  - size 控制边长，所有刻度/文字/指针按 rem 等比缩放；按 devicePixelRatio 渲染，高分屏不发虚
- *  - rAF 每帧重绘（毫秒信息持续跑动），组件卸载自动停掉动画
+ *  - rAF 每帧重绘（毫秒信息持续跑动），组件卸载自动停掉动画与主题监听
  */
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 interface Props {
     /** 表盘边长（px，正方形） */
     size?: number;
-    /** 最外圈圆环颜色（内阴影也据此着色） */
+    /** 最外圈圆环颜色；缺省跟随主题主色 */
     ringColor?: string;
-    /** 表盘底色 */
+    /** 表盘底色；缺省跟随卡片底色 */
     faceColor?: string;
-    /** 数字/日期/时间文字颜色 */
+    /** 数字/日期/时间文字颜色；缺省跟随一级文本色 */
     numColor?: string;
-    /** 时针颜色 */
+    /** 时针颜色；缺省跟随一级文本色 */
     hourColor?: string;
-    /** 分针颜色 */
+    /** 分针颜色；缺省跟随三级文本色 */
     minuteColor?: string;
-    /** 秒针颜色（含光晕与中心轴点） */
+    /** 秒针颜色（含光晕与中心轴点）；缺省跟随主题主色 */
     secondColor?: string;
     /** 是否显示盘面日期/星期/年份/毫秒时间信息 */
     showInfo?: boolean;
@@ -38,12 +40,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     size: 320,
-    ringColor: "#5b1578",
-    faceColor: "#ffffff",
-    numColor: "#8e24aa",
-    hourColor: "#5b1578",
-    minuteColor: "#9c36b7",
-    secondColor: "#ff4fa3",
+    ringColor: "",
+    faceColor: "",
+    numColor: "",
+    hourColor: "",
+    minuteColor: "",
+    secondColor: "",
     showInfo: true,
 });
 
@@ -52,12 +54,72 @@ let raf = 0;
 
 const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
 
-/** #rrggbb → rgba(r,g,b,a)，用于内阴影/水印/徽章底色 */
-function rgba(hex: string, alpha: number): string {
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-    if (!m) return hex;
-    const v = parseInt(m[1], 16);
-    return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${alpha})`;
+/** 缺省颜色跟随的 Arco 主题变量（暗黑模式由 body[arco-theme=dark] 自动整套切换）；
+ *  浅色下圆环用中性填充灰（与首页快捷操作格子同源），暗黑下回退主色（fill-2 在暗底上几乎不可见） */
+const THEME_TOKENS = {
+    ringColor: "--color-fill-2",
+    faceColor: "--color-bg-2",
+    numColor: "--color-text-1",
+    hourColor: "--color-text-1",
+    minuteColor: "--color-text-3",
+    secondColor: "--primary-6",
+} as const;
+/** 按明暗模式差异化的 token（仅浅色/暗黑各用不同变量时在此登记） */
+const DARK_TOKEN_OVERRIDES: Partial<Record<ColorKey, string>> = {
+    ringColor: "--primary-6",
+};
+type ColorKey = keyof typeof THEME_TOKENS;
+/** 变量读取失败时的兜底（浅色 Arco 默认值） */
+const FALLBACK: Record<ColorKey, string> = {
+    ringColor: "#f2f3f5",
+    faceColor: "#ffffff",
+    numColor: "rgb(29,33,41)",
+    hourColor: "rgb(29,33,41)",
+    minuteColor: "rgb(78,89,105)",
+    secondColor: "#165dff",
+};
+
+/** 解析并缓存当前配色与字体：显式 prop 优先，否则读 CSS 变量（Arco 三元组变量拼成 rgb()）；
+ *  字体跟随 body 的 font-family（style.css 的 Nunito + 系统回退），canvas 不会继承 CSS 字体需显式读取 */
+let palette: Record<ColorKey, string> | null = null;
+let fontFamily = "sans-serif";
+function resolvePalette(): Record<ColorKey, string> {
+    if (palette) return palette;
+    const cs = getComputedStyle(document.body);
+    fontFamily = cs.fontFamily || "sans-serif";
+    const dark = document.body.getAttribute("arco-theme") === "dark";
+    const p = {} as Record<ColorKey, string>;
+    for (const k of Object.keys(THEME_TOKENS) as ColorKey[]) {
+        if (props[k]) {
+            p[k] = props[k];
+            continue;
+        }
+        const token = dark ? DARK_TOKEN_OVERRIDES[k] || THEME_TOKENS[k] : THEME_TOKENS[k];
+        let v = cs.getPropertyValue(token).trim();
+        if (/^[\d.,\s]+$/.test(v) && v.split(",").length === 3) v = `rgb(${v})`; // Arco 三元组变量（如 --primary-6: 22,93,255）
+        p[k] = v || FALLBACK[k];
+    }
+    palette = p;
+    return p;
+}
+
+/** 任意 CSS 颜色（#hex / rgb() / rgba() / r,g,b 三元组）→ 带透明度的 rgba() */
+function withAlpha(color: string, a: number): string {
+    let r: number, g: number, b: number;
+    const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+    const rgb = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i.exec(color.trim());
+    const trip = /^([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)$/.exec(color.trim());
+    const m = rgb || trip;
+    if (hex) {
+        const s = hex[1].length === 3 ? hex[1].split("").map((c) => c + c).join("") : hex[1];
+        const v = parseInt(s, 16);
+        r = (v >> 16) & 255; g = (v >> 8) & 255; b = v & 255;
+    } else if (m) {
+        [r, g, b] = [+m[1], +m[2], +m[3]];
+    } else {
+        return color; // 无法解析（如关键字色）时放弃加透明度
+    }
+    return `rgba(${r},${g},${b},${a})`;
 }
 
 function pad2(n: number): string {
@@ -69,6 +131,7 @@ function draw() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const pal = resolvePalette();
 
     // 逻辑尺寸 size，物理像素按 DPR 放大，保证高分屏清晰
     const dpr = window.devicePixelRatio || 1;
@@ -94,85 +157,85 @@ function draw() {
     ctx.save();
     ctx.translate(r, r); // 原点移到表盘中心
 
-    // ① 外圈粗圆环
+    // ① 表盘底：铺满到最外沿（圆环现为半透明，底下不能留透明接缝），
+    //    同时避免环与盘抗锯齿边缘间透出白缝
+    const baseR = r;
     ctx.beginPath();
-    ctx.lineWidth = ringW;
-    ctx.strokeStyle = props.ringColor;
-    ctx.arc(0, 0, r - ringW / 2, 0, 2 * Math.PI);
-    ctx.stroke();
+    ctx.fillStyle = pal.faceColor;
+    ctx.arc(0, 0, baseR, 0, 2 * Math.PI);
+    ctx.fill();
 
-    // ② 表盘底 + 内阴影：裁剪到表盘圆内，先铺底色，再沿边缘叠一圈向内的柔和渐变
+    // ② 内阴影：裁剪到同一圆（AA 边缘藏在圆环下），沿边缘叠一圈向内的柔和渐变；
+    //    从 0.55R 起三次曲线平滑渐深，多站点过渡，避免硬边/色带
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, 0, faceR, 0, 2 * Math.PI);
+    ctx.arc(0, 0, baseR, 0, 2 * Math.PI);
     ctx.clip();
-    ctx.fillStyle = props.faceColor;
-    ctx.fillRect(-faceR, -faceR, faceR * 2, faceR * 2);
-    // 内阴影：从 0.55R 起三次曲线平滑渐深，多站点过渡，避免硬边/色带
     const shade = ctx.createRadialGradient(0, 0, faceR * 0.55, 0, 0, faceR);
     for (let i = 0; i <= 12; i++) {
         const t = i / 12;
-        shade.addColorStop(t, rgba(props.ringColor, 0.3 * t * t * t));
+        shade.addColorStop(t, withAlpha(pal.ringColor, 0.22 * t * t * t));
     }
     ctx.fillStyle = shade;
-    ctx.fillRect(-faceR, -faceR, faceR * 2, faceR * 2);
+    ctx.fillRect(-baseR, -baseR, baseR * 2, baseR * 2);
 
     if (props.showInfo) {
-        // ③ 年份大字水印（跑动信息的一部分，垫在指针下方）
-        ctx.font = `bold ${52 * rem}px Arial`;
+        // 年份大字水印（跑动信息的一部分，垫在指针下方）
+        ctx.font = `bold ${52 * rem}px ${fontFamily}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = rgba(props.numColor, 0.08);
+        ctx.fillStyle = withAlpha(pal.numColor, 0.08);
         ctx.fillText(String(now.getFullYear()), 0, 2 * rem);
     }
     ctx.restore();
 
-    // ④ 数字 1~12（12 在正上方，顺时针）
-    ctx.font = `bold ${15 * rem}px Arial`;
+    // ③ 外圈圆环：压在表盘底与内阴影的接缝上；缺省为中性浅灰（fill-2），实色描边
+    ctx.beginPath();
+    ctx.lineWidth = ringW;
+    ctx.strokeStyle = pal.ringColor;
+    ctx.arc(0, 0, r - ringW / 2, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    // ④ 数字 1~12（12 在正上方，顺时针，贴近表盘边缘）
+    ctx.font = `bold ${15 * rem}px ${fontFamily}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = props.numColor;
+    ctx.fillStyle = pal.numColor;
     for (let i = 1; i <= 12; i++) {
         const rad = (2 * Math.PI / 12) * i - Math.PI / 2;
-        ctx.fillText(String(i), Math.cos(rad) * (faceR - 26 * rem), Math.sin(rad) * (faceR - 26 * rem));
+        ctx.fillText(String(i), Math.cos(rad) * (faceR - 16 * rem), Math.sin(rad) * (faceR - 16 * rem));
     }
 
     // ⑤ 日期 / 星期 / 毫秒时间 跑动信息（淡色，与年份水印同一观感）
     if (props.showInfo) {
-        ctx.fillStyle = rgba(props.numColor, 0.35);
-        // 上方：M月D日
-        ctx.font = `bold ${13 * rem}px Arial`;
-        ctx.fillText(`${now.getMonth() + 1}月${now.getDate()}日`, 0, -faceR * 0.42);
-        // 下方：HH:mm:ss:百分秒（毫秒级跳动）
+        // 上方：星期（纯文字，与年份水印同色同淡度，加粗补偿可读性）
+        ctx.font = `bold ${13 * rem}px ${fontFamily}`;
+        ctx.fillStyle = withAlpha(pal.numColor, 0.1);
+        ctx.fillText(WEEKDAYS[now.getDay()], 0, -faceR * 0.58);
+        // 星期下方：M月D日
+        ctx.font = `bold ${13 * rem}px ${fontFamily}`;
+        ctx.fillStyle = withAlpha(pal.numColor, 0.08);
+        ctx.fillText(`${now.getMonth() + 1}月${now.getDate()}日`, 0, -faceR * 0.38);
+        // 下方：HH:mm:ss:百分秒（毫秒级跳动，保持加粗与原淡度）
+        ctx.font = `bold ${13 * rem}px ${fontFamily}`;
+        ctx.fillStyle = withAlpha(pal.numColor, 0.35);
         ctx.fillText(`${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}:${pad2(Math.floor(ms / 10))}`, 0, faceR * 0.46);
-        // 右侧：星期药丸徽章
-        const week = WEEKDAYS[now.getDay()];
-        ctx.font = `bold ${9 * rem}px Arial`;
-        const tw = ctx.measureText(week).width;
-        const bw = tw + 12 * rem;
-        const bh = 18 * rem;
-        const bx = faceR * 0.44;
-        roundRect(ctx, bx - bw / 2, -bh / 2, bw, bh, 4 * rem);
-        ctx.fillStyle = rgba(props.numColor, 0.08);
-        ctx.fill();
-        ctx.fillStyle = rgba(props.numColor, 0.35);
-        ctx.fillText(week, bx, 0.5 * rem);
     }
 
-    // ⑥ 时针：粗圆头短针
-    drawHand(ctx, (h / 12) * 2 * Math.PI, 9 * rem, faceR * 0.46, props.hourColor);
-    // ⑦ 分针：粗圆头长针
-    drawHand(ctx, (m / 60) * 2 * Math.PI, 7 * rem, faceR * 0.72, props.minuteColor);
-    // ⑧ 秒针：粉色细针 + 光晕，尾部过中心
+    // ⑥ 时针：圆头短针
+    drawHand(ctx, (h / 12) * 2 * Math.PI, 4 * rem, faceR * 0.46, pal.hourColor);
+    // ⑦ 分针：圆头长针
+    drawHand(ctx, (m / 60) * 2 * Math.PI, 2.5 * rem, faceR * 0.6, pal.minuteColor);
+    // ⑧ 秒针：主色细针 + 光晕，尾部过中心
     ctx.save();
-    ctx.shadowColor = rgba(props.secondColor, 0.8);
+    ctx.shadowColor = withAlpha(pal.secondColor, 0.8);
     ctx.shadowBlur = 8 * rem;
-    drawHand(ctx, (s / 60) * 2 * Math.PI, 2 * rem, faceR * 0.86, props.secondColor, 14 * rem);
+    drawHand(ctx, (s / 60) * 2 * Math.PI, 2 * rem, faceR * 0.76, pal.secondColor, 14 * rem);
     ctx.restore();
 
     // ⑨ 中心轴点（秒针同色）
     ctx.beginPath();
-    ctx.fillStyle = props.secondColor;
+    ctx.fillStyle = pal.secondColor;
     ctx.arc(0, 0, 6 * rem, 0, 2 * Math.PI);
     ctx.fill();
 
@@ -193,30 +256,34 @@ function drawHand(ctx: CanvasRenderingContext2D, angle: number, width: number, l
     ctx.restore();
 }
 
-/** 圆角矩形路径（徽章底） */
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, rad: number) {
-    ctx.beginPath();
-    ctx.moveTo(x + rad, y);
-    ctx.arcTo(x + w, y, x + w, y + h, rad);
-    ctx.arcTo(x + w, y + h, x, y + h, rad);
-    ctx.arcTo(x, y + h, x, y, rad);
-    ctx.arcTo(x, y, x + w, y, rad);
-    ctx.closePath();
-}
-
 /** 毫秒信息持续跑动，rAF 每帧重绘 */
 function loop() {
     draw();
     raf = requestAnimationFrame(loop);
 }
 
+/** 主题切换（body 的 arco-theme/class/style 变化）时失效配色缓存，下一帧自动换肤 */
+let mo: MutationObserver | null = null;
+
 onMounted(() => {
+    mo = new MutationObserver(() => (palette = null));
+    mo.observe(document.body, { attributes: true, attributeFilter: ["arco-theme", "class", "style"] });
     loop();
 });
-onBeforeUnmount(() => cancelAnimationFrame(raf));
+onBeforeUnmount(() => {
+    cancelAnimationFrame(raf);
+    mo?.disconnect();
+    mo = null;
+});
 
-// size/颜色/信息开关变化立即重绘（下一帧也会生效，这里消除视觉延迟）
-watch(() => [props.size, props.showInfo, props.ringColor, props.faceColor, props.numColor, props.hourColor, props.minuteColor, props.secondColor], draw);
+// size/颜色/信息开关变化：失效缓存并立即重绘（下一帧也会生效，这里消除视觉延迟）
+watch(
+    () => [props.size, props.showInfo, props.ringColor, props.faceColor, props.numColor, props.hourColor, props.minuteColor, props.secondColor],
+    () => {
+        palette = null;
+        draw();
+    }
+);
 </script>
 <style scoped>
 .common-canvas-clock {

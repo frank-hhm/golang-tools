@@ -1,20 +1,23 @@
 <template>
     <a-row class="npm-page" :gutter="6">
         <!-- 左侧：静态站点实例 + 功能入口 -->
-        <a-col :span="7" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+        <a-col :span="6" class="side-col">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>静态站点服务</template>
                 <template #extra>
                     <div class="srv-head-actions">
-                        <a-button size="small" title="新建站点" @click="openInstModal()">新建站点</a-button>
+                        <a-button size="small" @click="openInstModal()">新建站点</a-button>
                     </div>
                 </template>
                 <a-list :bordered="false" size="small">
                     <a-list-item v-for="inst in instances" :key="inst.id"
                         :class="{ 'inst-active': selectedId === inst.id }" @click="selectInst(inst.id)">
                         <a-space>
-                            <a-badge :status="states[inst.id]?.running ? 'success' : 'normal'" />
-                            <span class="conn-name" :title="inst.name + ':' + inst.port">{{ inst.name }}</span>
+                            <com-badge :status="states[inst.id]?.running ? 'success' : 'normal'"
+                                :animated="!!states[inst.id]?.running" />
+                            <a-tooltip :content="inst.name + ':' + inst.port">
+                                <span class="conn-name">{{ inst.name }}</span>
+                            </a-tooltip>
                             <a-tag color="arcoblue" size="small">node {{ inst.version }}</a-tag>
                         </a-space>
                         <template #actions>
@@ -37,7 +40,7 @@
                     </a-list-item>
                 </a-list>
             </a-card>
-            <a-card class="side-card tools-card" size="small" :body-style="{ padding: '10px' }">
+            <a-card class="side-card tools-card card-head-tool" size="small" :body-style="{ padding: '10px' }">
                 <template #title>npm 工具箱</template>
                 <div class="toolbox">
                     <a-button long class="tool-btn" @click="openNpmConfig()">
@@ -61,23 +64,22 @@
         </a-col>
 
         <!-- 右侧：环境总览 / 站点详情 -->
-        <a-col :span="17" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+        <a-col :span="18" class="main-col">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
-                    <a-radio-group v-model="rightMode" type="button" size="small">
+                    <a-radio-group size="medium" v-model="rightMode" type="button">
                         <a-radio value="overview">环境总览</a-radio>
                         <a-radio value="detail" :disabled="!selectedId">站点详情</a-radio>
                     </a-radio-group>
                 </template>
                 <template #extra>
                     <a-space v-if="rightMode === 'detail' && selCfg">
-                        <a-badge :status="selState?.running ? 'success' : 'normal'" />
+                        <com-badge :status="selState?.running ? 'success' : 'normal'" :animated="!!selState?.running" />
                         <span>{{ selCfg?.name }}</span>
                         <a-tag color="arcoblue" size="small">:{{ selCfg?.port }}</a-tag>
                         <a-tag v-if="selCfg?.spa" size="small">SPA</a-tag>
                         <a-tag v-if="selCfg?.directory" size="small">列目录</a-tag>
-                        <a-button size="small" type="primary" :disabled="selState?.running"
-                            @click="doStart">启动</a-button>
+                        <a-button size="small" :disabled="selState?.running" @click="doStart">启动</a-button>
                         <a-button size="small" status="danger" :disabled="!selState?.running"
                             @click="doStop">停止</a-button>
                         <a-button size="small" @click="doRestart">重启</a-button>
@@ -104,27 +106,31 @@
                                 <a-card class="ov-card" size="small">
                                     <template #title>生效 npm / PATH 绑定</template>
                                     <template #extra>
-                                        <a-tag size="small" :color="pathStatus?.bound ? 'green' : 'gray'">{{
-                                            pathStatus?.bound ? '已绑定' : '未绑定' }}</a-tag>
+                                        <!-- PATH 绑定是系统现状，用圆点+文案，与各页运行状态一致 -->
+                                        <span class="com-state" :class="pathStatus?.bound ? 'is-on' : 'is-dim'">
+                                            <com-badge :status="pathStatus?.bound ? 'success' : 'normal'" />
+                                            {{ pathStatus?.bound ? '已绑定' : '未绑定' }}
+                                        </span>
                                     </template>
                                     <a-descriptions :column="1" size="small" :data="bindDesc" class="ov-desc" />
                                     <div v-if="pathStatus?.otherNodeDirs?.length" class="ov-others">
                                         <div class="ov-others-t">PATH 中其它 Node 目录（绑定时将移除）</div>
-                                        <div v-for="(d, i) in pathStatus.otherNodeDirs" :key="i" class="ov-other-dir"
-                                            :title="d">{{ d }}</div>
+                                        <a-tooltip v-for="(d, i) in pathStatus.otherNodeDirs" :key="i" :content="d">
+                                            <div class="ov-other-dir">{{ d }}</div>
+                                        </a-tooltip>
                                     </div>
                                     <a-divider :margin="12" />
                                     <div class="ov-bind">
-                                        <a-select v-model="bindDir" :options="bindDirOptions" size="small"
+                                        <a-select v-model="bindDir" :options="bindDirOptions"
                                             placeholder="选择要绑定的 Node 目录" allow-search />
                                         <div class="ov-bind-row">
-                                            <a-radio-group v-model="bindScope" type="button" size="small">
-                                                <a-radio value="user">用户 PATH</a-radio>
-                                                <a-radio value="system">系统 PATH（管理员）</a-radio>
+                                            <a-radio-group size="medium" v-model="bindScope" type="button">
+                                                <a-radio value="user">用户PATH</a-radio>
+                                                <a-radio value="system">系统PATH[管理员]</a-radio>
                                             </a-radio-group>
-                                            <a-button size="small" type="primary" :loading="bindBusy"
-                                                :disabled="!bindDir" @click="doBindPath">强制绑定</a-button>
-                                            <a-button v-if="pathStatus?.canUndo" size="small" status="warning"
+                                            <a-button size="small" :loading="bindBusy" :disabled="!bindDir"
+                                                @click="doBindPath">强制绑定</a-button>
+                                            <a-button size="small" v-if="pathStatus?.canUndo" status="warning"
                                                 :loading="bindBusy" @click="doUnbindPath">撤销绑定</a-button>
                                         </div>
                                     </div>
@@ -134,16 +140,16 @@
 
                             <!-- 本机 Node 与包管理器：从整屏宽改成右栏上下两张表 -->
                             <a-col :span="12">
-                                <a-card class="ov-card" size="small">
+                                <a-card class="ov-card" size="small" :body-style="{ padding: 0 }">
                                     <template #title>本机 Node</template>
                                     <template #extra><a-tag size="small">{{ localVersions.length }}</a-tag></template>
-                                    <a-table :data="localVersions" size="mini" :pagination="false" row-key="path"
+                                    <a-table :data="localVersions" size="small" :pagination="false" row-key="path"
                                         :scroll="{ y: 150 }" :columns="[
                                             { title: '版本', dataIndex: 'version', width: 84 },
                                             { title: 'npm', dataIndex: 'npmVer', width: 70 },
                                             { title: '来源', dataIndex: 'source', width: 62, slotName: 'source' },
                                             { title: '路径', dataIndex: 'path', ellipsis: true, tooltip: true },
-                                        ]">
+                                        ]" :bordered="false">
                                         <template #source="{ record }">
                                             <a-tag size="small"
                                                 :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : 'orange'">{{
@@ -151,16 +157,16 @@
                                         </template>
                                     </a-table>
                                 </a-card>
-                                <a-card class="ov-card" size="small" style="margin-top: 8px">
+                                <a-card class="ov-card mt8" size="small" :body-style="{ padding: 0 }">
                                     <template #title>包管理器</template>
                                     <template #extra><a-tag size="small">{{ managers.length }}</a-tag></template>
-                                    <a-table :data="managers" size="mini" :pagination="false" row-key="id"
+                                    <a-table :data="managers" size="small" :pagination="false" row-key="id"
                                         :scroll="{ y: 150 }" :columns="[
                                             { title: '名称', dataIndex: 'name', width: 76, slotName: 'name' },
                                             { title: '版本', dataIndex: 'version', width: 70 },
                                             { title: '类型', dataIndex: 'kind', width: 96, slotName: 'kind' },
                                             { title: '入口', dataIndex: 'path', ellipsis: true, tooltip: true },
-                                        ]">
+                                        ]" :bordered="false">
                                         <template #name="{ record }">
                                             <a-tag size="small" :color="mgrColor(record.name)">{{ record.name }}</a-tag>
                                         </template>
@@ -199,7 +205,7 @@
 
                 <!-- 站点详情 -->
                 <div v-show="rightMode === 'detail'" class="detail-body">
-                    <a-descriptions :column="2" bordered size="small" class="detail-desc">
+                    <a-descriptions :column="2" bordered size="large" class="detail-desc">
                         <a-descriptions-item label="站点名称">{{ selCfg?.name || '-' }}</a-descriptions-item>
                         <a-descriptions-item label="端口">{{ selCfg?.port ?? '-' }}</a-descriptions-item>
                         <a-descriptions-item label="运行状态">
@@ -207,9 +213,9 @@
                         </a-descriptions-item>
                         <a-descriptions-item label="进程 PID">{{ selState?.pid || '-' }}</a-descriptions-item>
                         <a-descriptions-item label="运行时长">{{ fmtUptimeS(selState?.uptimeSeconds)
-                            }}</a-descriptions-item>
+                        }}</a-descriptions-item>
                         <a-descriptions-item label="Node 版本">{{ selState?.version || selCfg?.version || '-'
-                            }}</a-descriptions-item>
+                        }}</a-descriptions-item>
                         <a-descriptions-item label="npm 版本">{{ selState?.npmVer || '-' }}</a-descriptions-item>
                         <a-descriptions-item label="累计请求">{{ selState?.requests ?? '-' }}</a-descriptions-item>
                         <a-descriptions-item label="req/s">{{ selState?.requestsPerSec ?
@@ -226,11 +232,11 @@
                             </a-link>
                         </a-descriptions-item>
                         <a-descriptions-item label="registry" :span="2">{{ selState?.registry || '-'
-                            }}</a-descriptions-item>
+                        }}</a-descriptions-item>
                         <a-descriptions-item label="站点目录" :span="2">{{ selState?.docRoot || selCfg?.docRoot || '-'
-                            }}</a-descriptions-item>
+                        }}</a-descriptions-item>
                         <a-descriptions-item label="node.exe" :span="2">{{ selState?.nodePath || '-'
-                            }}</a-descriptions-item>
+                        }}</a-descriptions-item>
                     </a-descriptions>
                 </div>
             </a-card>
@@ -244,26 +250,42 @@
             <a-form-item field="name" label="站点名称" required>
                 <a-input v-model="instForm.name" placeholder="如 docs-site" />
             </a-form-item>
-            <a-form-item field="version" label="Node.js 版本（用于展示与配套 npm）" required>
-                <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
-            </a-form-item>
-            <a-form-item field="port" label="端口" :error="portError">
-                <a-input-number v-model="instForm.port" :min="1" :max="65535" @change="portError = ''"
-                    @blur="checkPortTaken" />
-            </a-form-item>
-            <a-form-item field="docRoot" label="站点根目录（空 = 实例目录 www/）">
+            <!-- 说明文字全部移到 label 右侧的图标 tooltip 里，label 只留短名：表单不被长括号挤成两行 -->
+            <a-row :gutter="12">
+                <a-col :span="12">
+                    <a-form-item field="version" label="Node.js 版本" required
+                        tooltip="用于展示与配套 npm；实际跑站点的是这个版本自带的 node.exe">
+                        <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="12">
+                    <a-form-item field="port" label="端口" :error="portError">
+                        <a-input-number v-model="instForm.port" :min="1" :max="65535" @change="portError = ''"
+                            @blur="checkPortTaken" />
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <a-form-item field="docRoot" label="站点根目录" tooltip="留空 = 实例目录下的 www/">
                 <a-input-search v-model="instForm.docRoot" placeholder="如 D:\www\dist" search-button button-text="选择目录"
                     @click-btn="chooseDocRoot" />
             </a-form-item>
-            <a-form-item field="spa" label="SPA 模式（找不到文件回退 index.html）">
-                <a-switch v-model="instForm.spa" />
-            </a-form-item>
-            <a-form-item field="directory" label="允许列目录（无 index.html 时）">
-                <a-switch v-model="instForm.directory" />
-            </a-form-item>
-            <a-form-item field="openBrowser" label="启动成功后自动打开浏览器">
-                <a-switch v-model="instForm.openBrowser" />
-            </a-form-item>
+            <a-row :gutter="12">
+                <a-col :span="8">
+                    <a-form-item field="spa" label="SPA 模式" tooltip="找不到文件时回退到 index.html">
+                        <a-switch v-model="instForm.spa" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="8">
+                    <a-form-item field="directory" label="允许列目录" tooltip="无 index.html 时返回目录列表">
+                        <a-switch v-model="instForm.directory" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="8">
+                    <a-form-item field="openBrowser" label="自动开浏览器" tooltip="启动成功后自动在浏览器打开站点">
+                        <a-switch v-model="instForm.openBrowser" />
+                    </a-form-item>
+                </a-col>
+            </a-row>
         </a-form>
     </a-modal>
 
@@ -277,27 +299,26 @@
                     {{ r.key }}
                 </a-button>
             </a-space>
-            <a-input-search v-model="registryInput" placeholder="自定义 registry URL" size="small"
-                style="margin-top:8px;width:420px" search-button button-text="应用"
-                @search="applyRegistry(registryInput)" />
+            <a-input-search v-model="registryInput" placeholder="自定义 registry URL" style="margin-top:8px;width:420px"
+                search-button button-text="应用" @search="applyRegistry(registryInput)" />
         </div>
         <a-divider style="margin: 12px 0" />
         <div class="ver-title">
             配置项
-            <a-button size="mini" @click="loadConfigItems">刷新</a-button>
+            <a-button size="small" @click="loadConfigItems">刷新</a-button>
         </div>
         <a-table :data="configItems" size="small" :pagination="false" row-key="key" :columns="[
             { title: 'Key', dataIndex: 'key', width: 220 },
             { title: 'Value', dataIndex: 'value', slotName: 'value' },
         ]">
             <template #value="{ record }">
-                <a-input v-model="record.value" size="mini" @press-enter="setItem(record)" @blur="setItem(record)" />
+                <a-input v-model="record.value" @press-enter="setItem(record)" @blur="setItem(record)" />
             </template>
         </a-table>
         <a-row class="add-local" :gutter="8">
-            <a-col :span="8"><a-input v-model="newKey" size="small" placeholder="新增 Key" /></a-col>
-            <a-col :span="12"><a-input v-model="newVal" size="small" placeholder="Value" /></a-col>
-            <a-col :span="4"><a-button size="small" type="primary" block @click="addConfigItem">新增</a-button></a-col>
+            <a-col :span="8"><a-input v-model="newKey" placeholder="新增 Key" /></a-col>
+            <a-col :span="12"><a-input v-model="newVal" placeholder="Value" /></a-col>
+            <a-col :span="4"><a-button size="small" block @click="addConfigItem">新增</a-button></a-col>
         </a-row>
         <a-divider style="margin: 12px 0" />
         <a-collapse>
@@ -305,26 +326,28 @@
                 <a-textarea v-model="npmrcText" :auto-size="{ minRows: 8, maxRows: 14 }" spellcheck="false" />
                 <a-space style="margin-top:8px">
                     <a-button size="small" @click="loadNpmrcText">重新读取</a-button>
-                    <a-button size="small" type="primary" @click="saveNpmrcText">保存 .npmrc</a-button>
+                    <a-button size="small" @click="saveNpmrcText">保存 .npmrc</a-button>
                 </a-space>
             </a-collapse-item>
         </a-collapse>
         <div class="user-npmrc">
             <div class="ver-title">用户全局 ~/.npmrc</div>
             <div class="offline-tip">{{ userNpmrcPath || '（未创建）' }}
-                <a-button size="mini" style="margin-left:8px" @click="applyToUser">把托管配置同步过去（自动备份）</a-button>
+                <a-button size="small" style="margin-left:8px" @click="applyToUser">把托管配置同步过去（自动备份）</a-button>
             </div>
         </div>
     </a-modal>
 
-    <!-- 全局包管理（多包管理器） -->
+    <!-- 全局包管理（多包管理器）：固定高度避免切包管理器时弹窗跟着缩，但封顶到视口内 -->
     <a-modal v-model:visible="pkgsVisible" title="全局包管理" :width="860" :footer="false" unmount-on-close
-        :body-style="{ height: '600px', overflow: 'auto' }">
+        :body-style="{ height: 'min(600px, calc(100vh - 200px))', overflow: 'auto' }">
         <div class="mgr-hint">
             <template v-if="mgrHintLines">
                 <div v-for="(h, i) in mgrHintLines" :key="i" class="mgr-hint-row">
                     <span class="mgr-hint-label">{{ h.label }}</span>
-                    <span class="mgr-hint-val" :title="h.value">{{ h.value }}</span>
+                    <a-tooltip :content="h.value">
+                        <span class="mgr-hint-val">{{ h.value }}</span>
+                    </a-tooltip>
                 </div>
             </template>
             <div v-else class="mgr-hint-empty">{{ mgrHint }}</div>
@@ -342,7 +365,7 @@
             </a-col>
             <a-col :span="4">
                 <a-space>
-                    <a-button size="small" type="primary" block :disabled="!!pkgBusy" @click="installPkg">安装</a-button>
+                    <a-button size="small" block :disabled="!!pkgBusy" @click="installPkg">安装</a-button>
                     <a-button size="small" block :loading="pkgsLoading" @click="scanPkgs">扫描</a-button>
                 </a-space>
             </a-col>
@@ -350,32 +373,34 @@
         <a-input v-model="pkgFilter" size="small" placeholder="按包名过滤" allow-clear
             style="width:220px;margin-bottom:8px" />
         <a-spin :loading="pkgsLoading" style="width:100%">
-            <a-table :data="filteredPackages" size="small" :pagination="false" row-key="path"
-                :scroll="{ y: 300 }" :columns="[
-                { title: '包名', dataIndex: 'name', width: 200, ellipsis: true, tooltip: true },
-                { title: '版本', dataIndex: 'version', width: 96 },
-                { title: '管理器', dataIndex: 'manager', width: 84, slotName: 'manager' },
-                { title: 'CLI', dataIndex: 'hasBin', width: 56, slotName: 'bin' },
-                { title: '说明', dataIndex: 'description', ellipsis: true, tooltip: true },
-                { title: '操作', dataIndex: 'ops', width: 78, slotName: 'ops' },
-            ]">
+            <a-table :data="filteredPackages" size="small" :pagination="false" row-key="path" :scroll="{ x: '100%', y: 300 }"
+                :columns="[
+                    { title: '包名', dataIndex: 'name', width: 200, ellipsis: true, tooltip: true },
+                    { title: '版本', dataIndex: 'version', width: 96 },
+                    { title: '管理器', dataIndex: 'manager', width: 84, slotName: 'manager' },
+                    { title: 'CLI', dataIndex: 'hasBin', width: 56, slotName: 'bin' },
+                    { title: '说明', dataIndex: 'description', ellipsis: true, tooltip: true },
+                    { title: '操作', dataIndex: 'ops', width: 100, slotName: 'ops', fixed: 'right', align: 'right' },
+                ]">
                 <template #manager="{ record }">
                     <a-tag size="small" :color="mgrColor(record.manager)">{{ record.manager }}</a-tag>
                 </template>
                 <template #bin="{ record }">
-                    <span v-if="record.hasBin" class="bin-dot">●</span>
+                    <com-badge v-if="record.hasBin" status="success" />
                 </template>
                 <template #ops="{ record }">
                     <a-tooltip v-if="record.builtin" content="随 Node 发行，不可单独卸载">
-                        <a-button size="mini" disabled>发行件</a-button>
+                        <a-button size="small" disabled>发行件</a-button>
                     </a-tooltip>
-                    <a-button v-else size="mini" status="danger" :disabled="!!pkgBusy"
+                    <a-button v-else size="small" status="danger" :disabled="!!pkgBusy"
                         @click="uninstallPkg(record)">卸载</a-button>
                 </template>
+                <template #empty>
+                    <div v-if="!pkgsLoading && filteredPackages.length === 0" class="conn-empty">
+                        {{ packages.length ? '没有匹配过滤的包' : '未扫到全局包（各管理器的全局安装根都是空的）' }}
+                    </div>
+                </template>
             </a-table>
-            <div v-if="!pkgsLoading && filteredPackages.length === 0" class="conn-empty">
-                {{ packages.length ? '没有匹配过滤的包' : '未扫到全局包（各管理器的全局安装根都是空的）' }}
-            </div>
         </a-spin>
         <div v-if="pkgBusy" class="offline-tip">{{ pkgBusy }} …（进度见任务日志）</div>
         <div v-if="installLogs.length" class="ver-block install-log">
@@ -389,231 +414,245 @@
     <!-- Node / npm 版本管理：原先工具箱里两个长得像“版本切换”的入口，合成一个弹窗的两个页签：
          「Node 版本」管 Node 本体的下载/注册/删除，「npm 生效链」管 cmd 里 npm -v 实际跑的那一份 -->
     <a-modal v-model:visible="versionsVisible" title="Node / Npm 版本管理" :width="900" :footer="false" unmount-on-close
-        :body-style="{ height: '620px', overflow: 'auto' }">
+        :body-style="{ height: 'min(620px, calc(100vh - 200px))', overflow: 'auto' }">
         <div class="ver-switch">
-            <a-radio-group v-model="verTab" type="button" @change="onVerTabChange">
+            <a-radio-group size="medium" v-model="verTab" type="button" @change="onVerTabChange">
                 <a-radio value="node">Node 版本</a-radio>
                 <a-radio value="chain">npm 生效链（命令行切换）</a-radio>
             </a-radio-group>
         </div>
         <div v-show="verTab === 'node'" class="ver-pane">
-                <div class="ver-block">
-                    <div class="ver-title">
-                        本地可用版本
-                        <a-button size="mini" :loading="scanning" @click="scanLocalNodes">扫描本机 Node</a-button>
-                        <a-button size="mini" @click="loadLocalVersions">刷新</a-button>
-                    </div>
-                    <a-table :data="localVersions" size="small" :pagination="false" row-key="version" :columns="[
-                        { title: '版本', dataIndex: 'version', width: 110 },
-                        { title: 'npm', dataIndex: 'npmVer', width: 90 },
-                        { title: '来源', dataIndex: 'source', width: 90, slotName: 'source' },
-                        { title: '路径', dataIndex: 'path', ellipsis: true, tooltip: true },
-                        { title: '操作', dataIndex: 'ops', width: 90, slotName: 'ops' },
-                    ]">
-                        <template #source="{ record }">
-                            <a-tag size="small"
-                                :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : 'orange'">{{
-                                    srcLabel(record.source) }}</a-tag>
+            <div class="ver-block">
+                <div class="ver-title">
+                    本地可用版本
+                    <a-button size="small" :loading="scanning" @click="scanLocalNodes">扫描本机 Node</a-button>
+                    <a-button size="small" @click="loadLocalVersions">刷新</a-button>
+                </div>
+                <a-table :data="localVersions" size="small" :pagination="false" row-key="version" :scroll="{ x: '100%' }"
+                    :columns="[
+                    { title: '版本', dataIndex: 'version', width: 110 },
+                    { title: 'npm', dataIndex: 'npmVer', width: 90 },
+                    { title: '来源', dataIndex: 'source', width: 90, slotName: 'source' },
+                    { title: '路径', dataIndex: 'path', ellipsis: true, tooltip: true },
+                    { title: '操作', dataIndex: 'ops', width: 90, slotName: 'ops', fixed: 'right', align: 'right' },
+                ]">
+                    <template #source="{ record }">
+                        <a-tag size="small"
+                            :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : 'orange'">{{
+                                srcLabel(record.source) }}</a-tag>
+                    </template>
+                    <template #ops="{ record }">
+                        <a-button size="small" status="danger" :disabled="record.source === 'bundled'"
+                            @click="removeVersion(record)">删除</a-button>
+                    </template>
+                </a-table>
+                <a-row class="add-local" :gutter="8">
+                    <a-col :span="16">
+                        <a-input v-model="localDirInput" placeholder="注册本机已有 Node.js：填写 node.exe 所在目录" />
+                    </a-col>
+                    <a-col :span="4">
+                        <a-button size="small" block @click="chooseLocalDir">浏览…</a-button>
+                    </a-col>
+                    <a-col :span="4">
+                        <a-button size="small" block @click="addLocalDir">添加</a-button>
+                    </a-col>
+                </a-row>
+            </div>
+            <a-divider style="margin: 12px 0" />
+            <div class="ver-block">
+                <div class="ver-title">
+                    线上版本
+                    <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">刷新</a-button>
+                </div>
+                <a-spin :loading="remoteLoading" style="width:100%">
+                    <a-table :data="remoteVersions" size="small" :pagination="{ pageSize: 8 }" row-key="version"
+                        :scroll="{ x: '100%' }"
+                        :columns="[
+                            { title: '版本', dataIndex: 'version', width: 110 },
+                            { title: 'LTS', dataIndex: 'lts', width: 90, slotName: 'lts' },
+                            { title: '包大小', dataIndex: 'size', width: 100, slotName: 'size' },
+                            { title: '状态', dataIndex: 'st', width: 150, slotName: 'st' },
+                            { title: '操作', dataIndex: 'ops', width: 100, slotName: 'ops', fixed: 'right', align: 'right' },
+                        ]">
+                        <template #lts="{ record }">
+                            <a-tag v-if="record.lts" color="green" size="small">{{ record.lts }}</a-tag>
+                        </template>
+                        <template #size="{ record }">{{ fmtBytes(record.size) }}</template>
+                        <template #st="{ record }">
+                            <span v-if="installedSet.has(record.version)" class="com-state is-on">
+                                <com-badge status="success" />已安装
+                            </span>
+                            <span v-else-if="installProgress[record.version]" class="com-state"
+                                :class="installProgress[record.version].stage === 'error' ? 'is-off' : 'is-busy'">
+                                <com-badge
+                                    :status="installProgress[record.version].stage === 'error' ? 'danger' : 'processing'"
+                                    :animated="installProgress[record.version].stage !== 'error'" />
+                                {{ stageText(installProgress[record.version]) }}
+                            </span>
+                            <span v-else class="com-state is-dim">
+                                <com-badge status="normal" />未安装
+                            </span>
                         </template>
                         <template #ops="{ record }">
-                            <a-button size="mini" status="danger" :disabled="record.source === 'bundled'"
-                                @click="removeVersion(record)">删除</a-button>
+                            <a-button v-if="!installedSet.has(record.version)" size="small"
+                                :disabled="!!installProgress[record.version]"
+                                @click="installVersion(record)">安装</a-button>
+                            <a-button v-else size="small" @click="loadLocalVersions">已安装</a-button>
                         </template>
                     </a-table>
-                    <a-row class="add-local" :gutter="8">
-                        <a-col :span="16">
-                            <a-input v-model="localDirInput" placeholder="注册本机已有 Node.js：填写 node.exe 所在目录" />
-                        </a-col>
-                        <a-col :span="4">
-                            <a-button block @click="chooseLocalDir">浏览…</a-button>
-                        </a-col>
-                        <a-col :span="4">
-                            <a-button type="primary" block @click="addLocalDir">添加</a-button>
-                        </a-col>
-                    </a-row>
+                </a-spin>
+                <div class="offline-tip">离线安装：将 node zip 放入 <a-link copyable :content="pluginsDirVal">{{
+                    pluginsDirVal
+                    || '…' }}</a-link> 后刷新本地版本</div>
+            </div>
+            <div v-if="installLogs.length" class="ver-block install-log">
+                <div class="ver-title">任务日志</div>
+                <div class="ls-log small">
+                    <div v-for="(l, i) in installLogs" :key="i" class="ls-line">{{ l }}</div>
                 </div>
-                <a-divider style="margin: 12px 0" />
-                <div class="ver-block">
-                    <div class="ver-title">
-                        线上版本
-                        <a-button size="mini" :loading="remoteLoading" @click="loadRemoteVersions">刷新</a-button>
-                    </div>
-                    <a-spin :loading="remoteLoading" style="width:100%">
-                        <a-table :data="remoteVersions" size="small" :pagination="{ pageSize: 8 }" row-key="version"
-                            :columns="[
-                                { title: '版本', dataIndex: 'version', width: 110 },
-                                { title: 'LTS', dataIndex: 'lts', width: 90, slotName: 'lts' },
-                                { title: '包大小', dataIndex: 'size', width: 100, slotName: 'size' },
-                                { title: '状态', dataIndex: 'st', width: 150, slotName: 'st' },
-                                { title: '操作', dataIndex: 'ops', width: 100, slotName: 'ops' },
-                            ]">
-                            <template #lts="{ record }">
-                                <a-tag v-if="record.lts" color="green" size="small">{{ record.lts }}</a-tag>
-                            </template>
-                            <template #size="{ record }">{{ fmtBytes(record.size) }}</template>
-                            <template #st="{ record }">
-                                <a-tag v-if="installedSet.has(record.version)" color="green" size="small">已安装</a-tag>
-                                <a-tag v-else-if="installProgress[record.version]"
-                                    :color="installProgress[record.version].stage === 'error' ? 'red' : 'arcoblue'"
-                                    size="small">
-                                    {{ stageText(installProgress[record.version]) }}
-                                </a-tag>
-                                <a-tag v-else size="small" color="gray">未安装</a-tag>
-                            </template>
-                            <template #ops="{ record }">
-                                <a-button v-if="!installedSet.has(record.version)" size="mini" type="primary"
-                                    :disabled="!!installProgress[record.version]"
-                                    @click="installVersion(record)">安装</a-button>
-                                <a-button v-else size="mini" @click="loadLocalVersions">已安装</a-button>
-                            </template>
-                        </a-table>
-                    </a-spin>
-                    <div class="offline-tip">离线安装：将 node zip 放入 <a-link copyable :content="pluginsDirVal">{{
-                        pluginsDirVal
-                        || '…' }}</a-link> 后刷新本地版本</div>
-                </div>
-                <div v-if="installLogs.length" class="ver-block install-log">
-                    <div class="ver-title">任务日志</div>
-                    <div class="ls-log small">
-                        <div v-for="(l, i) in installLogs" :key="i" class="ls-line">{{ l }}</div>
-                    </div>
-                </div>
+            </div>
         </div>
 
         <div v-show="verTab === 'chain'" class="ver-pane">
-                <a-spin :loading="chainLoading" style="width:100%">
-                    <div class="chain-hero">
-                        <div class="chain-hero-l">
-                            <div class="chain-ver">
-                                <span class="chain-cap">cmd 里 <b>npm -v</b></span>
-                                <b class="chain-big">{{ chain?.activeVersion || '—' }}</b>
-                                <a-tag size="small" :color="chain?.activeFrom === 'override' ? 'orange' : 'arcoblue'">{{
-                                    layerName(chain?.activeFrom) }}</a-tag>
+            <a-spin :loading="chainLoading" style="width:100%">
+                <div class="chain-hero">
+                    <div class="chain-hero-l">
+                        <div class="chain-ver">
+                            <span class="chain-cap">cmd 里 <b>npm -v</b></span>
+                            <b class="chain-big">{{ chain?.activeVersion || '—' }}</b>
+                            <a-tag size="small" :color="chain?.activeFrom === 'override' ? 'orange' : 'arcoblue'">{{
+                                layerName(chain?.activeFrom) }}</a-tag>
+                        </div>
+                        <div class="chain-lines">
+                            <div class="ls-item"><span>转发壳</span>
+                                <a-tooltip :content="chain?.activeShim || '-'" :disabled="!chain?.activeShim">
+                                    <b class="ellipsis">{{ chain?.activeShim || '-' }}</b>
+                                </a-tooltip>
                             </div>
-                            <div class="chain-lines">
-                                <div class="ls-item"><span>转发壳</span><b class="ellipsis" :title="chain?.activeShim">{{
-                                    chain?.activeShim || '-' }}</b></div>
-                                <div class="ls-item"><span>node.exe</span><b class="ellipsis"
-                                        :title="chain?.activeNode">{{
-                                            chain?.activeNode || '-' }}</b></div>
-                                <div class="ls-item"><span>全局 prefix</span><b class="ellipsis"
-                                        :title="chain?.activePrefix">{{
-                                            chain?.activePrefix || '-' }}</b></div>
+                            <div class="ls-item"><span>node.exe</span>
+                                <a-tooltip :content="chain?.activeNode || '-'" :disabled="!chain?.activeNode">
+                                    <b class="ellipsis">{{ chain?.activeNode || '-' }}</b>
+                                </a-tooltip>
+                            </div>
+                            <div class="ls-item"><span>全局 prefix</span>
+                                <a-tooltip :content="chain?.activePrefix || '-'" :disabled="!chain?.activePrefix">
+                                    <b class="ellipsis">{{ chain?.activePrefix || '-' }}</b>
+                                </a-tooltip>
                             </div>
                         </div>
-                        <a-space direction="vertical" :size="6">
-                            <a-button size="small" :loading="chainLoading" @click="loadChain()">
-                                <template #icon><icon-refresh /></template>重新体检
-                            </a-button>
-                            <a-button size="small" :loading="relLoading" @click="ensureReleases(true)">
-                                <template #icon><icon-history /></template>刷新版本清单
-                            </a-button>
-                        </a-space>
                     </div>
-                    <div v-if="chainHints.length" class="chain-hints">
-                        <div v-for="(h, i) in chainHints" :key="i" class="hint-line">• {{ h }}</div>
-                    </div>
-                    <div v-if="chainShadowed.length" class="offline-tip">PATH 里被压住的 npm 入口：{{
-                        chainShadowed.join('、') }}</div>
+                    <a-space direction="vertical" :size="6">
+                        <a-button size="small" :loading="chainLoading" @click="loadChain()">
+                            <template #icon><icon-refresh /></template>重新体检
+                        </a-button>
+                        <a-button size="small" :loading="relLoading" @click="ensureReleases(true)">
+                            <template #icon><icon-history /></template>刷新版本清单
+                        </a-button>
+                    </a-space>
+                </div>
+                <div v-if="chainHints.length" class="chain-hints">
+                    <div v-for="(h, i) in chainHints" :key="i" class="hint-line">• {{ h }}</div>
+                </div>
+                <div v-if="chainShadowed.length" class="offline-tip">PATH 里被压住的 npm 入口：{{
+                    chainShadowed.join('、') }}</div>
 
-                    <div class="ver-title" style="margin-top:14px">npm 入口（点一行选择）</div>
-                    <a-table :data="chainEntries" size="small" :pagination="false" row-key="dir"
-                        @row-click="pickEntryRow" :row-class="(r: any) => (r.dir === cliEntryDir ? 'row-active' : '')"
-                        :columns="[
-                            { title: '目录', dataIndex: 'dir', ellipsis: true, tooltip: true },
-                            { title: 'Node', dataIndex: 'version', width: 92 },
-                            { title: 'PATH', dataIndex: 'pathIdx', width: 64, slotName: 'pidx' },
-                            { title: '自带层', dataIndex: 'bundled', width: 90, slotName: 'bun' },
-                            { title: '覆盖层', dataIndex: 'override', width: 90, slotName: 'ovr' },
-                            { title: '实际生效', dataIndex: 'effective', width: 132, slotName: 'eff' },
-                        ]">
-                        <template #pidx="{ record }">
-                            <span v-if="record.pathIdx >= 0">#{{ record.pathIdx }}</span>
-                            <a-tag v-else size="small" color="gray">不在</a-tag>
-                        </template>
-                        <template #bun="{ record }">{{ record.bundled?.exists ? record.bundled.version : '-'
-                            }}</template>
-                        <template #ovr="{ record }">
-                            <span v-if="record.override?.exists">{{ record.override.version }}</span>
-                            <span v-else-if="record.override?.dir">无</span>
-                            <span v-else>-</span>
-                        </template>
-                        <template #eff="{ record }">
-                            <a-space :size="4">
-                                <b>{{ record.effective || '-' }}</b>
-                                <a-tag size="small"
-                                    :color="record.effectiveFrom === 'override' ? 'orange' : 'arcoblue'">{{
-                                        layerName(record.effectiveFrom) }}</a-tag>
-                            </a-space>
-                        </template>
-                    </a-table>
-                    <div v-if="!chainEntries.length && !chainLoading" class="conn-empty">
-                        没扫到带 npm 的目录，先到「Node 版本」页签扫描本机 Node
-                    </div>
-
-                    <template v-if="selEntry">
-                        <div class="ver-title" style="margin-top:14px">切换目标</div>
-                        <a-radio-group v-model="cliLayer" type="button" size="small">
-                            <a-radio value="override">全局 prefix 覆盖层</a-radio>
-                            <a-radio value="bundled">Node 自带层</a-radio>
-                        </a-radio-group>
-                        <div class="layer-note">{{ layerNote }}</div>
-                        <div class="detail-grid tight">
-                            <div class="ls-item"><span>写入目录</span><b class="ellipsis" :title="selLayer?.dir">{{
-                                selLayer?.dir || '-' }}</b></div>
-                            <div class="ls-item"><span>该层现在</span><b>{{ selLayerNow }}</b></div>
-                            <div class="ls-item"><span>该层出厂版本</span><b>{{ selLayerDefault || '-' }}
-                                    <a-link v-if="canRestoreDefault" size="mini"
-                                        @click="cliVersion = selLayerDefault">用它</a-link></b></div>
-                            <div class="ls-item"><span>可撤销</span><b>{{ selLayer?.hasPrev ? '有（上一步）' : '无' }}</b></div>
-                        </div>
-                        <a-row :gutter="6" align="center" style="margin-top:10px">
-                            <a-col :span="11">
-                                <a-select v-model="cliVersion" size="small" allow-search :loading="relLoading"
-                                    placeholder="要切到的 npm 版本" :options="releaseOptions" />
-                            </a-col>
-                            <a-col :span="6">
-                                <a-space :size="4">
-                                    <a-switch v-model="onlyCompat" size="small" @change="pickDefaultVersion" />
-                                    <span class="chain-cap">只列兼容本 Node</span>
-                                </a-space>
-                            </a-col>
-                            <a-col :span="7">
-                                <a-space :size="6">
-                                    <a-button size="small" type="primary" :disabled="!!cliBusy"
-                                        @click="doSwitch()">切换</a-button>
-                                    <a-button size="small" :disabled="!selLayer?.hasPrev || !!cliBusy"
-                                        @click="doUndo()">撤销</a-button>
-                                    <a-button v-if="cliLayer === 'override' && selEntry.override?.exists" size="small"
-                                        status="danger" :disabled="!!cliBusy"
-                                        @click="doRemoveOverride()">移除覆盖层</a-button>
-                                </a-space>
-                            </a-col>
-                        </a-row>
-                        <div v-if="relNote" class="offline-tip">{{ relNote }}</div>
-                        <div v-if="!relLoading && !releases.length" class="offline-tip">
-                            版本清单为空：检查网络，或在「npm 配置」里换一个可达的 registry 后点「刷新版本清单」
-                        </div>
-                        <div v-else-if="onlyCompat && !releaseOptions.length" class="offline-tip">
-                            当前 Node {{ selEntry.version || '?' }} 没有兼容的 npm 版本（关掉「只列兼容本 Node」可看全部）
-                        </div>
+                <div class="ver-title" style="margin-top:14px">npm 入口（点一行选择）</div>
+                <a-table :data="chainEntries" size="small" :pagination="false" row-key="dir" @row-click="pickEntryRow"
+                    :row-class="(r: any) => (r.dir === cliEntryDir ? 'row-active' : '')" :columns="[
+                        { title: '目录', dataIndex: 'dir', ellipsis: true, tooltip: true },
+                        { title: 'Node', dataIndex: 'version', width: 92 },
+                        { title: 'PATH', dataIndex: 'pathIdx', width: 64, slotName: 'pidx' },
+                        { title: '自带层', dataIndex: 'bundled', width: 90, slotName: 'bun' },
+                        { title: '覆盖层', dataIndex: 'override', width: 90, slotName: 'ovr' },
+                        { title: '实际生效', dataIndex: 'effective', width: 132, slotName: 'eff' },
+                    ]">
+                    <template #pidx="{ record }">
+                        <span v-if="record.pathIdx >= 0">#{{ record.pathIdx }}</span>
+                        <a-tag v-else size="small" color="gray">不在</a-tag>
                     </template>
+                    <template #bun="{ record }">{{ record.bundled?.exists ? record.bundled.version : '-'
+                    }}</template>
+                    <template #ovr="{ record }">
+                        <span v-if="record.override?.exists">{{ record.override.version }}</span>
+                        <span v-else-if="record.override?.dir">无</span>
+                        <span v-else>-</span>
+                    </template>
+                    <template #eff="{ record }">
+                        <a-space :size="4">
+                            <b>{{ record.effective || '-' }}</b>
+                            <a-tag size="small" :color="record.effectiveFrom === 'override' ? 'orange' : 'arcoblue'">{{
+                                layerName(record.effectiveFrom) }}</a-tag>
+                        </a-space>
+                    </template>
+                </a-table>
+                <div v-if="!chainEntries.length && !chainLoading" class="conn-empty">
+                    没扫到带 npm 的目录，先到「Node 版本」页签扫描本机 Node
+                </div>
 
-                    <div v-if="cliBusy" class="cli-prog">
-                        <span class="cli-name">{{ cliBusy }}</span>
-                        <a-progress :percent="(cliProgress?.percent || 0) / 100" size="small" style="flex:1"
-                            :status="cliProgress?.stage === 'error' ? 'danger' : 'normal'" />
-                        <span class="cli-stage">{{ stageText(cliProgress) }}</span>
-                    </div>
-                    <div v-if="cliLogs.length" class="ver-block install-log">
-                        <div class="ver-title">切换日志
-                            <a-button size="mini" @click="cliLogs = []">清空</a-button>
+                <template v-if="selEntry">
+                    <div class="ver-title" style="margin-top:14px">切换目标</div>
+                    <a-radio-group v-model="cliLayer" type="button" size="medium">
+                        <a-radio value="override">全局 prefix 覆盖层</a-radio>
+                        <a-radio value="bundled">Node 自带层</a-radio>
+                    </a-radio-group>
+                    <div class="layer-note">{{ layerNote }}</div>
+                    <div class="detail-grid tight">
+                        <div class="ls-item"><span>写入目录</span>
+                            <a-tooltip :content="selLayer?.dir || '-'" :disabled="!selLayer?.dir">
+                                <b class="ellipsis">{{ selLayer?.dir || '-' }}</b>
+                            </a-tooltip>
                         </div>
-                        <div class="ls-log small">
-                            <div v-for="(l, i) in cliLogs" :key="i" class="ls-line">{{ l }}</div>
-                        </div>
+                        <div class="ls-item"><span>该层现在</span><b>{{ selLayerNow }}</b></div>
+                        <div class="ls-item"><span>该层出厂版本</span><b>{{ selLayerDefault || '-' }}
+                                <a-link v-if="canRestoreDefault" size="mini"
+                                    @click="cliVersion = selLayerDefault">用它</a-link></b></div>
+                        <div class="ls-item"><span>可撤销</span><b>{{ selLayer?.hasPrev ? '有（上一步）' : '无' }}</b></div>
                     </div>
-                </a-spin>
+                    <a-row :gutter="6" align="center" style="margin-top:10px">
+                        <a-col :span="11">
+                            <a-select v-model="cliVersion" size="small" allow-search :loading="relLoading"
+                                placeholder="要切到的 npm 版本" :options="releaseOptions" />
+                        </a-col>
+                        <a-col :span="6">
+                            <a-space :size="4">
+                                <a-switch v-model="onlyCompat" size="small" @change="pickDefaultVersion" />
+                                <span class="chain-cap">只列兼容本 Node</span>
+                            </a-space>
+                        </a-col>
+                        <a-col :span="7">
+                            <a-space :size="6">
+                                <a-button size="small" :disabled="!!cliBusy" @click="doSwitch()">切换</a-button>
+                                <a-button size="small" :disabled="!selLayer?.hasPrev || !!cliBusy"
+                                    @click="doUndo()">撤销</a-button>
+                                <a-button v-if="cliLayer === 'override' && selEntry.override?.exists" size="small"
+                                    status="danger" :disabled="!!cliBusy" @click="doRemoveOverride()">移除覆盖层</a-button>
+                            </a-space>
+                        </a-col>
+                    </a-row>
+                    <div v-if="relNote" class="offline-tip">{{ relNote }}</div>
+                    <div v-if="!relLoading && !releases.length" class="offline-tip">
+                        版本清单为空：检查网络，或在「npm 配置」里换一个可达的 registry 后点「刷新版本清单」
+                    </div>
+                    <div v-else-if="onlyCompat && !releaseOptions.length" class="offline-tip">
+                        当前 Node {{ selEntry.version || '?' }} 没有兼容的 npm 版本（关掉「只列兼容本 Node」可看全部）
+                    </div>
+                </template>
+
+                <div v-if="cliBusy" class="cli-prog">
+                    <span class="cli-name">{{ cliBusy }}</span>
+                    <a-progress :percent="(cliProgress?.percent || 0) / 100" size="small" style="flex:1"
+                        :status="cliProgress?.stage === 'error' ? 'danger' : 'normal'" />
+                    <span class="cli-stage">{{ stageText(cliProgress) }}</span>
+                </div>
+                <div v-if="cliLogs.length" class="ver-block install-log">
+                    <div class="ver-title">切换日志
+                        <a-button size="small" @click="cliLogs = []">清空</a-button>
+                    </div>
+                    <div class="ls-log small">
+                        <div v-for="(l, i) in cliLogs" :key="i" class="ls-line">{{ l }}</div>
+                    </div>
+                </div>
+            </a-spin>
         </div>
     </a-modal>
 
@@ -621,10 +660,10 @@
     <a-modal v-model:visible="logVisible" :title="`访问日志 · ${selCfg?.name || ''}`" :width="760" :footer="false"
         unmount-on-close @close="stopLogPolling">
         <div class="log-modal-head">
-            <a-badge :status="selState?.running ? 'success' : 'normal'" />
+            <com-badge :status="selState?.running ? 'success' : 'normal'" :animated="!!selState?.running" />
             <span>{{ selState?.running ? '运行中' : '已停止' }}</span>
             <a-tag color="arcoblue" size="small">:{{ selCfg?.port }}</a-tag>
-            <a-button size="mini" style="margin-left:auto" @click="logLines = []">
+            <a-button size="small" style="margin-left:auto" @click="logLines = []">
                 <template #icon><icon-delete /></template>清空
             </a-button>
         </div>
@@ -1445,7 +1484,6 @@ onUnmounted(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 .side-col,
@@ -1652,11 +1690,6 @@ onUnmounted(() => {
     padding-right: 2px;
 }
 
-.bin-dot {
-    color: rgb(var(--green-6));
-    font-size: 11px;
-}
-
 .offline-tip {
     margin-top: 8px;
     font-size: 12px;
@@ -1699,9 +1732,9 @@ onUnmounted(() => {
     color: var(--color-text-3);
 }
 
-/* 日志弹窗内的实时日志区：固定高度、内部滚动 */
+/* 日志弹窗内的实时日志区：固定高度、内部滚动（短窗口下随视口收缩） */
 .ls-log.modal {
-    height: 420px;
+    height: min(420px, calc(100vh - 260px));
     min-height: 0;
     margin: 0;
 }

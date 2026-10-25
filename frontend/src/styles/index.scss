@@ -2,6 +2,8 @@
 @use './icon.css' as *;
 @use './theme/style.scss' as *;
 @use './theme/editor.scss' as *;
+@use './modal.scss' as *;
+@use './scrollbar.scss' as *;
 
 :root {
     
@@ -43,18 +45,6 @@
 body,
 html {
     font-size: var(--base-size-default);
-}
-
-::-webkit-scrollbar {
-    width: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: var(--color-fill-1);
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--color-fill-3);
 }
 
 

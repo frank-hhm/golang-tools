@@ -90,7 +90,8 @@ export const getUrlParams = (url: string, params: any) => {
 };
 export const addOrgToUrl = (url: string, paramName: string, replaceWith: string) => {
     if (url.indexOf(paramName) > -1) {
-        let re = eval('/(' + paramName + '=)([^&]*)/gi');
+        // 用 new RegExp 拼接模式，避免直接 eval（安全 + 不干扰打包器压缩）
+        let re = new RegExp('(' + paramName + '=)([^&]*)', 'gi');
         url = url.replace(re, paramName + '=' + replaceWith);
     } else {
         let paraStr = paramName + '=' + replaceWith;

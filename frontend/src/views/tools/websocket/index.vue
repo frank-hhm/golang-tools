@@ -4,18 +4,14 @@
         <a-col :span="6" class="side-col">
             <a-row class="ws-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>连接配置</template>
                         <template #extra>
-                            <a-tag :color="statusMeta.color" size="small">
-                                <template #icon>
-                                    <icon-exclamation-circle v-if="status === 'idle'" />
-                                    <icon-play-arrow v-else-if="status === 'connecting'" />
-                                    <icon-link v-else-if="status === 'open'" />
-                                    <icon-poweroff v-else />
-                                </template>
+                            <span class="com-state" :class="statusMeta.cls">
+                                <com-badge :status="statusMeta.badge"
+                                    :animated="status === 'open' || status === 'connecting'" />
                                 {{ statusMeta.text }}
-                            </a-tag>
+                            </span>
                         </template>
                         <div class="side-body">
                             <a-input v-model="url" placeholder="ws:// 或 wss:// 地址" :disabled="locked" allow-clear
@@ -23,10 +19,10 @@
                                 <template #prefix><icon-link /></template>
                             </a-input>
                             <a-input v-model="protocols" placeholder="子协议（可选，逗号分隔）" :disabled="locked" allow-clear />
-                            <a-button v-if="!locked" type="primary" status="success" long @click="connect">
+                            <a-button size="small" v-if="!locked" status="success" long @click="connect">
                                 <template #icon><icon-play-arrow /></template>连接
                             </a-button>
-                            <a-button v-else status="danger" long @click="disconnect">
+                            <a-button size="small" v-else status="danger" long @click="disconnect">
                                 <template #icon><icon-poweroff /></template>断开
                             </a-button>
                             <div class="switch-row">
@@ -48,10 +44,10 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>发送消息</template>
                         <template #extra>
-                            <a-button size="small" type="primary" status="success" :disabled="!connected || !sendText"
+                            <a-button size="small" status="success" :disabled="!connected || !sendText"
                                 @click="send">
                                 <template #icon><icon-send /></template>发送
                             </a-button>
@@ -77,7 +73,7 @@
 
         <!-- 右侧主区域：实时消息（列表 + 详情）铺满 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>实时消息</template>
                 <template #extra>
                     <a-space :size="8">
@@ -115,14 +111,14 @@
                     <div class="detail-pane">
                         <template v-if="selectedMsg">
                             <div class="detail-toolbar">
-                                <a-radio-group v-model="viewMode" type="button" size="mini">
+                                <a-radio-group v-model="viewMode" type="button" size="medium">
                                     <a-radio value="pretty">美化</a-radio>
                                     <a-radio value="raw">原生</a-radio>
                                 </a-radio-group>
                                 <a-tag size="small" :color="dirColor(selectedMsg.dir)">{{ dirLabel(selectedMsg.dir)
                                     }}</a-tag>
                                 <span class="detail-time">{{ selectedMsg.time }}</span>
-                                <a-button size="mini" type="text" style="margin-left: auto"
+                                <a-button size="small" style="margin-left: auto"
                                     @click="copyText(selectedMsg.data)">
                                     <template #icon><icon-copy /></template>复制
                                 </a-button>
@@ -202,16 +198,20 @@ const stopTick = () => {
 const connected = computed(() => status.value === "open");
 const locked = computed(() => status.value === "connecting" || status.value === "open");
 
-const statusMeta = computed(() => {
+const statusMeta = computed<{
+    badge: "success" | "warning" | "danger" | "normal";
+    cls: string;
+    text: string;
+}>(() => {
     switch (status.value) {
         case "open":
-            return { color: "green", text: "已连接" };
+            return { badge: "success", cls: "is-on", text: "已连接" };
         case "connecting":
-            return { color: "orange", text: "连接中" };
+            return { badge: "warning", cls: "is-warn", text: "连接中" };
         case "closed":
-            return { color: "gray", text: "已断开" };
+            return { badge: "normal", cls: "is-dim", text: "已断开" };
         default:
-            return { color: "red", text: "未连接" };
+            return { badge: "danger", cls: "is-off", text: "未连接" };
     }
 });
 
@@ -432,7 +432,6 @@ onUnmounted(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列（a-col，约 30% 宽）：上下两张卡片各占 50% 高 */

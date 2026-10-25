@@ -4,7 +4,7 @@
         <a-col :span="6" class="side-col">
             <a-row class="side-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>上传图片</template>
                         <template #extra>
                             <a-tag size="small" :color="base64 ? 'green' : 'gray'">
@@ -28,10 +28,10 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>图片信息</template>
                         <template #extra>
-                            <a-button v-if="base64" size="mini" @click="reset">
+                            <a-button v-if="base64" size="small" @click="reset">
                                 <template #icon><icon-delete /></template>清空
                             </a-button>
                         </template>
@@ -57,7 +57,7 @@
 
         <!-- 右侧：Base64 编码 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>Base64 编码</span>
@@ -70,7 +70,7 @@
                             <template #checked>含 data 前缀</template>
                             <template #unchecked>仅纯编码</template>
                         </a-switch>
-                        <a-button type="primary" size="small" :disabled="!base64"
+                        <a-button size="small" :disabled="!base64"
                             @click="copyText(output)">
                             <template #icon><icon-copy /></template>复制
                         </a-button>
@@ -186,7 +186,6 @@ const copyText = async (text: string) => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列：上下两张卡片各占 50% 高 */

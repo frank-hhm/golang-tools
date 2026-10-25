@@ -21,6 +21,9 @@ import * as config$0 from "../config/models.js";
 import * as sysinfo$0 from "../sysinfo/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as docker$0 from "../../tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as mysql$0 from "../../tools/mysql/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -169,6 +172,456 @@ export function ClosePinnedImage(id: number): $CancellablePromise<void> {
  */
 export function ConnectionStatus(): $CancellablePromise<usbserial$0.ConnStatus> {
     return $Call.ByID(950516773);
+}
+
+/**
+ * DockerPortTaken 报告宿主机端口能否发布容器端口，返回占用原因，空串表示可用
+ */
+export function DockerPortTaken(port: number): $CancellablePromise<string> {
+    return $Call.ByID(3217086499, port);
+}
+
+/**
+ * DockerSrvAbortSetup 取消进行中的下载并删除已下载的半截文件（安装器启动后无法安全中断，返回提示）
+ */
+export function DockerSrvAbortSetup(): $CancellablePromise<void> {
+    return $Call.ByID(1931246895);
+}
+
+/**
+ * DockerSrvBuildImage 用目录里的 Dockerfile 构建镜像（进度经 "docker:imageop"）
+ */
+export function DockerSrvBuildImage(dir: string, dockerfile: string, tag: string): $CancellablePromise<string> {
+    return $Call.ByID(2178671773, dir, dockerfile, tag);
+}
+
+/**
+ * DockerSrvBuildInstallerURL 把用户输入（空/build 号/完整 URL）换算成直链，供展示
+ */
+export function DockerSrvBuildInstallerURL(input: string): $CancellablePromise<string> {
+    return $Call.ByID(1298888849, input);
+}
+
+/**
+ * DockerSrvCancelImageOp 取消镜像长任务：target 为空表示全部取消，
+ * 否则按任务名（如 "pull mysql:8.4"）精确匹配；返回被取消的任务名
+ */
+export function DockerSrvCancelImageOp(target: string): $CancellablePromise<string> {
+    return $Call.ByID(4163725584, target);
+}
+
+/**
+ * DockerSrvCheckEnv 只读体检（不装不改）：已装/WSL/管道/引擎/离线包 + 待办清单；dir 空=默认存放目录
+ */
+export function DockerSrvCheckEnv(dir: string): $CancellablePromise<docker$0.EnvCheck> {
+    return $Call.ByID(4260605223, dir);
+}
+
+/**
+ * DockerSrvChooseFile 弹原生文件选择框（导入镜像包用），取消返回空串
+ */
+export function DockerSrvChooseFile(title: string): $CancellablePromise<string> {
+    return $Call.ByID(1079215071, title);
+}
+
+/**
+ * DockerSrvChooseSaveFile 弹原生保存框（导出镜像包用），取消返回空串
+ */
+export function DockerSrvChooseSaveFile(title: string, defaultName: string): $CancellablePromise<string> {
+    return $Call.ByID(3377035450, title, defaultName);
+}
+
+/**
+ * DockerSrvComposeAction 对编排项目批量操作：start | stop | restart | down
+ */
+export function DockerSrvComposeAction(project: string, action: string): $CancellablePromise<string> {
+    return $Call.ByID(973012190, project, action);
+}
+
+/**
+ * DockerSrvContainerLogs 读容器日志尾部 n 行（含已停止容器）
+ */
+export function DockerSrvContainerLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3640398716, id, lines);
+}
+
+/**
+ * DockerSrvContainerMetrics 单容器实时资源占用（容器监控弹窗按 1s 轮询，无缓存）
+ */
+export function DockerSrvContainerMetrics(id: string): $CancellablePromise<docker$0.ContainerMetrics | null> {
+    return $Call.ByID(3909508104, id);
+}
+
+/**
+ * DockerSrvCreateNetwork 新建自定义网络（driver 空=bridge，subnet 空=IPAM 自动分配）
+ */
+export function DockerSrvCreateNetwork(spec: docker$0.NetworkSpec): $CancellablePromise<string> {
+    return $Call.ByID(772607418, spec);
+}
+
+/**
+ * DockerSrvCreateVolume 新建存储卷
+ */
+export function DockerSrvCreateVolume(spec: docker$0.VolumeSpec): $CancellablePromise<string> {
+    return $Call.ByID(2021438390, spec);
+}
+
+/**
+ * DockerSrvCurrentImageOp 当前正在跑的长任务名（多个用“、”连接，空=空闲）
+ */
+export function DockerSrvCurrentImageOp(): $CancellablePromise<string> {
+    return $Call.ByID(2900818349);
+}
+
+/**
+ * DockerSrvDaemonConfig 读引擎 daemon.json 的加速站与不安全仓库
+ */
+export function DockerSrvDaemonConfig(): $CancellablePromise<docker$0.DaemonConfig> {
+    return $Call.ByID(2513862074);
+}
+
+/**
+ * DockerSrvDeleteRegistry 删除仓库配置
+ */
+export function DockerSrvDeleteRegistry(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1512570748, id);
+}
+
+/**
+ * DockerSrvDownloadInstaller 下载安装包（支持续传，取消会删掉半截文件），进度走 "docker:setup"；
+ * dir 为空时落到默认 <插件目录>\docker，否则用指定的另存目录。
+ */
+export function DockerSrvDownloadInstaller(input: string, dir: string): $CancellablePromise<string> {
+    return $Call.ByID(1703661232, input, dir);
+}
+
+/**
+ * DockerSrvEnableHyperV 提权启用 Hyper-V 角色（dism，需重启才生效）；confirm 为硬门禁
+ */
+export function DockerSrvEnableHyperV(confirm: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1025248999, confirm);
+}
+
+/**
+ * DockerSrvEnableWsl2 提权执行 wsl --install --no-distribution（可能需重启才生效）
+ */
+export function DockerSrvEnableWsl2(): $CancellablePromise<void> {
+    return $Call.ByID(4139260239);
+}
+
+/**
+ * DockerSrvEngineStatus 探测 Docker 引擎；不可达也返回（Available=false + 可读 Error）
+ */
+export function DockerSrvEngineStatus(): $CancellablePromise<docker$0.EngineInfo> {
+    return $Call.ByID(1110919932);
+}
+
+/**
+ * DockerSrvExportImage 导出镜像为 tar 包，outPath 空时落到默认数据目录
+ */
+export function DockerSrvExportImage(ref: string, outPath: string): $CancellablePromise<string> {
+    return $Call.ByID(1920144523, ref, outPath);
+}
+
+/**
+ * DockerSrvImportImage 从 dockersave 的 tar 包导入镜像（ref 空则沿用包内 tag）
+ */
+export function DockerSrvImportImage(tarPath: string, ref: string): $CancellablePromise<string> {
+    return $Call.ByID(636916034, tarPath, ref);
+}
+
+/**
+ * DockerSrvInspectContainer 单容器实时状态
+ */
+export function DockerSrvInspectContainer(id: string): $CancellablePromise<docker$0.ContainerState | null> {
+    return $Call.ByID(1675274587, id);
+}
+
+/**
+ * DockerSrvInstallDocker 提权静默安装并拉起引擎；安装协议不设勾选门禁，要点由前端感叹号提示展示。
+ * installerPath 为空时按 dir（空=默认存放目录）找离线包，没有则按 input 下载；进度走 "docker:setup"。
+ */
+export function DockerSrvInstallDocker(installerPath: string, input: string, dir: string, webDownload: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3179888051, installerPath, input, dir, webDownload);
+}
+
+/**
+ * DockerSrvLicenseNotes 安装前需如实告知的要点（前端展示在感叹号悬停提示里）
+ */
+export function DockerSrvLicenseNotes(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3090264112);
+}
+
+/**
+ * DockerSrvListComposeProjects 按 compose 标签聚合出的编排项目（Engine API 没有 compose 端点）
+ */
+export function DockerSrvListComposeProjects(): $CancellablePromise<docker$0.ComposeProject[] | null> {
+    return $Call.ByID(518762174);
+}
+
+/**
+ * DockerSrvListContainers 列出容器（all=false 仅运行中），运行中的附带 CPU/内存
+ */
+export function DockerSrvListContainers(all: boolean): $CancellablePromise<docker$0.Container[] | null> {
+    return $Call.ByID(2310353284, all);
+}
+
+/**
+ * DockerSrvListImages 本地镜像列表
+ */
+export function DockerSrvListImages(): $CancellablePromise<docker$0.Image[] | null> {
+    return $Call.ByID(1862439314);
+}
+
+/**
+ * DockerSrvListNetworks 列出 Docker 网络（含内置 bridge/host/none）
+ */
+export function DockerSrvListNetworks(): $CancellablePromise<docker$0.Network[] | null> {
+    return $Call.ByID(2326215143);
+}
+
+/**
+ * DockerSrvListRegistries 已配置的私有仓库（不含密码，只标是否已保存）
+ */
+export function DockerSrvListRegistries(): $CancellablePromise<docker$0.Registry[] | null> {
+    return $Call.ByID(2724762727);
+}
+
+/**
+ * DockerSrvListVolumes 列出存储卷（inUse = 引用它的容器数）
+ */
+export function DockerSrvListVolumes(): $CancellablePromise<docker$0.Volume[] | null> {
+    return $Call.ByID(3624363963);
+}
+
+/**
+ * DockerSrvLogsBuffered 取当前跟随环形缓冲（弹窗刚打开时补齐历史）
+ */
+export function DockerSrvLogsBuffered(id: string, lines: number): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2239223344, id, lines);
+}
+
+/**
+ * DockerSrvLogsFollow 开启日志跟随，新行经 "docker:serverlog" 事件推送（幂等）
+ */
+export function DockerSrvLogsFollow(id: string): $CancellablePromise<void> {
+    return $Call.ByID(13559734, id);
+}
+
+/**
+ * DockerSrvLogsStop 停止日志跟随（弹窗关闭时调用）
+ */
+export function DockerSrvLogsStop(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2189312555, id);
+}
+
+/**
+ * DockerSrvPluginsDir docker 默认存放目录（全局插件目录下的 docker，供前端展示“留空即用这里”）
+ */
+export function DockerSrvPluginsDir(): $CancellablePromise<string> {
+    return $Call.ByID(1808802679);
+}
+
+/**
+ * DockerSrvProbeInstaller 下载前探一次：直链有效性与真实体积（防把 404 页当安装包）
+ */
+export function DockerSrvProbeInstaller(input: string): $CancellablePromise<docker$0.ProbeInfo> {
+    return $Call.ByID(1694969090, input);
+}
+
+/**
+ * DockerSrvProbeMirror 探一个加速站能不能真下载：连通 → 清单 → 层数据三段计时。
+ * 不返回 error：探不通是结果（grade=fail/empty），不应混进绑定调用异常里。
+ */
+export function DockerSrvProbeMirror(mirrorURL: string, sample: string): $CancellablePromise<docker$0.MirrorProbe> {
+    return $Call.ByID(2911505229, mirrorURL, sample);
+}
+
+/**
+ * DockerSrvProbeMirrors 一次探完多个站（界面上的「全部测速」）
+ */
+export function DockerSrvProbeMirrors(mirrorURLs: string[] | null, sample: string): $CancellablePromise<docker$0.MirrorProbe[] | null> {
+    return $Call.ByID(1850716826, mirrorURLs, sample);
+}
+
+/**
+ * DockerSrvPruneImages 清理无用镜像（all=false 只清悬空镜像）
+ */
+export function DockerSrvPruneImages(all: boolean): $CancellablePromise<docker$0.PruneReport> {
+    return $Call.ByID(2211788650, all);
+}
+
+/**
+ * DockerSrvPruneVolumes 清理没有任何容器引用的存储卷
+ */
+export function DockerSrvPruneVolumes(): $CancellablePromise<docker$0.VolumePruneReport> {
+    return $Call.ByID(2578190771);
+}
+
+/**
+ * DockerSrvPullImage 拉取镜像，分层与整体进度经 "docker:pull" 事件推送；可被 CancelImageOp 取消。
+ * 用户主动取消不是故障：这里吸收为 nil（取消态由 stage=canceled 事件送达），
+ * 否则 Wails 会把“点了取消”记成「Binding call failed」的 ERR。
+ */
+export function DockerSrvPullImage(image: string): $CancellablePromise<void> {
+    return $Call.ByID(3782304900, image);
+}
+
+/**
+ * DockerSrvPushImage 推送本地镜像到它 tag 里写的仓库（进度经 "docker:imageop"）
+ */
+export function DockerSrvPushImage(ref: string): $CancellablePromise<void> {
+    return $Call.ByID(3930116337, ref);
+}
+
+/**
+ * DockerSrvPushImageTo 把本地镜像以目标引用（仓库/命名空间/名:tag）推出去，必要时先打 tag
+ */
+export function DockerSrvPushImageTo(localRef: string, targetRef: string): $CancellablePromise<void> {
+    return $Call.ByID(676221040, localRef, targetRef);
+}
+
+/**
+ * DockerSrvRegistryRepos 列出私有仓库里的镜像（catalog + tag）
+ */
+export function DockerSrvRegistryRepos(id: string): $CancellablePromise<docker$0.HubRepo[] | null> {
+    return $Call.ByID(2977817188, id);
+}
+
+/**
+ * DockerSrvRemoveContainer 删除容器（force=true 先杀再删）
+ */
+export function DockerSrvRemoveContainer(id: string, force: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3906859743, id, force);
+}
+
+/**
+ * DockerSrvRemoveImage 删除本地镜像（force=true 连带删除子引用）
+ */
+export function DockerSrvRemoveImage(image: string, force: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2948462677, image, force);
+}
+
+/**
+ * DockerSrvRemoveNetwork 删除网络（仍有容器接入时 daemon 拒绝）
+ */
+export function DockerSrvRemoveNetwork(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3361368302, id);
+}
+
+/**
+ * DockerSrvRemoveVolume 删除存储卷（仍被容器占用时 daemon 拒绝）
+ */
+export function DockerSrvRemoveVolume(name: string): $CancellablePromise<void> {
+    return $Call.ByID(1757464970, name);
+}
+
+/**
+ * DockerSrvRenameContainer 重命名容器
+ */
+export function DockerSrvRenameContainer(id: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(65805217, id, name);
+}
+
+/**
+ * DockerSrvRestartContainer 重启容器
+ */
+export function DockerSrvRestartContainer(id: string): $CancellablePromise<void> {
+    return $Call.ByID(45674214, id);
+}
+
+/**
+ * DockerSrvRestartEngine 重启 Docker 引擎（改完 daemon.json 后让它生效）
+ */
+export function DockerSrvRestartEngine(): $CancellablePromise<void> {
+    return $Call.ByID(1023803445);
+}
+
+/**
+ * DockerSrvRunImage 由镜像创建容器（可选发端口/环境变量/立即启动）
+ */
+export function DockerSrvRunImage(spec: docker$0.ImageRunSpec): $CancellablePromise<string> {
+    return $Call.ByID(910434442, spec);
+}
+
+/**
+ * DockerSrvSaveRegistry 新增/更新仓库；password 空=沿用旧密码，clearPass=true 才清空
+ */
+export function DockerSrvSaveRegistry(r: docker$0.Registry, password: string, clearPass: boolean): $CancellablePromise<docker$0.Registry> {
+    return $Call.ByID(2189053126, r, password, clearPass);
+}
+
+/**
+ * DockerSrvSearchHub 在 Docker Hub 搜线上镜像（Star 数/来源/简介）
+ */
+export function DockerSrvSearchHub(query: string, page: number): $CancellablePromise<docker$0.HubRepo[] | null> {
+    return $Call.ByID(3534458667, query, page);
+}
+
+/**
+ * DockerSrvSetDaemonConfig 只改 registry-mirrors 与 insecure-registries，其余键原样保留并备份
+ */
+export function DockerSrvSetDaemonConfig(mirrors: string[] | null, insecure: string[] | null): $CancellablePromise<string> {
+    return $Call.ByID(1663063530, mirrors, insecure);
+}
+
+/**
+ * DockerSrvStartContainer 启动容器
+ */
+export function DockerSrvStartContainer(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1805321299, id);
+}
+
+/**
+ * DockerSrvStartEngine 已安装但引擎未运行时，以普通用户身份拉起并等待就绪（可被「停止」叫停）
+ */
+export function DockerSrvStartEngine(): $CancellablePromise<void> {
+    return $Call.ByID(2909850518);
+}
+
+/**
+ * DockerSrvStopContainer 停止容器（timeoutSec 优雅退出等待秒，<=0 用 10）
+ */
+export function DockerSrvStopContainer(id: string, timeoutSec: number): $CancellablePromise<void> {
+    return $Call.ByID(658629647, id, timeoutSec);
+}
+
+/**
+ * DockerSrvStopEngine 停止 Docker Desktop 与其系统服务（会叫停在跑的启动等待）
+ */
+export function DockerSrvStopEngine(): $CancellablePromise<void> {
+    return $Call.ByID(2996549050);
+}
+
+/**
+ * DockerSrvSwitchBackend 代改 Docker Desktop 虚拟化后端（true=WSL2，false=Hyper-V）。
+ * 会先停 Docker Desktop 再改配置并回读校验；引擎起来后还会用内核串核验实际后端，
+ * 回落到了另一个后端时报错而不是谎报成功。confirmed 必须为 true（切换会新建空 VM）。
+ */
+export function DockerSrvSwitchBackend(useWsl2: boolean, confirmed: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1061290100, useWsl2, confirmed);
+}
+
+/**
+ * DockerSrvTestRegistry 用已保存凭据探一次仓库连通性
+ */
+export function DockerSrvTestRegistry(id: string): $CancellablePromise<string> {
+    return $Call.ByID(1718377715, id);
+}
+
+/**
+ * DockerSrvUpdateWsl 提权执行 wsl --update：WSL 组件在但内核过旧/损坏时，
+ * Docker Desktop 切 WSL2 会静默沿用 Hyper-V，这里是那个情形的修复入口
+ */
+export function DockerSrvUpdateWsl(): $CancellablePromise<void> {
+    return $Call.ByID(2221005565);
+}
+
+/**
+ * DockerSuggestPort 从 from 起探测一个可用的宿主机端口（跳过实例登记与系统监听）
+ */
+export function DockerSuggestPort($from: number): $CancellablePromise<number> {
+    return $Call.ByID(3577933800, $from);
 }
 
 /**
@@ -445,6 +898,20 @@ export function MySQLSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * MySQLSrvDefaultImage Docker 模式默认镜像
+ */
+export function MySQLSrvDefaultImage(): $CancellablePromise<string> {
+    return $Call.ByID(3387085506);
+}
+
+/**
+ * MySQLSrvDockerImages 本地 mysql/mariadb/percona 系镜像 tag（Docker 模式表单候选）
+ */
+export function MySQLSrvDockerImages(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2321414646);
+}
+
+/**
  * MySQLSrvInstall 异步下载安装 MySQL 版本
  */
 export function MySQLSrvInstall(version: string): $CancellablePromise<void> {
@@ -477,6 +944,13 @@ export function MySQLSrvLogs(id: string, lines: number): $CancellablePromise<str
  */
 export function MySQLSrvPluginsDir(): $CancellablePromise<string> {
     return $Call.ByID(3325014999);
+}
+
+/**
+ * MySQLSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
+ */
+export function MySQLSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
+    return $Call.ByID(2051548418, port, excludeId);
 }
 
 /**
@@ -585,6 +1059,27 @@ export function NginxSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * NginxSrvDefaultImage Docker 模式默认镜像
+ */
+export function NginxSrvDefaultImage(): $CancellablePromise<string> {
+    return $Call.ByID(2514487124);
+}
+
+/**
+ * NginxSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+ */
+export function NginxSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
+    return $Call.ByID(73952109);
+}
+
+/**
+ * NginxSrvDockerImages 本地 nginx 系镜像 tag（Docker 模式表单候选）
+ */
+export function NginxSrvDockerImages(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(410592280);
+}
+
+/**
  * NginxSrvGetConfigText 读取实例 nginx.conf 全文
  */
 export function NginxSrvGetConfigText(id: string): $CancellablePromise<string> {
@@ -627,6 +1122,14 @@ export function NginxSrvPluginsDir(): $CancellablePromise<string> {
 }
 
 /**
+ * NginxSrvPortTaken 报告端口能否给实例用（含其它实例的 HTTP/HTTPS 登记与系统监听），
+ * 返回占用原因，空串表示可用
+ */
+export function NginxSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
+    return $Call.ByID(4240796320, port, excludeId);
+}
+
+/**
  * NginxSrvReload 平滑重载配置
  */
 export function NginxSrvReload(id: string): $CancellablePromise<void> {
@@ -662,7 +1165,7 @@ export function NginxSrvRestart(id: string): $CancellablePromise<void> {
 }
 
 /**
- * NginxSrvSaveConfigText 保存实例 nginx.conf（先备份后校验，失败回滚）
+ * NginxSrvSaveConfigText 保存实例 nginx.conf（先备份后校验，失败回滚；容器模式不做 -t 不回滚）
  */
 export function NginxSrvSaveConfigText(id: string, text: string): $CancellablePromise<void> {
     return $Call.ByID(2878092006, id, text);
@@ -891,6 +1394,27 @@ export function NpmSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * NpmSrvDefaultImage Docker 模式默认镜像
+ */
+export function NpmSrvDefaultImage(): $CancellablePromise<string> {
+    return $Call.ByID(3272509275);
+}
+
+/**
+ * NpmSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+ */
+export function NpmSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
+    return $Call.ByID(2283787256);
+}
+
+/**
+ * NpmSrvDockerImages 本地 nginx 系镜像 tag（静态站点 Docker 模式表单候选）
+ */
+export function NpmSrvDockerImages(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1281306251);
+}
+
+/**
  * NpmSrvInstall 异步安装 Node.js 版本，进度经 npm:install 事件推送
  */
 export function NpmSrvInstall(version: string): $CancellablePromise<void> {
@@ -954,7 +1478,7 @@ export function NpmSrvRemoveVersion(version: string): $CancellablePromise<void> 
 }
 
 /**
- * NpmSrvRestart 重启实例
+ * NpmSrvRestart 重启实例（容器模式没有平滑重载通道，重启即重启容器）
  */
 export function NpmSrvRestart(id: string): $CancellablePromise<void> {
     return $Call.ByID(3772704340, id);
@@ -976,7 +1500,7 @@ export function NpmSrvScanLocal(): $CancellablePromise<npm$0.ServerVersion[] | n
 }
 
 /**
- * NpmSrvStart 启动静态站点服务（内置 Go HTTP 服务器）
+ * NpmSrvStart 启动静态站点（本地：内置 Go HTTP 服务器；Docker：nginx 容器）
  */
 export function NpmSrvStart(id: string): $CancellablePromise<void> {
     return $Call.ByID(210918951, id);
@@ -990,7 +1514,7 @@ export function NpmSrvStatus(id: string): $CancellablePromise<npm$0.InstanceStat
 }
 
 /**
- * NpmSrvStop 停止静态站点服务（优雅 Shutdown）
+ * NpmSrvStop 停止静态站点（本地：优雅 Shutdown；Docker：停容器）
  */
 export function NpmSrvStop(id: string): $CancellablePromise<void> {
     return $Call.ByID(173440077, id);
@@ -1083,7 +1607,7 @@ export function OpenTCPClient(cfg: usbserial$0.ConnConfig): $CancellablePromise<
  * single 为 true 时为该路由登记窗口名，已存在则直接复用（展示+取消最小化+聚焦），不重复创建；
  * fullscreen 为 true 时新窗口最大化铺满显示器（非排他全屏，避免顶部自绘标题栏被遮挡）；
  * width/height 为新窗口视口尺寸，<=0 时继承默认尺寸（1000x718）；
- * path 的 query 带 fs=0（工具配置“禁用全屏”）时，隐藏最大化按钮并禁止标题栏双击最大化。
+ * path 的 query 带 fs=0（工具配置“禁用全屏”）时，隐藏最大化按钮、禁止标题栏双击最大化，并禁用边框拖拽缩放。
  */
 export function OpenToolWindow(path: string, title: string, single: boolean, fullscreen: boolean, width: number, height: number): $CancellablePromise<void> {
     return $Call.ByID(1847339705, path, title, single, fullscreen, width, height);
@@ -1125,10 +1649,31 @@ export function PhpSrvCommonlyDisabled(): $CancellablePromise<string[] | null> {
 }
 
 /**
+ * PhpSrvDefaultImage Docker 模式默认镜像
+ */
+export function PhpSrvDefaultImage(): $CancellablePromise<string> {
+    return $Call.ByID(1568508128);
+}
+
+/**
  * PhpSrvDisableFunctions 读取实例禁用函数列表
  */
 export function PhpSrvDisableFunctions(id: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(3560824403, id);
+}
+
+/**
+ * PhpSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+ */
+export function PhpSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
+    return $Call.ByID(3735884353);
+}
+
+/**
+ * PhpSrvDockerImages 本地 php 系镜像 tag（Docker 模式表单候选）
+ */
+export function PhpSrvDockerImages(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(418614988);
 }
 
 /**
@@ -1230,6 +1775,13 @@ export function PhpSrvPluginsDir(): $CancellablePromise<string> {
 }
 
 /**
+ * PhpSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
+ */
+export function PhpSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
+    return $Call.ByID(2102372516, port, excludeId);
+}
+
+/**
  * PhpSrvRemoteVersions 拉取线上可安装版本（windows.php.net）
  */
 export function PhpSrvRemoteVersions(): $CancellablePromise<php$0.RemoteVersion[] | null> {
@@ -1300,7 +1852,7 @@ export function PhpSrvSetExtension(id: string, name: string, enable: boolean): $
 }
 
 /**
- * PhpSrvStart 启动实例（php -S 内置服务器，隐藏窗口）
+ * PhpSrvStart 启动实例（本地：php -S 内置服务器隐藏窗口；Docker：创建/启动容器）
  */
 export function PhpSrvStart(id: string): $CancellablePromise<void> {
     return $Call.ByID(2539961686, id);
@@ -1314,14 +1866,14 @@ export function PhpSrvStatus(id: string): $CancellablePromise<php$0.InstanceStat
 }
 
 /**
- * PhpSrvStop 停止实例（kill 进程树）
+ * PhpSrvStop 停止实例（本地：kill 进程树；Docker：停止容器）
  */
 export function PhpSrvStop(id: string): $CancellablePromise<void> {
     return $Call.ByID(2899585534, id);
 }
 
 /**
- * PhpSrvSuggestPort 从 from 起探测可用端口
+ * PhpSrvSuggestPort 从 from 起探测可用端口（跳过其它实例已登记与系统已监听的）
  */
 export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
     return $Call.ByID(1582683879, $from);
@@ -1443,6 +1995,27 @@ export function RedisSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * RedisSrvDefaultImage Docker 模式默认镜像
+ */
+export function RedisSrvDefaultImage(): $CancellablePromise<string> {
+    return $Call.ByID(1455590433);
+}
+
+/**
+ * RedisSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+ */
+export function RedisSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
+    return $Call.ByID(2027966186);
+}
+
+/**
+ * RedisSrvDockerImages 本地 redis 系镜像 tag（Docker 模式表单候选）
+ */
+export function RedisSrvDockerImages(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1897304353);
+}
+
+/**
  * RedisSrvInstall 异步安装版本，进度经 redis:install 事件推送
  */
 export function RedisSrvInstall(version: string): $CancellablePromise<void> {
@@ -1468,6 +2041,13 @@ export function RedisSrvListVersions(): $CancellablePromise<redis$0.ServerVersio
  */
 export function RedisSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
     return $Call.ByID(2493264784, id, lines);
+}
+
+/**
+ * RedisSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
+ */
+export function RedisSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
+    return $Call.ByID(3218033587, port, excludeId);
 }
 
 /**
@@ -1653,10 +2233,24 @@ export function ShowSystemNotification(title: string, content: string): $Cancell
 }
 
 /**
+ * SnifferPortTaken 报告代理端口能否使用，返回占用原因，空串表示可用
+ */
+export function SnifferPortTaken(port: number): $CancellablePromise<string> {
+    return $Call.ByID(2005291832, port);
+}
+
+/**
  * SnifferProxyStatus 返回代理运行状态与端口
  */
 export function SnifferProxyStatus(): $CancellablePromise<[boolean, number]> {
     return $Call.ByID(1615184120);
+}
+
+/**
+ * SnifferSuggestPort 从 from 起探测一个可用的代理端口（跳过实例登记与系统监听）
+ */
+export function SnifferSuggestPort($from: number): $CancellablePromise<number> {
+    return $Call.ByID(3640183019, $from);
 }
 
 /**

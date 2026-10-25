@@ -25,13 +25,14 @@
     ]
   },
   "dependencies": {
-    "@arco-themes/vue-dev-frank-brank": "^0.0.6",
+    "@arco-themes/vue-dev-frank-brank": "^0.0.7",
     "@vueuse/core": "^7.7.1",
     "@wailsio/runtime": "latest",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-vue": "^5.1.12",
     "axios": "^0.27.2",
     "dayjs": "^1.11.7",
+    "echarts": "^6.1.0",
     "js-cookie": "^2.2.0",
     "jsqr": "^1.4.0",
     "nprogress": "^0.2.0",

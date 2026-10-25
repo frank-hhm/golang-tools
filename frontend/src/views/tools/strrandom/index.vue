@@ -2,7 +2,7 @@
     <a-row class="str-page" :gutter="6">
         <!-- 左侧约 25%：生成设置 -->
         <a-col :span="6" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>生成设置</template>
                 <template #extra>
                     <a-tag size="small">{{ charset.length }} 字符</a-tag>
@@ -10,7 +10,7 @@
                 <div class="side-body">
                     <div class="field">
                         <a-space>
-                            <a-radio-group v-model="lenMode" type="button">
+                            <a-radio-group size="medium" v-model="lenMode" type="button">
                                 <a-radio value="fixed">固定</a-radio>
                                 <a-radio value="range">区间</a-radio>
                             </a-radio-group>
@@ -50,7 +50,7 @@
                         <a-input-number v-model="count" :min="1" :max="1000" :precision="0" style="width: 100%" />
                     </div>
 
-                    <a-button type="primary" status="success" long class="gen-btn" @click="generate">
+                    <a-button size="small" status="success" long class="gen-btn" @click="generate">
                         <template #icon><icon-refresh /></template>生成
                     </a-button>
                 </div>
@@ -59,7 +59,7 @@
 
         <!-- 右侧：生成结果 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>生成结果</span>

@@ -4,13 +4,12 @@
         <a-col :span="5" class="side-col">
             <a-row class="side-pages">
                 <a-col class="side-cols side-cols-top" :span="24">
-                    <a-card class="side-card">
+                    <a-card class="side-card card-head-tool">
                         <template #title>
                             <a-space :size="6">
-                                <a-tag size="small" :color="running ? 'green' : 'gray'">
-                                    {{ running ? "捕获中" : "未开始" }}
-                                </a-tag>
-                                <div class="led" :class="{ on: running }"></div>
+                                <!-- 圆点+标题一套就够：原先的状态 tag 与圆点重复表达了同一件事 -->
+                                <com-badge :status="running ? 'success' : 'normal'" :animated="running"
+                                    :title="running ? '捕获中' : '未开始'"></com-badge>
                                 <div>抓包控制</div>
                             </a-space>
                         </template>
@@ -51,15 +50,12 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols  side-cols-bottom" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>
-                            <a-space>
-                                <div>筛选</div>
-                                <a-input-search v-model="sideSearch" placeholder="筛选应用 / 域名" size="small" allow-clear />
-                            </a-space>
+                            <a-input-search v-model="sideSearch" placeholder="筛选应用 / 域名" allow-clear />
                         </template>
                         <template #extra>
-                            <a-radio-group v-model="filterTab" type="button">
+                            <a-radio-group size="medium" v-model="filterTab" type="button">
                                 <a-radio value="app">应用</a-radio>
                                 <a-radio value="domain">域名</a-radio>
                             </a-radio-group>
@@ -75,7 +71,9 @@
                                     </a-list-item>
                                     <a-list-item v-for="p in processList" :key="p.name" @click="toggleProcess(p.name)"
                                         :class="{ active: selectedProcess === p.name }">
-                                        <span class="filter-name" :title="p.name">{{ p.name }}</span>
+                                        <a-tooltip :content="p.name" :disabled="!p.name">
+                                            <span class="filter-name">{{ p.name }}</span>
+                                        </a-tooltip>
                                         <template #actions>
                                             <a-tag size="small" color="gray">{{ p.count }}</a-tag>
                                         </template>
@@ -92,7 +90,9 @@
                                     </a-list-item>
                                     <a-list-item v-for="d in domainList" :key="d.name" @click="toggleDomain(d.name)"
                                         :class="{ active: selectedDomain === d.name }">
-                                        <span class="filter-name" :title="d.name">{{ d.name }}</span>
+                                        <a-tooltip :content="d.name" :disabled="!d.name">
+                                            <span class="filter-name">{{ d.name }}</span>
+                                        </a-tooltip>
                                         <template #actions>
                                             <a-tag size="small" color="gray">{{ d.count }}</a-tag>
                                         </template>
@@ -109,7 +109,7 @@
         <a-col :span="19" class="main-col">
             <a-row class="main-row">
                 <a-col :span="12" class="pane-col">
-                    <a-card class="main-panel" :body-style="{ padding: 0 }">
+                    <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                         <template #title>
                             <a-space :size="8">
                                 <span>请求列表</span>
@@ -117,30 +117,30 @@
                             </a-space>
                         </template>
                         <template #extra>
-                            <a-radio-group v-model="selectedProto" type="button">
+                            <a-radio-group size="medium" v-model="selectedProto" type="button">
                                 <a-radio v-for="t in PROTO_TABS" :key="t.key" :value="t.key">
                                     {{ t.label }}<span v-if="t.key !== 'All'" class="pcnt">{{ protoCount(t.key)
-                                    }}</span>
+                                        }}</span>
                                 </a-radio>
                             </a-radio-group>
                         </template>
                         <div class="list-body">
                             <!-- 内容类型 / 请求方法 / 状态码快捷筛选：单选 radio，带命中数量，再选 All 取消 -->
                             <div class="type-filters">
-                                <a-radio-group v-model="selectedKind" type="button">
+                                <a-radio-group size="medium" v-model="selectedKind" type="button">
                                     <a-radio value="">All<span class="pcnt">{{ scopedFlows.length }}</span></a-radio>
                                     <a-radio v-for="t in TYPE_TABS" :key="t.key" :value="t.key">
                                         {{ t.label }}<span v-if="kindCounts[t.key]" class="pcnt">{{ kindCounts[t.key]
-                                        }}</span>
+                                            }}</span>
                                     </a-radio>
                                 </a-radio-group>
-                                <a-radio-group v-model="selectedMethod" type="button">
+                                <a-radio-group size="medium" v-model="selectedMethod" type="button">
                                     <a-radio value="">All<span class="pcnt">{{ scopedFlows.length }}</span></a-radio>
                                     <a-radio v-for="m in methodList" :key="m.name" :value="m.name">
                                         {{ m.name }}<span v-if="m.count" class="pcnt">{{ m.count }}</span>
                                     </a-radio>
                                 </a-radio-group>
-                                <a-radio-group v-model="selectedStatus" type="button">
+                                <a-radio-group size="medium" v-model="selectedStatus" type="button">
                                     <a-radio value="">All</a-radio>
                                     <a-radio v-for="s in STATUS_TABS" :key="s" :value="s">
                                         {{ s }}<span v-if="statusCounts[s]" class="pcnt">{{ statusCounts[s] }}</span>
@@ -160,8 +160,10 @@
                                     <a-table-column title="ID" data-index="id" :width="56" />
                                     <a-table-column title="图标" :width="52" align="center">
                                         <template #cell="{ record }">
-                                            <component :is="kindIcon(record)" class="kind-icon"
-                                                :style="{ color: kindColor(record) }" :title="kindLabel(record)" />
+                                            <a-tooltip :content="kindLabel(record)">
+                                                <component :is="kindIcon(record)" class="kind-icon"
+                                                    :style="{ color: kindColor(record) }" />
+                                            </a-tooltip>
                                         </template>
                                     </a-table-column>
                                     <a-table-column title="协议" data-index="protocol" :width="72">
@@ -202,7 +204,7 @@
                 </a-col>
 
                 <a-col :span="12" class="pane-col">
-                    <a-card class="main-panel" :body-style="{ padding: 0 }">
+                    <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                         <template #title>请求详情</template>
                         <template #extra>
                             <a-space v-if="selectedFlow" :size="6">
@@ -217,9 +219,11 @@
                         <div class="detail-body">
                             <template v-if="selectedFlow">
                                 <div class="detail-head">
-                                    <span class="detail-url" :title="selectedFlow.url">{{ selectedFlow.url }}</span>
+                                    <a-tooltip :content="selectedFlow.url" :disabled="!selectedFlow.url">
+                                        <span class="detail-url">{{ selectedFlow.url }}</span>
+                                    </a-tooltip>
                                 </div>
-                                <a-radio-group v-model="detailTab" type="button" class="detail-nav">
+                                <a-radio-group size="medium" v-model="detailTab" type="button" class="detail-nav">
                                     <a-radio value="overview">概览</a-radio>
                                     <a-radio value="reqHeaders">请求头</a-radio>
                                     <a-radio value="reqBody">请求体</a-radio>
@@ -231,7 +235,7 @@
                                     <a-descriptions :column="1" bordered>
                                         <a-descriptions-item label="时间">{{ selectedFlow.time }}</a-descriptions-item>
                                         <a-descriptions-item label="协议">{{ selectedFlow.protocol
-                                        }}</a-descriptions-item>
+                                            }}</a-descriptions-item>
                                         <a-descriptions-item label="方法">{{ selectedFlow.method }}</a-descriptions-item>
                                         <a-descriptions-item label="域名">{{ selectedFlow.host }}</a-descriptions-item>
                                         <a-descriptions-item label="路径">{{ selectedFlow.path }}</a-descriptions-item>
@@ -417,6 +421,19 @@ watch(
 
 /* ============ 捕获控制 ============ */
 const onStart = async () => {
+    // 端口被占（含实例登记/进程监听）就先换一个可用的，避免直接报“监听失败”
+    try {
+        const reason = await $GoTools.SnifferPortTaken(port.value);
+        if (reason) {
+            try {
+                const suggest = (await $GoTools.SnifferSuggestPort(port.value)) || port.value;
+                if (suggest !== port.value) {
+                    port.value = suggest;
+                    Message.info(`${reason}，改用 ${suggest} 启动`);
+                }
+            } catch (e) { /* 探测失败就用原端口试 */ }
+        }
+    } catch (e) { /* 探测失败就用原端口试 */ }
     try {
         await $GoTools.StartSnifferProxy(port.value);
         running.value = true;
@@ -483,6 +500,17 @@ onMounted(async () => {
             }
         } catch {
             /* 回填失败不影响实时捕获 */
+        }
+    } else {
+        // 未运行时把端口落到一个真正可用的上（上次的 8888 可能已被占）
+        try {
+            const free = await $GoTools.SnifferSuggestPort(port.value);
+            if (free && free !== port.value) {
+                Message.info(`代理端口 ${port.value} 已被占用，已换成 ${free}`);
+                port.value = free;
+            }
+        } catch {
+            /* 探测失败就保留原值 */
         }
     }
 });
@@ -801,21 +829,6 @@ const headerEntries = (hObj: Hdrs) =>
     gap: var(--base-radius-default);
 }
 
-.led {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: rgb(var(--red-6));
-    box-shadow: 0 0 4px rgba(245, 63, 63, 0.6);
-    vertical-align: middle;
-}
-
-.led.on {
-    background: rgb(var(--green-6));
-    box-shadow: 0 0 6px rgba(0, 180, 42, 0.7);
-}
-
 .stat-desc :deep(.arco-descriptions-item-label) {
     font-size: var(--base-size-small);
 }
@@ -1007,7 +1020,7 @@ const headerEntries = (hObj: Hdrs) =>
 /* 选中行高亮：row-class 加在 tr 上，但 Arco 的 td 自带背景色会盖住 tr 背景，
    必须直接覆盖 td；同时压掉 hover 背景，避免鼠标滑过时选中高亮被替换 */
 .flow-table :deep(.arco-table-tr.row-selected .arco-table-td) {
-    background-color:var(--color-fill-2) !important;
+    background-color: var(--color-fill-2) !important;
 }
 
 /* 行可点击查看详情，给出指针提示 */

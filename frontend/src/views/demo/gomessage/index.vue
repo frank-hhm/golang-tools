@@ -13,10 +13,10 @@
         </a-form-item>
 
         <a-space wrap>
-          <a-button type="primary" @click="fromGo('info')">Go → info</a-button>
-          <a-button type="outline" status="success" @click="fromGo('success')">Go → success</a-button>
-          <a-button type="outline" status="warning" @click="fromGo('warning')">Go → warning</a-button>
-          <a-button type="outline" status="danger" @click="fromGo('error')">Go → error</a-button>
+          <a-button size="small" @click="fromGo('info')">Go → info</a-button>
+          <a-button size="small" type="outline" status="success" @click="fromGo('success')">Go → success</a-button>
+          <a-button size="small" type="outline" status="warning" @click="fromGo('warning')">Go → warning</a-button>
+          <a-button size="small" type="outline" status="danger" @click="fromGo('error')">Go → error</a-button>
         </a-space>
 
         <a-divider style="margin: 4px 0" />
@@ -28,17 +28,17 @@
           <a-textarea v-model="ntContent" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="通知正文（最多显示 3 行）" />
         </a-form-item>
         <a-space wrap>
-          <a-button type="primary" @click="notify()"><template #icon><icon-notification /></template>Go → 系统通知卡片</a-button>
-          <a-button type="outline" status="success" @click="sysNotify()"><template #icon><icon-notification /></template>Go → 系统通知中心（原生 Toast）</a-button>
+          <a-button size="small" @click="notify()"><template #icon><icon-notification /></template>Go → 系统通知卡片</a-button>
+          <a-button size="small" type="outline" status="success" @click="sysNotify()"><template #icon><icon-notification /></template>Go → 系统通知中心（原生 Toast）</a-button>
         </a-space>
 
         <a-divider style="margin: 4px 0" />
 
         <a-space wrap>
-          <a-button @click="fromWeb('info')">前端直接调 info（对照）</a-button>
-          <a-button @click="fromWeb('success')">前端直接调 success（对照）</a-button>
-          <a-button @click="fromWeb('warning')">前端直接调 warning（对照）</a-button>
-          <a-button @click="fromWeb('error')">前端直接调 error（对照）</a-button>
+          <a-button size="small" @click="fromWeb('info')">前端直接调 info（对照）</a-button>
+          <a-button size="small" @click="fromWeb('success')">前端直接调 success（对照）</a-button>
+          <a-button size="small" @click="fromWeb('warning')">前端直接调 warning（对照）</a-button>
+          <a-button size="small" @click="fromWeb('error')">前端直接调 error（对照）</a-button>
         </a-space>
 
         <a-alert type="info">

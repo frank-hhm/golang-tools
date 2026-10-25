@@ -47,6 +47,21 @@ export interface InstanceConfig {
      * 空 = 默认（程序数据目录下按 ID 分配）
      */
     "dataDir": string;
+
+    /**
+     * Mode 运行模式：local（空值等同，兼容历史配置）| docker，详见 docker.go
+     */
+    "mode": string;
+
+    /**
+     * Image 容器模式的镜像（如 redis:7-alpine）；本地模式忽略
+     */
+    "image": string;
+
+    /**
+     * ContainerName 容器名，留空按实例 ID 生成
+     */
+    "containerName": string;
 }
 
 /**
@@ -67,6 +82,15 @@ export interface InstanceStatus {
     "usedMemoryHuman": string;
     "connectedClients": number;
     "totalKeys": number;
+
+    /**
+     * 以下仅容器模式填写：模式标记、镜像、容器名/ID 与容器状态串（running|exited|...）
+     */
+    "mode": string;
+    "image": string;
+    "container": string;
+    "containerId": string;
+    "containerState": string;
 }
 
 /**

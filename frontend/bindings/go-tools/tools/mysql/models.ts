@@ -102,6 +102,22 @@ export interface InstanceConfig {
      * <=0 用 mysql 默认 151
      */
     "maxConnections": number;
+
+    /**
+     * Docker 运行模式（零值/"local" 为本地拉起 mysqld，向后兼容）
+     * local | docker
+     */
+    "mode": string;
+
+    /**
+     * docker 模式必填，如 mysql:8.4
+     */
+    "image": string;
+
+    /**
+     * 留空则 go-tools-mysql-<id>
+     */
+    "containerName": string;
 }
 
 /**
@@ -122,6 +138,16 @@ export interface InstanceStatus {
     "threadsConnected": number;
     "threadsRunning": number;
     "maxConnections": number;
+
+    /**
+     * Docker 模式附加展示（本地模式 Mode="local"，其余字段为空）
+     */
+    "mode": string;
+    "image": string;
+    "container": string;
+    "containerId": string;
+    "containerState": string;
+    "dataDir": string;
 }
 
 /**

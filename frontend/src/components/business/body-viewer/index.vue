@@ -2,7 +2,7 @@
     <div class="body-viewer">
         <div class="bv-toolbar">
             <a-space>
-                <a-radio-group v-model="view" type="button">
+                <a-radio-group size="medium" v-model="view" type="button">
                     <template v-if="isBinary">
                         <a-radio value="preview">预览</a-radio>
                         <a-radio value="hex">HEX</a-radio>

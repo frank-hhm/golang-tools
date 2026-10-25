@@ -8,7 +8,7 @@ export interface SvcEntry {
     "id": string;
 
     /**
-     * redis | mysql | php | nginx | npm
+     * redis | mysql | php | nginx | npm | docker
      */
     "type": string;
     "name": string;

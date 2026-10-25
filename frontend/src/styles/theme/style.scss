@@ -58,3 +58,61 @@
         transform: rotate(1turn);
     }
 }
+
+/******card header********/
+/* 标题栏高度由内容撑开：全局按钮统一 small、单选组统一 medium 后，medium 单选组高 32px，
+   超过固定 46/40 高度留下的内容盒（26/24px），overflow:hidden 会把控件上下裁掉 */
+.arco-card.card-head-tool > .arco-card-header {
+    height: auto;
+    min-height: 46px;
+    /* 右侧是按钮/按钮组时收窄留白，避免控件看起来被多缩进一层；左侧保持 16px，与 body 左基线对齐 */
+    padding-right: var(--card-head-tool-pad, 8px);
+}
+
+.arco-card.arco-card-size-small.card-head-tool > .arco-card-header {
+    min-height: 40px;
+}
+
+/* 标题栏里放状态圆点（com-badge）时：Arco 给 .arco-card-header-title 和 .arco-card-header-extra
+   都设了 overflow:hidden + ellipsis，而圆点用负 margin 出血，贴边的那一侧会被裁成硬边
+   —— 圆点放 #title 最左、或放 #extra 第一个时都只看得见半个光晕。
+   用 padding-left + 等量负 margin-left 把裁剪边界（padding box）向左外扩 8px；
+   实测其他内容的左外边距、标题右边界、头栏高度都不变（只给横向，纵向 padding 会撑高头栏） */
+.arco-card.card-head-tool > .arco-card-header > .arco-card-header-title,
+.arco-card.card-head-tool > .arco-card-header > .arco-card-header-extra {
+    padding-left: 8px;
+    margin-left: -8px;
+}
+
+/******state dot********/
+/* 状态圆点 + 文案：圆点用 com-badge 的语义色，文字跟着变色，取代各页自己拼的 a-tag 状态标签。
+   注意 overflow：表格/描述项里的 b、span 常带 ellipsis 的 overflow:hidden，会把圆点光晕切掉半边 */
+.com-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--base-size-small);
+    line-height: 20px;
+    color: var(--color-text-2);
+    overflow: visible;
+}
+
+.com-state.is-on {
+    color: rgb(var(--success-6));
+}
+
+.com-state.is-off {
+    color: rgb(var(--danger-6));
+}
+
+.com-state.is-warn {
+    color: rgb(var(--warning-6));
+}
+
+.com-state.is-busy {
+    color: rgb(var(--primary-6));
+}
+
+.com-state.is-dim {
+    color: var(--color-text-3);
+}

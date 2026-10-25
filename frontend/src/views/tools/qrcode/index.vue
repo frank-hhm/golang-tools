@@ -2,7 +2,7 @@
     <a-row class="qr-page" :gutter="6">
         <!-- 左侧约 25%：参数设置 -->
         <a-col :span="6" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>参数设置</template>
                 <template #extra>
                     <a-tag size="small">{{ qrMode === "normal" ? "普通" : "透明" }}</a-tag>
@@ -14,12 +14,12 @@
                         <a-textarea v-model="text" :auto-size="{ minRows: 4, maxRows: 8 }" placeholder="请输入文字"
                             allow-clear />
                         <div class="quick-bar">
-                            <a-button size="mini" type="text" @click="vcardVisible = true">电子名片</a-button>
-                            <a-button size="mini" type="text" @click="phoneVisible = true">手机号</a-button>
-                            <a-button size="mini" type="text" @click="emailVisible = true">email</a-button>
-                            <a-button size="mini" type="text" @click="wechatVisible = true">微信公众号</a-button>
-                            <a-button size="mini" type="text" @click="wifiVisible = true">WIFI</a-button>
-                            <a-button size="mini" type="text" @click="decodeVisible = true">
+                            <a-button size="small" @click="vcardVisible = true">电子名片</a-button>
+                            <a-button size="small" @click="phoneVisible = true">手机号</a-button>
+                            <a-button size="small" @click="emailVisible = true">email</a-button>
+                            <a-button size="small" @click="wechatVisible = true">微信公众号</a-button>
+                            <a-button size="small" @click="wifiVisible = true">WIFI</a-button>
+                            <a-button size="small" @click="decodeVisible = true">
                                 <template #icon><icon-upload /></template>传图解码
                             </a-button>
                         </div>
@@ -74,14 +74,14 @@
                                 <a-button size="small" @click="pickLogo">
                                     <template #icon><icon-upload /></template>{{ logoData ? "重新上传" : "上传 Logo" }}
                                 </a-button>
-                                <a-button v-if="logoData" size="small" status="danger" type="text"
+                                <a-button v-if="logoData" size="small" status="danger"
                                     @click="logoData = ''">移除</a-button>
                                 <img v-if="logoData" :src="logoData" class="logo-thumb" alt="logo" />
                             </div>
                             <input ref="logoInput" type="file" accept="image/*" style="display: none"
                                 @change="onLogoChange" />
                         </div>
-                        <a-button type="primary" status="success" long class="gen-btn" @click="renderNormal">
+                        <a-button size="small" status="success" long class="gen-btn" @click="renderNormal">
                             <template #icon><icon-qrcode /></template>生成二维码
                         </a-button>
                     </template>
@@ -111,7 +111,7 @@
                             <input ref="bgInput" type="file" accept="image/*" style="display: none"
                                 @change="onBgChange" />
                         </div>
-                        <a-button v-if="bgImage" type="primary" status="success" long class="gen-btn"
+                        <a-button size="small" v-if="bgImage" status="success" long class="gen-btn"
                             @click="renderTransparent">
                             <template #icon><icon-qrcode /></template>生成二维码
                         </a-button>
@@ -122,7 +122,7 @@
 
         <!-- 右侧：二维码预览 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>二维码预览</span>
@@ -130,7 +130,7 @@
                     </a-space>
                 </template>
                 <template #extra>
-                    <a-radio-group v-model="qrMode" type="button" size="small">
+                    <a-radio-group v-model="qrMode" type="button" size="medium">
                         <a-radio value="normal">普通</a-radio>
                         <a-radio value="transparent">透明</a-radio>
                     </a-radio-group>
@@ -203,7 +203,7 @@
     <a-modal v-model:visible="phoneVisible" title="手机号" @ok="genPhone" ok-text="确定">
         <a-form :model="phone" layout="vertical">
             <a-form-item field="type" label="类型">
-                <a-radio-group v-model="phone.type">
+                <a-radio-group size="medium" v-model="phone.type">
                     <a-radio value="tel">拨打电话</a-radio>
                     <a-radio value="smsto">发送短信</a-radio>
                 </a-radio-group>
@@ -235,7 +235,7 @@
                 <a-checkbox v-model="wifi.hidden" style="margin-left: 8px">隐藏</a-checkbox>
             </a-form-item>
             <a-form-item field="enc" label="加密方式">
-                <a-radio-group v-model="wifi.enc">
+                <a-radio-group size="medium" v-model="wifi.enc">
                     <a-radio value="nopass">无密码</a-radio>
                     <a-radio value="WPA">WPA加密</a-radio>
                     <a-radio value="WPA2">WPA2加密</a-radio>
@@ -251,7 +251,10 @@
     <a-modal v-model:visible="decodeVisible" title="传图解码" :footer="false">
         <div class="tip" style="margin-bottom: 8px">选择包含二维码的图片，自动识别其中的内容。</div>
         <input ref="decodeInput" type="file" accept="image/*" @change="onDecode" />
-        <div v-if="decodeMsg" :class="['decode-msg', decodeOk ? 'ok' : 'err']">{{ decodeMsg }}</div>
+        <!-- 识别结果用 a-alert：成功/失败只换配色，不再靠自定义 .err 样式拼颜色 -->
+        <a-alert v-if="decodeMsg" :type="decodeOk ? 'success' : 'error'" style="margin-top: 12px">
+            {{ decodeMsg }}
+        </a-alert>
     </a-modal>
 </template>
 
@@ -803,18 +806,5 @@ function downloadDataUrl(dataUrl: string, name: string) {
     max-height: 100%;
     object-fit: contain;
     border-radius: var(--base-radius-default);
-}
-
-.decode-msg {
-    margin-top: var(--base-margin);
-    font-size: var(--base-size-small);
-}
-
-.decode-msg.ok {
-    color: rgb(var(--green-6));
-}
-
-.decode-msg.err {
-    color: rgb(var(--red-6));
 }
 </style>

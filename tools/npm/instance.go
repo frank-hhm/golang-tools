@@ -16,7 +16,28 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go-tools/tools/portcheck"
 )
+
+func init() {
+	// 端口占用汇总：静态站点的端口参与跨工具查重
+	portcheck.Register(func() []portcheck.Owner {
+		list, err := loadInstances()
+		if err != nil {
+			return nil
+		}
+		out := make([]portcheck.Owner, 0, len(list))
+		for _, c := range list {
+			out = append(out, portcheck.Owner{
+				Key:   "npm:" + c.ID,
+				Label: "站点「" + c.Name + "」",
+				Ports: []int{c.Port},
+			})
+		}
+		return out
+	})
+}
 
 /* ============================ 配置持久化 ============================ */
 
@@ -59,8 +80,23 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("实例名称不能为空")
 	}
-	if cfg.Version == "" {
-		return fmt.Errorf("请选择 Node.js 版本")
+	// 模式分叉：容器模式的站点由 nginx 容器承载，跟本机 Node 版本库没关系了
+	useDocker := isDockerMode(&cfg)
+	if useDocker {
+		cfg.Mode = ModeDocker
+		cfg.Image = strings.TrimSpace(cfg.Image)
+		if cfg.Image == "" {
+			return fmt.Errorf("Docker 模式请选择镜像，如 %s", DefaultDockerImage)
+		}
+		// 置空 Version：留着旧值会让面板显示一个并未参与运行的 Node 版本号
+		cfg.Version = ""
+	} else {
+		cfg.Mode = ModeLocal
+		cfg.Image = ""
+		cfg.ContainerName = ""
+		if cfg.Version == "" {
+			return fmt.Errorf("请选择 Node.js 版本")
+		}
 	}
 	if cfg.Port <= 0 {
 		cfg.Port = 3000
@@ -71,17 +107,20 @@ func SaveInstance(cfg InstanceConfig) error {
 	if reason := PortTaken(cfg.Port, cfg.ID); reason != "" {
 		return fmt.Errorf("%s", reason)
 	}
-	vers, _ := ListVersions()
-	ok := false
-	for _, v := range vers {
-		if v.Version == cfg.Version {
-			ok = true
-			break
+	if !useDocker {
+		vers, _ := ListVersions()
+		ok := false
+		for _, v := range vers {
+			if v.Version == cfg.Version {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return fmt.Errorf("版本 %s 未安装", cfg.Version)
 		}
 	}
-	if !ok {
-		return fmt.Errorf("版本 %s 未安装", cfg.Version)
-	}
+	// 站点根目录与模式无关：两种模式都读同一个路径（留空则用实例目录下自动创建的 www/）
 	if cfg.DocRoot != "" {
 		if st, err := os.Stat(cfg.DocRoot); err != nil || !st.IsDir() {
 			return fmt.Errorf("站点根目录不存在：%s", cfg.DocRoot)
@@ -106,6 +145,13 @@ func SaveInstance(cfg InstanceConfig) error {
 
 // RemoveInstance 删除实例配置；运行中先停止
 func RemoveInstance(id string) error {
+	if c, err := findInstance(id); err == nil && isDockerMode(c) {
+		// 容器实例：先停再删容器（实例目录与站点目录保留，与本地模式语义一致）
+		if trackedDocker(id) != nil || dockerContainerID(c) != "" {
+			_ = dockerStop(c)
+		}
+		defer func() { _ = dockerRemove(c) }()
+	}
 	if tracked(id) != nil {
 		if err := StopInstance(id); err != nil {
 			return fmt.Errorf("停止失败，未删除: %v", err)
@@ -159,7 +205,7 @@ func tracked(id string) *StaticServer {
 	return runSrv[id]
 }
 
-// StartInstance 启动静态站点服务（内置 Go HTTP 服务器）
+// StartInstance 启动静态站点服务（本地：内置 Go HTTP 服务器；Docker：nginx 容器）
 func StartInstance(id string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
@@ -167,6 +213,9 @@ func StartInstance(id string) error {
 	}
 	if tracked(id) != nil {
 		return fmt.Errorf("实例已在运行")
+	}
+	if isDockerMode(cfg) {
+		return dockerStart(cfg)
 	}
 	if tcpUp(cfg.Port) {
 		return fmt.Errorf("端口 %d 已被其他进程占用，请先停止或改端口", cfg.Port)
@@ -229,14 +278,20 @@ func StartInstance(id string) error {
 	return fmt.Errorf("启动超时：端口 %d 未就绪", cfg.Port)
 }
 
-// StopInstance 优雅停止（http.Server.Shutdown），兜底直接关闭监听
+// StopInstance 优雅停止（http.Server.Shutdown），兜底直接关闭监听；容器模式停容器
 func StopInstance(id string) error {
+	cfg, err := findInstance(id)
+	if err != nil {
+		return err
+	}
+	if isDockerMode(cfg) {
+		if trackedDocker(id) == nil && dockerContainerID(cfg) == "" && !tcpUp(cfg.Port) {
+			return fmt.Errorf("实例未在运行")
+		}
+		return dockerStop(cfg)
+	}
 	s := tracked(id)
 	if s == nil {
-		cfg, err := findInstance(id)
-		if err != nil {
-			return err
-		}
 		if tcpUp(cfg.Port) {
 			return fmt.Errorf("端口 %d 被外部进程占用（非本程序启动，无法停止）", cfg.Port)
 		}
@@ -257,8 +312,11 @@ func StopInstance(id string) error {
 	return nil
 }
 
-// RestartInstance 重启实例
+// RestartInstance 重启实例（容器模式：先停容器再起，镜像/端口/挂载变了会重建）
 func RestartInstance(id string) error {
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return dockerReload(cfg)
+	}
 	if tracked(id) != nil {
 		if err := StopInstance(id); err != nil {
 			return err
@@ -276,10 +334,19 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 		return st, err
 	}
 	st.Name, st.Version, st.Port = cfg.Name, cfg.Version, cfg.Port
+	st.Mode = ModeLocal
 	prefix, _ := instanceDir(id)
 	st.DocRoot = cfg.DocRoot
 	if st.DocRoot == "" {
 		st.DocRoot = filepath.Join(prefix, "www")
+	}
+	if isDockerMode(cfg) {
+		// 容器模式：站点文件统计照旧（挂的就是这个目录），Node 相关字段与 PID 没有意义；
+		// Bytes 已在 fillDockerStatus 里按 access.log 统计成流量，不能再被目录总字节顶掉
+		fillDockerStatus(cfg, &st, prefix)
+		st.Running = tcpUp(cfg.Port)
+		st.Files, _ = statTree(st.DocRoot)
+		return st, nil
 	}
 	st.NodePath = nodeExe(cfg.Version)
 	st.NpmVer = detectNpmVer(st.NodePath)
@@ -304,7 +371,7 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	return st, nil
 }
 
-// Logs 返回实例 access.log 尾部 n 行
+// Logs 返回实例 access.log 尾部 n 行（容器模式的 access.log 由容器写到挂载的同一份文件）
 func Logs(id string, n int) ([]string, error) {
 	if n <= 0 || n > 2000 {
 		n = 200
@@ -313,9 +380,20 @@ func Logs(id string, n int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(filepath.Join(prefix, "logs", "access.log"))
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return dockerLogsBlend(cfg, prefix, n)
+	}
+	return tailFile(filepath.Join(prefix, "logs", "access.log"), n)
+}
+
+// tailFile 文件尾部 n 行；文件还不存在返回空（面板当成“暂无日志”）
+func tailFile(path string, n int) ([]string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil // 尚无日志
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
 	if len(lines) > n {
@@ -324,39 +402,14 @@ func Logs(id string, n int) ([]string, error) {
 	return lines, nil
 }
 
-// runningPortOwner 返回正在监听该端口的本程序实例 ID（无则空串）
-func runningPortOwner(port int) string {
-	runMu.Lock()
-	defer runMu.Unlock()
-	for id, s := range runSrv {
-		if s.port == port {
-			return id
-		}
-	}
-	return ""
-}
-
 // PortTaken 报告端口是否不可用于（新）站点：被其它已登记实例的端口占用，或已被进程监听。
 // excludeID 用于编辑场景排除自身（含自身正在运行的监听）。返回非空字符串即占用原因，空串表示可用。
 func PortTaken(port int, excludeID string) string {
-	if port <= 0 || port > 65535 {
-		return fmt.Sprintf("端口非法: %d", port)
+	exclude := ""
+	if excludeID != "" {
+		exclude = "npm:" + excludeID
 	}
-	if list, _ := loadInstances(); list != nil {
-		for _, c := range list {
-			if c.ID != excludeID && c.Port == port {
-				return fmt.Sprintf("端口 %d 已被站点「%s」占用", port, c.Name)
-			}
-		}
-	}
-	if err := freePort(port); err != nil {
-		// 编辑自身且该端口正是自己运行时，允许保留
-		if owner := runningPortOwner(port); owner != "" && owner == excludeID {
-			return ""
-		}
-		return fmt.Sprintf("端口 %d 已被其它进程占用", port)
-	}
-	return ""
+	return portcheck.Taken(port, exclude)
 }
 
 // SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3000）：
@@ -365,24 +418,10 @@ func SuggestPort(from int) int {
 	if from <= 0 {
 		from = 3000
 	}
-	inUse := map[int]bool{}
-	if list, _ := loadInstances(); list != nil {
-		for _, c := range list {
-			inUse[c.Port] = true
-		}
-	}
-	for p := from; p < from+300 && p <= 65535; p++ {
-		if inUse[p] {
-			continue
-		}
-		if freePort(p) == nil {
-			return p
-		}
-	}
-	return from
+	return portcheck.Suggest(from, 300)
 }
 
-// StopAll 停止所有由本程序启动的静态服务（应用退出时调用）
+// StopAll 停止全部由本程序启动的静态服务（应用退出时调用）
 func StopAll() {
 	runMu.Lock()
 	ids := make([]string, 0, len(runSrv))
@@ -392,6 +431,12 @@ func StopAll() {
 	runMu.Unlock()
 	for _, id := range ids {
 		_ = StopInstance(id)
+	}
+	// 容器实例不在 runSrv 里：同样逐个停（只停容器，不删，下次启动复用）
+	for _, id := range dockerRunIDs() {
+		if cfg, err := findInstance(id); err == nil {
+			_ = dockerStop(cfg)
+		}
 	}
 }
 

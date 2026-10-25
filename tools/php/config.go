@@ -123,11 +123,15 @@ func iniJoin(text string) string {
 
 /* ============================ php.ini 文件 ============================ */
 
-// iniPathOf 实例 php.ini 路径：与 php.exe 同目录（PHP 默认加载位置，便于手工维护与迁移）
+// iniPathOf 实例 php.ini 路径：本地模式与 php.exe 同目录（PHP 默认加载位置，便于手工维护与迁移）；
+// Docker 模式取实例目录下的覆盖文件（容器内挂到 conf.d，只做追加覆盖）
 func iniPathOf(id string) (string, error) {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return "", err
+	}
+	if isDockerMode(cfg) {
+		return dockerIniPath(cfg)
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
@@ -344,15 +348,22 @@ func GetConfigText(id string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		exe := phpExe(cfg.Version, cfg.NTS)
-		if exe == "" {
-			exe = phpExe(cfg.Version, !cfg.NTS)
-		}
-		if exe == "" {
-			return "", fmt.Errorf("版本 %s 未安装，无法生成 php.ini", cfg.Version)
-		}
-		if err := ensureIni(cfg, filepath.Dir(exe), iniPath); err != nil {
-			return "", err
+		if isDockerMode(cfg) {
+			// 容器实例没有宿主 php.exe，拿不到 php.ini-development 模板，只写一份覆盖项
+			if _, err := ensureDockerIni(cfg); err != nil {
+				return "", err
+			}
+		} else {
+			exe := phpExe(cfg.Version, cfg.NTS)
+			if exe == "" {
+				exe = phpExe(cfg.Version, !cfg.NTS)
+			}
+			if exe == "" {
+				return "", fmt.Errorf("版本 %s 未安装，无法生成 php.ini", cfg.Version)
+			}
+			if err := ensureIni(cfg, filepath.Dir(exe), iniPath); err != nil {
+				return "", err
+			}
 		}
 	}
 	data, err := os.ReadFile(iniPath)
@@ -525,6 +536,9 @@ func Extensions(id string) ([]ExtensionInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if isDockerMode(cfg) {
+		return nil, dockerGateError("扩展管理")
+	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
 		exe = phpExe(cfg.Version, !cfg.NTS)
@@ -651,6 +665,9 @@ func SetExtension(id, name string, enable bool) (string, error) {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return "", err
+	}
+	if isDockerMode(cfg) {
+		return "", dockerGateError("扩展管理")
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
@@ -962,6 +979,9 @@ func LoadedExtensions(id string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if isDockerMode(cfg) {
+		return nil, dockerGateError("容器内扩展列表（php -m）")
+	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
 		exe = phpExe(cfg.Version, !cfg.NTS)
@@ -996,6 +1016,9 @@ func Info(id string) (*PHPInfo, error) {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return nil, err
+	}
+	if isDockerMode(cfg) {
+		return nil, dockerGateError("phpinfo（需容器内执行 php -i，本工具未实现 docker exec）")
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {

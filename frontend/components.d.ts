@@ -7,6 +7,7 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
+    Badge: typeof import('./src/components/common/badge/index.vue')['default']
     BlankLayout: typeof import('./src/components/layouts/BlankLayout.vue')['default']
     BodyViewer: typeof import('./src/components/business/body-viewer/index.vue')['default']
     CanvasClock: typeof import('./src/components/common/canvas-clock/index.vue')['default']

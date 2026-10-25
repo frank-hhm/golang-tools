@@ -12,7 +12,9 @@
       <span class="time">00:00</span>
       <span class="state">{{ isRegion ? "区域" : "屏幕" }}录制未开始</span>
       <a-button type="primary" status="success" size="small" class="btn-no-drag" @click="cmd('start')">● 开始</a-button>
-      <a-button size="small" class="btn-no-drag" title="放弃录制" @click="cmd('cancel')">✕</a-button>
+      <a-tooltip content="放弃录制">
+        <a-button size="small" class="btn-no-drag" @click="cmd('cancel')">✕</a-button>
+      </a-tooltip>
     </div>
 
     <!-- 录制中 / 已暂停 -->
@@ -23,7 +25,9 @@
       <a-button v-if="phase === 'recording'" size="small" class="btn-no-drag" @click="cmd('pause')">暂停</a-button>
       <a-button v-else size="small" class="btn-no-drag" @click="cmd('resume')">继续</a-button>
       <a-button type="primary" status="danger" size="small" class="btn-no-drag" @click="cmd('stop')">停止</a-button>
-      <a-button size="small" class="btn-no-drag" title="放弃录制" @click="cmd('cancel')">✕</a-button>
+      <a-tooltip content="放弃录制">
+        <a-button size="small" class="btn-no-drag" @click="cmd('cancel')">✕</a-button>
+      </a-tooltip>
     </div>
   </div>
 </template>

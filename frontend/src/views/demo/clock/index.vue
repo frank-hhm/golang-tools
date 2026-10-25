@@ -1,40 +1,29 @@
 <template>
-    <!-- common-canvas-clock 组件演示：默认紫粉 / 青绿配色 / 小尺寸 三个实例 + 交互控制 -->
+    <!-- common-canvas-clock 组件演示：控制条 + 若干演示格 + 两个弹窗组件 -->
     <layout-body title="Canvas 时钟组件 Demo">
         <div class="clock-demo">
             <a-card title="common-canvas-clock 时钟组件" :bordered="true">
                 <template #extra>
-                    <a-space>
-                        <a-switch v-model:checked="showInfo" size="small" />
-                        <span class="hint">盘面信息（日期/星期/年份/毫秒）</span>
-                        <a-slider v-model="size" :min="120" :max="420" :step="10" style="width: 140px" />
-                        <span class="hint">{{ size }}px</span>
-                    </a-space>
+                    <clock-toolbar :size="size" :show-info="showInfo" @update:size="size = $event"
+                        @update:show-info="showInfo = $event" @open-theme="themeVisible = true"
+                        @open-usage="usageVisible = true" />
                 </template>
                 <a-space size="large" wrap>
-                    <div class="cell">
-                        <common-canvas-clock :size="size" :show-info="showInfo" />
-                        <p>默认配色（发光秒针 + 表盘内阴影）</p>
-                    </div>
-                    <div class="cell">
-                        <!-- 换套 ring/face/num 颜色即可整体变色，内阴影随 ring 颜色自动着色 -->
-                        <common-canvas-clock :size="size" :show-info="showInfo" ring-color="#0b3d4d" face-color="#0f172a"
-                            num-color="#7dd3fc" hour-color="#94d8ea" minute-color="#38bdf8" second-color="#fbbf24" />
-                        <p>暗黑青绿表盘</p>
-                    </div>
-                    <div class="cell">
-                        <common-canvas-clock :size="Math.round(size * 0.5)" :show-info="showInfo" ring-color="#33291b"
-                            num-color="#8d6e63" hour-color="#4e342e" minute-color="#8d6e63" second-color="#ef5350" />
-                        <p>小尺寸（全部元素等比缩放）</p>
-                    </div>
+                    <!-- 预设格：颜色为空即跟随主题，显式传值则固定配色 -->
+                    <clock-cell v-for="p in presets" :key="p.key" :size="cellSize(p.scale)" :show-info="showInfo"
+                        :colors="p.colors" :caption="p.caption" />
+                    <!-- 自定义配色格：工具栏「自定义配色」改的就是它 -->
+                    <clock-cell :size="size" :show-info="showInfo" :colors="customColors" caption="自定义配色（工具栏可改）" />
                 </a-space>
             </a-card>
-            <a-typography-paragraph type="secondary">
-                用法：&lt;common-canvas-clock :size="320" :show-info="true" ring-color / face-color / num-color /
-                hour-color / minute-color / second-color /&gt;。全局注册组件，零依赖；秒针连续平滑带光晕，
-                日期/星期/年份水印/百分秒每帧跑动；画布按 devicePixelRatio 渲染，高分屏不发虚。
-            </a-typography-paragraph>
+            <div class="clock-tip">
+                颜色缺省时自动跟随 Arco 主题（右上角开关切暗黑即可看换肤），显式传值则固定配色。
+                <a-link @click="usageVisible = true">查看完整参数</a-link>
+            </div>
         </div>
+
+        <clock-theme-modal v-model:visible="themeVisible" :colors="customColors" @apply="onApplyTheme" />
+        <clock-usage-modal v-model:visible="usageVisible" />
     </layout-body>
 </template>
 <script lang="ts">
@@ -43,26 +32,40 @@ export default {
 };
 </script>
 <script lang="ts" setup>
-import { ref } from "vue";
+import { reactive, ref } from "vue";
+import ClockCell from "./ClockCell.vue";
+import ClockToolbar from "./ClockToolbar.vue";
+import ClockThemeModal from "./ClockThemeModal.vue";
+import ClockUsageModal from "./ClockUsageModal.vue";
+import { CLOCK_PRESETS, CUSTOM_DEFAULT, type ClockColors } from "./presets";
 
 const size = ref(280);
 const showInfo = ref(true);
+
+const presets = CLOCK_PRESETS;
+// 自定义那一格的颜色：弹窗点「应用」后整体替换
+const customColors = reactive<ClockColors>({ ...CUSTOM_DEFAULT });
+
+const themeVisible = ref(false);
+const usageVisible = ref(false);
+
+/** 小尺寸演示格按比例缩，但不缩到看不清刻度 */
+function cellSize(scale: number) {
+    return Math.max(100, Math.round(size.value * scale));
+}
+
+function onApplyTheme(colors: ClockColors) {
+    Object.assign(customColors, colors);
+}
 </script>
 <style scoped>
 .clock-demo {
     padding: 4px;
 }
-.clock-demo .cell {
-    text-align: center;
-}
-.clock-demo .cell p {
-    margin: 8px 0 0;
+
+.clock-tip {
+    margin-top: 12px;
     color: var(--color-text-3);
     font-size: 12px;
-}
-.clock-demo .hint {
-    color: var(--color-text-3);
-    font-size: 12px;
-    white-space: nowrap;
 }
 </style>

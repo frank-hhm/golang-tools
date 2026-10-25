@@ -77,12 +77,19 @@ type RemoteVersion struct {
 type InstanceConfig struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	Version     string `json:"version"` // 关联的 Node 版本（展示 + 跑 npm 命令）
+	Version     string `json:"version"` // 关联的 Node 版本（展示 + 跑 npm 命令）；容器模式不用（置空）
 	Port        int    `json:"port"`
 	DocRoot     string `json:"docRoot"`   // 站点根目录；空 = 实例目录下 www/
 	SPA         bool   `json:"spa"`       // 找不到文件时回退 index.html（前端单页应用）
 	Directory   bool   `json:"directory"` // 无 index.html 时允许列目录
 	OpenBrowser bool   `json:"openBrowser"`
+	// Mode 运行模式：local = 本程序内置的 Go 静态服务器，docker = nginx 容器承载站点目录；
+	// 历史配置没这个字段，零值按本地处理
+	Mode string `json:"mode"`
+	// Image 容器模式的镜像（如 nginx:alpine）；站点目录挂到 /usr/share/nginx/html
+	Image string `json:"image"`
+	// ContainerName 容器名，留空按实例 ID 自动生成（go-tools-npm-<id>）
+	ContainerName string `json:"containerName"`
 }
 
 // InstanceStatus 实例运行状态
@@ -102,6 +109,11 @@ type InstanceStatus struct {
 	NodePath       string  `json:"nodePath"`
 	NpmVer         string  `json:"npmVer"`
 	Registry       string  `json:"registry"`
+	Mode           string  `json:"mode"`
+	Image          string  `json:"image"`
+	Container      string  `json:"container"`      // 容器名
+	ContainerID    string  `json:"containerId"`    // 容器短 ID（tooltip 里给全长）
+	ContainerState string  `json:"containerState"` // running | exited | created…
 }
 
 // InstallProgress 安装进度事件负载（stage 语义与 redis/mysql 一致）

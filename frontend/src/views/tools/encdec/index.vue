@@ -4,7 +4,7 @@
         <a-col :span="6" class="side-col">
             <a-row class="side-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>输入文本</template>
                         <template #extra>
                             <a-tag size="small">{{ input.length }} 字符</a-tag>
@@ -16,7 +16,7 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>操作</template>
                         <template #extra>
                             <a-tag size="small">{{ operations.length }} 种</a-tag>
@@ -34,7 +34,7 @@
 
         <!-- 右侧：转换结果 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>转换结果</span>
@@ -281,7 +281,6 @@ const useAsInput = () => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列：上下两张卡片各占 50% 高 */

@@ -2,21 +2,25 @@
     <a-row class="nginx-page" :gutter="6">
         <!-- 左侧：实例列表 -->
         <a-col :span="7" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>本地服务</template>
                 <template #extra>
                     <div class="srv-head-actions">
-                        <a-button size="small" title="新建实例" @click="openInstModal()">新建实例</a-button>
-                        <a-button size="small" title="版本管理" @click="openVersionsModal()">版本管理</a-button>
+                        <a-button size="small" @click="openInstModal()">新建实例</a-button>
+                        <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
                     </div>
                 </template>
                 <a-list :bordered="false" size="small">
                     <a-list-item v-for="inst in instances" :key="inst.id"
                         :class="{ 'inst-active': selectedId === inst.id }" @click="selectInst(inst.id)">
                         <a-space>
-                            <a-badge :status="states[inst.id]?.running ? 'success' : 'normal'" />
-                            <span class="conn-name" :title="inst.name + ':' + inst.port">{{ inst.name }}</span>
-                            <a-tag color="arcoblue" size="small">v{{ inst.version }}</a-tag>
+                            <com-badge :status="states[inst.id]?.running ? 'success' : 'normal'"
+                                :animated="!!states[inst.id]?.running" />
+                            <a-tooltip :content="inst.name + ':' + inst.port">
+                                <span class="conn-name">{{ inst.name }}</span>
+                            </a-tooltip>
+                            <a-tag v-if="inst.mode === 'docker'" color="purple" size="small">{{ inst.image || 'Docker' }}</a-tag>
+                            <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
                         </a-space>
                         <template #actions>
                             <a-dropdown trigger="hover" @select="(v: any) => onInstAction(v, inst)">
@@ -46,61 +50,99 @@
 
         <!-- 右侧：选中实例详情 + 日志 -->
         <a-col :span="17" class="main-col">
-            <a-card v-if="!selectedId" class="main-panel empty-card">
+            <a-card v-if="!selectedId" class="main-panel empty-card card-head-tool">
                 <a-empty description="从左侧选择一个 Nginx 实例查看状态与日志" />
             </a-card>
-            <a-card v-else class="main-panel" :body-style="{ padding: 0 }">
+            <a-card v-else class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space>
-                        <a-badge :status="selState?.running ? 'success' : 'normal'" />
+                        <com-badge :status="selState?.running ? 'success' : 'normal'" :animated="!!selState?.running" />
                         <span>{{ selCfg?.name }}</span>
+                        <a-tag v-if="isDockerSel" color="purple" size="small">{{ selState?.image || selCfg?.image || 'Docker' }}</a-tag>
+                        <a-tag v-else color="arcoblue" size="small">v{{ selState?.version || selCfg?.version }}</a-tag>
                         <a-tag color="arcoblue" size="small">:{{ selCfg?.port }}</a-tag>
-                        <a-tag v-if="selCfg?.sslPort" color="purple" size="small">https :{{ selCfg.sslPort }}</a-tag>
+                        <a-tag v-if="selCfg?.sslPort" color="orange" size="small">https :{{ selCfg.sslPort }}</a-tag>
                     </a-space>
                 </template>
                 <template #extra>
                     <a-space>
-                        <a-button size="small" type="primary" :disabled="selState?.running"
+                        <a-button size="small" :disabled="selState?.running"
                             @click="doStart">启动</a-button>
                         <a-button size="small" status="danger" :disabled="!selState?.running"
                             @click="doStop">停止</a-button>
                         <a-button size="small" @click="doRestart">重启</a-button>
-                        <a-button size="small" :disabled="!selState?.running" @click="doReload">重载</a-button>
+                        <a-tooltip
+                            :content="isDockerSel ? '容器模式没有 nginx -s reload：重载 = 重启容器（会短暂中断），新配置随之生效' : 'nginx -s reload 平滑重载配置'">
+                            <a-button size="small" :disabled="!selState?.running" @click="doReload">重载</a-button>
+                        </a-tooltip>
                     </a-space>
                 </template>
                 <div class="detail-grid">
-                    <div class="ls-item"><span>Nginx 版本</span><b>{{ selState?.version || selCfg?.version || '-' }}</b>
+                    <div class="ls-item"><span>运行模式</span>
+                        <b>{{ selState?.mode === 'docker' ? 'Docker 容器' : '本地进程' }}</b>
+                    </div>
+                    <div class="ls-item"><span>{{ isDockerSel ? '镜像' : 'Nginx 版本' }}</span><b>{{ selState?.version || selCfg?.version || '-' }}</b>
                     </div>
                     <div class="ls-item"><span>运行状态</span>
-                        <b :class="selState?.running ? 'ok' : 'no'">{{ selState?.running ? '运行中' : '已停止' }}</b>
+                        <b class="com-state" :class="selState?.running ? 'ok' : 'no'">
+                            <com-badge :status="selState?.running ? 'success' : 'normal'"
+                                :animated="!!selState?.running" />
+                            {{ selState?.running ? '运行中' : '已停止' }}
+                        </b>
                     </div>
-                    <div class="ls-item"><span>Master PID</span><b>{{ selState?.pid || '-' }}</b></div>
-                    <div class="ls-item"><span>Worker 数</span><b>{{ selState?.workers ?? '-' }}</b></div>
+                    <!-- 容器里的 nginx 进程在容器 namespace，本机看不到 master PID 与 worker 数：改成报容器状态 -->
+                    <div class="ls-item" v-if="isDockerSel"><span>容器</span>
+                        <a-tooltip :content="'容器 ID：' + (selState?.containerId || '-') + '（状态 ' + (selState?.containerState || '-') + '）'">
+                            <b class="ellipsis">{{ selState?.container || '-' }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item" v-else><span>Master PID</span><b>{{ selState?.pid || '-' }}</b></div>
+                    <div class="ls-item" v-if="!isDockerSel"><span>Worker 数</span><b>{{ selState?.workers ?? '-' }}</b></div>
+                    <div class="ls-item" v-else><span>Worker 数<a-tooltip
+                                content="容器内的 nginx 进程不在本机进程列表里，从容器外统不到">
+                                <icon-question-circle class="ls-label-tip" />
+                            </a-tooltip></span><b>-</b>
+                    </div>
                     <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(selState?.uptimeSeconds) }}</b></div>
                     <div class="ls-item"><span>req/s（估算）</span><b>{{ selState?.requestsPerSec ? selState.requestsPerSec.toFixed(2) : '-' }}</b></div>
-                    <div class="ls-item" title="站点根目录"><span>站点目录</span><b class="ellipsis">{{
-                        selState?.docRoot || '-' }}</b></div>
-                    <div class="ls-item" title="conf 路径"><span>nginx.conf</span><b class="ellipsis">{{
-                        selState?.configPath || '-' }}</b></div>
-                    <div class="ls-item" title="实例运行目录（-p prefix）"><span>运行目录</span><b class="ellipsis">{{
-                        selState?.prefix || '-' }}</b></div>
+                    <div class="ls-item"><span>站点目录</span>
+                        <a-tooltip :content="selState?.docRoot || '-'">
+                            <b class="ellipsis">{{ selState?.docRoot || '-' }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item"><span>nginx.conf</span>
+                        <a-tooltip :content="selState?.configPath || '-'">
+                            <b class="ellipsis">{{ selState?.configPath || '-' }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item">
+                        <span>运行目录<a-tooltip content="启动时 -p prefix 指定的目录：其中 conf/ 与 logs/ 与之相对">
+                                <icon-question-circle class="ls-label-tip" />
+                            </a-tooltip></span>
+                        <a-tooltip :content="selState?.prefix || '-'">
+                            <b class="ellipsis">{{ selState?.prefix || '-' }}</b>
+                        </a-tooltip>
+                    </div>
                 </div>
                 <div class="log-head">
                     <span>错误/访问日志（实时）</span>
                     <a-space :size="6">
-                        <a-button size="mini" :disabled="!selState?.running" @click="openSite(selCfg?.port ?? 0)">
+                        <a-button size="small" :disabled="!selState?.running" @click="openSite(selCfg?.port ?? 0)">
                             <template #icon><icon-launch /></template>打开站点
                         </a-button>
-                        <a-button size="mini" :disabled="!selState?.running" @click="doReload">
-                            <template #icon><icon-sync /></template>重载
-                        </a-button>
-                        <a-button size="mini" @click="openConf(selectedId)">
+                        <a-tooltip
+                            :content="isDockerSel ? '容器模式：重载 = 重启容器（新配置随之生效）' : 'nginx -s reload 平滑重载配置'">
+                            <a-button size="small" :disabled="!selState?.running" @click="doReload">
+                                <template #icon><icon-sync /></template>重载
+                            </a-button>
+                        </a-tooltip>
+                        <a-button size="small" @click="openConf(selectedId)">
                             <template #icon><icon-settings /></template>nginx.conf
                         </a-button>
-                        <a-button size="mini" @click="doCheck(selectedId)">
+                        <a-button size="small" @click="doCheck(selectedId)">
                             <template #icon><icon-safe /></template>配置检查
                         </a-button>
-                        <a-button size="mini" @click="logLines = []">
+                        <a-button size="small" @click="logLines = []">
                             <template #icon><icon-delete /></template>清空
                         </a-button>
                     </a-space>
@@ -116,27 +158,90 @@
     <!-- 新建/编辑实例 -->
     <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520"
         @before-ok="saveInstance">
-        <a-form :model="instForm" layout="vertical">
+        <a-form :model="instForm" layout="vertical" class="inst-form">
             <a-form-item field="name" label="实例名称" required>
                 <a-input v-model="instForm.name" placeholder="如 site-dev" />
             </a-form-item>
-            <a-form-item field="version" label="Nginx 版本" required>
-                <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
+            <a-form-item field="mode" label="运行模式">
+                <a-radio-group size="medium" v-model="instForm.mode" type="button" @change="onModeChange">
+                    <a-radio value="local"><icon-computer /> 本地</a-radio>
+                    <a-radio value="docker"><icon-experiment /> Docker</a-radio>
+                </a-radio-group>
+                <template #extra>
+                    <template v-if="instForm.mode === 'docker'">
+                        容器里跑 nginx：实例的 conf/ 与 logs/ 以及站点目录都挂载进容器，改配置后点「重载」（重启容器）生效；首次启动会自动拉镜像
+                    </template>
+                    <template v-else>使用本机插件目录下的 nginx.exe，可在「版本管理」获取</template>
+                </template>
             </a-form-item>
-            <a-form-item field="port" label="HTTP 端口">
-                <a-input-number v-model="instForm.port" :min="1" :max="65535" @blur="checkPortTaken" />
-            </a-form-item>
-            <a-form-item field="sslPort" label="HTTPS 端口（0 = 不启用）">
-                <a-input-number v-model="instForm.sslPort" :min="0" :max="65535" />
-            </a-form-item>
-            <a-form-item field="docRoot" label="站点根目录（留空 = 程序目录 data/www/实例名）">
+            <!-- 两种模式的行数和列宽对齐（Docker 只多一个容器名），切模式时弹窗高度不跳 -->
+            <a-row :gutter="12">
+                <a-col :span="14">
+                    <a-form-item v-if="instForm.mode !== 'docker'" field="version" label="Nginx 版本" required
+                        tooltip="需已安装，可在「版本管理」获取">
+                        <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
+                    </a-form-item>
+                    <a-form-item v-else class="img-item" field="image" label="镜像" required>
+                        <div class="img-row">
+                            <a-select v-model="instForm.image" class="img-select" placeholder="选择已拉取镜像" allow-create
+                                filterable :loading="dockerImagesLoading">
+                                <!-- 自闭合的 a-option 没有文字，下拉里会全是空白行 —— 显式写上文字 -->
+                                <a-option v-for="im in imageOptions" :key="im" :value="im">{{ im }}</a-option>
+                                <template #empty>
+                                    <a-empty :image="false" description="无可用镜像" />
+                                </template>
+                            </a-select>
+                            <!-- 配镜像时随手打开 Docker 管理窗口（拉取 / 看进度） -->
+                            <a-tooltip content="打开 Docker 管理窗口：拉镜像、看拉取进度">
+                                <a-button size="small" class="img-open" @click="openDockerWindow">
+                                    <template #icon><icon-storage /></template>
+                                </a-button>
+                            </a-tooltip>
+                        </div>
+                        <template #help>
+                            <span v-if="dockerImagesLoading">正在读取本地镜像…</span>
+                            <span v-else-if="!imageOptions.length && !instForm.image" class="img-none">
+                                本地无可用镜像，<a-link @click="openDockerWindow">点击去安装</a-link>
+                            </span>
+                        </template>
+                    </a-form-item>
+                </a-col>
+                <a-col :span="10">
+                    <a-form-item field="port" label="HTTP 端口" :error="portError"
+                        :tooltip="instForm.mode === 'docker' ? '宿主机发布端口（只绑 127.0.0.1）；容器内固定监听 80，改这里不动配置文件' : 'nginx.conf 里的 listen 端口'">
+                        <a-input-number v-model="instForm.port" :min="1" :max="65535" @change="portError = ''"
+                            @blur="checkPortTaken" />
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错 -->
+            <a-alert v-if="instForm.mode === 'docker' && dockerErr" type="warning" style="margin-bottom: 12px">
+                {{ dockerErr }}</a-alert>
+            <a-row :gutter="12">
+                <a-col v-if="instForm.mode === 'docker'" :span="8">
+                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-nginx-实例ID">
+                        <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="instForm.mode === 'docker' ? 8 : 12">
+                    <a-form-item field="sslPort" label="HTTPS 端口" :tooltip="instForm.mode === 'docker' ? '0 = 不启用；>0 时容器内监听 443 并发布到该端口，证书放到实例 conf 目录的 server.crt/server.key' : '0 = 不启用 HTTPS'"
+                        :error="sslPortError">
+                        <a-input-number v-model="instForm.sslPort" :min="0" :max="65535"
+                            @change="sslPortError = ''" @blur="checkSslPortTaken" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="instForm.mode === 'docker' ? 8 : 12">
+                    <a-form-item field="workers" label="worker_processes" tooltip="0 = auto（按 CPU 核数自动）">
+                        <a-input-number v-model="instForm.workers" :min="0" :max="64" />
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <a-form-item field="docRoot" label="站点根目录"
+                :tooltip="instForm.mode === 'docker' ? '留空 = 程序目录 data/www/实例名；该目录会挂载到容器 /usr/share/nginx/html' : '留空 = 程序目录 data/www/实例名'">
                 <a-input-search v-model="instForm.docRoot" placeholder="如 D:\www\site" search-button
                     button-text="选择目录" @click-btn="chooseDocRoot" />
             </a-form-item>
-            <a-form-item field="workers" label="worker_processes（0 = auto）">
-                <a-input-number v-model="instForm.workers" :min="0" :max="64" />
-            </a-form-item>
-            <a-form-item field="stubStatus" label="开放 /stub_status 状态页">
+            <a-form-item field="stubStatus" label="开放 /stub_status 状态页" tooltip="开启后可用工具面板读取 nginx 连接数/请求数">
                 <a-switch v-model="instForm.stubStatus" />
             </a-form-item>
         </a-form>
@@ -147,18 +252,18 @@
         :body-style="{ padding: '12px 16px', maxHeight: '72vh', overflowY: 'auto' }">
         <div class="ver-block">
             <div class="ver-title">本地可用版本</div>
-            <a-table :data="localVersions" size="small" :pagination="false" row-key="version" :scroll="{ y: 200 }"
+            <a-table :data="localVersions" size="small" :pagination="false" row-key="version" :scroll="{ x: '100%', y: 200 }"
                 :columns="[
                     { title: '版本', dataIndex: 'version' },
                     { title: '来源', dataIndex: 'source', width: 90, slotName: 'source' },
                     { title: '路径', dataIndex: 'path', ellipsis: true, tooltip: true },
-                    { title: '操作', dataIndex: 'ops', width: 90, slotName: 'ops' },
+                    { title: '操作', dataIndex: 'ops', width: 90, slotName: 'ops', fixed: 'right', align: 'right' },
                 ]">
                 <template #source="{ record }">
                     <a-tag size="small" :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : 'orange'">{{ srcLabel(record.source) }}</a-tag>
                 </template>
                 <template #ops="{ record }">
-                    <a-button size="mini" status="danger" :disabled="record.source === 'bundled'"
+                    <a-button size="small" status="danger" :disabled="record.source === 'bundled'"
                         @click="removeVersion(record)">删除</a-button>
                 </template>
             </a-table>
@@ -167,10 +272,10 @@
                     <a-input v-model="localDirInput" placeholder="注册本机已有 Nginx：填写 nginx.exe 所在目录" />
                 </a-col>
                 <a-col :span="4">
-                    <a-button block @click="chooseLocalDir">浏览…</a-button>
+                    <a-button size="small" block @click="chooseLocalDir">浏览…</a-button>
                 </a-col>
                 <a-col :span="4">
-                    <a-button type="primary" block @click="addLocalDir">添加</a-button>
+                    <a-button size="small" block @click="addLocalDir">添加</a-button>
                 </a-col>
             </a-row>
         </div>
@@ -178,29 +283,37 @@
         <div class="ver-block">
             <div class="ver-title">
                 线上版本
-                <a-button size="mini" :loading="remoteLoading" @click="loadRemoteVersions">刷新</a-button>
+                <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">刷新</a-button>
             </div>
             <a-spin :loading="remoteLoading" style="width:100%">
-                <a-table :data="remoteVersions" size="small" :pagination="false" row-key="version" :scroll="{ y: 220 }"
+                <a-table :data="remoteVersions" size="small" :pagination="false" row-key="version" :scroll="{ x: '100%', y: 220 }"
                     :columns="[
                         { title: '版本', dataIndex: 'version', width: 110 },
                         { title: '产品线', dataIndex: 'release', width: 90 },
                         { title: '包大小', dataIndex: 'size', width: 100, slotName: 'size' },
                         { title: '状态', dataIndex: 'st', width: 150, slotName: 'st' },
-                        { title: '操作', dataIndex: 'ops', width: 100, slotName: 'ops' },
+                        { title: '操作', dataIndex: 'ops', width: 100, slotName: 'ops', fixed: 'right', align: 'right' },
                     ]">
                     <template #size="{ record }">{{ fmtBytes(record.size) }}</template>
                     <template #st="{ record }">
-                        <a-tag v-if="installedSet.has(record.version)" color="green" size="small">已安装</a-tag>
-                        <a-tag v-else-if="installProgress[record.version]" :color="installProgress[record.version].stage === 'error' ? 'red' : 'arcoblue'" size="small">
+                        <span v-if="installedSet.has(record.version)" class="com-state is-on">
+                            <com-badge status="success" />已安装
+                        </span>
+                        <span v-else-if="installProgress[record.version]" class="com-state"
+                            :class="installProgress[record.version].stage === 'error' ? 'is-off' : 'is-busy'">
+                            <com-badge
+                                :status="installProgress[record.version].stage === 'error' ? 'danger' : 'processing'"
+                                :animated="installProgress[record.version].stage !== 'error'" />
                             {{ stageText(installProgress[record.version]) }}
-                        </a-tag>
-                        <a-tag v-else size="small" color="gray">未安装</a-tag>
+                        </span>
+                        <span v-else class="com-state is-dim">
+                            <com-badge status="normal" />未安装
+                        </span>
                     </template>
                     <template #ops="{ record }">
-                        <a-button v-if="!installedSet.has(record.version)" size="mini" type="primary"
+                        <a-button v-if="!installedSet.has(record.version)" size="small"
                             :disabled="!!installProgress[record.version]" @click="installVersion(record)">安装</a-button>
-                        <a-button v-else size="mini" @click="loadLocalVersions">已安装</a-button>
+                        <a-button v-else size="small" @click="loadLocalVersions">已安装</a-button>
                     </template>
                 </a-table>
             </a-spin>
@@ -218,10 +331,10 @@
     <a-modal v-model:visible="confVisible" :title="`nginx.conf - ${cfgNameOf(confInstId)}`" :width="760">
         <a-textarea v-model="confText" :auto-size="{ minRows: 16, maxRows: 24 }" spellcheck="false" />
         <template #footer>
-            <div class="ini-tip">保存前自动备份并执行配置检查，检查失败将回滚。</div>
+            <div class="ini-tip">{{ confInstDocker ? '容器模式跑不了 nginx -t：保存后点「重载」（重启容器）生效，起不来时看日志。' : '保存前自动备份并执行配置检查，检查失败将回滚。' }}</div>
             <a-space>
-                <a-button @click="confVisible = false">取消</a-button>
-                <a-button type="primary" @click="saveConfText">保存</a-button>
+                <a-button size="small" @click="confVisible = false">取消</a-button>
+                <a-button size="small" @click="saveConfText">保存</a-button>
             </a-space>
         </template>
     </a-modal>
@@ -237,10 +350,15 @@ import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactiv
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
+import { useToolWindow } from "@/views/index/useToolWindow";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
-interface InstConfig { id: string; name: string; version: string; port: number; sslPort: number; docRoot: string; workers: number; stubStatus: boolean }
+interface InstConfig {
+    id: string; name: string; version: string; port: number; sslPort: number; docRoot: string; workers: number; stubStatus: boolean;
+    // mode: local | docker；容器模式不占本机版本库，靠 image 定位镜像
+    mode: string; image: string; containerName: string;
+}
 
 /* ============================ 状态 ============================ */
 const instances = ref<InstConfig[]>([]);
@@ -256,10 +374,16 @@ let offSelInst: any = null;
 
 const selCfg = computed(() => instances.value.find((i) => i.id === selectedId.value) || null);
 const selState = computed(() => (selectedId.value ? states[selectedId.value] : null));
+/** 当前实例是不是容器模式：配置优先（列表里就能看到刚改完还没启动的实例），状态兜底 */
+const isDockerSel = computed(() => (selCfg.value?.mode || selState.value?.mode) === "docker");
 
 const instForm = reactive<InstConfig>({
     id: "", name: "", version: "", port: 8090, sslPort: 0, docRoot: "", workers: 0, stubStatus: true,
+    mode: "local", image: "", containerName: "",
 });
+/** 端口占用提示：HTTP/HTTPS 各一份，贴表单项底下（红字） */
+const portError = ref("");
+const sslPortError = ref("");
 const instVisible = ref(false);
 
 const versionsVisible = ref(false);
@@ -274,6 +398,16 @@ const pluginsDirVal = ref("");
 const confVisible = ref(false);
 const confInstId = ref("");
 const confText = ref("");
+/** 配置弹窗里的提示按模式分流：容器模式既不能 nginx -t 也不会回滚 */
+const confInstDocker = computed(() => instances.value.find((i) => i.id === confInstId.value)?.mode === "docker");
+
+/* Docker 模式表单：镜像候选只列本机已有的 nginx 系镜像（不猜预置 tag），为空就引导去拉 */
+const dockerImages = ref<string[]>([]);
+const dockerImagesLoading = ref(false);
+const dockerErr = ref("");
+const imageOptions = computed(() => Array.from(new Set<string>(dockerImages.value)));
+
+const { openToolWindow } = useToolWindow();
 
 const checkVisible = ref(false);
 const checkOutput = ref("");
@@ -380,7 +514,8 @@ async function doRestart() {
 }
 async function doReload() {
     const c = selCfg.value; if (!c) return;
-    try { await GoTools.NginxSrvReload(c.id); Message.success("配置已平滑重载"); }
+    const docker = (states[c.id]?.mode || c.mode) === "docker";
+    try { await GoTools.NginxSrvReload(c.id); Message.success(docker ? "容器已重启，新配置已生效" : "配置已平滑重载"); }
     catch (e: any) { Message.error("重载失败: " + (e?.message || e)); }
     refreshStates();
 }
@@ -435,19 +570,81 @@ async function onInstAction(v: string, inst: InstConfig) {
     }
 }
 
-function openInstModal(inst?: InstConfig) {
-    if (inst) { Object.assign(instForm, { ...inst }); }
+async function openInstModal(inst?: InstConfig) {
+    portError.value = "";
+    sslPortError.value = "";
+    dockerErr.value = "";
+    if (inst) {
+        // 历史配置没 mode/image/containerName 字段，归一化后再进表单，避免 radio 两档都没选中
+        Object.assign(instForm, {
+            ...inst,
+            mode: inst.mode === "docker" ? "docker" : "local",
+            image: inst.image || "",
+            containerName: inst.containerName || "",
+        });
+    }
     else {
-        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port: 8090, sslPort: 0, docRoot: "", workers: 0, stubStatus: true });
+        // 默认端口也要能用：避开其它实例已登记 / 系统已监听的
+        let port = 8090;
+        try { port = (await GoTools.NginxSrvSuggestPort(8090)) || port; } catch (e) { /* ignore */ }
+        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port, sslPort: 0, docRoot: "", workers: 0, stubStatus: true, mode: "local", image: "", containerName: "" });
     }
     if (localVersions.value.length === 0) loadLocalVersions();
+    if (instForm.mode === "docker") onModeChange("docker");
     instVisible.value = true;
 }
-async function checkPortTaken() {
-    if (!instForm.port) return;
+
+/** 切换运行模式：Docker 读本机镜像候选 + 引擎状态，不干预已有输入 */
+async function onModeChange(v: any) {
+    const mode = String(v ?? instForm.mode ?? "local");
+    instForm.mode = mode;
+    if (mode !== "docker") return;
+    loadImageOptions();
+    loadDockerEngine();
+}
+
+async function loadImageOptions() {
+    dockerImagesLoading.value = true;
+    try { dockerImages.value = (await GoTools.NginxSrvDockerImages()) || []; }
+    catch (e) { dockerImages.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
+    dockerImagesLoading.value = false;
+    // 还没选值且有候选时先填第一个，省一步点击
+    if (instForm.mode === "docker" && !instForm.image && dockerImages.value.length) instForm.image = dockerImages.value[0];
+}
+
+async function loadDockerEngine() {
     try {
-        const suggest = await GoTools.NginxSrvSuggestPort(instForm.port);
-        if (suggest && suggest !== instForm.port) Message.warning(`端口 ${instForm.port} 已被占用，建议改为 ${suggest}`);
+        const [ok, msg] = await GoTools.NginxSrvDockerAvailable();
+        dockerErr.value = ok ? "" : (msg || "Docker 引擎不可用");
+    } catch (e: any) { dockerErr.value = e?.message || String(e); }
+}
+
+/** 打开 Docker 管理窗口（独立 webview，单例复用）：配镜像时直接过去拉，不用回主页找入口 */
+function openDockerWindow() {
+    openToolWindow("/tools/docker", "Docker管理", { single: true, width: 1200, height: 800 });
+}
+/** HTTP 端口校验；顺带把 HTTPS 与它撞车的情况也标出来 */
+async function checkPortTaken() {
+    if (!instForm.port) { portError.value = ""; return; }
+    try {
+        const reason = await GoTools.NginxSrvPortTaken(instForm.port, instForm.id || "");
+        if (!reason) { portError.value = ""; }
+        else {
+            const suggest = await GoTools.NginxSrvSuggestPort(instForm.port);
+            portError.value = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
+        }
+    } catch (e) { /* ignore */ }
+    if (instForm.sslPort && instForm.sslPort === instForm.port) sslPortError.value = "HTTPS 端口不能与 HTTP 端口相同";
+    else if (sslPortError.value === "HTTPS 端口不能与 HTTP 端口相同") sslPortError.value = "";
+}
+async function checkSslPortTaken() {
+    if (!instForm.sslPort) { sslPortError.value = ""; return; }
+    if (instForm.sslPort === instForm.port) { sslPortError.value = "HTTPS 端口不能与 HTTP 端口相同"; return; }
+    try {
+        const reason = await GoTools.NginxSrvPortTaken(instForm.sslPort, instForm.id || "");
+        if (!reason) { sslPortError.value = ""; return; }
+        const suggest = await GoTools.NginxSrvSuggestPort(instForm.sslPort);
+        sslPortError.value = suggest && suggest !== instForm.sslPort ? `${reason}，可用：${suggest}` : reason;
     } catch (e) { /* ignore */ }
 }
 async function chooseDocRoot() {
@@ -456,10 +653,39 @@ async function chooseDocRoot() {
 }
 async function saveInstance(): Promise<boolean> {
     if (!instForm.name) { Message.warning("请填写实例名称"); return false; }
-    if (!instForm.version) { Message.warning("请选择 Nginx 版本"); return false; }
+    // 两种模式的必填项不一样：本地看本机版本库，容器看镜像（后端也会再校一次）
+    if (instForm.mode === "docker") {
+        if (!instForm.image) { Message.warning("Docker 模式请选择或输入镜像"); return false; }
+    } else if (!instForm.version) { Message.warning("请选择 Nginx 版本"); return false; }
+    if (!instForm.port) { Message.warning("请填写 HTTP 端口"); return false; }
+    // 端口占用先在本地拦一次，后端保存时还会再校验
+    try {
+        const reason = await GoTools.NginxSrvPortTaken(instForm.port, instForm.id || "");
+        if (reason) {
+            portError.value = reason;
+            Message.warning("HTTP " + reason);
+            return false;
+        }
+        if (instForm.sslPort) {
+            if (instForm.sslPort === instForm.port) {
+                sslPortError.value = "HTTPS 端口不能与 HTTP 端口相同";
+                Message.warning(sslPortError.value);
+                return false;
+            }
+            const sslReason = await GoTools.NginxSrvPortTaken(instForm.sslPort, instForm.id || "");
+            if (sslReason) {
+                sslPortError.value = sslReason;
+                Message.warning("HTTPS " + sslReason);
+                return false;
+            }
+        }
+    } catch (e) { /* 探测失败不阻断，后端兜底 */ }
     try {
         await GoTools.NginxSrvSaveInstance({ ...instForm });
-        Message.success("已保存，首次启动会按表单生成 nginx.conf"); await loadInstances(); return true;
+        Message.success(instForm.mode === "docker"
+            ? "已保存；容器里的 nginx.conf 默认监听 80/443，改这里只改宿主端口"
+            : "已保存，首次启动会按表单生成 nginx.conf");
+        await loadInstances(); return true;
     } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); return false; }
 }
 
@@ -521,7 +747,9 @@ async function openConf(id: string) {
 async function saveConfText() {
     try {
         await GoTools.NginxSrvSaveConfigText(confInstId.value, confText.value);
-        Message.success("nginx.conf 已保存；运行中实例建议执行一次重载");
+        Message.success(confInstDocker.value
+            ? "nginx.conf 已保存；容器模式点「重载」（重启容器）后生效"
+            : "nginx.conf 已保存；运行中实例建议执行一次重载");
         confVisible.value = false;
     } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); }
 }
@@ -575,7 +803,6 @@ onUnmounted(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 .side-col,
@@ -683,6 +910,21 @@ onUnmounted(() => {
     color: var(--color-text-3);
 }
 
+/* 这个 b 原本为省略号设了 overflow:hidden，会把圆点光晕切掉一圈 */
+.ls-item b.com-state {
+    overflow: visible;
+    justify-content: flex-end;
+}
+
+/* 字段说明：图标 + a-tooltip，不用原生 title */
+.ls-label-tip {
+    margin-left: 4px;
+    font-size: 12px;
+    color: var(--color-text-3);
+    vertical-align: -1px;
+    cursor: help;
+}
+
 .log-head {
     display: flex;
     justify-content: space-between;
@@ -755,5 +997,46 @@ onUnmounted(() => {
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
+}
+
+/* Docker 镜像行：下拉占满剩余宽度，右侧一个方形按钮打开 Docker 管理窗口
+ * Arco 的竖排表单项内容区默认按内容宽度收缩（align-items: flex-start），空下拉会被挤成一个小方块，
+ * 这里显式把内容区拉成整栏宽 */
+.inst-form :deep(.img-item .arco-form-item-wrapper-col) {
+    align-items: stretch;
+}
+
+.inst-form :deep(.img-item .arco-form-item-content) {
+    width: 100%;
+}
+
+.img-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.img-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.img-open {
+    flex: none;
+    width: 32px;
+    padding: 0;
+}
+
+/* 本地没有镜像时的提示：橙色一点，提醒可以点进去装 */
+.img-none {
+    color: rgb(var(--orange-6));
+}
+
+/* #help 里的“去安装”链接：跟提示文字同字号，不把行高撑开 */
+.img-none :deep(.arco-link) {
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
 }
 </style>

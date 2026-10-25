@@ -24,7 +24,7 @@ export interface InstanceConfig {
     "version": string;
 
     /**
-     * HTTP 端口
+     * HTTP 端口（容器模式下是宿主机发布端口）
      */
     "port": number;
 
@@ -47,6 +47,21 @@ export interface InstanceConfig {
      * 是否开放 /stub_status 状态页
      */
     "stubStatus": boolean;
+
+    /**
+     * Mode 运行模式：local（默认，空串同义）| docker（容器内跑 nginx，见 docker.go）
+     */
+    "mode": string;
+
+    /**
+     * Image Docker 模式使用的镜像，如 nginx:alpine；本地模式为空
+     */
+    "image": string;
+
+    /**
+     * ContainerName 自定义容器名；留空按实例 ID 生成 go-tools-nginx-<id>
+     */
+    "containerName": string;
 }
 
 /**
@@ -61,7 +76,7 @@ export interface InstanceStatus {
     "running": boolean;
 
     /**
-     * master 进程 PID
+     * master 进程 PID（容器模式为 0，进程在容器 namespace 里）
      */
     "pid": number;
     "workers": number;
@@ -74,6 +89,23 @@ export interface InstanceStatus {
      * 由 access.log 行数估算
      */
     "requestsPerSec": number;
+
+    /**
+     * Mode 运行模式：local | docker
+     */
+    "mode": string;
+
+    /**
+     * Image / Container 容器模式下的镜像与容器名（本地模式为空）
+     */
+    "image": string;
+    "container": string;
+
+    /**
+     * ContainerID / ContainerState 实际容器的短 ID 与状态（running/exited/created…）
+     */
+    "containerId": string;
+    "containerState": string;
 }
 
 /**

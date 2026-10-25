@@ -4,7 +4,7 @@
         <a-col :span="6" class="side-col">
             <a-row class="side-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>输入</template>
                         <template #extra>
                             <a-tag size="small" color="arcoblue">{{ inputBase }} 进制</a-tag>
@@ -21,7 +21,7 @@
                                 <a-input v-model="inputStr" :placeholder="`请输入 ${inputBase} 进制数`" allow-clear
                                     @press-enter="convert" />
                             </div>
-                            <a-button long @click="convert">
+                            <a-button size="small" long @click="convert">
                                 <template #icon><icon-swap /></template>转换
                             </a-button>
 
@@ -37,7 +37,7 @@
                                     </a-select>
                                 </div>
                                 <a-space>
-                                    <a-radio-group v-model="endian" type="button">
+                                    <a-radio-group size="medium" v-model="endian" type="button">
                                     <a-radio value="big">大端序</a-radio>
                                     <a-radio value="little">小端序</a-radio>
                                 </a-radio-group>
@@ -47,7 +47,7 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                         <template #title>简介</template>
                         <div class="side-body">
                             <p class="intro">
@@ -63,7 +63,7 @@
 
         <!-- 右侧：转换结果表 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space :size="8">
                         <span>转换结果</span>
@@ -83,7 +83,7 @@
                                 <template #cell="{ record }">
                                     <a-input :model-value="record.value" readonly @click="selectAll">
                                         <template #append>
-                                            <a-button :disabled="!record.value" @click="copyText(record.value)">
+                                            <a-button size="small" :disabled="!record.value" @click="copyText(record.value)">
                                                 <template #icon><icon-copy /></template>
                                             </a-button>
                                         </template>
@@ -259,7 +259,6 @@ const copyText = async (text: string) => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 /* 左侧列：上下两张卡片各占 50% 高 */

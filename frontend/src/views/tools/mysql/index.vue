@@ -4,7 +4,7 @@
       <!-- 左侧：连接 + 本地服务 + 对象树（对齐 Redis：a-card + #title/#extra + a-list + a-badge） -->
       <a-row class="left-panel" :gutter="6">
         <a-col class="side-cols" :span="24">
-          <a-card class="side-card" size="small" :body-style="{
+          <a-card class="side-card card-head-tool" size="small" :body-style="{
             padding: 0
           }">
             <template #title>连接</template>
@@ -15,7 +15,7 @@
               <a-list-item v-for="c in savedConns" :key="c.id" :class="{ active: c.id === st.activeConnId }"
                 @click="openConnection(c)">
                 <a-space>
-                  <a-badge :status="isOpen(c.id) ? 'success' : 'normal'" />
+                  <com-badge :status="isOpen(c.id) ? 'success' : 'normal'" :animated="isOpen(c.id)" />
                   <div class="conn-name">{{ c.name || (c.host + ':' + c.port) }}</div>
                 </a-space>
                 <template #actions>
@@ -29,7 +29,7 @@
                     </a-dropdown>
                     <span @click.stop>
                       <a-popconfirm :content="`确定删除连接「${c.name}」？`" type="warning" position="lt" @ok="removeConn(c)">
-                        <a-button size="mini" type="text" status="danger" class="conn-del"><icon-delete /></a-button>
+                        <a-button size="small" status="danger" class="conn-del"><icon-delete /></a-button>
                       </a-popconfirm>
                     </span>
                   </a-space>
@@ -51,7 +51,7 @@
     <a-col :span="19" class="main-col">
       <a-row :gutter="6" class="main-row">
         <a-col :span="6" class="main-row-col" v-if="st.activeConnId">
-          <a-card class="side-card tree-card" size="small" :body-style="{ padding: 0 }">
+          <a-card class="side-card tree-card card-head-tool" size="small" :body-style="{ padding: 0 }">
             <template #title>
               <a-space>
                 <span>数据库</span>
@@ -59,15 +59,17 @@
               </a-space>
             </template>
             <template #extra>
-              <a-button size="mini" type="text" @click="refreshTree"><template
+              <a-button size="small" @click="refreshTree"><template
                   #icon><icon-refresh /></template></a-button>
             </template>
             <div class="tree-wrap">
               <a-tree :data="treeData" v-model:selectedKeys="st.selectedKeys" v-model:expanded-keys="st.expandedKeys"
                 :load-more="loadMore" blockNode :show-line="true" @select="onTreeSelect">
                 <template #title="node">
-                  <span class="tree-title" :title="node?.title"
-                    @contextmenu.prevent.stop="onNodeContextMenu($event, node)">{{ node?.title }}</span>
+                  <a-tooltip :content="node?.title || ''" :disabled="!node?.title">
+                    <span class="tree-title"
+                      @contextmenu.prevent.stop="onNodeContextMenu($event, node)">{{ node?.title }}</span>
+                  </a-tooltip>
                 </template>
               </a-tree>
               <a-empty v-if="treeData.length === 0" :image="false" description="无数据库" />
@@ -79,12 +81,12 @@
           <div class="main-panel">
             <div v-if="!st.activeConnId" class="empty-state">
               <a-empty description="请从左侧打开一个 MySQL 连接">
-                <a-button type="primary" @click="openAddModal()"><template #icon><icon-plus /></template>新建连接</a-button>
+                <a-button size="small" @click="openAddModal()"><template #icon><icon-plus /></template>新建连接</a-button>
               </a-empty>
             </div>
 
             <template v-else>
-              <a-card class="main-card">
+              <a-card class="main-card card-head-tool">
                 <template #title>
                   <a-space>
                     <icon-storage /> {{ activeConnName }}
@@ -113,7 +115,7 @@
                 <div v-if="st.mode === 'table'" class="content">
                   <a-card class="table-card" size="small">
                     <template #title>
-                      <a-radio-group v-model="st.tableTab" type="button" @change="onTableTab">
+                      <a-radio-group size="medium" v-model="st.tableTab" type="button" @change="onTableTab">
                         <a-radio value="data"><icon-list /> 数据</a-radio>
                         <a-radio value="struct"><icon-storage /> 设计表</a-radio>
                         <a-radio value="ddl"><icon-code /> DDL</a-radio>
@@ -130,7 +132,7 @@
                             #icon><icon-search /></template>筛选</a-button>
                         <a-button size="small" @click="clearFilter()"><template
                             #icon><icon-refresh /></template>重置</a-button>
-                        <a-button size="small" type="primary" @click="openInsert()"><template
+                        <a-button size="small" @click="openInsert()"><template
                             #icon><icon-plus /></template>新增行</a-button>
                         <a-button size="small" @click="loadData()"><template
                             #icon><icon-download /></template>刷新</a-button>
@@ -140,13 +142,13 @@
                         <span class="grid-note">{{ st.data.note }}</span>
                       </a-space>
                       <a-space v-if="st.tableTab === 'struct'">
-                        <a-button size="small" type="primary" @click="addColumnModal()"><template
+                        <a-button size="small" @click="addColumnModal()"><template
                             #icon><icon-plus /></template>增加列</a-button>
                         <a-button size="small" @click="createIndexModal()"><template
                             #icon><icon-plus /></template>新建索引</a-button>
                         <a-button size="small" @click="loadSchema()"><template
                             #icon><icon-refresh /></template>刷新</a-button>
-                        <a-button size="small" type="primary" status="danger" @click="askDropTable()"><template
+                        <a-button size="small" status="danger" @click="askDropTable()"><template
                             #icon><icon-delete /></template>删除表</a-button>
                       </a-space>
                       <a-space v-if="st.tableTab === 'ddl'">
@@ -189,7 +191,7 @@
                         </template>
                         <template #op="{ record }">
                           <a-tooltip :content="st.schema.pk ? '删除该行' : '无单列主键，删除已禁用'">
-                            <a-button size="mini" type="text" status="danger" :disabled="!st.schema.pk"
+                            <a-button size="small" status="danger" :disabled="!st.schema.pk"
                               @click="askDeleteRow(record)"><icon-delete /></a-button>
                           </a-tooltip>
                         </template>
@@ -203,17 +205,17 @@
                     <div v-show="st.tableTab === 'struct'" class="tab-pane tab-pane-scroll">
                       <div class="struct-title">列</div>
                       <a-table :columns="structColCols" :data="st.schema.columns" :pagination="false" size="small"
-                        row-key="name">
+                        row-key="name" :scroll="{ x: '100%' }">
                         <template #colOp="{ record }">
-                          <a-button size="mini" type="text" @click="editColumnModal(record)"><icon-edit /></a-button>
-                          <a-button size="mini" type="text" status="danger" @click="askDropColumn(record)"><icon-delete /></a-button>
+                          <a-button size="small" @click="editColumnModal(record)"><icon-edit /></a-button>
+                          <a-button size="small" status="danger" @click="askDropColumn(record)"><icon-delete /></a-button>
                         </template>
                       </a-table>
                       <div class="struct-title">索引</div>
                       <a-table :columns="structIdxCols" :data="st.schema.indexes" :pagination="false" size="small"
-                        row-key="name">
+                        row-key="name" :scroll="{ x: '100%' }">
                         <template #idxOp="{ record }">
-                          <a-button size="mini" type="text" status="danger" :disabled="record.primary"
+                          <a-button size="small" status="danger" :disabled="record.primary"
                             @click="askDropIndex(record)">删除</a-button>
                         </template>
                       </a-table>
@@ -229,9 +231,9 @@
                 <div v-else-if="st.mode === 'view'" class="content">
                   <div class="grid-toolbar">
                     <span class="obj-title">视图：{{ st.view }}</span>
-                    <a-button size="mini" @click="loadViewData()"><template
+                    <a-button size="small" @click="loadViewData()"><template
                         #icon><icon-refresh /></template>刷新数据</a-button>
-                    <a-button size="mini" status="danger" @click="askDropView()"><template
+                    <a-button size="small" status="danger" @click="askDropView()"><template
                         #icon><icon-delete /></template>删除视图</a-button>
                   </div>
                   <a-table class="read-table" :columns="toReadCols(st.data.columns)" :data="st.data.rows"
@@ -243,7 +245,7 @@
                 <div v-else-if="st.mode === 'routine'" class="content">
                   <div class="grid-toolbar">
                     <span class="obj-title">函数：{{ st.routine }}（{{ st.routineType }}）</span>
-                    <a-button size="mini" status="danger" @click="askDropRoutine()"><template
+                    <a-button size="small" status="danger" @click="askDropRoutine()"><template
                         #icon><icon-delete /></template>删除</a-button>
                   </div>
                   <div class="struct-title">定义</div>
@@ -258,7 +260,7 @@
                       placeholder="连接" @change="onPanelConnChange('query')" />
                     <a-select v-model="st.query.db" size="mini" :options="queryDbOptions" style="width: 170px"
                       placeholder="数据库" allow-search @change="onPanelDbChange('query')" />
-                    <a-button size="mini" type="primary" @click="runQuery()"><template
+                    <a-button size="small" @click="runQuery()"><template
                         #icon><icon-play-arrow /></template>运行
                       (Ctrl+Enter)</a-button>
                     <span class="grid-note">{{ st.query.note }}</span>
@@ -281,9 +283,9 @@
                     <a-checkbox v-model="st.backup.all">全部表</a-checkbox>
                     <a-select v-if="!st.backup.all" v-model="st.backup.tables" :options="backupTableOptions" multiple
                       placeholder="选择表" size="mini" style="width: 300px" allow-clear />
-                    <a-button size="mini" type="primary" :loading="st.backup.loading" @click="genBackup()"><template
+                    <a-button size="small" :loading="st.backup.loading" @click="genBackup()"><template
                         #icon><icon-save /></template>生成备份</a-button>
-                    <a-button size="mini" :disabled="!st.backup.sql" @click="downloadBackup()"><template
+                    <a-button size="small" :disabled="!st.backup.sql" @click="downloadBackup()"><template
                         #icon><icon-download /></template>下载 .sql</a-button>
                   </div>
                   <div class="struct-title">备份预览（{{ st.backup.sql.length }} 字符）</div>
@@ -298,14 +300,18 @@
                       placeholder="连接" :disabled="!!st.tx.id" @change="onPanelConnChange('tx')" />
                     <a-select v-model="st.tx.db" size="mini" :options="txDbOptions" style="width: 170px"
                       placeholder="数据库" :disabled="!!st.tx.id" allow-search @change="onPanelDbChange('tx')" />
-                    <a-tag v-if="st.tx.id" color="green">事务进行中 {{ st.tx.id }}</a-tag>
-                    <a-button size="mini" type="primary" :disabled="!!st.tx.id" @click="txBegin()"><template
+                    <!-- 事务开着就是一件持续下去的事：圆点闪一下比一块色块更容易扫到 -->
+                    <span v-if="st.tx.id" class="com-state is-on">
+                      <com-badge status="success" :animated="true" />
+                      事务进行中 {{ st.tx.id }}
+                    </span>
+                    <a-button size="small" :disabled="!!st.tx.id" @click="txBegin()"><template
                         #icon><icon-play-arrow /></template>开始事务</a-button>
-                    <a-button size="mini" status="success" :disabled="!st.tx.id" @click="txCommit()"><template
+                    <a-button size="small" status="success" :disabled="!st.tx.id" @click="txCommit()"><template
                         #icon><icon-check /></template>提交</a-button>
-                    <a-button size="mini" status="warning" :disabled="!st.tx.id" @click="txRollback()"><template
+                    <a-button size="small" status="warning" :disabled="!st.tx.id" @click="txRollback()"><template
                         #icon><icon-close /></template>回滚</a-button>
-                    <a-button size="mini" :disabled="!st.tx.id" @click="txRun()"><template
+                    <a-button size="small" :disabled="!st.tx.id" @click="txRun()"><template
                         #icon><icon-code /></template>执行语句</a-button>
                   </div>
                   <a-textarea v-model="st.tx.sql" :auto-size="{ minRows: 4, maxRows: 10 }" :disabled="!st.tx.id"
@@ -347,7 +353,7 @@
         <a-form-item field="database" label="默认数据库（可留空）"><a-input v-model="connForm.database"
             placeholder="留空则在左侧选择" /></a-form-item>
         <a-form-item label="保存位置">
-          <a-radio-group v-model="st.saveTarget" type="button" size="small">
+          <a-radio-group v-model="st.saveTarget" type="button" size="medium">
             <a-radio value="file"><icon-save /> 文件</a-radio>
             <a-radio value="cache"><icon-storage /> 缓存</a-radio>
           </a-radio-group>
@@ -454,8 +460,8 @@
               <a-input v-model="st.sqlLog.dir"
                 :placeholder="`留空使用默认目录（${st.sqlLog.defaultDir || '程序目录下 logs'}）`" allow-clear
                 @blur="saveSqlLog()" @press-enter="saveSqlLog()" @clear="saveSqlLog()" />
-              <a-button @click="chooseSqlLogDir()">选择目录</a-button>
-              <a-button @click="resetSqlLogDir()">恢复默认</a-button>
+              <a-button size="small" @click="chooseSqlLogDir()">选择目录</a-button>
+              <a-button size="small" @click="resetSqlLogDir()">恢复默认</a-button>
             </div>
             <div class="hint">日志按日期自动分文件，如 mysql-sql-YYYYMMDD.log。当前目录：{{ st.sqlLog.resolvedDir || '（未加载）' }}</div>
           </a-form-item>
@@ -750,7 +756,7 @@ const dataCols = computed<any[]>(() => {
       sortable: { sortDirections: ["ascend", "descend"], sortOrder: st.data.orderBy === c ? (st.data.desc ? "descend" : "ascend") : undefined },
     });
   }
-  cols.push({ title: "操作", dataIndex: "__op", slotName: "op", width: 64, align: "center", resizable: false });
+  cols.push({ title: "操作", dataIndex: "__op", slotName: "op", width: 64, align: "center", resizable: false, fixed: "right" });
   return cols;
 });
 
@@ -769,7 +775,7 @@ const structColCols = computed<any[]>(() => [
   { title: "默认", dataIndex: "default", ellipsis: true, tooltip: true },
   { title: "额外", dataIndex: "extra", ellipsis: true, tooltip: true },
   { title: "注释", dataIndex: "comment", ellipsis: true, tooltip: true },
-  { title: "操作", dataIndex: "__op", slotName: "colOp", width: 90, align: "center" },
+  { title: "操作", dataIndex: "__op", slotName: "colOp", width: 90, align: "center", fixed: "right" },
 ]);
 const structIdxCols = computed<any[]>(() => [
   { title: "名称", dataIndex: "name", ellipsis: true, tooltip: true },
@@ -777,7 +783,7 @@ const structIdxCols = computed<any[]>(() => [
   { title: "主键", dataIndex: "primary", width: 70, render: ({ record }: any) => h("span", record.primary ? "是" : "否") },
   { title: "类型", dataIndex: "type", width: 120 },
   { title: "列", dataIndex: "columns", ellipsis: true, tooltip: true, render: ({ record }: any) => h("span", (record.columns || []).join(", ")) },
-  { title: "操作", dataIndex: "__op", slotName: "idxOp", width: 80, align: "center" },
+  { title: "操作", dataIndex: "__op", slotName: "idxOp", width: 90, align: "center", fixed: "right" },
 ]);
 
 const treeData = ref<any[]>([]);
@@ -2034,7 +2040,6 @@ onUnmounted(() => {
   display: flex;
   height: 100%;
   min-height: 0;
-  background: var(--color-fill-1);
 }
 
 .side-col {

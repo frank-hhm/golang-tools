@@ -16,9 +16,33 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/portcheck"
 
 	"github.com/shirou/gopsutil/v3/process"
 )
+
+func init() {
+	// 端口占用汇总：Nginx 实例的 HTTP/HTTPS 端口都参与跨工具查重
+	portcheck.Register(func() []portcheck.Owner {
+		list, err := loadInstances()
+		if err != nil {
+			return nil
+		}
+		out := make([]portcheck.Owner, 0, len(list))
+		for _, c := range list {
+			ports := []int{c.Port}
+			if c.SSLPort > 0 {
+				ports = append(ports, c.SSLPort)
+			}
+			out = append(out, portcheck.Owner{
+				Key:   "nginx:" + c.ID,
+				Label: "Nginx 实例「" + c.Name + "」",
+				Ports: ports,
+			})
+		}
+		return out
+	})
+}
 
 /* ============================ 配置持久化 ============================ */
 
@@ -61,8 +85,21 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("实例名称不能为空")
 	}
-	if cfg.Version == "" {
-		return fmt.Errorf("请选择 Nginx 版本")
+	useDocker := isDockerMode(&cfg)
+	if useDocker {
+		// 容器模式由镜像决定 nginx 本体，本机版本库不参与；Version 留空避免前端按本机版本展示
+		cfg.Mode = ModeDocker
+		cfg.Image = strings.TrimSpace(cfg.Image)
+		if cfg.Image == "" {
+			return fmt.Errorf("Docker 模式请选择镜像，如 %s", DefaultDockerImage)
+		}
+		cfg.Version = ""
+	} else {
+		cfg.Mode = ModeLocal
+		cfg.Image = ""
+		if cfg.Version == "" {
+			return fmt.Errorf("请选择 Nginx 版本")
+		}
 	}
 	if cfg.Port <= 0 {
 		cfg.Port = 80
@@ -70,16 +107,32 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Port > 65535 {
 		return fmt.Errorf("端口非法: %d", cfg.Port)
 	}
-	vers, _ := ListVersions()
-	ok := false
-	for _, v := range vers {
-		if v.Version == cfg.Version {
-			ok = true
-			break
+	if reason := PortTaken(cfg.Port, cfg.ID); reason != "" {
+		return fmt.Errorf("%s", reason)
+	}
+	if cfg.SSLPort > 0 {
+		if cfg.SSLPort > 65535 {
+			return fmt.Errorf("端口非法: %d", cfg.SSLPort)
+		}
+		if cfg.SSLPort == cfg.Port {
+			return fmt.Errorf("HTTPS 端口不能与 HTTP 端口相同: %d", cfg.SSLPort)
+		}
+		if reason := PortTaken(cfg.SSLPort, cfg.ID); reason != "" {
+			return fmt.Errorf("HTTPS %s", reason)
 		}
 	}
-	if !ok {
-		return fmt.Errorf("版本 %s 未安装", cfg.Version)
+	if !useDocker {
+		vers, _ := ListVersions()
+		ok := false
+		for _, v := range vers {
+			if v.Version == cfg.Version {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return fmt.Errorf("版本 %s 未安装", cfg.Version)
+		}
 	}
 	if cfg.DocRoot != "" {
 		if st, err := os.Stat(cfg.DocRoot); err != nil || !st.IsDir() {
@@ -116,9 +169,13 @@ func RemoveInstance(id string) error {
 	}
 	out := list[:0]
 	for _, c := range list {
-		if c.ID != id {
-			out = append(out, c)
+		if c.ID == id {
+			if isDockerMode(&c) {
+				_ = dockerRemove(&c) // 容器随实例删除；站点目录与日志留在宿主机
+			}
+			continue
 		}
+		out = append(out, c)
 	}
 	return saveInstances(out)
 }
@@ -139,9 +196,10 @@ func findInstance(id string) (*InstanceConfig, error) {
 /* ============================ 进程跟踪 ============================ */
 
 type srvRunning struct {
-	cmd     *exec.Cmd
-	done    chan struct{}
-	started time.Time
+	cmd         *exec.Cmd
+	done        chan struct{}
+	started     time.Time
+	containerID string // 容器模式没有 cmd，改记容器 ID
 }
 
 var (
@@ -237,6 +295,9 @@ func StartInstance(id string) error {
 	if trackedSrv(id) != nil {
 		return fmt.Errorf("实例已在运行")
 	}
+	if isDockerMode(cfg) {
+		return dockerStart(cfg)
+	}
 	if tcpUp(cfg.Port) {
 		return fmt.Errorf("端口 %d 已被其他进程占用（若为外部 nginx，请先停止或改端口）", cfg.Port)
 	}
@@ -299,11 +360,18 @@ func StartInstance(id string) error {
 	return fmt.Errorf("启动超时：15s 内端口 %d 未监听，请查看日志：\n%s", cfg.Port, errTail(prefix, 12))
 }
 
-// StopInstance 停止实例：nginx -s quit（优雅），兆底仅杀本实例进窋树
+// StopInstance 停止实例：nginx -s quit（优雅）兆底仅杀本实例进程树；容器模式停容器
 func StopInstance(id string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return err
+	}
+	if isDockerMode(cfg) {
+		p := trackedSrv(id)
+		if p == nil && dockerContainerID(cfg) == "" && !tcpUp(cfg.Port) {
+			return fmt.Errorf("实例未在运行")
+		}
+		return dockerStop(cfg)
 	}
 	p := trackedSrv(id)
 	if p == nil && !tcpUp(cfg.Port) {
@@ -362,11 +430,16 @@ func RestartInstance(id string) error {
 	return StartInstance(id)
 }
 
-// ReloadInstance 重载配置（nginx -s reload）；未运行时等同启动
+// ReloadInstance 重载配置（nginx -s reload）；未运行时等同启动。
+// 容器模式进不了容器执行 nginx -s reload，因此「重载」就是重启容器（配置已挂载在宿主机，
+// 重启后新配置一定生效，代价是短暂中断）
 func ReloadInstance(id string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return err
+	}
+	if isDockerMode(cfg) {
+		return dockerReload(cfg)
 	}
 	if !tcpUp(cfg.Port) && trackedSrv(id) == nil {
 		return StartInstance(id)
@@ -391,6 +464,14 @@ func CheckConfig(id string) (string, error) {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return "", err
+	}
+	if isDockerMode(cfg) {
+		// 把不能做与怎么做写成同一段文字，同时回到输出与 error：
+		// 绑定层出错时 Promise 会 reject，前端 catch 里只能拿到 error，只返 text 的话说明会被丢掉
+		msg := "Docker 模式无法在容器外执行 nginx -t。\n" +
+			"要验证配置：保存后点「重载」（容器模式即重启容器），起不来就把 error.log 与容器输出摊在日志里。\n" +
+			"配置报错时容器会立即退出，日志能看到 nginx 的原始报错行。"
+		return msg, fmt.Errorf("%s", msg)
 	}
 	exe := nginxExe(cfg.Version)
 	if exe == "" {
@@ -422,6 +503,7 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 		return st, err
 	}
 	st.Name, st.Version, st.Port, st.SSLPort = cfg.Name, cfg.Version, cfg.Port, cfg.SSLPort
+	st.Mode = ModeLocal
 	prefix, _ := instanceDir(id)
 	st.Prefix = prefix
 	st.ConfigPath = filepath.Join(prefix, "conf", "nginx.conf")
@@ -430,10 +512,22 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 		st.DocRoot = defaultDocRoot(cfg.ID, cfg.Name)
 	}
 	st.Running = tcpUp(cfg.Port)
+	if isDockerMode(cfg) {
+		// 容器里的 nginx 进程不在本机 namespace：不按本机 nginx.exe 误计 PID/worker，
+		// 也不跑 nginxPids()（会把同机其他本地实例的进程报成本实例的）
+		fillDockerStatus(cfg, &st)
+		if p := trackedSrv(id); p != nil && st.UptimeSeconds == 0 {
+			st.UptimeSeconds = int64(time.Since(p.started).Seconds())
+		}
+		if st.Running {
+			st.RequestsPerSec = estimateRps(prefix, st.UptimeSeconds)
+		}
+		return st, nil
+	}
 	pids := nginxPids()
 	st.Workers = len(pids)
 	if p := trackedSrv(id); p != nil {
-		if p.cmd.Process != nil {
+		if p.cmd != nil && p.cmd.Process != nil {
 			st.PID = p.cmd.Process.Pid
 		}
 		st.UptimeSeconds = int64(time.Since(p.started).Seconds())
@@ -463,6 +557,14 @@ func Logs(id string, n int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return dockerLogsBlend(cfg, prefix, n)
+	}
+	return logFilesOf(prefix, n)
+}
+
+// logFilesOf 拼接实例 logs 目录下的 error.log 与 access.log 尾部（本地与容器模式共用）
+func logFilesOf(prefix string, n int) ([]string, error) {
 	errLines := tailLines(filepath.Join(prefix, "logs", "error.log"), n)
 	accLines := tailLines(filepath.Join(prefix, "logs", "access.log"), n)
 	var out []string
@@ -477,19 +579,23 @@ func Logs(id string, n int) ([]string, error) {
 	return out, nil
 }
 
-// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 8080）
+// PortTaken 报告端口是否可用于（新）实例：其它实例的 HTTP/HTTPS 端口已登记，或已被进程监听。
+// excludeID 用于编辑场景排除自身（端口没改时自己正在监听也算可用）。空串表示可用。
+func PortTaken(port int, excludeID string) string {
+	exclude := ""
+	if excludeID != "" {
+		exclude = "nginx:" + excludeID
+	}
+	return portcheck.Taken(port, exclude)
+}
+
+// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 8080）：
+// 既跳过其它实例已登记的端口，也跳过系统里已绑不上的端口
 func SuggestPort(from int) int {
 	if from <= 0 {
 		from = 8080
 	}
-	for p := from; p < from+100; p++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			_ = ln.Close()
-			return p
-		}
-	}
-	return from
+	return portcheck.Suggest(from, 100)
 }
 
 // StopAll 停止所有由本程序拉起的 Nginx 实例（应用退出时调用）
@@ -586,7 +692,12 @@ func GetConfigText(id string) (string, error) {
 			return "", err
 		}
 		prefix, _ := instanceDir(id)
-		if err := ensureConf(cfg, prefix, confPath); err != nil {
+		if isDockerMode(cfg) {
+			// 容器实例的 listen 必须是容器端口，不能拿本地模板生成
+			if err := ensureDockerConf(cfg, confPath); err != nil {
+				return "", err
+			}
+		} else if err := ensureConf(cfg, prefix, confPath); err != nil {
 			return "", err
 		}
 	}
@@ -620,6 +731,10 @@ func SaveConfigText(id, text string) error {
 	// 写入新内容
 	if err := os.WriteFile(confPath, []byte(text), 0o644); err != nil {
 		return err
+	}
+	// 容器模式跑不了 nginx -t：保存就直接生效（不回滚），用户靠重启容器 + 日志验证
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return nil
 	}
 	// 运行 nginx -t 校验
 	checkOut, checkErr := CheckConfig(id)

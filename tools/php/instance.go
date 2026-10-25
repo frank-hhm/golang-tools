@@ -17,7 +17,27 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/portcheck"
 )
+
+func init() {
+	// 端口占用汇总：PHP 实例的端口参与跨工具查重（Nginx/MySQL 等实例也一样）
+	portcheck.Register(func() []portcheck.Owner {
+		list, err := loadInstances()
+		if err != nil {
+			return nil
+		}
+		out := make([]portcheck.Owner, 0, len(list))
+		for _, c := range list {
+			out = append(out, portcheck.Owner{
+				Key:   "php:" + c.ID,
+				Label: "PHP 实例「" + c.Name + "」",
+				Ports: []int{c.Port},
+			})
+		}
+		return out
+	})
+}
 
 /* ============================ 配置持久化 ============================ */
 
@@ -60,8 +80,19 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("实例名称不能为空")
 	}
-	if cfg.Version == "" {
-		return fmt.Errorf("请选择 PHP 版本")
+	useDocker := isDockerMode(&cfg)
+	if useDocker {
+		cfg.Mode = ModeDocker
+		if strings.TrimSpace(cfg.Image) == "" {
+			return fmt.Errorf("Docker 模式需指定镜像，如 %s", DefaultDockerImage)
+		}
+		// 容器实例不引用本机版本与构型：展示版本由镜像 tag 推导，留着旧值会误导切换
+		cfg.Version, cfg.NTS = "", true
+	} else {
+		cfg.Mode = ModeLocal
+		if cfg.Version == "" {
+			return fmt.Errorf("请选择 PHP 版本")
+		}
 	}
 	if cfg.Port <= 0 {
 		cfg.Port = 8080
@@ -69,7 +100,12 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Port > 65535 {
 		return fmt.Errorf("端口非法: %d", cfg.Port)
 	}
-	if vers, _ := ListVersions(); true {
+	// 端口落在保存这一步兜底：别的实例登记过、或系统里已被监听都拒绝
+	if reason := PortTaken(cfg.Port, cfg.ID); reason != "" {
+		return fmt.Errorf("%s", reason)
+	}
+	if !useDocker {
+		vers, _ := ListVersions()
 		ok := false
 		for _, v := range vers {
 			if v.Version == cfg.Version {
@@ -98,6 +134,16 @@ func SaveInstance(cfg InstanceConfig) error {
 		if st, err := os.Stat(p); err != nil || st.IsDir() {
 			return fmt.Errorf("路由脚本不存在：%s", p)
 		}
+		if useDocker {
+			// 容器里只认站点目录内的相对路径，存进去就要能换算（不留到启动时才爆）
+			root, err := dockerDocRoot(&cfg)
+			if err != nil {
+				return err
+			}
+			if _, err := containerRouterPath(&cfg, root); err != nil {
+				return err
+			}
+		}
 	}
 	list, err := loadInstances()
 	if err != nil {
@@ -105,6 +151,10 @@ func SaveInstance(cfg InstanceConfig) error {
 	}
 	if cfg.ID == "" {
 		cfg.ID = fmt.Sprintf("inst-%d", time.Now().UnixNano())
+	}
+	if useDocker {
+		// 容器名落盘（按最终 ID 生成），前端可直接展示，也保证同名实例不会互相顶掉
+		cfg.ContainerName = containerNameOf(&cfg)
 	}
 	for i := range list {
 		if list[i].ID == cfg.ID {
@@ -116,11 +166,17 @@ func SaveInstance(cfg InstanceConfig) error {
 	return saveInstances(list)
 }
 
-// RemoveInstance 删除实例配置；运行中先停止（实例目录保留）
+// RemoveInstance 删除实例配置；运行中先停止（实例目录与站点目录保留）
 func RemoveInstance(id string) error {
 	if trackedSrv(id) != nil {
 		if err := StopInstance(id); err != nil {
 			return fmt.Errorf("停止失败，未删除: %v", err)
+		}
+	}
+	// 容器不随配置消失：删掉它，否则下次新建同名实例会撞上残留容器
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		if err := dockerRemove(cfg); err != nil {
+			return err
 		}
 	}
 	list, err := loadInstances()
@@ -219,6 +275,8 @@ type srvRunning struct {
 	done    chan struct{}
 	logFile *os.File
 	mem     *ring
+	// Docker 模式无宿主子进程，改记容器 ID
+	containerID string
 }
 
 var (
@@ -260,8 +318,7 @@ func legacyInstanceLogPath(id string) string {
 	return filepath.Join(dir, "php_server.log")
 }
 
-// StartInstance 启动 php -S 内置服务器：
-// 端口检查 → 准备 php.ini → 拉起进程（隐藏窗口，输出落文件）→ 等待端口就绪
+// StartInstance 启动实例：端口检查 → 按模式分叉（Docker 进容器，本地拉起 php -S）
 func StartInstance(id string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
@@ -272,6 +329,9 @@ func StartInstance(id string) error {
 	}
 	if tcpUp(cfg.Port) {
 		return fmt.Errorf("端口 %d 已被其他进程占用，请先停止或改端口", cfg.Port)
+	}
+	if isDockerMode(cfg) {
+		return dockerStart(cfg)
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
@@ -357,18 +417,24 @@ func StartInstance(id string) error {
 	return fmt.Errorf("启动超时：15s 内端口 %d 未就绪，请查看日志：\n%s", cfg.Port, tailFile(logPath, 12))
 }
 
-// StopInstance 停止实例：Go 侧不保存 Windows 子进程句柄，统一按 PID 结束进程树
+// StopInstance 停止实例：Docker 走容器；本地 Go 侧不保存子进程句柄，统一按 PID 结束进程树
 func StopInstance(id string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return err
+	}
+	if isDockerMode(cfg) {
+		if trackedSrv(id) == nil && dockerContainerID(cfg) == "" && !tcpUp(cfg.Port) {
+			return fmt.Errorf("实例未在运行")
+		}
+		return dockerStop(cfg)
 	}
 	p := trackedSrv(id)
 	if p == nil && !tcpUp(cfg.Port) {
 		return fmt.Errorf("实例未在运行")
 	}
 	pid := 0
-	if p != nil && p.cmd.Process != nil {
+	if p != nil && p.cmd != nil && p.cmd.Process != nil {
 		pid = p.cmd.Process.Pid
 	}
 	if pid > 0 {
@@ -426,7 +492,19 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	if p, err := iniPathOf(id); err == nil {
 		st.ConfigPath = p
 	}
-	if p := trackedSrv(id); p != nil && p.cmd.Process != nil {
+	if isDockerMode(cfg) {
+		st.Running = tcpUp(cfg.Port)
+		fillDockerStatus(cfg, &st) // 容器名/ID/状态与展示版本
+		// 覆盖配置提前生成，面板打开即可看到并编辑（容器启动时同样挂这一份）
+		if ini, err := ensureDockerIni(cfg); err == nil {
+			st.ConfigPath = ini
+			if text, err := os.ReadFile(ini); err == nil {
+				st.DisableFunctions = iniGet(string(text), "disable_functions")
+			}
+		}
+		return st, nil
+	}
+	if p := trackedSrv(id); p != nil && p.cmd != nil && p.cmd.Process != nil {
 		st.PID = p.cmd.Process.Pid
 		st.UptimeSeconds = int64(time.Since(p.mem.start).Seconds())
 	}
@@ -450,10 +528,13 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	return st, nil
 }
 
-// Logs 返回实例日志尾部 n 行（优先文件，回退内存缓冲）
+// Logs 返回实例日志尾部 n 行（Docker 取容器输出；本地优先文件，回退内存缓冲）
 func Logs(id string, n int) ([]string, error) {
 	if n <= 0 || n > 2000 {
 		n = 200
+	}
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return dockerLogs(cfg, n)
 	}
 	logPath, err := instanceLogPath(id)
 	if err != nil {
@@ -474,19 +555,23 @@ func Logs(id string, n int) ([]string, error) {
 	return nil, nil
 }
 
-// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 8080）
+// PortTaken 报告端口是否可用于（新）实例：被其它工具的实例登记过，或已被进程监听。
+// excludeID 用于编辑场景排除自身（端口没改时自己正在监听也算可用）。空串表示可用。
+func PortTaken(port int, excludeID string) string {
+	exclude := ""
+	if excludeID != "" {
+		exclude = "php:" + excludeID
+	}
+	return portcheck.Taken(port, exclude)
+}
+
+// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 8080）：
+// 既跳过其它实例已登记的端口，也跳过系统里已绑不上的端口
 func SuggestPort(from int) int {
 	if from <= 0 {
 		from = 8080
 	}
-	for p := from; p < from+100; p++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			_ = ln.Close()
-			return p
-		}
-	}
-	return from
+	return portcheck.Suggest(from, 100)
 }
 
 // StopAll 停止所有由本程序拉起的 PHP 实例（应用退出时调用）

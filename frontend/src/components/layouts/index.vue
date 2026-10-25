@@ -3,8 +3,12 @@
         <!-- 自绘标题栏：复用公共 WinTitleBar（拖动/no-drag 与样式均在组件内），这里仅提供主窗口特有按钮 -->
         <WinTitleBar :title="appTitle">
             <common-theme-switch />
-            <a-button size="small" @click="openSettings"><icon-settings /></a-button>
-            <a-button size="small" status="danger" title="关闭" @click="close"><icon-close /></a-button>
+            <a-tooltip content="设置">
+                <a-button size="small" @click="openSettings"><icon-settings /></a-button>
+            </a-tooltip>
+            <a-tooltip content="关闭">
+                <a-button size="small" status="danger" @click="close"><icon-close /></a-button>
+            </a-tooltip>
         </WinTitleBar>
         <div class="layout-content">
             <router-view />

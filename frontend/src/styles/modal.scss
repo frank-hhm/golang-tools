@@ -1,0 +1,74 @@
+/**
+ * 弹窗（a-modal）皮肤：与无边框窗口的自绘标题栏同一套语言
+ *
+ * 标题栏是 WinTitleBar + a-button size="small"（28×28 方块、fill 底、圆角 small）。
+ * Arco 的弹窗默认把标题居中、关闭按钮只是一个 12px 的裸 ✕，
+ * 于是同一个窗口里出现两种“关窗口”的样子。这里只覆盖外观，不动任何弹窗的结构：
+ *   - 标题行 40px（与窗口标题栏同高），发丝线用项目统一的 border-1
+ *   - 标题左对齐 + 加粗，和标题栏左侧的“图标 + 标题”读法一致
+ *   - 关闭按钮做成 a-button size="small" 的方块版，hover / active 用同一组 token
+ */
+
+.arco-modal:not(.arco-modal-simple) .arco-modal-header {
+    height: 40px;
+    padding: 0 10px 0 16px;
+    border-bottom: 1px solid var(--color-border-1);
+}
+
+.arco-modal:not(.arco-modal-simple) .arco-modal-header .arco-modal-title {
+    justify-content: flex-start;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--base-size-default);
+    font-weight: bold;
+}
+
+/* 显式要求居中的弹窗（title-align="center"）保持居中 */
+.arco-modal .arco-modal-header .arco-modal-title-align-center {
+    justify-content: center;
+}
+
+/* 关闭按钮 = a-button size="small" 的方块版（不转圈、不带文字，只有图标） */
+.arco-modal .arco-modal-close-btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-left: 8px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-small);
+    background: var(--color-secondary);
+    color: var(--color-text-2);
+    font-size: 14px;
+    line-height: 1;
+}
+
+.arco-modal .arco-modal-close-btn:hover {
+    background: var(--color-secondary-hover);
+    color: var(--color-text-1);
+}
+
+.arco-modal .arco-modal-close-btn:active {
+    background: var(--color-secondary-active);
+}
+
+/* 内层 IconHover 自带一个 20px 的圆形 hover 底，会把方块切成两层，这里关掉 */
+.arco-modal .arco-modal-close-btn .arco-icon-hover::before {
+    display: none;
+}
+
+/**
+ * 内容区高度兜底：弹窗高度只跟视口走，不跟内容走。
+ * 局部弹窗会临时插入 a-alert（安装失败、参数校验等）或切换模式换数量不同的字段，
+ * 没有这层限制时整个弹窗会向下长，超过视口后底部按钮被挤到屏幕外。
+ * 这里只给上限 + 内部滚动，内容少时高度照旧自适应（不写死 height）。
+ * 各弹窗自己用 :body-style 指定 maxHeight 时以内联为准。
+ */
+.arco-modal:not(.arco-modal-simple) .arco-modal-body {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+}

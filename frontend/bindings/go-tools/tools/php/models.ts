@@ -92,6 +92,22 @@ export interface InstanceConfig {
      * 是否写 access.log（php -S -v）
      */
     "enableLogs": boolean;
+
+    /**
+     * ---- Docker 模式（Mode 为空即本地模式，历史配置无需迁移）----
+     * local | docker
+     */
+    "mode": string;
+
+    /**
+     * 如 php:8.3-cli
+     */
+    "image": string;
+
+    /**
+     * 留空自动生成 go-tools-php-<实例ID>
+     */
+    "containerName": string;
 }
 
 /**
@@ -113,6 +129,32 @@ export interface InstanceStatus {
     "configPath": string;
     "extensionsLoaded": number;
     "disableFunctions": string;
+
+    /**
+     * ---- Docker 模式专属（本地模式恒为空）----
+     * local | docker
+     */
+    "mode": string;
+
+    /**
+     * 镜像
+     */
+    "image": string;
+
+    /**
+     * 容器名
+     */
+    "container": string;
+
+    /**
+     * 容器 ID
+     */
+    "containerId": string;
+
+    /**
+     * running / exited / created
+     */
+    "containerState": string;
 }
 
 /**

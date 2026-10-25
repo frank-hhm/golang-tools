@@ -8,6 +8,8 @@ class CacheKey {
     static PAGE_LIMIT = `${PREFIX}-page-limit-key`
     /** 抓包页筛选状态（窗口关闭重开后恢复） */
     static SNIFFER_FILTER = `${PREFIX}-sniffer-filter-key`
+    /** Docker 安装包的另存目录（空 = 跟随全局插件目录） */
+    static DOCKER_INSTALLER_DIR = `${PREFIX}-docker-installer-dir-key`
 }
 
 export default CacheKey

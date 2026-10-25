@@ -36,7 +36,27 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/portcheck"
 )
+
+func init() {
+	// 端口占用汇总：MySQL 实例的端口参与跨工具查重
+	portcheck.Register(func() []portcheck.Owner {
+		list, err := loadInstances()
+		if err != nil {
+			return nil
+		}
+		out := make([]portcheck.Owner, 0, len(list))
+		for _, c := range list {
+			out = append(out, portcheck.Owner{
+				Key:   "mysql:" + c.ID,
+				Label: "MySQL 实例「" + c.Name + "」",
+				Ports: []int{c.Port},
+			})
+		}
+		return out
+	})
+}
 
 /* ============================ 事件推送 ============================ */
 
@@ -77,6 +97,10 @@ type InstanceConfig struct {
 	Port           int    `json:"port"`
 	RootPassword   string `json:"rootPassword"`
 	MaxConnections int    `json:"maxConnections"` // <=0 用 mysql 默认 151
+	// Docker 运行模式（零值/"local" 为本地拉起 mysqld，向后兼容）
+	Mode          string `json:"mode"`          // local | docker
+	Image         string `json:"image"`         // docker 模式必填，如 mysql:8.4
+	ContainerName string `json:"containerName"` // 留空则 go-tools-mysql-<id>
 }
 
 // InstanceStatus 实例运行状态（TCP 探测 + SHOW STATUS 聚合）
@@ -91,6 +115,13 @@ type InstanceStatus struct {
 	ThreadsConnected int64  `json:"threadsConnected"`
 	ThreadsRunning   int64  `json:"threadsRunning"`
 	MaxConnections   int64  `json:"maxConnections"`
+	// Docker 模式附加展示（本地模式 Mode="local"，其余字段为空）
+	Mode           string `json:"mode"`
+	Image          string `json:"image"`
+	Container      string `json:"container"`
+	ContainerID    string `json:"containerId"`
+	ContainerState string `json:"containerState"`
+	DataDir        string `json:"dataDir"`
 }
 
 // InstallProgress 版本安装进度事件负载（stage 语义与 redis 一致）
@@ -802,25 +833,37 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("实例名称不能为空")
 	}
-	if cfg.Version == "" {
-		return fmt.Errorf("请选择 MySQL 版本")
-	}
 	if cfg.Port <= 0 {
 		cfg.Port = 3306
 	}
 	if cfg.Port > 65535 {
 		return fmt.Errorf("端口非法: %d", cfg.Port)
 	}
-	vers, _ := ListVersions()
-	ok := false
-	for _, v := range vers {
-		if v.Version == cfg.Version {
-			ok = true
-			break
-		}
+	if reason := PortTaken(cfg.Port, cfg.ID); reason != "" {
+		return fmt.Errorf("%s", reason)
 	}
-	if !ok {
-		return fmt.Errorf("版本 %s 未安装", cfg.Version)
+	if isDockerMode(&cfg) {
+		// Docker 模式：不需要本地版本，但要镜像；数据目录与本地模式同路，可互迁
+		cfg.Mode = ModeDocker
+		if strings.TrimSpace(cfg.Image) == "" {
+			return fmt.Errorf("Docker 模式需指定镜像，如 %s", DefaultDockerImage)
+		}
+	} else {
+		cfg.Mode = ModeLocal
+		if cfg.Version == "" {
+			return fmt.Errorf("请选择 MySQL 版本")
+		}
+		vers, _ := ListVersions()
+		ok := false
+		for _, v := range vers {
+			if v.Version == cfg.Version {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return fmt.Errorf("版本 %s 未安装", cfg.Version)
+		}
 	}
 	list, err := loadInstances()
 	if err != nil {
@@ -828,6 +871,10 @@ func SaveInstance(cfg InstanceConfig) error {
 	}
 	if cfg.ID == "" {
 		cfg.ID = fmt.Sprintf("inst-%d", time.Now().UnixNano())
+	}
+	if isDockerMode(&cfg) && strings.TrimSpace(cfg.ContainerName) == "" {
+		// 容器名默认按最终 ID 生成（保证唯一且可凭名反查实例）
+		cfg.ContainerName = "go-tools-mysql-" + cfg.ID
 	}
 	for i := range list {
 		if list[i].ID == cfg.ID {
@@ -839,11 +886,17 @@ func SaveInstance(cfg InstanceConfig) error {
 	return saveInstances(list)
 }
 
-// RemoveInstance 删除实例配置；运行中先停止（数据目录保留）
+// RemoveInstance 删除实例配置；运行中先停止（数据目录与容器一并清理，数据保留）
 func RemoveInstance(id string) error {
 	if trackedSrv(id) != nil {
 		if err := StopInstance(id); err != nil {
 			return fmt.Errorf("停止失败，未删除: %v", err)
+		}
+	}
+	// Docker 模式：连带删除容器（未运行也要删干净，数据目录保留）
+	if cfg, err := findInstanceConfig(id); err == nil && isDockerMode(cfg) {
+		if err := dockerRemove(cfg); err != nil {
+			return err
 		}
 	}
 	list, err := loadInstances()
@@ -862,8 +915,9 @@ func RemoveInstance(id string) error {
 /* ============================ 实例进程管理 ============================ */
 
 type srvRunning struct {
-	cmd  *exec.Cmd
-	done chan struct{}
+	cmd         *exec.Cmd
+	done        chan struct{}
+	containerID string // Docker 模式：本实例对应的容器 ID（cmd 为 nil）
 }
 
 var (
@@ -915,7 +969,8 @@ func pingRoot(port int, pw string) (*sql.DB, bool) {
 	return nil, false
 }
 
-// StartInstance 启动实例：端口探测 → 生成 my.ini → 首次自动初始化 → 隐藏窗口拉起 → 等待就绪 → 按需设置 root 密码
+// StartInstance 启动实例：本地模式——端口探测 → 生成 my.ini → 首次自动初始化 → 隐藏窗口拉起 → 等待就绪 → 按需设置 root 密码；
+// Docker 模式则转交 dockerStart（镜像/容器生命周期）
 func StartInstance(id string) error {
 	cfgs, err := loadInstances()
 	if err != nil {
@@ -933,6 +988,9 @@ func StartInstance(id string) error {
 	}
 	if trackedSrv(id) != nil || tcpUp(cfg.Port) {
 		return fmt.Errorf("实例已在运行")
+	}
+	if isDockerMode(cfg) {
+		return dockerStart(cfg) // 容器模式：创建/启动容器并等待就绪
 	}
 	vers, _ := ListVersions()
 	exe := ""
@@ -1057,6 +1115,9 @@ func StopInstance(id string) error {
 	if cfg == nil {
 		return fmt.Errorf("实例不存在: %s", id)
 	}
+	if isDockerMode(cfg) {
+		return dockerStop(cfg) // 容器模式：SHUTDOWN 不适用，走 container stop
+	}
 	p := trackedSrv(id)
 	if !tcpUp(cfg.Port) && p == nil {
 		return fmt.Errorf("实例未在运行")
@@ -1107,8 +1168,12 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 		return st, fmt.Errorf("实例不存在: %s", id)
 	}
 	st.Name, st.Version, st.Port = cfg.Name, cfg.Version, cfg.Port
-	if p := trackedSrv(id); p != nil && p.cmd.Process != nil {
+	st.DataDir = filepath.Join(instDirOf(id), "data")
+	if p := trackedSrv(id); p != nil && p.cmd != nil && p.cmd.Process != nil {
 		st.PID = p.cmd.Process.Pid
+	}
+	if isDockerMode(cfg) {
+		fillDockerStatus(cfg, &st)
 	}
 	if !tcpUp(cfg.Port) {
 		return st, nil // 未运行不算错误
@@ -1156,10 +1221,13 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	return st, nil
 }
 
-// Logs 返回实例错误日志（mysql.err）尾部 n 行
+// Logs 返回实例日志尾部 n 行（本地模式读 mysql.err，容器模式读容器输出）
 func Logs(id string, n int) ([]string, error) {
 	if n <= 0 || n > 2000 {
 		n = 200
+	}
+	if cfg, err := findInstanceConfig(id); err == nil && isDockerMode(cfg) {
+		return dockerLogs(cfg, n)
 	}
 	instDir, err := defaultInstanceDataDir(id)
 	if err != nil {
@@ -1176,19 +1244,23 @@ func Logs(id string, n int) ([]string, error) {
 	return lines, nil
 }
 
-// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3306）
+// SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3306）：
+// 既跳过其它实例已登记的端口，也跳过系统里已绑不上的端口
 func SuggestPort(from int) int {
 	if from <= 0 {
 		from = 3306
 	}
-	for p := from; p < from+100; p++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			ln.Close()
-			return p
-		}
+	return portcheck.Suggest(from, 100)
+}
+
+// PortTaken 报告端口是否可用于（新）实例（跨工具查重 + 系统监听）；
+// excludeID 用于编辑场景排除自身，空串表示可用
+func PortTaken(port int, excludeID string) string {
+	exclude := ""
+	if excludeID != "" {
+		exclude = "mysql:" + excludeID
 	}
-	return from
+	return portcheck.Taken(port, exclude)
 }
 
 /* ============================ 小工具 ============================ */

@@ -38,7 +38,27 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/tools/portcheck"
 )
+
+func init() {
+	// 端口占用汇总：Redis 实例的端口参与跨工具查重
+	portcheck.Register(func() []portcheck.Owner {
+		list, err := loadInstances()
+		if err != nil {
+			return nil
+		}
+		out := make([]portcheck.Owner, 0, len(list))
+		for _, c := range list {
+			out = append(out, portcheck.Owner{
+				Key:   "redis:" + c.ID,
+				Label: "Redis 实例「" + c.Name + "」",
+				Ports: []int{c.Port},
+			})
+		}
+		return out
+	})
+}
 
 /* ============================ 类型 ============================ */
 
@@ -66,6 +86,12 @@ type InstanceConfig struct {
 	AppendOnly  bool   `json:"appendOnly"`
 	MaxMemoryMB int    `json:"maxMemoryMB"` // <=0 表示不限制
 	DataDir     string `json:"dataDir"`     // 空 = 默认（程序数据目录下按 ID 分配）
+	// Mode 运行模式：local（空值等同，兼容历史配置）| docker，详见 docker.go
+	Mode string `json:"mode"`
+	// Image 容器模式的镜像（如 redis:7-alpine）；本地模式忽略
+	Image string `json:"image"`
+	// ContainerName 容器名，留空按实例 ID 生成
+	ContainerName string `json:"containerName"`
 }
 
 // InstanceStatus 实例运行状态（网络探测 + INFO 聚合）
@@ -80,6 +106,12 @@ type InstanceStatus struct {
 	UsedMemoryHuman  string `json:"usedMemoryHuman"`
 	ConnectedClients int64  `json:"connectedClients"`
 	TotalKeys        int64  `json:"totalKeys"`
+	// 以下仅容器模式填写：模式标记、镜像、容器名/ID 与容器状态串（running|exited|...）
+	Mode           string `json:"mode"`
+	Image          string `json:"image"`
+	Container      string `json:"container"`
+	ContainerID    string `json:"containerId"`
+	ContainerState string `json:"containerState"`
 }
 
 // InstallProgress 版本安装进度事件负载
@@ -872,22 +904,38 @@ func SaveInstance(cfg InstanceConfig) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("实例名称不能为空")
 	}
-	if cfg.Version == "" {
-		return fmt.Errorf("请选择 Redis 版本")
+	useDocker := isDockerMode(&cfg)
+	if useDocker {
+		cfg.Mode = ModeDocker
+		if strings.TrimSpace(cfg.Image) == "" {
+			return fmt.Errorf("Docker 模式需指定镜像，如 %s", DefaultDockerImage)
+		}
+		// 容器实例不引用本机版本库：展示版本由镜像 tag 推导，留着旧值会误导模式切换
+		cfg.Version = ""
+	} else {
+		cfg.Mode = ModeLocal
+		if cfg.Version == "" {
+			return fmt.Errorf("请选择 Redis 版本")
+		}
 	}
 	if cfg.Port <= 0 || cfg.Port > 65535 {
 		return fmt.Errorf("端口非法: %d", cfg.Port)
 	}
-	vers, _ := ListVersions()
-	ok := false
-	for _, v := range vers {
-		if v.Version == cfg.Version {
-			ok = true
-			break
-		}
+	if reason := PortTaken(cfg.Port, cfg.ID); reason != "" {
+		return fmt.Errorf("%s", reason)
 	}
-	if !ok {
-		return fmt.Errorf("版本 %s 未安装", cfg.Version)
+	if !useDocker {
+		vers, _ := ListVersions()
+		ok := false
+		for _, v := range vers {
+			if v.Version == cfg.Version {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return fmt.Errorf("版本 %s 未安装", cfg.Version)
+		}
 	}
 	list, err := loadInstances()
 	if err != nil {
@@ -913,6 +961,12 @@ func RemoveInstance(id string) error {
 			return fmt.Errorf("停止失败，未删除: %v", err)
 		}
 	}
+	// 容器不随配置消失：删掉它，否则下次新建同名实例会撞上残留容器
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		if err := dockerRemove(cfg); err != nil {
+			return err
+		}
+	}
 	list, err := loadInstances()
 	if err != nil {
 		return err
@@ -934,6 +988,22 @@ type runningProc struct {
 	mu      sync.Mutex
 	logs    []string // 环形缓冲（本进程生命周期内）
 	done    chan struct{}
+	// containerID 容器模式的实例没有 cmd，改用容器 ID 标识（停止/日志/状态都走 docker API）
+	containerID string
+}
+
+// findInstance 按 ID 取实例配置
+func findInstance(id string) (*InstanceConfig, error) {
+	cfgs, err := loadInstances()
+	if err != nil {
+		return nil, err
+	}
+	for i := range cfgs {
+		if cfgs[i].ID == id {
+			return &cfgs[i], nil
+		}
+	}
+	return nil, fmt.Errorf("实例不存在: %s", id)
 }
 
 var (
@@ -1003,6 +1073,9 @@ func StartInstance(id string) error {
 	}
 	if isTracked(id) || isProcessRunning(id, cfg.Port, cfg.Password) {
 		return fmt.Errorf("实例已在运行")
+	}
+	if isDockerMode(cfg) {
+		return dockerStart(cfg)
 	}
 	vers, _ := ListVersions()
 	exe := ""
@@ -1121,6 +1194,12 @@ func StopInstance(id string) error {
 	if cfg == nil {
 		return fmt.Errorf("实例不存在: %s", id)
 	}
+	if isDockerMode(cfg) {
+		if trackedProc(id) == nil && dockerContainerID(cfg) == "" && !isProcessRunning(id, cfg.Port, cfg.Password) {
+			return fmt.Errorf("实例未在运行")
+		}
+		return dockerStop(cfg)
+	}
 	p := trackedProc(id)
 	if !isProcessRunning(id, cfg.Port, cfg.Password) && p == nil {
 		return fmt.Errorf("实例未在运行")
@@ -1174,9 +1253,16 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	if cfg == nil {
 		return st, fmt.Errorf("实例不存在: %s", id)
 	}
-	st.Name, st.Version, st.Port = cfg.Name, cfg.Version, cfg.Port
-	if p := trackedProc(id); p != nil && p.cmd.Process != nil {
-		st.PID = p.cmd.Process.Pid
+	st.Name, st.Port = cfg.Name, cfg.Port
+	// 容器模式：版本从镜像 tag 推导，PID 无意义；先填容器字段，后面的 INFO 会用真实服务端版本覆盖
+	st.Mode = ModeLocal
+	if isDockerMode(cfg) {
+		fillDockerStatus(cfg, &st)
+	} else {
+		st.Version = cfg.Version
+		if p := trackedProc(id); p != nil && p.cmd != nil && p.cmd.Process != nil {
+			st.PID = p.cmd.Process.Pid
+		}
 	}
 	c, err := dial(fmt.Sprintf("127.0.0.1:%d", cfg.Port), cfg.Password, 0, time.Second)
 	if err != nil {
@@ -1202,6 +1288,9 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 func Logs(id string, n int) ([]string, error) {
 	if n <= 0 || n > logRingMax {
 		n = 200
+	}
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return dockerLogs(cfg, n)
 	}
 	if p := trackedProc(id); p != nil {
 		p.mu.Lock()
@@ -1235,19 +1324,23 @@ func Logs(id string, n int) ([]string, error) {
 	return nil, fmt.Errorf("实例不存在: %s", id)
 }
 
-// SuggestPort 探测一个可用端口（从 from 起递增）
+// SuggestPort 探测一个可用端口（从 from 起递增）：
+// 既跳过其它实例已登记的端口，也跳过系统里已绑不上的端口
 func SuggestPort(from int) int {
 	if from <= 0 {
 		from = 6379
 	}
-	for p := from; p < from+100; p++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			ln.Close()
-			return p
-		}
+	return portcheck.Suggest(from, 100)
+}
+
+// PortTaken 报告端口是否可用于（新）实例（跨工具查重 + 系统监听）；
+// excludeID 用于编辑场景排除自身，空串表示可用
+func PortTaken(port int, excludeID string) string {
+	exclude := ""
+	if excludeID != "" {
+		exclude = "redis:" + excludeID
 	}
-	return from
+	return portcheck.Taken(port, exclude)
 }
 
 /* ============================ redis.conf 生成 ============================ */

@@ -1,0 +1,77 @@
+/**
+ * 滚动条统一皮肤：2px 细条
+ *
+ * 目的有两个：
+ *   1. 视觉上细到几乎只剩一条线，不抢内容；
+ *   2. 少占宽度。滚动条一旦占内容宽度，表格里就会出现「本来放得下，却因为多了 6px 而冒出横向滚动条」，
+ *      横向滚动条又压掉最后一行，形成连锁问题。2px 把这段影响压到最小。
+ *
+ * 注意：这里只写 ::-webkit-scrollbar（Wails 用 WebView2 = Chromium）。
+ * 不要再给 * 加 scrollbar-width / scrollbar-color —— Chromium 一旦看到标准属性，
+ * 就会走内置滚动条渲染，::-webkit-scrollbar 的 2px 会被忽略。
+ */
+
+::-webkit-scrollbar {
+    width: 2px;
+    height: 2px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* 横竖交汇的那个小方块也去掉，否则右下角会留一个灰点 */
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 1px;
+    background: var(--color-fill-3);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-fill-4);
+}
+
+/**
+ * a-table 的滚动条不是原生的：Arco 用浮层自己画（track 15px、thumb bar 9px），
+ * 所以上面的 ::-webkit 规则管不到。浮层虽然不占内容宽度，但 9px 的拇指会压掉最后一行的一条，
+ * 这里同样收到 2px；track 留 6px 只作为「能抓住」的命中区，背景透明。
+ *
+ * 前缀 .arco-scrollbar 是为了抬高选择器权重：Arco 的组件样式由 on-demand 插件注入，
+ * 有可能比本文件后加载，同级权重会反过来盖掉这里的尺寸。
+ */
+.arco-scrollbar .arco-scrollbar-track-direction-horizontal {
+    height: 6px;
+}
+
+.arco-scrollbar .arco-scrollbar-track-direction-vertical {
+    width: 6px;
+}
+
+.arco-scrollbar .arco-scrollbar-thumb-bar {
+    background-color: var(--color-fill-3);
+}
+
+.arco-scrollbar .arco-scrollbar-thumb-direction-horizontal .arco-scrollbar-thumb-bar {
+    height: 2px;
+    margin: 2px 0;
+    border-radius: 1px;
+}
+
+.arco-scrollbar .arco-scrollbar-thumb-direction-vertical .arco-scrollbar-thumb-bar {
+    width: 2px;
+    margin: 0 2px;
+    border-radius: 1px;
+}
+
+.arco-scrollbar .arco-scrollbar-thumb:hover .arco-scrollbar-thumb-bar,
+.arco-scrollbar .arco-scrollbar-thumb-dragging .arco-scrollbar-thumb-bar {
+    background-color: var(--color-fill-4);
+}
+
+/* type="track" 的滚动条默认给 track 铺一层 neutral-1，和表格底色打架 */
+html .arco-scrollbar.arco-scrollbar-type-track .arco-scrollbar-track {
+    background-color: transparent;
+}

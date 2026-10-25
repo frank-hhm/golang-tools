@@ -83,6 +83,11 @@ type InstanceConfig struct {
 	DocRoot    string `json:"docRoot"`    // 站点根目录；空 = 实例目录下 www/
 	Router     string `json:"router"`     // 路由脚本（如 index.php），空 = 不使用
 	EnableLogs bool   `json:"enableLogs"` // 是否写 access.log（php -S -v）
+
+	// ---- Docker 模式（Mode 为空即本地模式，历史配置无需迁移）----
+	Mode          string `json:"mode"`          // local | docker
+	Image         string `json:"image"`         // 如 php:8.3-cli
+	ContainerName string `json:"containerName"` // 留空自动生成 go-tools-php-<实例ID>
 }
 
 // InstanceStatus 实例运行状态
@@ -98,6 +103,13 @@ type InstanceStatus struct {
 	ConfigPath       string `json:"configPath"` // php.ini 路径
 	ExtensionsLoaded int    `json:"extensionsLoaded"`
 	DisableFunctions string `json:"disableFunctions"`
+
+	// ---- Docker 模式专属（本地模式恒为空）----
+	Mode           string `json:"mode"`           // local | docker
+	Image          string `json:"image"`          // 镜像
+	Container      string `json:"container"`      // 容器名
+	ContainerID    string `json:"containerId"`    // 容器 ID
+	ContainerState string `json:"containerState"` // running / exited / created
 }
 
 // InstallProgress 版本安装进度事件负载（stage 语义与 redis/mysql 一致）

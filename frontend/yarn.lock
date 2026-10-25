@@ -41,10 +41,10 @@
     "@babel/types" "^7.12.12"
     "@types/node" "^16.11.10"
 
-"@arco-themes/vue-dev-frank-brank@^0.0.6":
-  version "0.0.6"
-  resolved "https://registry.yarnpkg.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.6.tgz#5cdef3ae35d1a22bc218201c8e890e4066da8ac8"
-  integrity sha512-HTEnLGZC2z57hdx/DbNU3oq8l33aZ7+wORB+bm44q2+2gJoW1PwFvU2yLXxf3h8I3XRZv/joEG2IjRUdEeytgg==
+"@arco-themes/vue-dev-frank-brank@^0.0.7":
+  version "0.0.7"
+  resolved "https://registry.yarnpkg.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.7.tgz#b1cf3cd07f2d88fd007bfe87edd56594f5f7a08e"
+  integrity sha512-g9t2WeT6U62xVCBW3BkNN9jYW1sSRo/rufPCb5F3JuSrvG3uEfZD0Ofxvh51qP2DRkGEC0uoiQovEHaFfpslJQ==
 
 "@babel/code-frame@^7.27.1", "@babel/code-frame@^7.29.7":
   version "7.29.7"
@@ -1272,6 +1272,14 @@ dunder-proto@^1.0.1:
     es-errors "^1.3.0"
     gopd "^1.2.0"
 
+echarts@^6.1.0:
+  version "6.1.0"
+  resolved "https://registry.npmmirror.com/echarts/-/echarts-6.1.0.tgz#ae0f68590f5ebbd728d900907c27acde7c5456d1"
+  integrity sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==
+  dependencies:
+    tslib "2.3.0"
+    zrender "6.1.0"
+
 electron-to-chromium@^1.5.402:
   version "1.5.406"
   resolved "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.406.tgz"
@@ -2422,6 +2430,11 @@ ts-loader@^9.4.2:
     picomatch "^4.0.0"
     source-map "^0.7.4"
 
+tslib@2.3.0:
+  version "2.3.0"
+  resolved "https://registry.npmmirror.com/tslib/-/tslib-2.3.0.tgz#803b8cdab3e12ba581a4ca41c8839bbb0dacb09e"
+  integrity sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==
+
 tsparticles-basic@^2.12.0:
   version "2.12.0"
   resolved "https://registry.npmmirror.com/tsparticles-basic/-/tsparticles-basic-2.12.0.tgz"
@@ -2993,3 +3006,10 @@ yallist@^3.0.2:
   version "3.1.1"
   resolved "https://registry.npmjs.org/yallist/-/yallist-3.1.1.tgz"
   integrity sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==
+
+zrender@6.1.0:
+  version "6.1.0"
+  resolved "https://registry.npmmirror.com/zrender/-/zrender-6.1.0.tgz#c3ef06e6426d5c28865b7183035680d685e00136"
+  integrity sha512-oEGMDB6pOP2S6OwRR4PdVv610zrjnA3Bh+JnSG12fYJlBKjtNAoEb5fSUoCOOINlH96I2fU38/A2UpRKs67xYQ==
+  dependencies:
+    tslib "2.3.0"

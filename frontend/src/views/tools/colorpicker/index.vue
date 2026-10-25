@@ -4,7 +4,7 @@
             <!-- 工具栏：自动复制开关 + 屏幕取色 -->
             <div ref="barEl" class="cp-bar">
                 <a-checkbox v-model="autoCopy">自动将所选颜色复制到剪贴板</a-checkbox>
-                <a-button type="primary" size="small" @click="pickFromScreen">
+                <a-button size="small" @click="pickFromScreen">
                     <template #icon>
                         <icon-bg-colors />
                     </template>屏幕取色
@@ -25,8 +25,12 @@
                 <!-- 右：取色数值面板 -->
                 <div ref="panelEl" class="cp-panel">
                     <div class="cp-swatches">
-                        <div class="cp-swatch" :style="{ background: hexColor }" title="新颜色"></div>
-                        <div class="cp-swatch" :style="{ background: oldColor }" title="原颜色"></div>
+                        <a-tooltip content="新颜色">
+                            <div class="cp-swatch" :style="{ background: hexColor }"></div>
+                        </a-tooltip>
+                        <a-tooltip content="原颜色">
+                            <div class="cp-swatch" :style="{ background: oldColor }"></div>
+                        </a-tooltip>
                     </div>
 
                     <div class="cp-grid">

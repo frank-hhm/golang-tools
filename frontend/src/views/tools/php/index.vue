@@ -2,21 +2,27 @@
     <a-row class="php-page" :gutter="6">
         <!-- 左侧：实例列表 -->
         <a-col :span="7" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>本地服务</template>
                 <template #extra>
                     <div class="srv-head-actions">
-                        <a-button size="small" title="新建实例" @click="openInstModal()">新建实例</a-button>
-                        <a-button size="small" title="版本管理" @click="openVersionsModal()">版本管理</a-button>
+                        <a-button size="small" @click="openInstModal()">新建实例</a-button>
+                        <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
                     </div>
                 </template>
                 <a-list :bordered="false" size="small">
                     <a-list-item v-for="inst in instances" :key="inst.id"
                         :class="{ 'inst-active': selectedId === inst.id }" @click="selectInst(inst.id)">
                         <a-space>
-                            <a-badge :status="states[inst.id]?.running ? 'success' : 'normal'" />
-                            <span class="conn-name" :title="inst.name + ':' + inst.port">{{ inst.name }}</span>
-                            <a-tag color="arcoblue" size="small">v{{ inst.version }}</a-tag>
+                            <com-badge :status="states[inst.id]?.running ? 'success' : 'normal'"
+                                :animated="!!states[inst.id]?.running" />
+                            <a-tooltip :content="inst.name + ':' + inst.port">
+                                <span class="conn-name">{{ inst.name }}</span>
+                            </a-tooltip>
+                            <a-tooltip v-if="inst.mode === 'docker'" :content="inst.image">
+                                <a-tag color="purple" size="small">{{ inst.image || 'Docker' }}</a-tag>
+                            </a-tooltip>
+                            <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
                         </a-space>
                         <template #actions>
                             <a-dropdown trigger="hover" @select="(v: any) => onInstAction(v, inst)">
@@ -42,62 +48,106 @@
 
         <!-- 右侧：选中实例详情 + 日志 -->
         <a-col :span="17" class="main-col">
-            <a-card v-if="!selectedId" class="main-panel empty-card">
+            <a-card v-if="!selectedId" class="main-panel empty-card card-head-tool">
                 <a-empty description="从左侧选择一个 PHP 实例查看状态与日志" />
             </a-card>
-            <a-card v-else class="main-panel" :body-style="{ padding: 0 }">
+            <a-card v-else class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space>
-                        <a-badge :status="selState?.running ? 'success' : 'normal'" />
+                        <com-badge :status="selState?.running ? 'success' : 'normal'" :animated="!!selState?.running" />
                         <span>{{ selCfg?.name }}</span>
-                        <a-tag color="arcoblue" size="small">php -S :{{ selCfg?.port }}</a-tag>
+                        <a-tooltip v-if="isDockerSel" :content="selCfg?.image || ''">
+                            <a-tag color="purple" size="small">Docker {{ selCfg?.image }} :{{ selCfg?.port }}</a-tag>
+                        </a-tooltip>
+                        <a-tag v-else color="arcoblue" size="small">php -S :{{ selCfg?.port }}</a-tag>
                     </a-space>
                 </template>
                 <template #extra>
                     <a-space>
-                        <a-button size="small" type="primary" :disabled="selState?.running"
-                            @click="doStart">启动</a-button>
+                        <a-button size="small" :disabled="selState?.running || startBusy"
+                            :loading="startBusy" @click="doStart">启动</a-button>
                         <a-button size="small" status="danger" :disabled="!selState?.running"
                             @click="doStop">停止</a-button>
-                        <a-button size="small" @click="doRestart">重启</a-button>
+                        <a-button size="small" :loading="startBusy" @click="doRestart">重启</a-button>
                     </a-space>
                 </template>
                 <div class="detail-grid">
                     <div class="ls-item"><span>PHP 版本</span><b>{{ selState?.version || selCfg?.version || '-' }}</b>
                     </div>
-                    <div class="ls-item"><span>运行状态</span>
-                        <b :class="selState?.running ? 'ok' : 'no'">{{ selState?.running ? '运行中' : '已停止' }}</b>
+                    <div class="ls-item"><span>运行模式</span>
+                        <b>{{ isDockerSel ? 'Docker 容器' : '本地 php -S' }}</b>
                     </div>
-                    <div class="ls-item"><span>PID</span><b>{{ selState?.pid || '-' }}</b></div>
+                    <div class="ls-item"><span>运行状态</span>
+                        <b class="com-state" :class="selState?.running ? 'ok' : 'no'">
+                            <com-badge :status="selState?.running ? 'success' : 'normal'"
+                                :animated="!!selState?.running" />
+                            {{ selState?.running ? '运行中' : '已停止' }}
+                        </b>
+                    </div>
+                    <div class="ls-item" v-if="isDockerSel"><span>容器</span>
+                        <!-- 容器名带实例后缀很长，单元格会省略号收尾，悬停拿完整名 -->
+                        <a-tooltip :content="selState?.container || '-'">
+                            <b class="ellipsis">{{ selState?.container || '-' }}{{ selState?.containerState ? '（' + selState.containerState + '）' : '' }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item" v-else><span>PID</span><b>{{ selState?.pid || '-' }}</b></div>
                     <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(selState?.uptimeSeconds) }}</b></div>
-                    <div class="ls-item" title="站点根目录"><span>站点目录</span><b class="ellipsis">{{
-                        selState?.docRoot || '-' }}</b></div>
-                    <div class="ls-item" title="php.ini 路径"><span>php.ini</span><b class="ellipsis">{{
-                        selState?.configPath || '-' }}</b></div>
-                    <div class="ls-item"><span>已加载扩展</span><b>{{ selState?.extensionsLoaded ?? '-' }}</b></div>
-                    <div class="ls-item" title="disable_functions"><span>禁用函数</span><b class="ellipsis">{{
-                        selState?.disableFunctions || '（无）' }}</b></div>
+                    <div class="ls-item">
+                        <span>站点目录<a-tooltip content="Docker 模式为宿主目录，会挂载进容器 /var/www/html">
+                                <icon-question-circle class="ls-label-tip" />
+                            </a-tooltip></span>
+                        <a-tooltip :content="selState?.docRoot || '-'">
+                            <b class="ellipsis">{{ selState?.docRoot || '-' }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item">
+                        <span>php.ini<a-tooltip
+                                :content="isDockerSel ? '挂载进容器 conf.d 的覆盖配置' : '实例启动时 -c 指向的 php.ini'">
+                                <icon-question-circle class="ls-label-tip" />
+                            </a-tooltip></span>
+                        <a-tooltip :content="selState?.configPath || '-'">
+                            <b class="ellipsis">{{ selState?.configPath || '-' }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item">
+                        <span>已加载扩展</span>
+                        <a-tooltip v-if="isDockerSel" content="容器内的扩展由镜像提供，本面板的扩展管理只作用于本机 PHP">
+                            <b>不适用（容器内）</b>
+                        </a-tooltip>
+                        <b v-else>{{ selState?.extensionsLoaded ?? '-' }}</b>
+                    </div>
+                    <div class="ls-item"><span>禁用函数</span>
+                        <a-tooltip :content="selState?.disableFunctions || '（无）'">
+                            <b class="ellipsis">{{ selState?.disableFunctions || '（无）' }}</b>
+                        </a-tooltip>
+                    </div>
                 </div>
+                <div v-if="pullNote" class="pull-tip"><icon-loading spin />{{ pullNote }}</div>
                 <div class="log-head">
                     <span>访问/错误日志（实时）</span>
                     <a-space :size="6">
-                        <a-button size="mini" :disabled="!selState?.running"
+                        <a-button size="small" :disabled="!selState?.running"
                             @click="openSite(selCfg?.port ?? 0)">
                             <template #icon><icon-launch /></template>打开站点
                         </a-button>
-                        <a-button size="mini" @click="openIni(selectedId)">
+                        <a-button size="small" @click="openIni(selectedId)">
                             <template #icon><icon-settings /></template>php.ini
                         </a-button>
-                        <a-button size="mini" @click="openCommon(selectedId)">
+                        <a-button size="small" @click="openCommon(selectedId)">
                             <template #icon><icon-tool /></template>常用配置
                         </a-button>
-                        <a-button size="mini" @click="openExt(selectedId)">
+                        <a-tooltip v-if="isDockerSel" content="Docker 实例的 PHP 扩展由镜像提供，扩展管理只作用于本机 PHP">
+                            <span class="btn-wrap"><a-button size="small" disabled>
+                                    <template #icon><icon-list /></template>扩展管理
+                                </a-button></span>
+                        </a-tooltip>
+                        <a-button v-else size="small" @click="openExt(selectedId)">
                             <template #icon><icon-list /></template>扩展管理
                         </a-button>
-                        <a-button size="mini" @click="openDisFn(selectedId)">
+                        <a-button size="small" @click="openDisFn(selectedId)">
                             <template #icon><icon-stop /></template>禁用函数
                         </a-button>
-                        <a-button size="mini" @click="logLines = []">
+                        <a-button size="small" @click="logLines = []">
                             <template #icon><icon-delete /></template>清空
                         </a-button>
                     </a-space>
@@ -111,31 +161,111 @@
     </a-row>
 
     <!-- 新建/编辑实例 -->
-    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520"
+    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="560"
         @before-ok="saveInstance">
-        <a-form :model="instForm" layout="vertical">
-            <a-form-item field="name" label="实例名称" required>
-                <a-input v-model="instForm.name" placeholder="如 my-site" />
-            </a-form-item>
-            <a-form-item field="version" label="PHP 版本" required>
-                <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
-            </a-form-item>
-            <a-form-item field="nts" label="构型">
-                <a-radio-group v-model="instForm.nts" type="button" size="small">
-                    <a-radio :value="true">NTS（非线程安全，常用）</a-radio>
-                    <a-radio :value="false">ZTS（线程安全）</a-radio>
-                </a-radio-group>
-            </a-form-item>
-            <a-form-item field="port" label="端口">
-                <a-input-number v-model="instForm.port" :min="1" :max="65535" @blur="checkPortTaken" />
-            </a-form-item>
-            <a-form-item field="docRoot" label="站点根目录（留空 = 程序目录 data/www/实例名）">
-                <a-input-search v-model="instForm.docRoot" placeholder="留空则使用默认站点目录" search-button
-                    button-text="选择目录" @click-btn="chooseDocRoot" />
-            </a-form-item>
-            <a-form-item field="router" label="路由脚本（相对站点目录，如 index.php）">
-                <a-input v-model="instForm.router" placeholder="可留空" />
-            </a-form-item>
+        <a-form :model="instForm" layout="vertical" class="inst-form">
+            <a-row :gutter="12">
+                <a-col :span="24">
+                    <a-form-item field="name" label="实例名称" required>
+                        <a-input v-model="instForm.name" placeholder="如 my-site" />
+                    </a-form-item>
+                </a-col>
+
+                <a-col :span="24">
+                    <a-form-item field="mode" label="运行模式">
+                        <a-radio-group size="medium" v-model="instForm.mode" type="button" @change="onModeChange">
+                            <a-radio value="local"><icon-computer /> 本地</a-radio>
+                            <a-radio value="docker"><icon-experiment /> Docker</a-radio>
+                        </a-radio-group>
+                        <template #extra>
+                            <template v-if="instForm.mode === 'docker'">
+                                容器内跑 php -S，站点目录挂载到 /var/www/html；首次启动会自动拉取镜像（可能几分钟）
+                            </template>
+                            <template v-else>使用插件目录下的本机 PHP（php -S 内置服务器）</template>
+                        </template>
+                    </a-form-item>
+                </a-col>
+
+                <!-- 本地：版本 / 构型 / 端口 同一行 -->
+                <template v-if="instForm.mode !== 'docker'">
+                    <a-col :span="10">
+                        <a-form-item field="version" label="PHP 版本" required>
+                            <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="7">
+                        <a-form-item field="nts" label="构型"
+                            tooltip="NTS 非线程安全，php -S 内置服务器用这个；ZTS 线程安全，供 Apache 等多线程环境">
+                            <a-radio-group v-model="instForm.nts" type="button" size="medium">
+                                <a-radio :value="true">NTS</a-radio>
+                                <a-radio :value="false">ZTS</a-radio>
+                            </a-radio-group>
+                        </a-form-item>
+                    </a-col>
+                </template>
+
+                <!-- Docker：镜像 / 容器名 / 端口 同一行，与本地模式的版本/构型/端口行数一致，切模式时弹窗高度不跳 -->
+                <template v-else>
+                    <a-col :span="10">
+                        <a-form-item class="img-item" field="image" label="镜像" required>
+                            <div class="img-row">
+                                <a-select v-model="instForm.image" class="img-select" placeholder="选择已安装镜像"
+                                    allow-create filterable :loading="dockerImagesLoading">
+                                    <!-- 自闭合的 a-option 没有文字，label 会是空串，下拉里全是空白行 —— 显式写上文字 -->
+                                    <a-option v-for="im in imageOptions" :key="im" :value="im">{{ im }}</a-option>
+                                    <template #empty>
+                                        <a-empty :image="false" description="无可用镜像" />
+                                    </template>
+                                </a-select>
+                                <!-- 配镜像时随手打开 Docker 管理窗口（拉取 / 看进度） -->
+                                <a-tooltip content="打开 Docker 管理窗口：拉镜像、看拉取进度">
+                                    <a-button size="small" class="img-open" @click="openDockerWindow">
+                                        <template #icon><icon-storage /></template>
+                                    </a-button>
+                                </a-tooltip>
+                            </div>
+                            <template #help>
+                                <span v-if="dockerImagesLoading">正在读取本地镜像…</span>
+                                <span v-else-if="!imageOptions.length && !instForm.image" class="img-none">
+                                    本地无可用镜像，<a-link @click="openDockerWindow">点击去安装</a-link>
+                                </span>
+                            </template>
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="8">
+                        <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-php-实例ID">
+                            <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
+                        </a-form-item>
+                    </a-col>
+                </template>
+
+                <!-- 端口：两种模式都与上一项并排，位置一致 -->
+                <a-col :span="instForm.mode === 'docker' ? 6 : 7">
+                    <a-form-item field="port" label="端口" :error="portError"
+                        tooltip="实例只监听 127.0.0.1，Docker 与本地模式一样不对外暴露">
+                        <a-input-number v-model="instForm.port" :min="1" :max="65535"
+                            @change="portError = ''" @blur="checkPortTaken" />
+                    </a-form-item>
+                </a-col>
+
+                <a-col v-if="instForm.mode === 'docker' && dockerErr" :span="24">
+                    <a-alert type="warning" style="margin-bottom: 12px">{{ dockerErr }}</a-alert>
+                </a-col>
+
+                <a-col :span="24">
+                    <a-form-item field="docRoot" label="站点根目录"
+                        tooltip="留空则使用程序目录 data/www/实例名；Docker 模式会挂载进容器 /var/www/html">
+                        <a-input-search v-model="instForm.docRoot" placeholder="留空则使用默认站点目录" search-button
+                            button-text="选择目录" @click-btn="chooseDocRoot" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="24">
+                    <a-form-item field="router" label="路由脚本">
+                        <a-input v-model="instForm.router" placeholder="相对站点目录，如 index.php；可留空" />
+                        <template #extra v-if="instForm.mode === 'docker'">Docker 模式只能使用站点目录内的文件</template>
+                    </a-form-item>
+                </a-col>
+            </a-row>
         </a-form>
     </a-modal>
 
@@ -158,7 +288,7 @@
                 <a-tooltip :content="pluginsDirVal || '加载中…'">
                     <span class="vm-dir">{{ pluginsDirVal || '…' }}</span>
                 </a-tooltip>
-                <a-button size="mini" type="text" @click="copyPluginsDir">复制</a-button>
+                <a-button size="small" @click="copyPluginsDir">复制</a-button>
             </div>
         </div>
 
@@ -168,7 +298,7 @@
                 <span class="vm-head-title"><icon-desktop /> 本地可用版本</span>
                 <div class="vm-head-ops">
                     <span class="vm-head-tip">内置版本不可删除；运行中实例引用时拒绝删除</span>
-                    <a-button size="mini" @click="loadLocalVersions">
+                    <a-button size="small" @click="loadLocalVersions">
                         <template #icon><icon-refresh /></template>刷新
                     </a-button>
                 </div>
@@ -182,8 +312,10 @@
                     <a-tag size="small" :color="v.source === 'bundled' ? 'purple' : v.source === 'downloaded' ? 'green' : 'orange'">
                         {{ srcLabel(v.source) }}
                     </a-tag>
-                    <span class="vm-path" :title="v.path">{{ v.path }}</span>
-                    <a-button size="mini" type="text" status="danger" :disabled="v.source === 'bundled'"
+                    <a-tooltip :content="v.path">
+                        <span class="vm-path">{{ v.path }}</span>
+                    </a-tooltip>
+                    <a-button size="small" status="danger" :disabled="v.source === 'bundled'"
                         @click="removeVersion(v)">删除</a-button>
                 </div>
             </div>
@@ -192,10 +324,10 @@
                     <a-input v-model="localDirInput" placeholder="注册本机已有 PHP：填写 php.exe 所在目录" allow-clear />
                 </a-col>
                 <a-col :span="4">
-                    <a-button block @click="chooseLocalDir">浏览…</a-button>
+                    <a-button size="small" block @click="chooseLocalDir">浏览…</a-button>
                 </a-col>
                 <a-col :span="4">
-                    <a-button type="primary" block @click="addLocalDir">添加</a-button>
+                    <a-button size="small" block @click="addLocalDir">添加</a-button>
                 </a-col>
             </a-row>
         </div>
@@ -204,42 +336,51 @@
         <div class="vm-section">
             <div class="vm-head">
                 <span class="vm-head-title"><icon-cloud /> 线上版本（windows.php.net）</span>
-                <a-button size="mini" :loading="remoteLoading" @click="loadRemoteVersions">
+                <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">
                     <template #icon><icon-refresh /></template>刷新
                 </a-button>
             </div>
             <a-spin :loading="remoteLoading" style="width:100%">
                 <a-table :data="remoteVersions" size="small" :pagination="false" row-key="version"
-                    :scroll="{ y: 200 }" :bordered="false"
+                    :scroll="{ x: '100%', y: 200 }" :bordered="false"
                     :columns="[
                         { title: '版本', dataIndex: 'version', width: 100 },
                         { title: '产品线', dataIndex: 'release', width: 80 },
                         { title: '包大小', dataIndex: 'size', width: 90, slotName: 'size' },
                         { title: '状态', dataIndex: 'st', width: 190, slotName: 'st' },
-                        { title: '安装', dataIndex: 'ops', width: 150, slotName: 'ops' },
+                        { title: '安装', dataIndex: 'ops', width: 150, slotName: 'ops', fixed: 'right', align: 'right' },
                     ]">
                     <template #size="{ record }">{{ fmtBytes(record.size) }}</template>
                     <template #st="{ record }">
-                        <a-tag v-if="installedSet.has(record.version)" color="green" size="small">已安装</a-tag>
+                        <span v-if="installedSet.has(record.version)" class="com-state is-on">
+                            <com-badge status="success" />已安装
+                        </span>
                         <template v-else-if="installProgress[record.version]">
-                            <a-tag v-if="installProgress[record.version].stage === 'error'" color="red" size="small">失败</a-tag>
+                            <span v-if="installProgress[record.version].stage === 'error'" class="com-state is-off">
+                                <com-badge status="danger" />失败
+                            </span>
                             <div v-else class="vm-progress">
                                 <a-progress :percent="(installProgress[record.version].percent || 0) / 100" size="mini"
                                     :show-text="false" />
                                 <span class="vm-progress-text">{{ stageText(installProgress[record.version]) }}</span>
                             </div>
                         </template>
-                        <a-tag v-else size="small" color="gray">未安装</a-tag>
+                        <span v-else class="com-state is-dim">
+                            <com-badge status="normal" />未安装
+                        </span>
                     </template>
                     <template #ops="{ record }">
-                        <a-button v-if="installedSet.has(record.version)" size="mini" @click="loadLocalVersions">已安装</a-button>
+                        <a-button v-if="installedSet.has(record.version)" size="small" @click="loadLocalVersions">已安装</a-button>
                         <a-button v-else-if="installProgress[record.version] && installProgress[record.version].stage !== 'error'"
-                            size="mini" disabled>安装中…</a-button>
+                            size="small" disabled>安装中…</a-button>
                         <template v-else>
-                            <a-button size="mini" type="primary" title="非线程安全（推荐，php -S 场景）"
-                                @click="installVersion(record, true)">NTS</a-button>
-                            <a-button size="mini" style="margin-left:6px" title="线程安全（搭配 Apache/Nginx 模块时使用）"
-                                @click="installVersion(record, false)">ZTS</a-button>
+                            <a-tooltip content="非线程安全（推荐，php -S 场景）">
+                                <a-button size="small" @click="installVersion(record, true)">NTS</a-button>
+                            </a-tooltip>
+                            <a-tooltip content="线程安全（搭配 Apache/Nginx 模块时使用）">
+                                <a-button size="small" style="margin-left:6px"
+                                    @click="installVersion(record, false)">ZTS</a-button>
+                            </a-tooltip>
                         </template>
                     </template>
                 </a-table>
@@ -251,7 +392,7 @@
         <div class="vm-section" style="margin-bottom:0">
             <div class="vm-head">
                 <span class="vm-head-title"><icon-file /> 任务日志</span>
-                <a-button size="mini" type="text" :disabled="installLogs.length === 0" @click="installLogs = []">清空</a-button>
+                <a-button size="small" :disabled="installLogs.length === 0" @click="installLogs = []">清空</a-button>
             </div>
             <div ref="installLogRef" class="vm-log">
                 <div v-for="(l, i) in installLogs" :key="i" class="vm-log-line" :class="logClass(l)">{{ l }}</div>
@@ -262,12 +403,16 @@
 
     <!-- php.ini 文本编辑 -->
     <a-modal v-model:visible="iniVisible" :title="`php.ini - ${cfgNameOf(iniInstId)}`" :width="760" :footer="false">
+        <a-alert v-if="isDockerOf(iniInstId)" type="info" style="margin-bottom: 8px">
+            Docker 实例：这一份是挂载进容器 /usr/local/etc/php/conf.d/zz-go-tools.ini 的覆盖配置，只写需要覆盖镜像默认值的指令；
+            重启实例后生效，extension= 指向的是镜像内的扩展，与本面板「扩展管理」无关。
+        </a-alert>
         <a-textarea v-model="iniText" :auto-size="{ minRows: 16, maxRows: 24 }" spellcheck="false" />
         <div class="ini-footer">
             <span class="ini-tip">保存前自动备份；配置加载失败将回滚。</span>
             <a-space>
-                <a-button @click="iniVisible = false">取消</a-button>
-                <a-button type="primary" @click="saveIniAndClose">保存</a-button>
+                <a-button size="small" @click="iniVisible = false">取消</a-button>
+                <a-button size="small" @click="saveIniAndClose">保存</a-button>
             </a-space>
         </div>
     </a-modal>
@@ -354,34 +499,44 @@
     
         <div class="ext-section-head">
             <span class="ext-section-title"><icon-cloud /> 在线可下载安装（PECL Windows）</span>
-            <a-button size="mini" :loading="remoteExtsLoading" @click="loadRemoteExts(true)">
+            <a-button size="small" :loading="remoteExtsLoading" @click="loadRemoteExts(true)">
                 <template #icon><icon-refresh /></template>强制刷新
             </a-button>
         </div>
         <a-spin :loading="remoteExtsLoading" style="width:100%">
-            <a-table :data="remoteExts" size="small" :pagination="false" row-key="name" :scroll="{ y: 200 }"
+            <a-table :data="remoteExts" size="small" :pagination="false" row-key="name" :scroll="{ x: '100%', y: 200 }"
                 :columns="[
                     { title: '扩展', dataIndex: 'label', width: 110 },
                     { title: '说明', dataIndex: 'description', ellipsis: true, tooltip: true },
                     { title: '状态', dataIndex: 'st', width: 150, slotName: 'st' },
-                    { title: '操作', dataIndex: 'ops', width: 110, slotName: 'ops' },
+                    { title: '操作', dataIndex: 'ops', width: 190, slotName: 'ops', fixed: 'right', align: 'right' },
                 ]">
                 <template #st="{ record }">
-                    <a-tag v-if="record.busy" color="arcoblue" size="small">安装中…</a-tag>
-                    <a-tag v-else-if="record.installed" color="green" size="small">已安装{{ record.extVersion ? ' v'+record.extVersion : '' }}</a-tag>
-                    <a-tag v-else-if="record.fetching" size="small" color="gray">获取目录中…</a-tag>
-                    <a-tag v-else-if="record.matchable" color="orange" size="small">可下载{{ record.extVer ? ' v'+record.extVer : '' }}</a-tag>
-                    <a-tag v-else-if="record.seriesSeen" color="gray" size="small">当前 PHP 版本无匹配</a-tag>
+                    <span v-if="record.busy" class="com-state is-busy">
+                        <com-badge status="processing" :animated="true" />安装中…
+                    </span>
+                    <span v-else-if="record.installed" class="com-state is-on">
+                        <com-badge status="success" />已安装{{ record.extVersion ? ' v'+record.extVersion : '' }}
+                    </span>
+                    <span v-else-if="record.fetching" class="com-state is-dim">
+                        <com-badge status="normal" :animated="true" />获取目录中…
+                    </span>
+                    <span v-else-if="record.matchable" class="com-state is-warn">
+                        <com-badge status="warning" />可下载{{ record.extVer ? ' v'+record.extVer : '' }}
+                    </span>
+                    <span v-else-if="record.seriesSeen" class="com-state is-dim">
+                        <com-badge status="normal" />当前版本无匹配
+                    </span>
                     <a-tooltip v-else-if="record.reason" :content="record.reason">
-                        <a-tag size="small" color="gray">不可用</a-tag>
+                        <span class="com-state is-dim"><com-badge status="normal" />不可用</span>
                     </a-tooltip>
-                    <a-tag v-else size="small" color="gray">暂无</a-tag>
+                    <span v-else class="com-state is-dim"><com-badge status="normal" />暂无</span>
                 </template>
                 <template #ops="{ record }">
                     <a-space :size="4">
-                        <a-button v-if="record.matchable && !record.installed" size="mini" type="primary"
+                        <a-button v-if="record.matchable && !record.installed" size="small"
                             :disabled="record.busy" @click="installRemoteExt(record.name)">安装并启用</a-button>
-                        <a-button v-if="record.downloaded && !record.busy" size="mini" status="danger"
+                        <a-button v-if="record.downloaded && !record.busy" size="small" status="danger"
                             @click="removeRemoteExt(record.name)">删除</a-button>
                     </a-space>
                 </template>
@@ -402,7 +557,7 @@
             <a-space style="margin: 10px 0">
                 <a-input v-model="disfnInput" placeholder="添加禁用函数，多个用逗号分隔" style="width:300px"
                     @press-enter="addDisFns(disfnInput.split(/[,，\s]+/))" />
-                <a-button type="primary" @click="addDisFns(disfnInput.split(/[,，\s]+/))">添加</a-button>
+                <a-button size="small" @click="addDisFns(disfnInput.split(/[,，\s]+/))">添加</a-button>
             </a-space>
             <div class="ver-title">常见建议禁用（点击追加）</div>
             <div class="disfn-common">
@@ -418,10 +573,11 @@ import { computed, getCurrentInstance, h, nextTick, onMounted, onUnmounted, reac
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
+import { useToolWindow } from "@/views/index/useToolWindow";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
-interface InstConfig { id: string; name: string; version: string; port: number; nts: boolean; docRoot: string; router: string; enableLogs: boolean }
+interface InstConfig { id: string; name: string; version: string; port: number; nts: boolean; docRoot: string; router: string; enableLogs: boolean; mode: string; image: string; containerName: string }
 
 /* ============================ 状态 ============================ */
 const instances = ref<InstConfig[]>([]);
@@ -433,15 +589,28 @@ const installLogRef = ref<HTMLElement | null>(null);
 let logTimer: any = null;
 let srvTimer: any = null;
 const route = useRoute();
+const { openToolWindow } = useToolWindow();
 let offInstall: any = null;
 let offSelInst: any = null;
+let offPull: any = null;
 
 const selCfg = computed(() => instances.value.find((i) => i.id === selectedId.value) || null);
 const selState = computed(() => (selectedId.value ? states[selectedId.value] : null));
+const isDockerSel = computed(() => selCfg.value?.mode === "docker");
+
+/* Docker 模式表单：镜像候选只列本机已安装的 php 系镜像（不猜预置 tag），列表为空就引导去安装 */
+const dockerImages = ref<string[]>([]);
+const dockerImagesLoading = ref(false);
+const dockerErr = ref("");
+const pullNote = ref("");
+const imageOptions = computed(() => Array.from(new Set<string>(dockerImages.value)));
 
 const instForm = reactive<InstConfig>({
     id: "", name: "", version: "", port: 8088, nts: true, docRoot: "", router: "", enableLogs: true,
+    mode: "local", image: "", containerName: "",
 });
+/** 端口占用提示：贴表单项底下（红字），保存前也用同一份结果拦一次 */
+const portError = ref("");
 const instVisible = ref(false);
 
 const versionsVisible = ref(false);
@@ -545,37 +714,98 @@ async function loadLocalVersions() {
     try { localVersions.value = (await GoTools.PhpSrvListVersions()) || []; }
     catch (e) { localVersions.value = []; }
 }
+/** 某个实例是否 Docker 模式（以配置为准，状态未加载也能判断） */
+function isDockerOf(id: string): boolean {
+    return instances.value.find((i) => i.id === id)?.mode === "docker";
+}
+async function loadImageOptions() {
+    dockerImagesLoading.value = true;
+    try { dockerImages.value = (await GoTools.PhpSrvDockerImages()) || []; }
+    catch (e) { dockerImages.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
+    dockerImagesLoading.value = false;
+    // 还没选值且有候选时先填第一个，省一步点击
+    if (instForm.mode === "docker" && !instForm.image && dockerImages.value.length) instForm.image = dockerImages.value[0];
+}
+async function loadDockerEngine() {
+    try {
+        const [ok, msg] = await GoTools.PhpSrvDockerAvailable();
+        dockerErr.value = ok ? "" : (msg || "Docker 引擎不可用");
+    } catch (e: any) { dockerErr.value = e?.message || String(e); }
+}
+/** 打开 Docker 管理窗口（独立 webview，单例复用）：配镜像时直接过去拉，不用回主页找入口 */
+function openDockerWindow() {
+    openToolWindow("/tools/docker", "Docker管理", { single: true, width: 1200, height: 800 });
+}
 async function loadInstances() {
     try { instances.value = (await GoTools.PhpSrvListInstances()) || []; }
     catch (e) { instances.value = []; }
     if (!selectedId.value && instances.value.length) selectInst(instances.value[0].id);
     refreshStates();
 }
-async function refreshStates() {
-    for (const inst of instances.value) {
-        try {
-            states[inst.id] = await GoTools.PhpSrvStatus(inst.id);
-            if (selectedId.value === inst.id && !logTimer) startLogPolling();
-        } catch (e) { /* ignore */ }
+/**
+ * 状态轮询是单飞的：上一轮没回来就跳过本轮。
+ * Docker 实例的状态要走 Engine API，引擎卡住时一次要挂十几秒，定时器照旧触发就会
+ * 把请求叠成雪崩（终端满屏 Binding 调用失败 + Docker Desktop 被拖到 CPU 100%）。
+ */
+let stateInflight = false;
+/** 一轮全失败后的静默期：引擎离线时不要每 3 秒追问一次 */
+let stateQuietUntil = 0;
+
+async function refreshStates(silent = false) {
+    if (stateInflight) return;
+    if (silent && Date.now() < stateQuietUntil) return;
+    if (silent && startBusy.value) return; // 启动/重启期间先让后端专心建容器
+    stateInflight = true;
+    let ok = 0;
+    try {
+        for (const inst of instances.value) {
+            try {
+                states[inst.id] = await GoTools.PhpSrvStatus(inst.id);
+                ok++;
+                if (selectedId.value === inst.id && !logTimer) startLogPolling();
+            } catch (e) { /* 单个实例失败不影响其它实例 */ }
+        }
+    } finally {
+        stateQuietUntil = ok === 0 && instances.value.length > 0 ? Date.now() + 15000 : 0;
+        stateInflight = false;
     }
 }
 function selectInst(id: string) {
     selectedId.value = id;
     logLines.value = [];
+    lastLogFetch = 0;
     startLogPolling();
     refreshStates();
 }
 
 /* ============================ 日志轮询 ============================ */
+let logInflight = false;
+/** 日志接口连续失败后的静默期 */
+let logQuietUntil = 0;
+let lastLogFetch = 0;
+
 async function pollLogs() {
-    if (!selectedId.value) return;
+    if (!selectedId.value || logInflight) return;
+    if (startBusy.value) return; // 建容器期间不去戳日志接口
+    const now = Date.now();
+    if (now < logQuietUntil) return;
+    // Docker 实例没在跑时日志不再增长：降到 10 秒一次，只为捎带最后几行
+    if (isDockerSel.value && !selState.value?.running && now - lastLogFetch < 10000) return;
+    logInflight = true;
     try {
         const lines = (await GoTools.PhpSrvLogs(selectedId.value, 300)) || [];
+        logQuietUntil = 0;
         if (lines.join("\n") !== logLines.value.join("\n")) {
             logLines.value = lines;
             nextTick(() => { if (logBoxRef.value) logBoxRef.value.scrollTop = logBoxRef.value.scrollHeight; });
         }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+        // 引擎离线/日志读不到：退避 15 秒，不要每 2 秒往终端刷一条错误
+        logQuietUntil = Date.now() + 15000;
+    } finally {
+        lastLogFetch = Date.now();
+        logInflight = false;
+    }
 }
 function startLogPolling() {
     if (logTimer) clearInterval(logTimer);
@@ -584,11 +814,26 @@ function startLogPolling() {
 }
 
 /* ============================ 实例操作 ============================ */
+const startBusy = ref(false);
+/** 启动（本地拉进程，Docker 建容器；首次可能需拉镜像数分钟，进度靠 docker:pull 事件） */
+async function doStartId(id: string, name: string) {
+    if (!id || startBusy.value) return;
+    startBusy.value = true;
+    pullNote.value = "";
+    try {
+        await GoTools.PhpSrvStart(id);
+        Message.success(`实例 ${name} 已启动`);
+    } catch (e: any) {
+        Message.error("启动失败: " + (e?.message || e));
+    } finally {
+        startBusy.value = false;
+        refreshStates();
+        setTimeout(() => { pullNote.value = ""; }, 4000);
+    }
+}
 async function doStart() {
     const c = selCfg.value; if (!c) return;
-    try { await GoTools.PhpSrvStart(c.id); Message.success(`实例 ${c.name} 已启动`); }
-    catch (e: any) { Message.error("启动失败: " + (e?.message || e)); }
-    refreshStates();
+    await doStartId(c.id, c.name);
 }
 async function doStop() {
     const c = selCfg.value; if (!c) return;
@@ -598,18 +843,17 @@ async function doStop() {
 }
 async function doRestart() {
     const c = selCfg.value; if (!c) return;
+    startBusy.value = true;
     try { await GoTools.PhpSrvRestart(c.id); Message.success(`实例 ${c.name} 已重启`); }
     catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
-    refreshStates();
+    finally { startBusy.value = false; refreshStates(); }
 }
 function openSite(port: number) {
     window.open(`http://127.0.0.1:${port}/`, "_blank");
 }
 async function onInstAction(v: string, inst: InstConfig) {
     if (v === "start") {
-        try { await GoTools.PhpSrvStart(inst.id); Message.success(`实例 ${inst.name} 已启动`); }
-        catch (e: any) { Message.error("启动失败: " + (e?.message || e)); }
-        refreshStates();
+        await doStartId(inst.id, inst.name);
     } else if (v === "stop") {
         try { await GoTools.PhpSrvStop(inst.id); Message.success(`实例 ${inst.name} 已停止`); }
         catch (e: any) { Message.error("停止失败: " + (e?.message || e)); }
@@ -647,19 +891,45 @@ async function onInstAction(v: string, inst: InstConfig) {
     }
 }
 
-function openInstModal(inst?: InstConfig) {
-    if (inst) { Object.assign(instForm, { ...inst }); }
-    else {
-        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port: 8088, nts: true, docRoot: "", router: "", enableLogs: true });
+async function openInstModal(inst?: InstConfig) {
+    portError.value = "";
+    if (inst) {
+        // 历史配置可能没有 mode/image 字段，归一后再填表（空值即本地模式）
+        Object.assign(instForm, {
+            ...inst,
+            mode: inst.mode === "docker" ? "docker" : "local",
+            image: inst.image || "",
+            containerName: inst.containerName || "",
+        });
+    } else {
+        // 默认端口也要能用：跳过其它实例已登记的端口与系统里已监听的端口
+        let port = 8088;
+        try { port = (await GoTools.PhpSrvSuggestPort(8088)) || port; } catch (e) { /* ignore */ }
+        Object.assign(instForm, {
+            id: "", name: "", version: localVersions.value[0]?.version || "", port, nts: true,
+            docRoot: "", router: "", enableLogs: true, mode: "local", image: "", containerName: "",
+        });
     }
     if (localVersions.value.length === 0) loadLocalVersions();
+    if (instForm.mode === "docker") onModeChange("docker");
     instVisible.value = true;
 }
+/** 切换运行模式：Docker 读本机镜像候选 + 引擎状态，不干预已有输入 */
+async function onModeChange(v: any) {
+    const mode = String(v ?? instForm.mode ?? "local");
+    instForm.mode = mode;
+    if (mode !== "docker") return;
+    loadImageOptions();
+    loadDockerEngine();
+}
 async function checkPortTaken() {
-    if (!instForm.port) return;
+    if (!instForm.port) { portError.value = ""; return; }
     try {
+        // 后端会把“其它工具实例已登记的端口”和“系统已监听”一起算进来；编辑时排除自身
+        const reason = await GoTools.PhpSrvPortTaken(instForm.port, instForm.id || "");
+        if (!reason) { portError.value = ""; return; }
         const suggest = await GoTools.PhpSrvSuggestPort(instForm.port);
-        if (suggest && suggest !== instForm.port) Message.warning(`端口 ${instForm.port} 已被占用，建议改为 ${suggest}`);
+        portError.value = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
     } catch (e) { /* ignore */ }
 }
 async function chooseDocRoot() {
@@ -668,7 +938,21 @@ async function chooseDocRoot() {
 }
 async function saveInstance(): Promise<boolean> {
     if (!instForm.name) { Message.warning("请填写实例名称"); return false; }
-    if (!instForm.version) { Message.warning("请选择 PHP 版本"); return false; }
+    if (instForm.mode === "docker") {
+        if (!instForm.image) { Message.warning("请选择镜像：本地没有镜像时点下方“点击去安装”"); return false; }
+    } else if (!instForm.version) { Message.warning("请选择 PHP 版本"); return false; }
+    if (!instForm.port) { Message.warning("请填写端口"); return false; }
+    // 端口占用先在本地拦一次，省得提交后才报错（后端保存时还会再校验）
+    try {
+        const reason = await GoTools.PhpSrvPortTaken(instForm.port, instForm.id || "");
+        if (reason) {
+            const suggest = await GoTools.PhpSrvSuggestPort(instForm.port);
+            const tip = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
+            portError.value = tip;
+            Message.warning(tip);
+            return false;
+        }
+    } catch (e) { /* 探测失败不阻断，后端保存时兜底 */ }
     try {
         await GoTools.PhpSrvSaveInstance({ ...instForm });
         Message.success("已保存"); await loadInstances(); return true;
@@ -886,6 +1170,16 @@ function removeDisFn(f: string) {
     });
 }
 
+/** docker:pull 事件 → 容器实例启动时的拉镜像进度（负载 PullProgress） */
+function onPullEvent(raw: any) {
+    const p = raw?.data ?? raw;
+    if (!p || !p.image) return;
+    if (p.stage === "done") { pullNote.value = `镜像 ${p.image} 已就绪`; return; }
+    if (p.stage === "error") { pullNote.value = `镜像 ${p.image} 拉取失败：${p.note || ""}`; return; }
+    const bits = [p.status, p.percent ? `${p.percent}%` : ""].filter((s) => !!s).join(" ");
+    pullNote.value = `拉取镜像 ${p.image}${p.layer ? ` · ${String(p.layer).slice(0, 12)}` : ""}${bits ? ` · ${bits}` : ""}`;
+}
+
 /* ============================ 生命周期 ============================ */
 onMounted(async () => {
     await loadInstances();
@@ -893,13 +1187,14 @@ onMounted(async () => {
     const wantId = String(route.query.inst ?? "");
     if (wantId && instances.value.some((i) => i.id === wantId)) selectInst(wantId);
     loadLocalVersions();
-    srvTimer = setInterval(refreshStates, 3000);
+    srvTimer = setInterval(() => { refreshStates(true); }, 3000);
     // 单例窗口已打开时，主页再次点击其他实例 → 通过事件切换
     offSelInst = Events.On("tool:select-inst", (ev: any) => {
         const p = ev?.data ?? ev;
         if (p?.type !== "php" || !p?.id) return;
         if (instances.value.some((i) => i.id === String(p.id))) selectInst(String(p.id));
     });
+    offPull = Events.On("docker:pull", onPullEvent);
     offInstall = Events.On("php:install", (ev: any) => {
         const p = ev?.data ?? ev;
         if (!p || !p.version) return;
@@ -943,6 +1238,7 @@ onUnmounted(() => {
     if (offInstall) offInstall();
     if (offSelInst) offSelInst();
     if (offExtInstall) offExtInstall();
+    if (offPull) offPull();
     if (extPollTimer) clearTimeout(extPollTimer);
     if (srvTimer) clearInterval(srvTimer);
     if (logTimer) clearInterval(logTimer);
@@ -954,7 +1250,6 @@ onUnmounted(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
 }
 
 .side-col,
@@ -1062,6 +1357,21 @@ onUnmounted(() => {
     color: var(--color-text-3);
 }
 
+/* 这个 b 原本为省略号设了 overflow:hidden，会把圆点光晕切掉一圈 */
+.ls-item b.com-state {
+    overflow: visible;
+    justify-content: flex-end;
+}
+
+/* 字段说明：图标 + a-tooltip，不用原生 title */
+.ls-label-tip {
+    margin-left: 4px;
+    font-size: 12px;
+    color: var(--color-text-3);
+    vertical-align: -1px;
+    cursor: help;
+}
+
 .log-head {
     display: flex;
     justify-content: space-between;
@@ -1113,6 +1423,69 @@ onUnmounted(() => {
     font-size: 12px;
     color: var(--color-text-3);
     word-break: break-all;
+}
+
+/* 表单固定高度：两种模式字段行数一样，切模式时弹窗不再跟着跳 */
+.inst-form {
+    min-height: 490px;
+}
+
+/* Docker 镜像行：下拉占满剩余宽度，右侧一个方形按钮打开 Docker 管理窗口
+ * Arco 的竖排表单项内容区默认按内容宽度收缩（align-items: flex-start），空下拉会被挤成一个小方块，
+ * 这里显式把内容区拉成整栏宽 */
+.inst-form :deep(.img-item .arco-form-item-wrapper-col) {
+    align-items: stretch;
+}
+
+.inst-form :deep(.img-item .arco-form-item-content) {
+    width: 100%;
+}
+
+.img-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.img-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.img-open {
+    flex: none;
+    width: 32px;
+    padding: 0;
+}
+
+/* 本地没有镜像时的提示：橙色一点，提醒可以点进去装 */
+.img-none {
+    color: rgb(var(--orange-6));
+}
+
+/* #help 里的“去安装”链接：跟 12px 提示文字同字号，不把行高撑开 */
+.img-none :deep(.arco-link) {
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.btn-wrap {
+    display: inline-flex;
+}
+
+/* Docker 启动时的拉镜像进度行 */
+.pull-tip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 14px 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: var(--color-fill-2);
+    font-size: 12px;
+    color: var(--color-text-2);
 }
 
 .install-log {

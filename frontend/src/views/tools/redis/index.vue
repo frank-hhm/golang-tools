@@ -4,19 +4,19 @@
         <a-col :span="6" class="side-col">
             <a-row class="redis-pages">
                 <a-col class="side-cols" :span="24">
-                    <a-card class="side-card" size="small" :body-style="{
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{
                         padding: 0
                     }">
                         <template #title>连接</template>
                         <template #extra>
-                            <a-button size="small" title="新增连接" @click="openAddModal()">
+                            <a-button size="small" @click="openAddModal()">
                                 新增连接
                             </a-button>
                         </template>
                         <a-list :bordered="false" size="small">
                             <a-list-item v-for="c in savedConns" :key="c.id" @click="openConnection(c)">
                                 <a-space>
-                                    <a-badge :status="isOpen(c.id) ? 'success' : 'normal'" />
+                                    <com-badge :status="isOpen(c.id) ? 'success' : 'normal'" :animated="isOpen(c.id)" />
                                     <div class="conn-name">{{ c.name || (c.host + ':' + c.port) }}</div>
                                 </a-space>
                                 <template #actions>
@@ -37,16 +37,16 @@
                     </a-card>
                 </a-col>
                 <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card  " size="small" :body-style="{
+                    <a-card class="side-card card-head-tool" size="small" :body-style="{
                         padding: 0
                     }">
                         <template #title>本地服务</template>
                         <template #extra>
                             <div class="srv-head-actions">
-                                <a-button size="small" title="新建实例" @click="openInstModal()">
+                                <a-button size="small" @click="openInstModal()">
                                     新建实例
                                 </a-button>
-                                <a-button size="small" title="版本管理" @click="openVersionsModal()">
+                                <a-button size="small" @click="openVersionsModal()">
                                     版本管理
                                 </a-button>
                             </div>
@@ -54,10 +54,16 @@
                         <a-list :bordered="false" size="small">
                             <a-list-item v-for="inst in srvInstances" :key="inst.id">
                                 <a-space>
-                                    <a-badge :status="srvStates[inst.id]?.running ? 'success' : 'normal'" />
-                                    <span class="conn-name" :title="inst.name + ':' + inst.port">{{ inst.name
-                                        }}</span>
-                                    <a-tag color="arcoblue">v{{ inst.version }}</a-tag>
+                                    <com-badge :status="srvStates[inst.id]?.running ? 'success' : 'normal'"
+                                        :animated="!!srvStates[inst.id]?.running" />
+                                    <a-tooltip :content="inst.name + ':' + inst.port">
+                                        <span class="conn-name">{{ inst.name }}</span>
+                                    </a-tooltip>
+                                    <!-- 容器实例不占本机版本库，用镜像 tag 标身份 -->
+                                    <a-tooltip v-if="inst.mode === 'docker'" :content="inst.image || 'Docker'">
+                                        <a-tag color="purple">{{ inst.image || 'Docker' }}</a-tag>
+                                    </a-tooltip>
+                                    <a-tag v-else color="arcoblue">v{{ inst.version }}</a-tag>
                                 </a-space>
                                 <template #actions>
 
@@ -85,22 +91,24 @@
             </a-row>
         </a-col>
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel empty-card" v-if="openTabs.length === 0">
+            <a-card class="main-panel empty-card card-head-tool" v-if="openTabs.length === 0">
                 <!-- 空状态 -->
                 <a-empty description="可以从左边选择并打开连接">
-                    <a-button type="primary" @click="openAddModal()">
+                    <a-button size="small" @click="openAddModal()">
                         <template #icon><icon-plus /></template>添加新连接
                     </a-button>
                 </a-empty>
             </a-card>
 
             <!-- 已打开连接：用 a-card 承载，连接标签(openTabs)为 #title 的 a-radio-group，子标签为 #extra 的 a-radio-group -->
-            <a-card v-else class="main-panel conn-card" :body-style="{ padding: 0 }">
+            <a-card v-else class="main-panel conn-card card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-radio-group v-model="st.activeTab" type="button" size="medium"
                         @change="(v: any) => switchTab(String(v))">
                         <a-radio v-for="t in openTabs" :key="t.id" :value="t.id">
-                            <span class="tab-label" :title="t.name">{{ t.name }}</span>
+                            <a-tooltip :content="t.name">
+                                <span class="tab-label">{{ t.name }}</span>
+                            </a-tooltip>
                             <icon-close class="tab-close" @click.stop="closeTab(t.id)" />
                         </a-radio>
                     </a-radio-group>
@@ -117,7 +125,7 @@
 
                 <div class="tab-content">
                     <!-- 状态 -->
-                    <a-card v-show="st.activeSubTab === 'status'" class="status-card">
+                    <a-card v-show="st.activeSubTab === 'status'" class="status-card card-head-tool">
                         <template #title>
                             <a-space>
                                 <span class="status-addr">{{ st.status?.host || activeTabName }}</span>
@@ -163,18 +171,18 @@
 
                     <!-- 键详情 -->
                     <div v-show="st.activeSubTab === 'keys'" class="keys-view">
-                        <a-card class="key-list-panel" :body-style="{ padding: 0 }">
+                        <a-card class="key-list-panel card-head-tool" :body-style="{ padding: 0 }">
                             <template #title>
                                 <a-space>
                                     <a-input v-model="st.keyFilter" size="mini" placeholder="筛选键 (支持 * 通配)" allow-clear
                                         @press-enter="reloadKeys()">
                                         <template #prefix><icon-search /></template>
                                     </a-input>
-                                    <a-button size="mini" @click="reloadKeys()"><template
+                                    <a-button size="small" @click="reloadKeys()"><template
                                             #icon><icon-refresh /></template></a-button>
-                                    <a-button size="mini" @click="openAddKey()"><template
+                                    <a-button size="small" @click="openAddKey()"><template
                                             #icon><icon-plus /></template></a-button>
-                                    <a-button size="mini" @click="openBatchKey()">批量生成</a-button>
+                                    <a-button size="small" @click="openBatchKey()">批量生成</a-button>
                                 </a-space>
                             </template>
                             <div class="key-list">
@@ -182,14 +190,16 @@
                                     :class="{ active: k.key === st.selectedKey }" @click="selectKey(k.key)">
                                     
                                     <a-tag color="pinkpurple" size="small">{{ (k.type[0] || '?').toUpperCase() }}</a-tag>
-                                    <div class="key-name" :title="k.key">{{ k.key }}</div>
+                                    <a-tooltip :content="k.key">
+                                        <div class="key-name">{{ k.key }}</div>
+                                    </a-tooltip>
                                     <icon-delete class="key-del" @click.stop="delKey(k.key)" />
                                 </div>
                                 <a-empty v-if="st.keys.length === 0" :image="false" description="无键" />
                             </div>
                         </a-card>
 
-                        <a-card class="key-detail-panel" :body-style="{ padding: 0 }">
+                        <a-card class="key-detail-panel card-head-tool" :body-style="{ padding: 0 }">
                             <template #title>
                                 <div v-if="!st.selectedKey" class="conn-empty">
                                     请选择左侧键查看
@@ -210,7 +220,7 @@
                                         <template #icon><icon-edit /></template>{{ st.editing ? '取消' : '编辑'
                                         }}
                                     </a-button>
-                                    <a-button v-if="st.editing" size="small" type="primary" status="success"
+                                    <a-button v-if="st.editing" size="small" status="success"
                                         @click="saveKey()">
                                         <template #icon><icon-save /></template>保存
                                     </a-button>
@@ -271,11 +281,11 @@
                         </template>
                         <template #extra>
                             <a-space>
-                                <a-button v-if="!st.monitoring" @click="startMonitor()"><template
+                                <a-button size="small" v-if="!st.monitoring" @click="startMonitor()"><template
                                         #icon><icon-play-arrow /></template>开始监控</a-button>
-                                <a-button v-else status="warning" @click="stopMonitor()"><template
+                                <a-button size="small" v-else status="warning" @click="stopMonitor()"><template
                                         #icon><icon-pause /></template>停止</a-button>
-                                <a-button @click="st.monitorLines = []"><template
+                                <a-button size="small" @click="st.monitorLines = []"><template
                                         #icon><icon-delete /></template>清空</a-button>
                             </a-space>
                         </template>
@@ -344,8 +354,9 @@
             <a-form-item field="key" label="键名"><a-input v-model="keyForm.key" placeholder="key" /></a-form-item>
             <a-form-item field="value" label="值"><a-textarea v-model="keyForm.value"
                     :auto-size="{ minRows: 3 }" /></a-form-item>
-            <a-form-item field="ttl" label="过期时间(秒, 0=不过期)"><a-input-number v-model="keyForm.ttl"
-                    :min="0" /></a-form-item>
+            <a-form-item field="ttl" label="过期时间（秒）" tooltip="0 = 不过期">
+                <a-input-number v-model="keyForm.ttl" :min="0" />
+            </a-form-item>
         </a-form>
     </a-modal>
 
@@ -371,7 +382,7 @@
                     </a-form-item>
                 </a-col>
             </a-row>
-            <a-form-item field="ttl" label="过期时间(秒, 0=不过期)">
+            <a-form-item field="ttl" label="过期时间（秒）" tooltip="0 = 不过期">
                 <a-input-number v-model="batchForm.ttl" :min="0" />
             </a-form-item>
             <div style="color: var(--color-text-3); font-size: var(--base-size-small)">将生成：{{ batchForm.keyPrefix
@@ -392,8 +403,10 @@
                             :color="v.source === 'bundled' ? 'green' : (v.source === 'downloaded' ? 'arcoblue' : 'orange')">{{
                                 srcLabel(v.source) }}</a-tag>
                         <span class="ver-name">Redis {{ v.version }}</span>
-                        <span class="ver-path" :title="v.path">{{ v.path }}</span>
-                        <a-button size="mini" type="text" status="danger" :disabled="v.source === 'bundled'"
+                        <a-tooltip :content="v.path">
+                            <span class="ver-path">{{ v.path }}</span>
+                        </a-tooltip>
+                        <a-button size="small" status="danger" :disabled="v.source === 'bundled'"
                             @click="removeVersion(v)">删除</a-button>
                     </div>
                     <a-empty v-if="localVersions.length === 0" :image="false" description="尚未安装任何版本，可从下方在线安装或添加本机目录" />
@@ -402,7 +415,7 @@
                     <a-input v-model="localDirInput" size="small" placeholder="本机 redis-server.exe 所在目录" allow-clear />
                     <a-button size="small" @click="chooseLocalDir"><template
                             #icon><icon-folder /></template>选目录</a-button>
-                    <a-button size="small" type="primary" @click="addLocalDir">添加</a-button>
+                    <a-button size="small" @click="addLocalDir">添加</a-button>
                 </div>
                 <div class="ver-hint">离线安装：将 redis zip 放入 <span class="mono">{{ srvServersDir }}</span> 后点「安装」即可</div>
             </a-card>
@@ -413,7 +426,7 @@
                     <span class="ver-sec-title"><icon-cloud /> 在线版本（GitHub redis-windows 发行版，&gt;=7.0）</span>
                 </template>
                 <template #extra>
-                    <a-button size="mini" type="text" :loading="remoteLoading" @click="loadRemoteVersions">
+                    <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">
                         <template #icon><icon-refresh /></template>刷新
                     </a-button>
                 </template>
@@ -421,7 +434,7 @@
                     <div v-for="r in remoteVersions" :key="r.version" class="ver-item">
                         <span class="ver-name">Redis {{ r.version }}</span>
                         <span class="ver-path">{{ r.size ? (r.size / 1024 / 1024).toFixed(0) + ' MB' : '' }}</span>
-                        <a-button size="mini" type="primary"
+                        <a-button size="small"
                             :disabled="!!installProgress[r.version] || installedSet.has(r.version)"
                             @click="installVersion(r)">{{ installedSet.has(r.version) ? '已安装' : '安装' }}</a-button>
                     </div>
@@ -434,12 +447,14 @@
                         <a-progress :percent="(p.percent || 0) / 100" size="small"
                             :status="p.stage === 'error' ? 'danger' : 'normal'" style="flex: 1" />
                         <span class="inst-stage">{{ stageText(p) }}</span>
-                        <a-button v-if="p.stage === 'error'" size="mini" status="danger"
+                        <a-button v-if="p.stage === 'error'" size="small" status="danger"
                             @click="retryInstall(ver as string)">
                             <template #icon><icon-refresh /></template>重试
                         </a-button>
                     </div>
-                    <div v-if="p.stage === 'error' && p.note" class="inst-err">{{ p.note }}</div>
+                    <div v-if="p.stage === 'error' && p.note" class="inst-err">
+                        <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
+                    </div>
                 </div>
             </a-card>
 
@@ -447,7 +462,7 @@
             <a-card size="small" :body-style="{ padding: '8px 12px' }">
                 <template #title><span class="ver-sec-title"><icon-history /> 安装日志</span></template>
                 <template #extra>
-                    <a-button size="mini" type="text" @click="installLogs = []"><template
+                    <a-button size="small" @click="installLogs = []"><template
                             #icon><icon-delete /></template>清空</a-button>
                 </template>
                 <div class="ver-scroll inst-log">
@@ -459,37 +474,89 @@
     </a-modal>
 
     <!-- 本地服务：实例编辑 -->
-    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="460" @ok="saveInstance">
-        <a-form :model="instForm" layout="vertical">
+    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520" @ok="saveInstance">
+        <a-form :model="instForm" layout="vertical" class="inst-form">
             <a-form-item field="name" label="实例名称">
                 <a-input v-model="instForm.name" placeholder="例如 local-dev" />
             </a-form-item>
-            <a-form-item field="version" label="Redis 版本">
+            <a-form-item field="mode" label="运行模式">
+                <a-radio-group size="medium" v-model="instForm.mode" type="button" @change="onModeChange">
+                    <a-radio value="local"><icon-computer /> 本地</a-radio>
+                    <a-radio value="docker"><icon-experiment /> Docker</a-radio>
+                </a-radio-group>
+                <template #extra>
+                    <template v-if="instForm.mode === 'docker'">
+                        容器内跑 redis-server，数据目录挂载到 /data；首次启动会自动拉取镜像（可能几分钟）
+                    </template>
+                    <template v-else>使用本机插件目录下的 redis-server，可在「版本管理」获取</template>
+                </template>
+            </a-form-item>
+            <!-- 本地：版本单占一行；Docker：镜像 + 容器名同一行，两种模式行数一致，切模式时弹窗高度不跳 -->
+            <a-form-item v-if="instForm.mode !== 'docker'" field="version" label="Redis 版本" tooltip="需已安装，可在「版本管理」获取">
                 <a-select v-model="instForm.version" placeholder="需已安装，可在「版本管理」获取">
                     <a-option v-for="v in localVersions" :key="v.version" :value="v.version">
                         {{ v.version }}（{{ srcLabel(v.source) }}）
                     </a-option>
                 </a-select>
             </a-form-item>
+            <a-row v-else :gutter="12">
+                <a-col :span="14">
+                    <a-form-item class="img-item" field="image" label="镜像" required>
+                        <div class="img-row">
+                            <a-select v-model="instForm.image" class="img-select" placeholder="选择已安装镜像"
+                                allow-create filterable :loading="dockerImagesLoading">
+                                <!-- 自闭合的 a-option 没有文字，label 会是空串，下拉里全是空白行 —— 显式写上文字 -->
+                                <a-option v-for="im in imageOptions" :key="im" :value="im">{{ im }}</a-option>
+                                <template #empty>
+                                    <a-empty :image="false" description="无可用镜像" />
+                                </template>
+                            </a-select>
+                            <!-- 配镜像时随手打开 Docker 管理窗口（拉取 / 看进度） -->
+                            <a-tooltip content="打开 Docker 管理窗口：拉镜像、看拉取进度">
+                                <a-button size="small" class="img-open" @click="openDockerWindow">
+                                    <template #icon><icon-storage /></template>
+                                </a-button>
+                            </a-tooltip>
+                        </div>
+                        <template #help>
+                            <span v-if="dockerImagesLoading">正在读取本地镜像…</span>
+                            <span v-else-if="!imageOptions.length && !instForm.image" class="img-none">
+                                本地无可用镜像，<a-link @click="openDockerWindow">点击去安装</a-link>
+                            </span>
+                        </template>
+                    </a-form-item>
+                </a-col>
+                <a-col :span="10">
+                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-redis-实例ID">
+                        <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错 -->
+            <a-alert v-if="instForm.mode === 'docker' && dockerErr" type="warning"
+                style="margin-bottom: 12px">{{ dockerErr }}</a-alert>
             <a-row :gutter="12">
                 <a-col :span="12">
-                    <a-form-item field="port" label="端口">
-                        <a-input-number v-model="instForm.port" :min="1" :max="65535" @blur="checkPortTaken" />
+                    <a-form-item field="port" label="端口" :error="portError"
+                        tooltip="只监听 127.0.0.1，Docker 与本地模式一样不对外暴露">
+                        <a-input-number v-model="instForm.port" :min="1" :max="65535"
+                            @change="portError = ''" @blur="checkPortTaken" />
                     </a-form-item>
                 </a-col>
                 <a-col :span="12">
-                    <a-form-item field="maxMemoryMB" label="最大内存MB(0=不限)">
+                    <a-form-item field="maxMemoryMB" label="最大内存 (MB)" tooltip="0 = 不限">
                         <a-input-number v-model="instForm.maxMemoryMB" :min="0" />
                     </a-form-item>
                 </a-col>
             </a-row>
-            <a-form-item field="password" label="密码（留空=无 requirepass）">
+            <a-form-item field="password" label="密码" tooltip="留空 = 不设置 requirepass">
                 <a-input-password v-model="instForm.password" placeholder="留空则不设置" />
             </a-form-item>
-            <a-form-item field="appendOnly" label="持久化 AOF">
+            <a-form-item field="appendOnly" label="持久化 AOF" tooltip="开启后每次写入追加到 appendonly.aof，重启不丢数据">
                 <a-switch v-model="instForm.appendOnly" />
             </a-form-item>
-            <a-form-item field="dataDir" label="数据目录（留空=默认）">
+            <a-form-item field="dataDir" label="数据目录"
+                :tooltip="instForm.mode === 'docker' ? 'Docker 模式该目录会挂载进容器 /data，RDB/AOF 都落在这儿' : '留空 = 程序数据目录下按实例 ID 分配'">
                 <a-input v-model="instForm.dataDir" placeholder="空 = 程序数据目录下按 ID 分配" />
             </a-form-item>
         </a-form>
@@ -503,7 +570,17 @@
                 : '已停止'
                     }}</b></div>
             <div class="ls-item"><span>版本</span><b>{{ logsStatus.version || '-' }}</b></div>
-            <div class="ls-item"><span>PID</span><b>{{ logsStatus.pid || '-' }}</b></div>
+            <div class="ls-item"><span>运行模式</span><b>{{ logsStatus.mode === 'docker' ? 'Docker 容器' : '本地进程'
+                    }}</b></div>
+            <!-- 容器里 redis-server 的 pid 在虚拟机 namespace，报给看只会误导，改看容器名与容器状态 -->
+            <div class="ls-item" v-if="logsStatus.mode === 'docker'">
+                <span>容器</span>
+                <a-tooltip :content="logsStatus.containerId || logsStatus.container || '-'">
+                    <b>{{ logsStatus.container || '-' }}{{ logsStatus.containerState ? `（${logsStatus.containerState}）` :
+                            '' }}</b>
+                </a-tooltip>
+            </div>
+            <div class="ls-item" v-else><span>PID</span><b>{{ logsStatus.pid || '-' }}</b></div>
             <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(logsStatus.uptimeSeconds) }}</b></div>
             <div class="ls-item"><span>已连客户端</span><b>{{ logsStatus.connectedClients ?? '-' }}</b></div>
             <div class="ls-item"><span>键总数</span><b>{{ logsStatus.totalKeys ?? '-' }}</b></div>
@@ -514,8 +591,8 @@
             <div v-if="logsLines.length === 0" class="conn-empty">暂无日志</div>
         </div>
         <div class="ls-actions">
-            <a-button size="mini" @click="logsLines = []"><template #icon><icon-delete /></template>清空</a-button>
-            <a-button size="mini" :disabled="!logsStatus?.running" @click="connectInstance(logsInst)">
+            <a-button size="small" @click="logsLines = []"><template #icon><icon-delete /></template>清空</a-button>
+            <a-button size="small" :disabled="!logsStatus?.running" @click="connectInstance(logsInst)">
                 <template #icon><icon-link /></template>连接此实例
             </a-button>
         </div>
@@ -527,6 +604,7 @@ import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactiv
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
+import { useToolWindow } from "@/views/index/useToolWindow";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -944,6 +1022,8 @@ watch(
 interface SrvInstanceConfig {
     id: string; name: string; version: string; port: number;
     password: string; appendOnly: boolean; maxMemoryMB: number; dataDir: string;
+    // mode: local | docker；容器模式不占本机版本库，靠 image 定位镜像
+    mode: string; image: string; containerName: string;
 }
 
 const srvInstances = ref<SrvInstanceConfig[]>([]);
@@ -965,12 +1045,22 @@ const logBoxRef = ref<HTMLElement | null>(null);
 
 const instForm = reactive<SrvInstanceConfig>({
     id: "", name: "", version: "", port: 6379, password: "", appendOnly: false, maxMemoryMB: 0, dataDir: "",
+    mode: "local", image: "", containerName: "",
 });
+/** 端口占用提示：贴表单项底下（红字），保存前也用同一份结果拦一次 */
+const portError = ref("");
+
+/* Docker 模式表单：镜像候选只列本机已装好的 redis 系镜像（不猜预置 tag），列表为空就引导去安装 */
+const dockerImages = ref<string[]>([]);
+const dockerImagesLoading = ref(false);
+const dockerErr = ref("");
+const imageOptions = computed(() => Array.from(new Set<string>(dockerImages.value)));
 
 const installedSet = computed(() => new Set<string>(localVersions.value.map((v: any) => v.version)));
 
 let offInstall: any = null;
 const route = useRoute();
+const { openToolWindow } = useToolWindow();
 let offSelInst: any = null;
 let srvTimer: any = null;
 
@@ -1077,24 +1167,86 @@ async function addLocalDir() {
     catch (e: any) { Message.error("添加失败: " + (e?.message || e)); }
 }
 
-function openInstModal(inst?: SrvInstanceConfig) {
-    if (inst) { Object.assign(instForm, { ...inst }); }
-    else { Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port: 6379, password: "", appendOnly: false, maxMemoryMB: 0, dataDir: "" }); }
+async function openInstModal(inst?: SrvInstanceConfig) {
+    portError.value = "";
+    dockerErr.value = "";
+    if (inst) {
+        // 历史配置没 mode/image 字段，归一化后再进表单，避免 radio 两档都没选中
+        Object.assign(instForm, {
+            ...inst,
+            mode: inst.mode === "docker" ? "docker" : "local",
+            image: inst.image || "",
+            containerName: inst.containerName || "",
+        });
+    }
+    else {
+        // 默认端口避开其它实例已登记 / 系统已监听的
+        let port = 6379;
+        try { port = (await GoTools.RedisSrvSuggestPort(6379)) || port; } catch (e) { /* ignore */ }
+        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port, password: "", appendOnly: false, maxMemoryMB: 0, dataDir: "", mode: "local", image: "", containerName: "" });
+    }
     if (localVersions.value.length === 0) loadLocalVersions();
+    if (instForm.mode === "docker") onModeChange("docker");
     instVisible.value = true;
 }
 
-async function checkPortTaken() {
-    if (!instForm.port) return;
+/** 切换运行模式：Docker 读本机镜像候选 + 引擎状态，不干预已有输入 */
+async function onModeChange(v: any) {
+    const mode = String(v ?? instForm.mode ?? "local");
+    instForm.mode = mode;
+    if (mode !== "docker") return;
+    loadImageOptions();
+    loadDockerEngine();
+}
+
+async function loadImageOptions() {
+    dockerImagesLoading.value = true;
+    try { dockerImages.value = (await GoTools.RedisSrvDockerImages()) || []; }
+    catch (e) { dockerImages.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
+    dockerImagesLoading.value = false;
+    // 还没选值且有候选时先填第一个，省一步点击
+    if (instForm.mode === "docker" && !instForm.image && dockerImages.value.length) instForm.image = dockerImages.value[0];
+}
+
+async function loadDockerEngine() {
     try {
+        const [ok, msg] = await GoTools.RedisSrvDockerAvailable();
+        dockerErr.value = ok ? "" : (msg || "Docker 引擎不可用");
+    } catch (e: any) { dockerErr.value = e?.message || String(e); }
+}
+
+/** 打开 Docker 管理窗口（独立 webview，单例复用）：配镜像时直接过去拉，不用回主页找入口 */
+function openDockerWindow() {
+    openToolWindow("/tools/docker", "Docker管理", { single: true, width: 1200, height: 800 });
+}
+
+async function checkPortTaken() {
+    if (!instForm.port) { portError.value = ""; return; }
+    try {
+        const reason = await GoTools.RedisSrvPortTaken(instForm.port, instForm.id || "");
+        if (!reason) { portError.value = ""; return; }
         const suggest = await GoTools.RedisSrvSuggestPort(instForm.port);
-        if (suggest && suggest !== instForm.port) Message.warning(`端口 ${instForm.port} 已被占用，建议改为 ${suggest}`);
+        portError.value = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
     } catch (e) { /* ignore */ }
 }
 
 async function saveInstance() {
     if (!instForm.name) { Message.warning("请填写实例名称"); return; }
-    if (!instForm.version) { Message.warning("请选择 Redis 版本"); return; }
+    // 两种模式的必填项不一样：本地看本机版本库，容器看镜像（后端也会再校一次）
+    if (instForm.mode === "docker") {
+        if (!instForm.image) { Message.warning("Docker 模式请选择或输入镜像"); return; }
+    } else if (!instForm.version) { Message.warning("请选择 Redis 版本"); return; }
+    if (!instForm.port) { Message.warning("请填写端口"); return; }
+    // 端口占用先在本地拦一次，后端保存时还会再校验
+    try {
+        const reason = await GoTools.RedisSrvPortTaken(instForm.port, instForm.id || "");
+        if (reason) {
+            const suggest = await GoTools.RedisSrvSuggestPort(instForm.port);
+            portError.value = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
+            Message.warning(portError.value);
+            return;
+        }
+    } catch (e) { /* 探测失败不阻断，后端兜底 */ }
     try {
         await GoTools.RedisSrvSaveInstance({ ...instForm });
         instVisible.value = false; Message.success("已保存"); await loadSrvInstances();
@@ -1222,8 +1374,6 @@ onUnmounted(() => {
     height: 100%;
     min-height: 0;
     flex-wrap: nowrap;
-    background: var(--color-fill-1);
-
 }
 
 /* 左侧列（a-col，约 30% 宽）：上下两个面板各占 50% 高 */
@@ -1744,9 +1894,8 @@ onUnmounted(() => {
     min-width: 80px;
 }
 
+/* 安装失败提示：内容是 a-alert，这里只管间距，颜色交给 alert 的类型色 */
 .inst-err {
-    font-size: var(--base-size-small);
-    color: rgb(var(--red-6));
     padding: var(--base-radius-default) 0 0 0;
     word-break: break-all;
     white-space: pre-wrap;
@@ -1819,5 +1968,46 @@ onUnmounted(() => {
     display: flex;
     gap: 8px;
     margin-top: var(--base-radius-large);
+}
+
+/* Docker 镜像行：下拉占满剩余宽度，右侧一个方形按钮打开 Docker 管理窗口
+ * Arco 的竖排表单项内容区默认按内容宽度收缩（align-items: flex-start），空下拉会被挤成一个小方块，
+ * 这里显式把内容区拉成整栏宽 */
+.inst-form :deep(.img-item .arco-form-item-wrapper-col) {
+    align-items: stretch;
+}
+
+.inst-form :deep(.img-item .arco-form-item-content) {
+    width: 100%;
+}
+
+.img-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.img-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.img-open {
+    flex: none;
+    width: 32px;
+    padding: 0;
+}
+
+/* 本地没有镜像时的提示：橙色一点，提醒可以点进去装 */
+.img-none {
+    color: rgb(var(--orange-6));
+}
+
+/* #help 里的“去安装”链接：跟提示文字同字号，不把行高撑开 */
+.img-none :deep(.arco-link) {
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
 }
 </style>

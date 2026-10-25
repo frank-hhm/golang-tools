@@ -10,6 +10,7 @@ import (
 	appsvc "go-tools/services/app"
 	"go-tools/services/applog"
 	"go-tools/services/config"
+	"go-tools/tools/docker"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -64,6 +65,9 @@ func init() {
 	application.RegisterEvent[nginx.InstallProgress]("nginx:install")
 	application.RegisterEvent[npm.InstallProgress]("npm:install")
 	application.RegisterEvent[npm.InstallProgress]("npm:npmver")
+	application.RegisterEvent[docker.PullProgress]("docker:pull")
+	application.RegisterEvent[docker.ContainerLogLine]("docker:serverlog")
+	application.RegisterEvent[docker.SetupProgress]("docker:setup")
 }
 
 func main() {
@@ -126,6 +130,11 @@ func main() {
 		app.Event.Emit(name, data...)
 	})
 
+	// 注入事件发射器，使 docker 包可将镜像拉取进度、容器日志实时推送给前端
+	docker.SetEmitter(func(name string, data ...any) {
+		app.Event.Emit(name, data...)
+	})
+
 	// 注入事件发射器，使 php/nginx/npm 包可将安装进度、全局包操作实时推送给前端
 	php.SetEmitter(func(name string, data ...any) {
 		app.Event.Emit(name, data...)
@@ -145,14 +154,16 @@ func main() {
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: startupCfg.General.AppName,
 		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
-		Width:  1000,
-		Height: 718,
+		Width:  1240,
+		Height: 800,
 		// 无边框：主窗口顶部改用前端 BasicLayout 自绘深色标题栏（与工具窗口 BlankLayout 一致），
 		// 右上角仅保留“设置”入口与“关闭”按钮（关闭仍隐藏到托盘）。
 		Frameless: true,
 		// 禁用双击标题栏最大化：移除 WS_MAXIMIZEBOX 样式（Win32 双击拖拽区的默认处理会检查该样式），
 		// 主窗口固定为非最大化尺寸，自适应交给前端布局
 		MaximiseButtonState: application.ButtonHidden,
+		// 主窗口固定尺寸：去掉 WS_THICKFRAME，拖边框不能缩放（前端的边缘缩放热区也不启用）
+		DisableResize: true,
 		Windows: application.WindowsWindow{
 			// 启用 WebView2 非客户区支持，使 app-region: drag 自绘标题栏可拖动
 			NonClientRegionSupport: true,

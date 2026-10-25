@@ -55,16 +55,16 @@ type NpmLayer struct {
 
 // NpmEntry 一个 npm 入口目录（Node 目录，或 prefix 这类自带转发壳的目录）
 type NpmEntry struct {
-	Version   string   `json:"version"`   // 目录对应的 Node 版本，读不到为空
-	Dir       string   `json:"dir"`       // 入口目录
-	Exe       string   `json:"exe"`       // 跑它用的 node
-	Registered bool    `json:"registered"` // 是否已在 go-tools 登记
-	PathIdx   int      `json:"pathIdx"`   // 在生效 PATH 中的下标，-1 = 不在
-	Shim      string   `json:"shim"`      // 该目录下的 npm 转发壳
-	HasNode   bool     `json:"hasNode"`   // 目录里是否有 node 本体
-	Prefix    string   `json:"prefix"`    // 该入口算出的全局 prefix
-	Bundled   NpmLayer `json:"bundled"`   // 本目录的 node_modules/npm
-	Override  NpmLayer `json:"override"`  // prefix 指向的 node_modules/npm
+	Version    string   `json:"version"`    // 目录对应的 Node 版本，读不到为空
+	Dir        string   `json:"dir"`        // 入口目录
+	Exe        string   `json:"exe"`        // 跑它用的 node
+	Registered bool     `json:"registered"` // 是否已在 go-tools 登记
+	PathIdx    int      `json:"pathIdx"`    // 在生效 PATH 中的下标，-1 = 不在
+	Shim       string   `json:"shim"`       // 该目录下的 npm 转发壳
+	HasNode    bool     `json:"hasNode"`    // 目录里是否有 node 本体
+	Prefix     string   `json:"prefix"`     // 该入口算出的全局 prefix
+	Bundled    NpmLayer `json:"bundled"`    // 本目录的 node_modules/npm
+	Override   NpmLayer `json:"override"`   // prefix 指向的 node_modules/npm
 
 	Effective       string `json:"effective"`       // 经该 shim 实际执行的 npm 版本
 	EffectiveFrom   string `json:"effectiveFrom"`   // bundled | override

@@ -11,11 +11,13 @@ import (
 	"go-tools/services/applog"
 	"go-tools/services/config"
 	"go-tools/services/winui"
+	"go-tools/tools/docker"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
 	"go-tools/tools/ocr"
 	"go-tools/tools/php"
+	"go-tools/tools/portcheck"
 	"go-tools/tools/redis"
 	"go-tools/tools/screenshot"
 	"go-tools/tools/sniffer"
@@ -327,7 +329,7 @@ func (a *App) Greet(name string) string {
 // single 为 true 时为该路由登记窗口名，已存在则直接复用（展示+取消最小化+聚焦），不重复创建；
 // fullscreen 为 true 时新窗口最大化铺满显示器（非排他全屏，避免顶部自绘标题栏被遮挡）；
 // width/height 为新窗口视口尺寸，<=0 时继承默认尺寸（1000x718）；
-// path 的 query 带 fs=0（工具配置“禁用全屏”）时，隐藏最大化按钮并禁止标题栏双击最大化。
+// path 的 query 带 fs=0（工具配置“禁用全屏”）时，隐藏最大化按钮、禁止标题栏双击最大化，并禁用边框拖拽缩放。
 func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen bool, width int, height int) error {
 	if a.app == nil {
 		return fmt.Errorf("应用尚未初始化")
@@ -372,6 +374,9 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 	// 默认处理会检查该样式，去掉后双击拖拽区也不再最大化
 	if strings.Contains(path, "fs=0") {
 		opts.MaximiseButtonState = application.ButtonHidden
+		// 禁用全屏的工具窗固定尺寸：去掉 WS_THICKFRAME，前端运行时的边缘拖拽缩放（drag.js）
+		// 与 wails:resize 原生缩放循环都随之失效
+		opts.DisableResize = true
 	}
 	// 单例窗口：以路由路径（去掉 ?query，如 ?inst=/?fs=0）作为唯一名称，已存在则聚焦复用
 	if single {
@@ -581,6 +586,12 @@ func (a *App) ClearSnifferFlows() {
 	}
 }
 
+// SnifferSuggestPort 从 from 起探测一个可用的代理端口（跳过实例登记与系统监听）
+func (a *App) SnifferSuggestPort(from int) int { return sniffer.SuggestPort(from) }
+
+// SnifferPortTaken 报告代理端口能否使用，返回占用原因，空串表示可用
+func (a *App) SnifferPortTaken(port int) string { return sniffer.PortTaken(port) }
+
 /* ============================ Redis 管理 ============================ */
 
 // RedisOpen 建立并登记一个 Redis 连接
@@ -720,6 +731,20 @@ func (a *App) RedisSrvLogs(id string, lines int) ([]string, error) { return redi
 // RedisSrvSuggestPort 从 from 起探测可用端口
 func (a *App) RedisSrvSuggestPort(from int) int { return redis.SuggestPort(from) }
 
+// RedisSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
+func (a *App) RedisSrvPortTaken(port int, excludeId string) string {
+	return redis.PortTaken(port, excludeId)
+}
+
+// RedisSrvDockerImages 本地 redis 系镜像 tag（Docker 模式表单候选）
+func (a *App) RedisSrvDockerImages() ([]string, error) { return redis.DockerImages() }
+
+// RedisSrvDefaultImage Docker 模式默认镜像
+func (a *App) RedisSrvDefaultImage() string { return redis.DefaultDockerImage }
+
+// RedisSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+func (a *App) RedisSrvDockerAvailable() (bool, string) { return redis.DockerAvailable() }
+
 // RedisSrvServersDir 返回离线/插件目录 <exedir>/plugins/redis（内置版本与离线 zip 放置位置），供前端展示指引
 func (a *App) RedisSrvServersDir() string {
 	dir, err := redis.OfflineDir()
@@ -791,6 +816,11 @@ func (a *App) MySQLSrvLogs(id string, lines int) ([]string, error) { return mysq
 // MySQLSrvSuggestPort 从 from 起探测可用端口
 func (a *App) MySQLSrvSuggestPort(from int) int { return mysql.SuggestPort(from) }
 
+// MySQLSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
+func (a *App) MySQLSrvPortTaken(port int, excludeId string) string {
+	return mysql.PortTaken(port, excludeId)
+}
+
 // MySQLSrvPluginsDir 返回插件目录 <exedir>/plugins/mysql，供前端展示指引
 func (a *App) MySQLSrvPluginsDir() string {
 	dir, err := mysql.PluginsDir()
@@ -799,6 +829,320 @@ func (a *App) MySQLSrvPluginsDir() string {
 	}
 	return dir
 }
+
+// MySQLSrvDockerImages 本地 mysql/mariadb/percona 系镜像 tag（Docker 模式表单候选）
+func (a *App) MySQLSrvDockerImages() ([]string, error) { return mysql.DockerImages() }
+
+// MySQLSrvDefaultImage Docker 模式默认镜像
+func (a *App) MySQLSrvDefaultImage() string { return mysql.DefaultDockerImage }
+
+/* ======================== Docker 引擎与容器管理 ======================== */
+
+// DockerSrvEngineStatus 探测 Docker 引擎；不可达也返回（Available=false + 可读 Error）
+func (a *App) DockerSrvEngineStatus() (docker.EngineInfo, error) { return docker.GetEngineStatus() }
+
+// DockerSrvListContainers 列出容器（all=false 仅运行中），运行中的附带 CPU/内存
+func (a *App) DockerSrvListContainers(all bool) ([]docker.Container, error) {
+	return docker.ListContainers(all)
+}
+
+// DockerSrvInspectContainer 单容器实时状态
+func (a *App) DockerSrvInspectContainer(id string) (*docker.ContainerState, error) {
+	return docker.InspectContainer(id)
+}
+
+// DockerSrvContainerMetrics 单容器实时资源占用（容器监控弹窗按 1s 轮询，无缓存）
+func (a *App) DockerSrvContainerMetrics(id string) (*docker.ContainerMetrics, error) {
+	return docker.ContainerMetricsOf(id)
+}
+
+// DockerSrvStartContainer 启动容器
+func (a *App) DockerSrvStartContainer(id string) error { return docker.StartContainer(id) }
+
+// DockerSrvStopContainer 停止容器（timeoutSec 优雅退出等待秒，<=0 用 10）
+func (a *App) DockerSrvStopContainer(id string, timeoutSec int) error {
+	return docker.StopContainer(id, timeoutSec)
+}
+
+// DockerSrvRestartContainer 重启容器
+func (a *App) DockerSrvRestartContainer(id string) error { return docker.RestartContainer(id) }
+
+// DockerSrvRemoveContainer 删除容器（force=true 先杀再删）
+func (a *App) DockerSrvRemoveContainer(id string, force bool) error {
+	return docker.RemoveContainer(id, force)
+}
+
+// DockerSrvRenameContainer 重命名容器
+func (a *App) DockerSrvRenameContainer(id, name string) error {
+	return docker.RenameContainer(id, name)
+}
+
+// DockerSrvListImages 本地镜像列表
+func (a *App) DockerSrvListImages() ([]docker.Image, error) { return docker.ListImages() }
+
+// DockerSrvRemoveImage 删除本地镜像（force=true 连带删除子引用）
+func (a *App) DockerSrvRemoveImage(image string, force bool) error {
+	return docker.RemoveImage(image, force)
+}
+
+// DockerSrvPullImage 拉取镜像，分层与整体进度经 "docker:pull" 事件推送；可被 CancelImageOp 取消。
+// 用户主动取消不是故障：这里吸收为 nil（取消态由 stage=canceled 事件送达），
+// 否则 Wails 会把“点了取消”记成「Binding call failed」的 ERR。
+func (a *App) DockerSrvPullImage(image string) error {
+	err := docker.PullImage(image)
+	if docker.IsCanceled(err) {
+		return nil
+	}
+	return err
+}
+
+// DockerSrvCancelImageOp 取消镜像长任务：target 为空表示全部取消，
+// 否则按任务名（如 "pull mysql:8.4"）精确匹配；返回被取消的任务名
+func (a *App) DockerSrvCancelImageOp(target string) (string, error) {
+	return docker.CancelImageOp(target)
+}
+
+// DockerSrvCurrentImageOp 当前正在跑的长任务名（多个用“、”连接，空=空闲）
+func (a *App) DockerSrvCurrentImageOp() string { return docker.CurrentImageOp() }
+
+// DockerSrvPushImage 推送本地镜像到它 tag 里写的仓库（进度经 "docker:imageop"）
+func (a *App) DockerSrvPushImage(ref string) error { return docker.PushImage(ref) }
+
+// DockerSrvPushImageTo 把本地镜像以目标引用（仓库/命名空间/名:tag）推出去，必要时先打 tag
+func (a *App) DockerSrvPushImageTo(localRef, targetRef string) error {
+	return docker.PushImageTo(localRef, targetRef)
+}
+
+// DockerSrvExportImage 导出镜像为 tar 包，outPath 空时落到默认数据目录
+func (a *App) DockerSrvExportImage(ref, outPath string) (string, error) {
+	if strings.TrimSpace(outPath) == "" {
+		outPath = docker.DefaultExportPath(ref)
+	}
+	return docker.ExportImage(ref, outPath)
+}
+
+// DockerSrvImportImage 从 dockersave 的 tar 包导入镜像（ref 空则沿用包内 tag）
+func (a *App) DockerSrvImportImage(tarPath, ref string) (string, error) {
+	return docker.ImportImage(tarPath, ref)
+}
+
+// DockerSrvBuildImage 用目录里的 Dockerfile 构建镜像（进度经 "docker:imageop"）
+func (a *App) DockerSrvBuildImage(dir, dockerfile, tag string) (string, error) {
+	return docker.BuildImage(dir, dockerfile, tag)
+}
+
+// DockerSrvPruneImages 清理无用镜像（all=false 只清悬空镜像）
+func (a *App) DockerSrvPruneImages(all bool) (docker.PruneReport, error) {
+	return docker.PruneImages(all)
+}
+
+// DockerSrvRunImage 由镜像创建容器（可选发端口/环境变量/立即启动）
+func (a *App) DockerSrvRunImage(spec docker.ImageRunSpec) (string, error) {
+	return docker.RunImage(spec)
+}
+
+/* ---------- 网络 / 存储卷 / 编排 ---------- */
+
+// DockerSrvListNetworks 列出 Docker 网络（含内置 bridge/host/none）
+func (a *App) DockerSrvListNetworks() ([]docker.Network, error) { return docker.ListNetworks() }
+
+// DockerSrvCreateNetwork 新建自定义网络（driver 空=bridge，subnet 空=IPAM 自动分配）
+func (a *App) DockerSrvCreateNetwork(spec docker.NetworkSpec) (string, error) {
+	return docker.CreateNetwork(spec)
+}
+
+// DockerSrvRemoveNetwork 删除网络（仍有容器接入时 daemon 拒绝）
+func (a *App) DockerSrvRemoveNetwork(id string) error { return docker.RemoveNetwork(id) }
+
+// DockerSrvListVolumes 列出存储卷（inUse = 引用它的容器数）
+func (a *App) DockerSrvListVolumes() ([]docker.Volume, error) { return docker.ListVolumes() }
+
+// DockerSrvCreateVolume 新建存储卷
+func (a *App) DockerSrvCreateVolume(spec docker.VolumeSpec) (string, error) {
+	return docker.CreateVolume(spec)
+}
+
+// DockerSrvRemoveVolume 删除存储卷（仍被容器占用时 daemon 拒绝）
+func (a *App) DockerSrvRemoveVolume(name string) error { return docker.RemoveVolume(name) }
+
+// DockerSrvPruneVolumes 清理没有任何容器引用的存储卷
+func (a *App) DockerSrvPruneVolumes() (docker.VolumePruneReport, error) {
+	return docker.PruneVolumes()
+}
+
+// DockerSrvListComposeProjects 按 compose 标签聚合出的编排项目（Engine API 没有 compose 端点）
+func (a *App) DockerSrvListComposeProjects() ([]docker.ComposeProject, error) {
+	return docker.ListComposeProjects()
+}
+
+// DockerSrvComposeAction 对编排项目批量操作：start | stop | restart | down
+func (a *App) DockerSrvComposeAction(project, action string) (string, error) {
+	return docker.ComposeAction(project, action)
+}
+
+// DockerSrvChooseFile 弹原生文件选择框（导入镜像包用），取消返回空串
+func (a *App) DockerSrvChooseFile(title string) (string, error) {
+	if a.app == nil {
+		return "", fmt.Errorf("应用尚未初始化")
+	}
+	if strings.TrimSpace(title) == "" {
+		title = "选择文件"
+	}
+	return a.app.Dialog.OpenFile().
+		CanChooseFiles(true).
+		CanChooseDirectories(false).
+		AddFilter("镜像包 (*.tar)", "*.tar").
+		SetTitle(title).
+		PromptForSingleSelection()
+}
+
+// DockerSrvChooseSaveFile 弹原生保存框（导出镜像包用），取消返回空串
+func (a *App) DockerSrvChooseSaveFile(title, defaultName string) (string, error) {
+	if a.app == nil {
+		return "", fmt.Errorf("应用尚未初始化")
+	}
+	if strings.TrimSpace(title) == "" {
+		title = "保存为"
+	}
+	return a.app.Dialog.SaveFile().
+		AddFilter("镜像包 (*.tar)", "*.tar").
+		SetFilename(defaultName).
+		SetMessage(title).
+		PromptForSingleSelection()
+}
+
+/* ======================== Docker 仓库、加速站与线上镜像 ======================== */
+
+// DockerSrvListRegistries 已配置的私有仓库（不含密码，只标是否已保存）
+func (a *App) DockerSrvListRegistries() []docker.Registry { return docker.ListRegistries() }
+
+// DockerSrvSaveRegistry 新增/更新仓库；password 空=沿用旧密码，clearPass=true 才清空
+func (a *App) DockerSrvSaveRegistry(r docker.Registry, password string, clearPass bool) (docker.Registry, error) {
+	return docker.SaveRegistry(r, password, clearPass)
+}
+
+// DockerSrvDeleteRegistry 删除仓库配置
+func (a *App) DockerSrvDeleteRegistry(id string) error { return docker.DeleteRegistry(id) }
+
+// DockerSrvTestRegistry 用已保存凭据探一次仓库连通性
+func (a *App) DockerSrvTestRegistry(id string) (string, error) { return docker.TestRegistry(id) }
+
+// DockerSrvRegistryRepos 列出私有仓库里的镜像（catalog + tag）
+func (a *App) DockerSrvRegistryRepos(id string) ([]docker.HubRepo, error) {
+	return docker.RegistryRepos(id)
+}
+
+// DockerSrvSearchHub 在 Docker Hub 搜线上镜像（Star 数/来源/简介）
+func (a *App) DockerSrvSearchHub(query string, page int) ([]docker.HubRepo, error) {
+	return docker.SearchHub(query, page)
+}
+
+// DockerSrvDaemonConfig 读引擎 daemon.json 的加速站与不安全仓库
+func (a *App) DockerSrvDaemonConfig() (docker.DaemonConfig, error) { return docker.GetDaemonConfig() }
+
+// DockerSrvSetDaemonConfig 只改 registry-mirrors 与 insecure-registries，其余键原样保留并备份
+func (a *App) DockerSrvSetDaemonConfig(mirrors, insecure []string) (string, error) {
+	return docker.SetDaemonConfig(mirrors, insecure)
+}
+
+// DockerSrvRestartEngine 重启 Docker 引擎（改完 daemon.json 后让它生效）
+func (a *App) DockerSrvRestartEngine() error { return docker.RestartEngine() }
+
+// DockerSrvProbeMirror 探一个加速站能不能真下载：连通 → 清单 → 层数据三段计时。
+// 不返回 error：探不通是结果（grade=fail/empty），不应混进绑定调用异常里。
+func (a *App) DockerSrvProbeMirror(mirrorURL, sample string) docker.MirrorProbe {
+	return docker.ProbeMirror(mirrorURL, sample)
+}
+
+// DockerSrvProbeMirrors 一次探完多个站（界面上的「全部测速」）
+func (a *App) DockerSrvProbeMirrors(mirrorURLs []string, sample string) []docker.MirrorProbe {
+	return docker.ProbeMirrors(mirrorURLs, sample)
+}
+
+// DockerSrvContainerLogs 读容器日志尾部 n 行（含已停止容器）
+func (a *App) DockerSrvContainerLogs(id string, lines int) ([]string, error) {
+	return docker.GetContainerLogs(id, lines)
+}
+
+// DockerSrvLogsFollow 开启日志跟随，新行经 "docker:serverlog" 事件推送（幂等）
+func (a *App) DockerSrvLogsFollow(id string) error { return docker.StreamContainerLogs(id) }
+
+// DockerSrvLogsStop 停止日志跟随（弹窗关闭时调用）
+func (a *App) DockerSrvLogsStop(id string) { docker.StopContainerLogs(id) }
+
+// DockerSrvLogsBuffered 取当前跟随环形缓冲（弹窗刚打开时补齐历史）
+func (a *App) DockerSrvLogsBuffered(id string, lines int) []string {
+	return docker.ContainerLogRing(id, lines)
+}
+
+/* ======================== Docker Desktop 安装向导 ======================== */
+
+// DockerSrvLicenseNotes 安装前需如实告知的要点（前端展示在感叹号悬停提示里）
+func (a *App) DockerSrvLicenseNotes() []string { return docker.LicenseNotes() }
+
+// DockerSrvPluginsDir docker 默认存放目录（全局插件目录下的 docker，供前端展示“留空即用这里”）
+func (a *App) DockerSrvPluginsDir() string {
+	dir, err := appdirs.Plugins("docker")
+	if err != nil {
+		return ""
+	}
+	return dir
+}
+
+// DockerSrvCheckEnv 只读体检（不装不改）：已装/WSL/管道/引擎/离线包 + 待办清单；dir 空=默认存放目录
+func (a *App) DockerSrvCheckEnv(dir string) (docker.EnvCheck, error) { return docker.CheckEnv(dir) }
+
+// DockerSrvBuildInstallerURL 把用户输入（空/build 号/完整 URL）换算成直链，供展示
+func (a *App) DockerSrvBuildInstallerURL(input string) string { return docker.BuildInstallerURL(input) }
+
+// DockerSrvProbeInstaller 下载前探一次：直链有效性与真实体积（防把 404 页当安装包）
+func (a *App) DockerSrvProbeInstaller(input string) (docker.ProbeInfo, error) {
+	return docker.ProbeInstaller(input)
+}
+
+// DockerSrvDownloadInstaller 下载安装包（支持续传，取消会删掉半截文件），进度走 "docker:setup"；
+// dir 为空时落到默认 <插件目录>\docker，否则用指定的另存目录。
+func (a *App) DockerSrvDownloadInstaller(input, dir string) (string, error) {
+	return docker.DownloadInstaller(input, dir)
+}
+
+// DockerSrvAbortSetup 取消进行中的下载并删除已下载的半截文件（安装器启动后无法安全中断，返回提示）
+func (a *App) DockerSrvAbortSetup() error { return docker.AbortSetup() }
+
+// DockerSrvInstallDocker 提权静默安装并拉起引擎；安装协议不设勾选门禁，要点由前端感叹号提示展示。
+// installerPath 为空时按 dir（空=默认存放目录）找离线包，没有则按 input 下载；进度走 "docker:setup"。
+func (a *App) DockerSrvInstallDocker(installerPath, input, dir string, webDownload bool) error {
+	return docker.InstallDocker(installerPath, input, dir, webDownload)
+}
+
+// DockerSrvEnableWsl2 提权执行 wsl --install --no-distribution（可能需重启才生效）
+func (a *App) DockerSrvEnableWsl2() error { return docker.EnableWsl2() }
+
+// DockerSrvUpdateWsl 提权执行 wsl --update：WSL 组件在但内核过旧/损坏时，
+// Docker Desktop 切 WSL2 会静默沿用 Hyper-V，这里是那个情形的修复入口
+func (a *App) DockerSrvUpdateWsl() error { return docker.UpdateWsl() }
+
+// DockerSrvStartEngine 已安装但引擎未运行时，以普通用户身份拉起并等待就绪（可被「停止」叫停）
+func (a *App) DockerSrvStartEngine() error { return docker.StartEngine() }
+
+// DockerSrvStopEngine 停止 Docker Desktop 与其系统服务（会叫停在跑的启动等待）
+func (a *App) DockerSrvStopEngine() error { return docker.StopEngine() }
+
+// DockerSrvSwitchBackend 代改 Docker Desktop 虚拟化后端（true=WSL2，false=Hyper-V）。
+// 会先停 Docker Desktop 再改配置并回读校验；引擎起来后还会用内核串核验实际后端，
+// 回落到了另一个后端时报错而不是谎报成功。confirmed 必须为 true（切换会新建空 VM）。
+func (a *App) DockerSrvSwitchBackend(useWsl2, confirmed bool) error {
+	return docker.SwitchBackend(useWsl2, confirmed)
+}
+
+// DockerSrvEnableHyperV 提权启用 Hyper-V 角色（dism，需重启才生效）；confirm 为硬门禁
+func (a *App) DockerSrvEnableHyperV(confirm bool) error { return docker.EnableHyperV(confirm) }
+
+// DockerSuggestPort 从 from 起探测一个可用的宿主机端口（跳过实例登记与系统监听）
+func (a *App) DockerSuggestPort(from int) int { return portcheck.Suggest(from, 200) }
+
+// DockerPortTaken 报告宿主机端口能否发布容器端口，返回占用原因，空串表示可用
+func (a *App) DockerPortTaken(port int) string { return portcheck.Taken(port, "") }
 
 /* ============================ PHP 本地服务管理 ============================ */
 
@@ -843,10 +1187,10 @@ func (a *App) PhpSrvSaveInstance(cfg php.InstanceConfig) error { return php.Save
 // PhpSrvRemoveInstance 删除实例配置（运行中先停止）
 func (a *App) PhpSrvRemoveInstance(id string) error { return php.RemoveInstance(id) }
 
-// PhpSrvStart 启动实例（php -S 内置服务器，隐藏窗口）
+// PhpSrvStart 启动实例（本地：php -S 内置服务器隐藏窗口；Docker：创建/启动容器）
 func (a *App) PhpSrvStart(id string) error { return php.StartInstance(id) }
 
-// PhpSrvStop 停止实例（kill 进程树）
+// PhpSrvStop 停止实例（本地：kill 进程树；Docker：停止容器）
 func (a *App) PhpSrvStop(id string) error { return php.StopInstance(id) }
 
 // PhpSrvRestart 重启实例
@@ -858,8 +1202,22 @@ func (a *App) PhpSrvStatus(id string) (php.InstanceStatus, error) { return php.G
 // PhpSrvLogs 返回实例最近 n 行日志
 func (a *App) PhpSrvLogs(id string, lines int) ([]string, error) { return php.Logs(id, lines) }
 
-// PhpSrvSuggestPort 从 from 起探测可用端口
+// PhpSrvSuggestPort 从 from 起探测可用端口（跳过其它实例已登记与系统已监听的）
 func (a *App) PhpSrvSuggestPort(from int) int { return php.SuggestPort(from) }
+
+// PhpSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
+func (a *App) PhpSrvPortTaken(port int, excludeId string) string {
+	return php.PortTaken(port, excludeId)
+}
+
+// PhpSrvDockerImages 本地 php 系镜像 tag（Docker 模式表单候选）
+func (a *App) PhpSrvDockerImages() ([]string, error) { return php.DockerImages() }
+
+// PhpSrvDefaultImage Docker 模式默认镜像
+func (a *App) PhpSrvDefaultImage() string { return php.DefaultDockerImage }
+
+// PhpSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+func (a *App) PhpSrvDockerAvailable() (bool, string) { return php.DockerAvailable() }
 
 // PhpSrvPluginsDir 返回插件目录 <exedir>/plugins/php，供前端展示指引
 func (a *App) PhpSrvPluginsDir() string {
@@ -1004,6 +1362,12 @@ func (a *App) NginxSrvLogs(id string, lines int) ([]string, error) { return ngin
 // NginxSrvSuggestPort 从 from 起探测可用端口
 func (a *App) NginxSrvSuggestPort(from int) int { return nginx.SuggestPort(from) }
 
+// NginxSrvPortTaken 报告端口能否给实例用（含其它实例的 HTTP/HTTPS 登记与系统监听），
+// 返回占用原因，空串表示可用
+func (a *App) NginxSrvPortTaken(port int, excludeId string) string {
+	return nginx.PortTaken(port, excludeId)
+}
+
 // NginxSrvPluginsDir 返回插件目录 <exedir>/plugins/nginx，供前端展示指引
 func (a *App) NginxSrvPluginsDir() string {
 	dir, err := nginx.PluginsDir()
@@ -1016,8 +1380,17 @@ func (a *App) NginxSrvPluginsDir() string {
 // NginxSrvGetConfigText 读取实例 nginx.conf 全文
 func (a *App) NginxSrvGetConfigText(id string) (string, error) { return nginx.GetConfigText(id) }
 
-// NginxSrvSaveConfigText 保存实例 nginx.conf（先备份后校验，失败回滚）
+// NginxSrvSaveConfigText 保存实例 nginx.conf（先备份后校验，失败回滚；容器模式不做 -t 不回滚）
 func (a *App) NginxSrvSaveConfigText(id, text string) error { return nginx.SaveConfigText(id, text) }
+
+// NginxSrvDockerImages 本地 nginx 系镜像 tag（Docker 模式表单候选）
+func (a *App) NginxSrvDockerImages() ([]string, error) { return nginx.DockerImages() }
+
+// NginxSrvDefaultImage Docker 模式默认镜像
+func (a *App) NginxSrvDefaultImage() string { return nginx.DefaultDockerImage }
+
+// NginxSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+func (a *App) NginxSrvDockerAvailable() (bool, string) { return nginx.DockerAvailable() }
 
 /* ============================ npm 本地服务管理 ============================ */
 
@@ -1066,13 +1439,13 @@ func (a *App) NpmSrvSaveInstance(cfg npm.InstanceConfig) error { return npm.Save
 // NpmSrvRemoveInstance 删除实例配置（运行中先停止）
 func (a *App) NpmSrvRemoveInstance(id string) error { return npm.RemoveInstance(id) }
 
-// NpmSrvStart 启动静态站点服务（内置 Go HTTP 服务器）
+// NpmSrvStart 启动静态站点（本地：内置 Go HTTP 服务器；Docker：nginx 容器）
 func (a *App) NpmSrvStart(id string) error { return npm.StartInstance(id) }
 
-// NpmSrvStop 停止静态站点服务（优雅 Shutdown）
+// NpmSrvStop 停止静态站点（本地：优雅 Shutdown；Docker：停容器）
 func (a *App) NpmSrvStop(id string) error { return npm.StopInstance(id) }
 
-// NpmSrvRestart 重启实例
+// NpmSrvRestart 重启实例（容器模式没有平滑重载通道，重启即重启容器）
 func (a *App) NpmSrvRestart(id string) error { return npm.RestartInstance(id) }
 
 // NpmSrvStatus 实例运行状态（端口探测 + 请求计数）
@@ -1097,6 +1470,15 @@ func (a *App) NpmSrvPluginsDir() string {
 	}
 	return dir
 }
+
+// NpmSrvDockerImages 本地 nginx 系镜像 tag（静态站点 Docker 模式表单候选）
+func (a *App) NpmSrvDockerImages() ([]string, error) { return npm.DockerImages() }
+
+// NpmSrvDefaultImage Docker 模式默认镜像
+func (a *App) NpmSrvDefaultImage() string { return npm.DefaultDockerImage }
+
+// NpmSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
+func (a *App) NpmSrvDockerAvailable() (bool, string) { return npm.DockerAvailable() }
 
 // NpmGetConfigText 读取托管 .npmrc 全文
 func (a *App) NpmGetConfigText() (string, error) { return npm.GetConfigText() }

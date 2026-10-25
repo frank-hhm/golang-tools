@@ -1,0 +1,551 @@
+<template>
+    <!-- 总览：数据全部来自父页面已拉到的容器 / 镜像 / 仓库清单，不额外打接口。
+         版式对齐首页：区块用 a-card（标题走 #title，筛选/搜索/版本提示走 #extra），
+         指标用首页同款 stat-card（彩色圆角图标 + 标签 + 大号数值 + 明细） -->
+    <div class="ov">
+        <a-card class="card-head-tool ov-card">
+            <template #title>
+                <span class="ov-title">资源概览</span>
+            </template>
+            <template #extra>
+                <!-- 引擎版本属于「这一屏数据从哪来」，放卡片右上角，不占正文 -->
+                <a-tooltip :content="engineLabel || '引擎版本未知'">
+                    <span class="ov-note">{{ engineLabel || '—' }}</span>
+                </a-tooltip>
+            </template>
+
+            <a-row :gutter="[12, 12]">
+                <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
+                    <div class="stat-card" :class="{ 'is-off': !c.ready }">
+                        <div class="stat-circle" :class="'tone-' + c.tone">
+                            <component :is="c.icon" :size="22" />
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-head">
+                                <span class="stat-label">{{ c.title }}</span>
+                                <span class="stat-big">{{ c.value }}</span>
+                            </div>
+                            <!-- 未实现的项：说明为什么是空的，别让人以为数据丢了 -->
+                            <a-tooltip :content="c.tip" :disabled="!c.tip">
+                                <div class="stat-detail">{{ c.sub }}</div>
+                            </a-tooltip>
+                        </div>
+                    </div>
+                </a-col>
+            </a-row>
+        </a-card>
+
+        <a-card class="card-head-tool ov-card">
+            <template #title>
+                <span class="ov-title">容器列表</span>
+            </template>
+            <template #extra>
+                <a-space :size="8" wrap>
+                    <a-select v-model="stateFilter" size="small" :options="stateOptions" class="ov-select" />
+                    <a-input v-model="keyword" size="small" class="ov-search" placeholder="搜索容器名称或镜像名" allow-clear>
+                        <template #prefix><icon-search /></template>
+                    </a-input>
+                    <a-button size="small" :loading="loading" @click="emit('refresh')">
+                        <template #icon><icon-refresh /></template>
+                    </a-button>
+                </a-space>
+            </template>
+
+            <div v-if="!filtered.length" class="ov-empty">
+                <a-empty :image="false" :description="containers.length ? '没有匹配的容器' : '暂无容器'" />
+            </div>
+            <div v-else class="cc-grid">
+                <div v-for="c in filtered" :key="c.id" class="cc" :class="{ 'is-off': !isRunning(c) }"
+                    @click="onOpen(c)">
+                    <div class="cc-top">
+                        <div class="cc-logo">
+                            <icon-computer :size="20" />
+                        </div>
+                        <div class="cc-meta">
+                            <div class="cc-name-row">
+                                <a-tooltip :content="c.name || '(未命名)'">
+                                    <span class="cc-name">{{ c.name || '(未命名)' }}</span>
+                                </a-tooltip>
+                                <com-badge :status="isRunning(c) ? 'success' : 'normal'" :animated="isRunning(c)" />
+                            </div>
+                            <a-tooltip :content="c.image || '-'">
+                                <div class="cc-desc mono">{{ c.image || '-' }}</div>
+                            </a-tooltip>
+                        </div>
+
+                    </div>
+                    <a-space>
+                        <div class="cc-time">创建时间：{{ fmtTime(c.created) }}</div>
+                        <!-- 卡片整体可点：一句“监控/日志 →”把去向说清楚，别让人靠猜 -->
+                        <a-button class="cc-open" size="mini">{{ isRunning(c) ? '监控' : '日志' }}</a-button>
+                    </a-space>
+
+                    <div class="cc-bars">
+                        <div class="bar-row">
+                            <span class="k">CPU 使用率</span>
+                            <span class="v">{{ isRunning(c) ? (c.cpuPct || 0).toFixed(1) + '%' : '-' }}</span>
+                            <span class="bar">
+                                <i :style="{ width: barWidth(c.cpuPct) }"></i>
+                            </span>
+                        </div>
+                        <div class="bar-row">
+                            <span class="k">内存使用情况</span>
+                            <!-- memUsage 是 "12.3 MiB / 15.6 GiB" 这种长串，卡片窄时省略号收尾，悬停看全 -->
+                            <a-tooltip :content="c.memUsage || '-'" :disabled="!isRunning(c) || !c.memUsage">
+                                <span class="v">{{ isRunning(c) ? c.memUsage || '-' : '-' }}</span>
+                            </a-tooltip>
+                            <span class="bar">
+                                <i :style="{ width: barWidth(c.memPct) }"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a-card>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from "vue";
+// 卡片图标走单文件导入，别从 icon 的 barrel 里拿（会把整套图标都带进包）
+import IconArchive from "@arco-design/web-vue/es/icon/icon-archive";
+import IconCloud from "@arco-design/web-vue/es/icon/icon-cloud";
+import IconComputer from "@arco-design/web-vue/es/icon/icon-computer";
+import IconLayers from "@arco-design/web-vue/es/icon/icon-layers";
+import IconStorage from "@arco-design/web-vue/es/icon/icon-storage";
+import IconWifi from "@arco-design/web-vue/es/icon/icon-wifi";
+import dayjs from "dayjs";
+import { fmtBytes } from "../helpers";
+
+const props = defineProps<{
+    /** 容器清单（含已停止，取决于容器页的「显示已停止」开关） */
+    containers: any[];
+    images: any[];
+    registries: any[];
+    /** 网络（含内置 bridge/host/none，自带 builtin 标记） */
+    networks: any[];
+    /** 存储卷（inUse = 引用它的容器数） */
+    volumes: any[];
+    /** 按 compose 标签聚合出的编排项目 */
+    composes: any[];
+    loading: boolean;
+    /** 引擎版本串，写在资源概览右上角，读不到就不显示 */
+    engineLabel?: string;
+}>();
+
+const emit = defineEmits<{
+    (e: "refresh"): void;
+    (e: "open-monitor", c: any): void;
+    (e: "open-logs", c: any): void;
+}>();
+
+/* ============================ 资源概览 ============================ */
+
+interface StatCard {
+    key: string;
+    title: string;
+    value: string;
+    sub: string;
+    ready: boolean;
+    icon: any;
+    /** stat-circle 的色调后缀（tone-blue / tone-cyan ...） */
+    tone: string;
+    tip: string;
+}
+
+const cards = computed<StatCard[]>(() => {
+    const running = props.containers.filter((c) => c.state === "running").length;
+    // 镜像体积可能是 -1（服务端没给），这种不计入合计，避免出现负的占用空间
+    const imgSize = props.images.reduce((n, i) => n + (i.size > 0 ? i.size : 0), 0);
+    // 内置网络（bridge/host/none）是 daemon 自带的，单列出来才不会看着“怎么这么多”
+    const customNets = props.networks.filter((n) => !n.builtin).length;
+    const netsOn = props.networks.filter((n) => (n.containers || 0) > 0).length;
+    const volsOn = props.volumes.filter((v) => (v.inUse || 0) > 0).length;
+    const projOn = props.composes.filter((p) => p.status === "running").length;
+    const ctrInProjects = props.composes.reduce((n, p) => n + (p.total || 0), 0);
+    return [
+        {
+            key: "container",
+            title: "容器数量",
+            value: String(props.containers.length),
+            sub: `${running} 个运行中`,
+            ready: true,
+            icon: IconComputer,
+            tone: "blue",
+            tip: running !== props.containers.length ? "统计范围跟随容器页的「显示已停止」开关" : "",
+        },
+        {
+            key: "compose",
+            title: "编排数量",
+            value: String(props.composes.length),
+            sub: `${projOn} 个全部运行`,
+            ready: true,
+            icon: IconLayers,
+            tone: "purple",
+            tip: ctrInProjects
+                ? `按 com.docker.compose.* 标签聚合，共 ${ctrInProjects} 个容器；Engine API 没有 compose 端点`
+                : "按 com.docker.compose.* 标签聚合，Engine API 没有 compose 端点",
+        },
+        {
+            key: "image",
+            title: "镜像数量",
+            value: String(props.images.length),
+            sub: imgSize > 0 ? `占用空间 ${fmtBytes(imgSize)}` : "占用空间未知",
+            ready: true,
+            icon: IconStorage,
+            tone: "cyan",
+            tip: imgSize > 0 ? "本地镜像层体积合计（多 tag 共用层会重复计）" : "",
+        },
+        {
+            key: "network",
+            title: "网络数量",
+            value: String(props.networks.length),
+            sub: `自定义 ${customNets} 个`,
+            ready: true,
+            icon: IconWifi,
+            tone: "orange",
+            tip: netsOn ? `${netsOn} 个网络里有容器接入` : "暂无容器接入任何网络",
+        },
+        {
+            key: "volume",
+            title: "存储卷数量",
+            value: String(props.volumes.length),
+            sub: `${volsOn} 个在用`,
+            ready: true,
+            icon: IconArchive,
+            tone: "green",
+            tip: volsOn !== props.volumes.length ? "其余卷没有任何容器引用，可在存储卷页清理" : "全部卷都有容器引用",
+        },
+        {
+            key: "registry",
+            title: "镜像仓库数量",
+            value: String(props.registries.length),
+            sub: "已配置的仓库",
+            ready: true,
+            icon: IconCloud,
+            tone: "blue",
+            tip: "",
+        },
+    ];
+});
+
+/* ============================ 容器卡片 ============================ */
+
+const keyword = ref("");
+const stateFilter = ref<"all" | "running" | "stopped">("all");
+const stateOptions = [
+    { label: "全部", value: "all" },
+    { label: "运行中", value: "running" },
+    { label: "已停止", value: "stopped" },
+];
+
+const filtered = computed(() => {
+    const kw = keyword.value.trim().toLowerCase();
+    return props.containers.filter((c) => {
+        if (stateFilter.value === "running" && c.state !== "running") return false;
+        if (stateFilter.value === "stopped" && c.state === "running") return false;
+        if (!kw) return true;
+        return `${c.name || ""} ${c.image || ""}`.toLowerCase().includes(kw);
+    });
+});
+
+function isRunning(c: any): boolean {
+    return c.state === "running";
+}
+
+/** 运行时点击进监控，停着的看日志：两种状态都有可去的地方 */
+function onOpen(c: any) {
+    if (isRunning(c)) emit("open-monitor", c);
+    else emit("open-logs", c);
+}
+
+/** 多核容器 CPU 能超过 100%，进度条只按 100% 收，数字仍显示真实值 */
+function barWidth(pct: number): string {
+    const v = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+    return `${v.toFixed(1)}%`;
+}
+
+function fmtTime(unixSec: number): string {
+    if (!unixSec) return "-";
+    return dayjs(unixSec * 1000).format("YYYY-MM-DD HH:mm:ss");
+}
+</script>
+
+<style scoped>
+.ov {
+    display: flex;
+    flex-direction: column;
+    gap: var(--base-margin);
+    padding: var(--base-padding);
+}
+
+.ov-title {
+    font-size: var(--base-size-default);
+    font-weight: 600;
+}
+
+/* 版本提示：右对齐的一行小字，长串省略，悬停看全 */
+.ov-note {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* 资源卡：与首页 stat-card 同一套（彩色圆角图标 + 标签/数值同排 + 下方明细） */
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: var(--base-padding);
+    height: 100%;
+    padding: var(--base-padding);
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    transition: box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    box-shadow: var(--shadow-2-bottom);
+}
+
+/* 后端还没实现的项：灰掉并虚线收边，一眼看出是占位不是真的 0 */
+.stat-card.is-off {
+    opacity: 0.62;
+    border-style: dashed;
+}
+
+.stat-circle {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--base-radius-default);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tone-blue {
+    background: rgba(var(--arcoblue-6), 0.08);
+    color: rgb(var(--arcoblue-6));
+}
+
+.tone-cyan {
+    background: rgba(var(--cyan-6), 0.08);
+    color: rgb(var(--cyan-6));
+}
+
+.tone-purple {
+    background: rgba(var(--purple-6), 0.08);
+    color: rgb(var(--purple-6));
+}
+
+.tone-orange {
+    background: rgba(var(--orange-6), 0.08);
+    color: rgb(var(--orange-6));
+}
+
+.tone-green {
+    background: rgba(var(--green-6), 0.08);
+    color: rgb(var(--green-6));
+}
+
+.stat-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.stat-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stat-label {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stat-big {
+    font-weight: bold;
+    font-size: var(--base-size-default);
+    line-height: 1.2;
+    color: var(--color-text-1);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-detail {
+    font-size: var(--base-size-small);
+    color: var(--color-text-4);
+    margin-top: calc(var(--base-margin) / 2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ov-select {
+    width: 96px;
+}
+
+.ov-search {
+    width: 220px;
+}
+
+.ov-empty {
+    padding: 24px 0;
+}
+
+/* 容器卡片墙：与首页 svc-cards 同款栅格（随宽度自适应，卡片少时靠左不拉伸） */
+.cc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--base-margin);
+    align-content: start;
+}
+
+.cc {
+    display: flex;
+    flex-direction: column;
+    gap: var(--base-margin);
+    min-width: 0;
+    padding: var(--base-padding);
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cc:hover {
+    border-color: rgb(var(--primary-5));
+    box-shadow: 0 4px 16px rgba(var(--primary-6), 0.08);
+}
+
+.cc-top {
+    display: flex;
+    align-items: center;
+    gap: var(--base-margin);
+    min-width: 0;
+}
+
+.cc-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--base-radius-default);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    background: rgba(var(--arcoblue-6), 0.08);
+    color: rgb(var(--arcoblue-6));
+}
+
+.cc.is-off .cc-logo {
+    background: var(--color-fill-2);
+    color: var(--color-text-3);
+}
+
+.cc-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cc-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.cc-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--base-size-default);
+    font-weight: 600;
+    color: var(--color-text-1);
+}
+
+.cc-desc {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cc-open {
+    flex: none;
+    font-size: var(--base-size-small);
+    color: rgb(var(--primary-6));
+}
+
+.cc-time {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+}
+
+/* 指标行：标签 / 数值 / 进度条三段，进度条吃掉剩余宽度 */
+.cc-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: var(--base-margin);
+    border-top: 1px dashed var(--color-border-2);
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+}
+
+.bar-row .v {
+    color: var(--color-text-1);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bar {
+    position: relative;
+    display: block;
+    height: 4px;
+    min-width: 40px;
+    border-radius: 2px;
+    background: var(--color-fill-2);
+    overflow: hidden;
+}
+
+.bar i {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    border-radius: 2px;
+    background: rgb(var(--primary-5));
+    transition: width 0.3s;
+}
+
+.mono {
+    font-family: Consolas, monospace;
+}
+</style>

@@ -2,10 +2,13 @@
   <a-row class="video-page" :gutter="6">
     <!-- 左侧固定 30%：录制设置 + 录制状态 + 结果（与 Redis/抓包工具页布局一致） -->
     <a-col :span="6" class="side-col">
-      <a-card class="side-card" size="small">
+      <a-card class="side-card card-head-tool" size="small">
         <template #title>录制设置</template>
         <template #extra>
-          <a-tag size="small" :color="statusColor">{{ statusText }}</a-tag>
+          <span class="com-state" :class="statusClass">
+            <com-badge :status="statusStatus" :animated="st.status === 'recording'" />
+            {{ statusText }}
+          </span>
         </template>
         <a-form :model="st" layout="vertical" size="small">
           <a-form-item field="mode">
@@ -17,7 +20,7 @@
         </a-form>
       </a-card>
 
-      <a-card class="side-card" size="small">
+      <a-card class="side-card card-head-tool" size="small">
         <template #title>录制状态</template>
         <div class="stat-cards">
           <div class="stat-card">
@@ -44,19 +47,21 @@
         </div>
       </a-card>
 
-      <a-card v-if="st.status === 'stopped' && st.blobUrl" class="side-card" size="small">
+      <a-card v-if="st.status === 'stopped' && st.blobUrl" class="side-card card-head-tool" size="small">
         <template #title>结果</template>
         <a-space direction="vertical" fill :size="8">
-          <a-button type="primary" long :loading="saving" @click="saveResult">
+          <a-button size="small" long :loading="saving" @click="saveResult">
             <template #icon><icon-download /></template>另存为…
           </a-button>
-          <a-button long @click="discardResult">清空</a-button>
+          <a-button size="small" long @click="discardResult">清空</a-button>
         </a-space>
         <div v-if="st.savedPath" class="saved-box">
           <icon-check-circle-fill class="saved-ic" />
           <div class="saved-detail">
             <div class="saved-title">视频已保存（{{ st.savedExt }}）</div>
-            <div class="saved-path" :title="st.savedPath">{{ st.savedPath }}</div>
+            <a-tooltip :content="st.savedPath" :disabled="!st.savedPath">
+              <div class="saved-path">{{ st.savedPath }}</div>
+            </a-tooltip>
           </div>
         </div>
       </a-card>
@@ -64,28 +69,32 @@
 
     <!-- 右侧主区：操作 + 预览 + 提示 -->
     <a-col :span="18" class="main-col">
-      <a-card class="main-panel">
+      <a-card class="main-panel card-head-tool">
         <template #title>
           <a-space :size="8">
             <span class="panel-title">预览</span>
-            <a-tag size="small" :color="statusColor">{{ statusText }}</a-tag>
+            <span class="com-state" :class="statusClass">
+              <com-badge :status="statusStatus" :animated="st.status === 'recording'" />
+              {{ statusText }}
+            </span>
+            <!-- 录制中 / 已暂停只多给一个计时片，状态词已经在左边圆点上 -->
             <a-tag v-if="st.status === 'recording' || st.status === 'paused'" color="red" class="rec-tag">
-              <icon-record /> {{ st.status === "paused" ? "已暂停" : "录制中" }} {{ fmtTime(displayedElapsed) }}
+              <icon-record /> {{ fmtTime(displayedElapsed) }}
             </a-tag>
-            <a-tag v-else-if="st.status === 'delegated'" color="arcoblue">待开始 · 请在悬浮小窗点「开始」</a-tag>
+            <a-tag v-else-if="st.status === 'delegated'" color="arcoblue">请在悬浮小窗点「开始」</a-tag>
           </a-space>
         </template>
         <template #extra>
           <a-space :size="8">
             <a-select v-model="st.fps" :disabled="isBusy" :options="fpsOptions" />
-            <a-radio-group v-model="st.mode" type="button" :disabled="isBusy" @change="onModeChange">
+            <a-radio-group size="medium" v-model="st.mode" type="button" :disabled="isBusy" @change="onModeChange">
               <a-radio value="screen"><icon-desktop /> 屏幕</a-radio>
               <a-radio value="region"><icon-fullscreen /> 区域</a-radio>
               <a-radio value="camera"><icon-camera /> 摄像头</a-radio>
             </a-radio-group>
             <!-- 屏幕模式 -->
             <template v-if="st.mode === 'screen'">
-              <a-button v-if="st.status === 'idle'"@click="startScreen">
+              <a-button size="small" v-if="st.status === 'idle'"@click="startScreen">
                 <template #icon><icon-record /></template>开始录制
               </a-button>
             </template>
@@ -93,13 +102,13 @@
             <!-- 区域模式 -->
             <template v-else-if="st.mode === 'region'">
               <template v-if="st.status === 'idle'">
-                <a-button size="small" type="primary" @click="beginRegion"><template
+                <a-button size="small" @click="beginRegion"><template
                     #icon><icon-camera /></template>框选区域开始录制</a-button>
               </template>
               <template v-else-if="st.status === 'selecting'">
                 <a-button size="small" type="outline" @click="reshoot"><template
                     #icon><icon-refresh /></template>重新截屏</a-button>
-                <a-button size="small" type="primary" status="success" :disabled="!st.rect" @click="startRegion">
+                <a-button size="small" status="success" :disabled="!st.rect" @click="startRegion">
                   确定
                 </a-button>
                 <a-button size="small" @click="cancelSelect">取消</a-button>
@@ -109,11 +118,11 @@
             <!-- 摄像头模式 -->
             <template v-else>
               <template v-if="st.status === 'idle' || st.status === 'stopped'">
-                <a-button size="small" type="primary" @click="openCamera"><template
+                <a-button size="small" @click="openCamera"><template
                     #icon><icon-play-arrow /></template>打开摄像头</a-button>
               </template>
               <template v-else-if="st.status === 'ready'">
-                <a-button size="small" type="primary" status="danger" @click="startCamera"><template
+                <a-button size="small" status="danger" @click="startCamera"><template
                     #icon><icon-record /></template>开始录制</a-button>
                 <a-button size="small" @click="stopSource"><template #icon><icon-close /></template>关闭摄像头</a-button>
               </template>
@@ -122,7 +131,7 @@
                     #icon><icon-pause /></template>暂停</a-button>
                 <a-button size="small" v-else type="outline" @click="resumeCamera"><template
                     #icon><icon-play-arrow /></template>继续</a-button>
-                <a-button size="small" type="primary" status="danger" @click="stopCamera"><template
+                <a-button size="small" status="danger" @click="stopCamera"><template
                     #icon><icon-stop /></template>停止</a-button>
               </template>
             </template>
@@ -253,7 +262,7 @@ function measurePreview() {
 const recTick = ref(0);
 const displayedElapsed = computed(() => (st.mode === "camera" ? camElapsed.value : recTick.value));
 
-/** 状态文案与标签颜色（左侧设置卡标签 / 状态卡片共用） */
+/** 状态文案与语义色（左侧设置卡 / 预览标题共用）：颜色由圆点与文字一起表达 */
 const statusText = computed(() => {
   switch (st.status) {
     case "idle": return "未开始";
@@ -266,15 +275,26 @@ const statusText = computed(() => {
     default: return st.status;
   }
 });
-const statusColor = computed(() => {
+const statusStatus = computed<"normal" | "processing" | "success" | "warning" | "danger">(() => {
   switch (st.status) {
-    case "recording": return "red";
-    case "paused": return "orange";
-    case "stopped": return "green";
+    case "recording": return "danger";
+    case "paused": return "warning";
+    case "stopped":
+    case "ready": return "success";
     case "selecting":
-    case "ready":
-    case "delegated": return "arcoblue";
-    default: return "gray";
+    case "delegated": return "processing";
+    default: return "normal";
+  }
+});
+const statusClass = computed(() => {
+  switch (st.status) {
+    case "recording": return "is-off";
+    case "paused": return "is-warn";
+    case "stopped":
+    case "ready": return "is-on";
+    case "selecting":
+    case "delegated": return "is-busy";
+    default: return "is-dim";
   }
 });
 
@@ -872,7 +892,6 @@ onUnmounted(() => {
   height: 100%;
   min-height: 0;
   flex-wrap: nowrap;
-  background: var(--color-fill-1);
 }
 
 /* 左列：录制设置 / 录制状态 / 结果，内容不足时自然堆叠，超出可滚动 */

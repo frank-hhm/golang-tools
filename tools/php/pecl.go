@@ -336,6 +336,9 @@ func ExtCatalog(id string, force bool) ([]RemoteExtensionInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if isDockerMode(cfg) {
+		return nil, dockerGateError("扩展安装（pecl/Windows dll）")
+	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
 		exe = phpExe(cfg.Version, !cfg.NTS)
@@ -447,6 +450,9 @@ func InstallExtension(id, ext string, enable bool) error {
 	if err != nil {
 		return err
 	}
+	if isDockerMode(cfg) {
+		return dockerGateError("扩展安装（pecl/Windows dll）")
+	}
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	if ext == "" || strings.ContainsAny(ext, `/\ .`) {
 		return fmt.Errorf("非法扩展名: %s", ext)
@@ -496,6 +502,9 @@ func SearchExtension(id, ext string) (*ExtSearchResult, error) {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return nil, err
+	}
+	if isDockerMode(cfg) {
+		return nil, dockerGateError("扩展搜索（pecl/Windows dll）")
 	}
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	if ext == "" {
@@ -551,6 +560,9 @@ func RemoveExtension(id, ext string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
 		return err
+	}
+	if isDockerMode(cfg) {
+		return dockerGateError("扩展卸载（pecl/Windows dll）")
 	}
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	if ext == "" || strings.ContainsAny(ext, `/\ .`) {

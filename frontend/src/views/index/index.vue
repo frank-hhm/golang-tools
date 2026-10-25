@@ -6,116 +6,54 @@
 
         <a-row class="left-inner">
           <a-col :span="24">
-            <a-card>
+            <a-card class="card-head-tool">
 
               <template #title>
                 <!-- 欢迎栏 -->
                 <span>欢迎回来！</span>
               </template>
               <template #extra>
-                <a-button :loading="sysLoading" @click="refreshSysInfo">
+                <a-button size="small" :loading="sysLoading" @click="refreshSysInfo">
                   <template #icon><icon-refresh /></template>
                 </a-button>
               </template>
 
-              <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等） -->
-              <div class="stat-cards">
-                <div class="stat-card">
-                  <div class="stat-circle stat-circle-cpu"><span class="icon icon-cpu-1"></span></div>
-                  <div class="stat-info">
-                    <div class="stat-head">
-                      <div class="stat-label">CPU</div>
-                      <div class="stat-big">{{ sysInfo ? sysInfo.cpuUsage.toFixed(1) : '--' }}<span
-                          class="stat-unit">%</span>
+              <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
+                   栅格用 a-row/a-col，横纵间距由 gutter 提供 -->
+              <a-row :gutter="[12, 12]" class="stat-cards">
+                <a-col v-for="c in statCards" :key="c.label" :span="8">
+                  <div class="stat-card">
+                    <div class="stat-circle" :class="c.circle">
+                      <component v-if="c.comp" :is="c.comp" :size="24" />
+                      <span v-else class="icon" :class="c.icon"></span>
+                    </div>
+                    <div class="stat-info">
+                      <div class="stat-head">
+                        <div class="stat-label">{{ c.label }}</div>
+                        <div class="stat-big">{{ c.big }}<span v-if="c.unit" class="stat-unit">{{ c.unit }}</span></div>
                       </div>
-                    </div>
-                    <div class="stat-detail">{{ sysInfo ? sysInfo.cpuCores + ' 核 · ' + sysInfo.cpuThreads + ' 线程' : ''
-                      }}
+                      <div class="stat-detail">{{ c.detail }}</div>
                     </div>
                   </div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-circle stat-circle-mem"><icon-storage size="24"/></div>
-                  <div class="stat-info">
-                    <div class="stat-head">
-                      <div class="stat-label">内存</div>
-                      <div class="stat-big">{{ sysInfo ? sysInfo.memPercent.toFixed(1) : '--' }}<span
-                          class="stat-unit">%</span>
-                      </div>
-                    </div>
-                    <div class="stat-detail">{{ sysInfo ? fmtBytes(sysInfo.memUsed) + ' / ' + fmtBytes(sysInfo.memTotal)
-                      :
-                      ''
-                    }}
-                    </div>
-                  </div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-circle stat-circle-up"><span class="icon icon-yunhangjianshi"></span></div>
-                  <div class="stat-info">
-                    <div class="stat-head">
-                      <div class="stat-label">运行时间</div>
-                      <div class="stat-big">{{ sysInfo ? fmtUptime(sysInfo.uptime) : '--' }}</div>
-                    </div>
-                    <div class="stat-detail">{{ sysInfo ? '开机 ' + fmtBootTime(sysInfo.bootTime) : '' }}</div>
-                  </div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-circle stat-circle-go"><span class="icon icon-golang"></span></div>
-                  <div class="stat-info">
-                    <div class="stat-head">
-                      <div class="stat-label">Go 运行时</div>
-                      <div class="stat-big">{{ sysInfo ? sysInfo.goroutines : '--' }}<span class="stat-unit"> 协程</span>
-                      </div>
-                    </div>
-                    <div class="stat-detail">{{ sysInfo ? '堆 ' + fmtBytes(sysInfo.appMemAlloc) : '' }}</div>
-                  </div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-circle stat-circle-disk"><span class="icon icon-yingpan"></span></div>
-                  <div class="stat-info">
-                    <div class="stat-head">
-                      <div class="stat-label">磁盘 C:</div>
-                      <div class="stat-big">{{ sysInfo ? sysInfo.diskPercent.toFixed(1) : '--' }}<span
-                          class="stat-unit">%</span>
-                      </div>
-                    </div>
-                    <div class="stat-detail">{{ sysInfo ? fmtBytes(sysInfo.diskUsed) + ' / ' +
-                      fmtBytes(sysInfo.diskTotal) : '' }}
-                    </div>
-                  </div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-circle stat-circle-net"><span class="icon icon-wangluo1"></span></div>
-                  <div class="stat-info">
-                    <div class="stat-head">
-                      <div class="stat-label">网络</div>
-                      <div class="stat-big">{{ sysInfo ? fmtBytes(sysInfo.netSent + sysInfo.netRecv) : '--' }}<span
-                          class="stat-unit"> 累计</span>
-                      </div>
-                    </div>
-                    <div class="stat-detail">{{ sysInfo ? '↑ ' + fmtBytes(sysInfo.netSent) + '  ↓ ' +
-                      fmtBytes(sysInfo.netRecv) : '' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                </a-col>
+              </a-row>
             </a-card>
           </a-col>
           <a-col :span="24" class="svc-col">
-            <a-card class="svc-card-fill">
+            <a-card class="svc-card-fill card-head-tool">
               <!-- 本地服务实例卡片 -->
               <template #title>
                 <span class="svc-title">本地服务实例</span>
               </template>
               <template #extra>
-                <a-radio-group v-model="svcFilter" type="button">
+                <a-radio-group size="medium" v-model="svcFilter" type="button">
                   <a-radio value="all">全部</a-radio>
                   <a-radio value="redis">Redis</a-radio>
                   <a-radio value="mysql">MySQL</a-radio>
                   <a-radio value="php">PHP</a-radio>
                   <a-radio value="nginx">Nginx</a-radio>
                   <a-radio value="npm">Npm</a-radio>
+                  <a-radio value="docker">Docker</a-radio>
                 </a-radio-group>
               </template>
               <div class="svc-cards" v-if="filteredServices.length">
@@ -127,22 +65,24 @@
                       <span v-else-if="s.type === 'mysql'" class="icon icon-MySQL" />
                       <span v-else-if="s.type === 'nginx'" class="icon icon-ngnix" />
                       <span v-else-if="s.type === 'npm'" class="icon icon-npm" />
+                      <icon-computer v-else-if="s.type === 'docker'" />
                     </div>
                     <div class="svc-meta">
-                      <div class="svc-name" :title="s.name">{{ s.name }}</div>
-                      <div class="svc-desc">{{ svcTypeLabel(s.type) }} · v{{ s.version }} · :{{ s.port }}</div>
+                      <a-tooltip :content="s.name">
+                        <div class="svc-name">{{ s.name }}</div>
+                      </a-tooltip>
+                      <div class="svc-desc">{{ svcDesc(s) }}</div>
                     </div>
                   </div>
                   <div class="svc-card-bottom" @click.stop>
-                    <a-tag :color="s.running ? 'green' : 'gray'" size="small">
-                      <template #icon>
-                        <icon-check-circle-fill v-if="s.running" />
-                        <icon-exclamation-circle-fill v-else />
-                      </template>
-                      {{ s.running ? '已启用' : '已停止' }}
-                    </a-tag>
-                    <a-switch :model-value="s.running" :loading="svcToggling === s.id" size="small"
+                    <!-- 状态圆点承担颜色语义（与 a-badge 一致），文案只做说明；运行中开启动效 -->
+                    <div class="com-state" :class="s.running ? 'is-on' : 'is-dim'">
+                      <com-badge :status="s.running ? 'success' : 'normal'" :animated="s.running"></com-badge>
+                      <span>{{ s.running ? '已启用' : '已停止' }}</span>
+                    </div>
+                    <a-switch v-if="s.type !== 'docker'" :model-value="s.running" :loading="svcToggling === s.id" size="small"
                       @change="toggleService(s)" />
+                    <a-tag v-else size="small" color="arcoblue" @click="openServiceDetail(s)">面板管理</a-tag>
                   </div>
                 </div>
               </div>
@@ -155,18 +95,10 @@
       <a-col :span="8" class="right-col">
 
         <!-- ========== 右侧：当前时间 ========== -->
-        <a-card class="clock-card">
-          <template #title>
-            <span>当前时间</span>
-          </template>
-          <div class="clock-body">
-            <div class="clock-circle"><icon-clock-circle /></div>
-            <div class="clock-info">
-              <div class="clock-time">{{ clockTime }}</div>
-              <div class="clock-date">{{ clockDate }}</div>
-            </div>
-          </div>
-        </a-card>
+        <div class="clock-body">
+          <!-- Canvas 指针时钟：盘面已含日期/星期/年份/毫秒时间跑动信息 -->
+          <common-canvas-clock :size="180" />
+        </div>
 
         <!-- ========== 右侧：快捷操作 ========== -->
         <a-card class="tools-card">
@@ -194,9 +126,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, type Component } from "vue";
 import { Events } from "@wailsio/runtime";
-import { IconCheckCircleFill, IconExclamationCircleFill } from "@arco-design/web-vue/es/icon";
+import { IconCheckCircleFill, IconExclamationCircleFill, IconStorage } from "@arco-design/web-vue/es/icon";
 import { useToolEvents, type ToolItem } from "./events";
 import { useToolWindow } from "./useToolWindow";
 import { arcoIconComp as iconComp, isIconfontIcon, normalizeToolIcon } from "@/utils/tool-icon";
@@ -253,8 +185,56 @@ function activateById(id: string) {
 
 /* ==================== 系统信息 ==================== */
 const sysInfo = ref<any>(null);
+
+/** 统计卡片数据源：模板只保留一份卡片结构，新增/调整卡片只改这里 */
+interface StatCard {
+  circle: string;
+  label: string;
+  big: string;
+  unit?: string;
+  detail: string;
+  /** iconfont 字体图标类名（与 comp 二选一） */
+  icon?: string;
+  /** Arco 图标组件（与 icon 二选一，如内存卡片） */
+  comp?: Component;
+}
+const statCards = computed<StatCard[]>(() => {
+  const s = sysInfo.value;
+  return [
+    {
+      circle: "stat-circle-cpu", icon: "icon-cpu-1", label: "CPU",
+      big: s ? s.cpuUsage.toFixed(1) : "--", unit: "%",
+      detail: s ? s.cpuCores + " 核 · " + s.cpuThreads + " 线程" : "",
+    },
+    {
+      circle: "stat-circle-mem", comp: IconStorage, label: "内存",
+      big: s ? s.memPercent.toFixed(1) : "--", unit: "%",
+      detail: s ? fmtBytes(s.memUsed) + " / " + fmtBytes(s.memTotal) : "",
+    },
+    {
+      circle: "stat-circle-up", icon: "icon-yunhangjianshi", label: "运行时间",
+      big: s ? fmtUptime(s.uptime) : "--",
+      detail: s ? "开机 " + fmtBootTime(s.bootTime) : "",
+    },
+    {
+      circle: "stat-circle-go", icon: "icon-golang", label: "Go 运行时",
+      big: s ? String(s.goroutines) : "--", unit: " 协程",
+      detail: s ? "堆 " + fmtBytes(s.appMemAlloc) : "",
+    },
+    {
+      circle: "stat-circle-disk", icon: "icon-yingpan", label: "磁盘 C:",
+      big: s ? s.diskPercent.toFixed(1) : "--", unit: "%",
+      detail: s ? fmtBytes(s.diskUsed) + " / " + fmtBytes(s.diskTotal) : "",
+    },
+    {
+      circle: "stat-circle-net", icon: "icon-wangluo1", label: "网络",
+      big: s ? fmtBytes(s.netSent + s.netRecv) : "--", unit: " 累计",
+      detail: s ? "↑ " + fmtBytes(s.netSent) + "  ↓ " + fmtBytes(s.netRecv) : "",
+    },
+  ];
+});
 const sysLoading = ref(false);
-const svcFilter = ref<"all" | "redis" | "mysql" | "php" | "nginx" | "npm">("all");
+const svcFilter = ref<"all" | "redis" | "mysql" | "php" | "nginx" | "npm" | "docker">("all");
 const svcToggling = ref<string | null>(null);
 
 const filteredServices = computed(() => {
@@ -264,15 +244,22 @@ const filteredServices = computed(() => {
 });
 
 const SVC_TYPE_LABELS: Record<string, string> = {
-  redis: "Redis", mysql: "MySQL", php: "PHP", nginx: "Nginx", npm: "Npm",
+  redis: "Redis", mysql: "MySQL", php: "PHP", nginx: "Nginx", npm: "Npm", docker: "Docker",
 };
 function svcTypeLabel(t: string): string {
   return SVC_TYPE_LABELS[t] || (t ? t.toUpperCase() : "-");
 }
 
+/** 卡片副标题：Docker 引擎无端口/版本位仅展示引擎版本 */
+function svcDesc(s: any): string {
+  if (s.type === "docker") return `${svcTypeLabel(s.type)} 引擎 · v${s.version || "-"}`;
+  return `${svcTypeLabel(s.type)} · v${s.version} · :${s.port}`;
+}
+
 /** 服务类型 → 对应管理工具路由 */
 const SVC_TYPE_ROUTES: Record<string, string> = {
   redis: "/tools/redis", mysql: "/tools/mysql", php: "/tools/php", nginx: "/tools/nginx", npm: "/tools/npm",
+  docker: "/tools/docker",
 };
 
 /** 点击服务卡片：打开对应工具窗口并带 ?inst= 定位实例；窗口已存在（单例复用）时靠事件通知其切换实例 */
@@ -338,18 +325,7 @@ function fmtBootTime(sec: number): string {
 }
 
 /* ==================== 当前时间 ==================== */
-const now = ref(new Date());
-const WEEK_NAMES = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
-const clockTime = computed(() => {
-  const d = now.value;
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-});
-const clockDate = computed(() => {
-  const d = now.value;
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${WEEK_NAMES[d.getDay()]}`;
-});
+/* 时间展示已改用 common-canvas-clock 组件（盘面自带日期/星期/毫秒信息），此处不再维护定时器 */
 
 /* ==================== 生命周期 ==================== */
 const cancels: Array<() => void> = [];
@@ -361,13 +337,11 @@ function listen(name: string, cb: (id: string) => void) {
 }
 
 let sysTimer: ReturnType<typeof setInterval> | null = null;
-let clockTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   await loadTools();
   refreshSysInfo();
   sysTimer = setInterval(refreshSysInfo, 5000);
-  clockTimer = setInterval(() => { now.value = new Date(); }, 1000);
   listen("ball:action", activateById);
   listen("tool:activate", activateById);
   // 设置页保存工具列表后刷新快捷操作（新增/删除/改名称/改图标等）
@@ -375,18 +349,14 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   if (sysTimer) clearInterval(sysTimer);
-  if (clockTimer) clearInterval(clockTimer);
   cancels.forEach((f) => { try { f(); } catch { /* */ } });
   cancels.length = 0;
 });
 </script>
 
 <style scoped>
-/* 统计卡片 - 浅色圆形图标风格 */
+/* 统计卡片行：横纵间距由 a-row 的 gutter 提供，这里只留与下方内容块的间距 */
 .stat-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--base-padding);
   margin-bottom: var(--base-padding);
 }
 
@@ -509,7 +479,13 @@ onUnmounted(() => {
   align-content: start;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
+  /* padding-right: 4px; */
+  /* 隐藏滚动条但保留滚动能力（Chromium + Firefox） */
+  /* scrollbar-width: none; */
+}
+
+.svc-cards::-webkit-scrollbar {
+  display: none;
 }
 
 .svc-card {
@@ -568,6 +544,11 @@ onUnmounted(() => {
   color: rgb(var(--red-6));
 }
 
+.logo-docker {
+  background: rgba(var(--arcoblue-6), 0.05);
+  color: rgb(var(--arcoblue-6));
+}
+
 .svc-meta {
   flex: 1;
   min-width: 0;
@@ -598,48 +579,13 @@ onUnmounted(() => {
 
 /* ---- 右侧卡片 ---- */
 
-/* 当前时间卡片 */
-.clock-card {
-  margin-bottom: var(--base-margin);
-}
-
+/* 当前时间：无卡片裸时钟居中展示，与下方快捷操作卡片间距对齐 12px 栅格 */
 .clock-body {
   display: flex;
   align-items: center;
-  gap: var(--base-padding);
-}
-
-.clock-circle {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--base-radius-default);
-  display: flex;
-  align-items: center;
   justify-content: center;
-  font-size: var(--base-size-large-x);
-  flex-shrink: 0;
-  background: rgba(var(--arcoblue-6), 0.05);
-  color: rgb(var(--arcoblue-6));
-}
-
-.clock-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.clock-time {
-  font-weight: bold;
-  font-size: 28px;
-  line-height: 1.2;
-  color: var(--color-text-1);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 1px;
-}
-
-.clock-date {
-  margin-top: var(--base-radius-small);
-  font-size: var(--base-size-small);
-  color: var(--color-text-3);
+  margin-bottom: 12px;
+  height: 232px;
 }
 
 /* 行继承主窗口可视高度（100vh − 40px 自绘标题栏 − 内容区/页面内边距），
@@ -702,6 +648,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow-y: scroll;
+    scrollbar-width: none;
+}
+
+.tools-card::-webkit-scrollbar {
+  display: none;
 }
 
 .tools-card :deep(.arco-card-body) {
@@ -709,13 +661,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
 }
-
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--base-padding);
   flex: 1;
   align-content: start;
+  overflow-y: scroll;
+  scrollbar-width: none;
 }
 
 .tool-cell {
@@ -724,7 +677,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   /* 正方形单元格随列宽自适应铺满卡片宽度 */
-  aspect-ratio: 1;
   padding: var(--base-padding);
   border-radius: var(--base-radius-default);
   cursor: pointer;

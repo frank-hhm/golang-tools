@@ -23,7 +23,7 @@ export interface InstanceConfig {
     "name": string;
 
     /**
-     * 关联的 Node 版本（展示 + 跑 npm 命令）
+     * 关联的 Node 版本（展示 + 跑 npm 命令）；容器模式不用（置空）
      */
     "version": string;
     "port": number;
@@ -43,6 +43,22 @@ export interface InstanceConfig {
      */
     "directory": boolean;
     "openBrowser": boolean;
+
+    /**
+     * Mode 运行模式：local = 本程序内置的 Go 静态服务器，docker = nginx 容器承载站点目录；
+     * 历史配置没这个字段，零值按本地处理
+     */
+    "mode": string;
+
+    /**
+     * Image 容器模式的镜像（如 nginx:alpine）；站点目录挂到 /usr/share/nginx/html
+     */
+    "image": string;
+
+    /**
+     * ContainerName 容器名，留空按实例 ID 自动生成（go-tools-npm-<id>）
+     */
+    "containerName": string;
 }
 
 /**
@@ -64,6 +80,23 @@ export interface InstanceStatus {
     "nodePath": string;
     "npmVer": string;
     "registry": string;
+    "mode": string;
+    "image": string;
+
+    /**
+     * 容器名
+     */
+    "container": string;
+
+    /**
+     * 容器短 ID（tooltip 里给全长）
+     */
+    "containerId": string;
+
+    /**
+     * running | exited | created…
+     */
+    "containerState": string;
 }
 
 /**

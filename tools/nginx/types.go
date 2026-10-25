@@ -73,11 +73,17 @@ type InstanceConfig struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Version    string `json:"version"`
-	Port       int    `json:"port"`       // HTTP 端口
+	Port       int    `json:"port"`       // HTTP 端口（容器模式下是宿主机发布端口）
 	SSLPort    int    `json:"sslPort"`    // >0 时生成 https 监听
 	DocRoot    string `json:"docRoot"`    // 站点根目录；空 = 实例目录下 html/
 	Workers    int    `json:"workers"`    // worker_processes；<=0 用 auto
 	StubStatus bool   `json:"stubStatus"` // 是否开放 /stub_status 状态页
+	// Mode 运行模式：local（默认，空串同义）| docker（容器内跑 nginx，见 docker.go）
+	Mode string `json:"mode"`
+	// Image Docker 模式使用的镜像，如 nginx:alpine；本地模式为空
+	Image string `json:"image"`
+	// ContainerName 自定义容器名；留空按实例 ID 生成 go-tools-nginx-<id>
+	ContainerName string `json:"containerName"`
 }
 
 // InstanceStatus 实例运行状态
@@ -88,13 +94,21 @@ type InstanceStatus struct {
 	Port           int     `json:"port"`
 	SSLPort        int     `json:"sslPort"`
 	Running        bool    `json:"running"`
-	PID            int     `json:"pid"` // master 进程 PID
+	PID            int     `json:"pid"` // master 进程 PID（容器模式为 0，进程在容器 namespace 里）
 	Workers        int     `json:"workers"`
 	UptimeSeconds  int64   `json:"uptimeSeconds"`
 	DocRoot        string  `json:"docRoot"`
 	ConfigPath     string  `json:"configPath"`
 	Prefix         string  `json:"prefix"`
 	RequestsPerSec float64 `json:"requestsPerSec"` // 由 access.log 行数估算
+	// Mode 运行模式：local | docker
+	Mode string `json:"mode"`
+	// Image / Container 容器模式下的镜像与容器名（本地模式为空）
+	Image     string `json:"image"`
+	Container string `json:"container"`
+	// ContainerID / ContainerState 实际容器的短 ID 与状态（running/exited/created…）
+	ContainerID    string `json:"containerId"`
+	ContainerState string `json:"containerState"`
 }
 
 // InstallProgress 版本安装进度事件负载（stage 语义与 redis/mysql 一致）

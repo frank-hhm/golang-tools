@@ -116,11 +116,13 @@ func DefaultConfig() AppConfig {
 			{ID: "imageBase64", Key: "imageBase64", Name: "图片base64", Path: "/tools/imageBase64", Icon: "icon-img"},
 			{ID: "sniffer", Key: "sniffer", Name: "抓包工具", Path: "/tools/sniffer", Icon: "bug", Single: true, Fullscreen: true, Quick: true},
 			{ID: "websocket", Key: "websocket", Name: "WebSocket调试", Path: "/tools/websocket", Icon: "icon-wangluo1", Fullscreen: true},
+			{ID: "speedtest", Key: "speedtest", Name: "网速测速", Path: "/tools/speedtest", Icon: "icon-wangluo1", Single: true, Width: 1080, Height: 720},
 			{ID: "usbserial", Key: "usbserial", Name: "USB调试", Path: "/tools/usbserial", Icon: "icon-usb1"},
 			{ID: "redis", Key: "redis", Name: "Redis管理", Path: "/tools/redis", Icon: "icon-icon-redis", Single: true, Fullscreen: true},
 			{ID: "mysql", Key: "mysql", Name: "MySQL管理", Path: "/tools/mysql", Icon: "icon-MySQL", Single: true, Fullscreen: true},
 			{ID: "php", Key: "php", Name: "PHP管理", Path: "/tools/php", Icon: "icon-php", Single: true, Width: 1200, Height: 800},
 			{ID: "nginx", Key: "nginx", Name: "Nginx管理", Path: "/tools/nginx", Icon: "icon-ngnix", Single: true, Width: 1200, Height: 800},
+			{ID: "docker", Key: "docker", Name: "Docker管理", Path: "/tools/docker", Icon: "computer", Single: true, Width: 1200, Height: 800},
 			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1200, Height: 800},
 		},
 	}
@@ -206,11 +208,13 @@ func normalizeConfig(cfg *AppConfig) {
 			cfg.Tools[i].Icon = fixed
 		}
 	}
-	// 补齐存量配置中缺失的新增默认工具（仅限 php/nginx/npm，尊重用户手动移除的其他工具）
+	// 补齐存量配置中缺失的新增默认工具（仅限 php/nginx/npm/docker/speedtest，尊重用户手动移除的其他工具）
 	for _, extra := range []struct{ id, key, name, path, icon string }{
 		{"php", "php", "PHP管理", "/tools/php", "icon-php"},
 		{"nginx", "nginx", "Nginx管理", "/tools/nginx", "icon-ngnix"},
+		{"docker", "docker", "Docker管理", "/tools/docker", "computer"},
 		{"npm", "npm", "Npm管理", "/tools/npm", "icon-npm"},
+		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-wangluo1"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -229,6 +233,9 @@ func normalizeConfig(cfg *AppConfig) {
 				}
 			}
 			newTool := ToolConfig{ID: extra.id, Key: extra.key, Name: extra.name, Path: extra.path, Icon: extra.icon, Single: true, Width: 1200, Height: 800}
+			if extra.key == "speedtest" {
+				newTool.Width, newTool.Height = 1080, 720
+			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}
 	}

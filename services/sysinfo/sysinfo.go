@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"time"
 
+	"go-tools/tools/docker"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -55,7 +56,7 @@ type PortEntry struct {
 // SvcEntry 由本程序管理的本地服务实例状态
 type SvcEntry struct {
 	ID      string `json:"id"`
-	Type    string `json:"type"` // redis | mysql | php | nginx | npm
+	Type    string `json:"type"` // redis | mysql | php | nginx | npm | docker
 	Name    string `json:"name"`
 	Port    int    `json:"port"`
 	Running bool   `json:"running"`
@@ -147,11 +148,14 @@ func ActiveServices() []SvcEntry {
 	// PHP instances
 	if phpInsts, _ := php.ListInstances(); phpInsts != nil {
 		for _, inst := range phpInsts {
-			running := false
+			running, version := false, inst.Version
 			if st, err := php.GetInstanceStatus(inst.ID); err == nil {
 				running = st.Running
+				if st.Version != "" {
+					version = st.Version // Docker 实例的配置里没有本机版本，取镜像推导出的展示版本
+				}
 			}
-			out = append(out, SvcEntry{ID: inst.ID, Type: "php", Name: inst.Name, Port: inst.Port, Running: running, Version: inst.Version})
+			out = append(out, SvcEntry{ID: inst.ID, Type: "php", Name: inst.Name, Port: inst.Port, Running: running, Version: version})
 		}
 	}
 	// Nginx instances
@@ -173,6 +177,10 @@ func ActiveServices() []SvcEntry {
 			}
 			out = append(out, SvcEntry{ID: inst.ID, Type: "npm", Name: inst.Name, Port: inst.Port, Running: running, Version: inst.Version})
 		}
+	}
+	// Docker 引擎：只上报一条聚合状态（容器在 Docker 面板内逐个管理，不混进服务实例总览）
+	if eng, _ := docker.EngineStatusCached(5 * time.Second); eng.Available {
+		out = append(out, SvcEntry{ID: "docker-engine", Type: "docker", Name: "Docker 引擎", Running: true, Version: eng.Version})
 	}
 	return out
 }

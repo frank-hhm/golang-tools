@@ -24,9 +24,10 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
+
+	"go-tools/services/winrun"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -297,7 +298,7 @@ func writeSystemPathElevated(value string) error {
 	// 去掉结尾反斜杠，防止 \\\" 被当作转义引号破坏命令行参数
 	value = strings.TrimRight(value, "\\")
 	params := fmt.Sprintf(`add "%s" /v Path /t REG_EXPAND_SZ /d "%s" /f`, sysEnvFull, value)
-	code, err := runElevatedWait("reg.exe", params)
+	code, err := winrun.RunElevatedWait(winrun.Elevated{File: "reg.exe", Params: params, Show: windows.SW_HIDE})
 	if err != nil {
 		return err
 	}
@@ -307,76 +308,7 @@ func writeSystemPathElevated(value string) error {
 	return nil
 }
 
-const seeMaskNoCloseProcess = 0x00000040
-
-// shellexecinfo 对应 Win32 SHELLEXECUTEINFOW（x/sys 未导出，这里按内存布局自定义；
-// hProc 为 hIcon/hProcess 联合体）
-type shellexecinfo struct {
-	cbSize     uint32
-	fMask      uint32
-	hwnd       windows.Handle
-	verb       *uint16
-	file       *uint16
-	parameters *uint16
-	directory  *uint16
-	showCmd    int32
-	hInstApp   windows.Handle
-	lpIDList   uintptr
-	lpClass    *uint16
-	hkeyClass  windows.Handle
-	dwHotKey   uint32
-	hProc      windows.Handle
-	hMonitor   windows.Handle
-}
-
-var (
-	shell32             = windows.NewLazySystemDLL("shell32.dll")
-	procShellExecuteExW = shell32.NewProc("ShellExecuteExW")
-)
-
-// runElevatedWait 以 runas 动词提权启动 file，并等待其结束，返回退出码。
-// 用户取消 UAC 时返回友好错误。
-func runElevatedWait(file, params string) (int, error) {
-	verb, _ := windows.UTF16PtrFromString("runas")
-	fp, _ := windows.UTF16PtrFromString(file)
-	pp, _ := windows.UTF16PtrFromString(params)
-	sei := shellexecinfo{}
-	sei.cbSize = uint32(unsafe.Sizeof(sei))
-	sei.fMask = seeMaskNoCloseProcess
-	sei.verb = verb
-	sei.file = fp
-	sei.parameters = pp
-	sei.showCmd = windows.SW_HIDE
-	r1, _, e1 := procShellExecuteExW.Call(uintptr(unsafe.Pointer(&sei)))
-	if r1 == 0 {
-		if errno, ok := e1.(syscall.Errno); ok {
-			if errno == 1223 {
-				return -1, fmt.Errorf("已取消管理员授权（UAC），未做任何更改")
-			}
-			if errno != 0 {
-				return -1, fmt.Errorf("提权启动失败: %w", errno)
-			}
-		}
-		return -1, fmt.Errorf("提权启动失败")
-	}
-	h := sei.hProc
-	if h == 0 {
-		return 0, nil
-	}
-	defer windows.CloseHandle(h)
-	ev, err := windows.WaitForSingleObject(h, 120000)
-	if err != nil {
-		return -1, fmt.Errorf("等待提权进程失败: %w", err)
-	}
-	if ev != windows.WAIT_OBJECT_0 {
-		return -1, fmt.Errorf("提权进程超时未结束")
-	}
-	var code uint32
-	if err := windows.GetExitCodeProcess(h, &code); err != nil {
-		return -1, fmt.Errorf("读取退出码失败: %w", err)
-	}
-	return int(code), nil
-}
+// 提权执行的具体 Win32 细节收敛到 services/winrun（与 Docker Desktop 安装共用同一 helper）
 
 const (
 	hwndBroadcast   = 0xffff

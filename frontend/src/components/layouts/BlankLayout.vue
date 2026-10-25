@@ -3,11 +3,21 @@
         <!-- 自绘标题栏：无边框窗口下由前端提供标题、视图菜单与窗口按钮（公共组件） -->
         <WinTitleBar :title="title">
             <common-theme-switch />
-            <a-button size="small" @click="reload"><icon-refresh /></a-button>
-            <a-button size="small" v-if="!isSettingsPage" @click="toggleSettings"><icon-settings /></a-button>
-            <a-button size="small" v-if="!noFullscreen" @click="toggleFullscreen"><icon-fullscreen /></a-button>
-            <a-button size="small" @click="minimise"><icon-minus /></a-button>
-            <a-button size="small" @click="close"><icon-close /></a-button>
+            <a-tooltip content="刷新">
+                <a-button size="small" @click="reload"><icon-refresh /></a-button>
+            </a-tooltip>
+            <a-tooltip v-if="!isSettingsPage" content="设置">
+                <a-button size="small" @click="toggleSettings"><icon-settings /></a-button>
+            </a-tooltip>
+            <a-tooltip v-if="!noFullscreen" content="全屏">
+                <a-button size="small" @click="toggleFullscreen"><icon-fullscreen /></a-button>
+            </a-tooltip>
+            <a-tooltip content="最小化">
+                <a-button size="small" @click="minimise"><icon-minus /></a-button>
+            </a-tooltip>
+            <a-tooltip content="关闭">
+                <a-button size="small" @click="close"><icon-close /></a-button>
+            </a-tooltip>
         </WinTitleBar>
         <div class="win-content" :class="{ 'no-pad': noPadding }">
             <router-view />

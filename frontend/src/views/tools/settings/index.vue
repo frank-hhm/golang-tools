@@ -3,7 +3,7 @@
     <a-row class="settings-page" :gutter="6">
         <!-- 左侧：设置分类 -->
         <a-col :span="6" class="side-col">
-            <a-card class="side-card" size="small" :body-style="{ padding: 0 }">
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
                 <template #title>设置</template>
                 <div class="cat-list">
                     <div v-for="t in SETTING_TABS" :key="t.key" class="cat-item"
@@ -18,7 +18,7 @@
 
         <!-- 右侧：主区域，所有设置项修改后自动保存 -->
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel" :body-style="{ padding: 0 }">
+            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space>
                         <component :is="activeTabMeta.icon" />
@@ -31,7 +31,7 @@
 
                 <div class="tab-content">
                     <!-- ===================== 通用设置 ===================== -->
-                    <a-card v-show="activeTab === 'general'" class="pane-card">
+                    <a-card v-show="activeTab === 'general'" class="pane-card card-head-tool">
                         <template #title>应用与外观</template>
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="general.appName">
@@ -56,7 +56,7 @@
                             </a-form-item>
                             <a-form-item field="general.theme">
                                 <template #label>主题模式</template>
-                                <a-radio-group v-model="form.general.theme" type="button" @change="onThemeChange">
+                                <a-radio-group size="medium" v-model="form.general.theme" type="button" @change="onThemeChange">
                                     <a-radio value="light">浅色</a-radio>
                                     <a-radio value="dark">暗黑</a-radio>
                                     <a-radio value="auto">跟随系统</a-radio>
@@ -72,7 +72,7 @@
                     </a-card>
 
                     <!-- ===================== 目录设置 ===================== -->
-                    <a-card v-show="activeTab === 'paths'" class="pane-card">
+                    <a-card v-show="activeTab === 'paths'" class="pane-card card-head-tool">
                         <template #title>全局目录布局</template>
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="paths.plugins">
@@ -81,7 +81,7 @@
                                     <a-input v-model="form.paths.plugins" placeholder="留空使用默认（应用目录/plugins）"
                                         allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
                                         @clear="scheduleSave(0)" />
-                                    <a-button @click="pickBaseDir('plugins', '选择插件目录')">选择目录</a-button>
+                                    <a-button size="small" @click="pickBaseDir('plugins', '选择插件目录')">选择目录</a-button>
                                 </div>
                                 <div class="hint">服务程序安装位置：PHP/Nginx/MySQL/Redis/npm 等按服务名建子目录（plugins/服务名）。修改后新安装/下载的服务落到新目录。</div>
                             </a-form-item>
@@ -91,7 +91,7 @@
                                     <a-input v-model="form.paths.data" placeholder="留空使用默认（应用目录/data）"
                                         allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
                                         @clear="scheduleSave(0)" />
-                                    <a-button @click="pickBaseDir('data', '选择数据目录')">选择目录</a-button>
+                                    <a-button size="small" @click="pickBaseDir('data', '选择数据目录')">选择目录</a-button>
                                 </div>
                                 <div class="hint">服务配置缓存与实例工作目录（data/服务名）；截图另存、录像、站点根等文件的默认落点（data/screenshots、data/videos、data/www）。保存后各另存对话框默认目录随即使用新路径。</div>
                             </a-form-item>
@@ -106,8 +106,8 @@
                                     <a-input v-model="form.paths.logs" placeholder="留空使用默认（应用目录/logs）"
                                         allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
                                         @clear="scheduleSave(0)" />
-                                    <a-button @click="pickBaseDir('logs', '选择日志目录')">选择目录</a-button>
-                                    <a-button v-if="activePath" @click="openLogDir">打开日志目录</a-button>
+                                    <a-button size="small" @click="pickBaseDir('logs', '选择日志目录')">选择目录</a-button>
+                                    <a-button size="small" v-if="activePath" @click="openLogDir">打开日志目录</a-button>
                                 </div>
                                 <div class="hint">程序与各服务日志的根目录，按服务名建子目录：logs/app 程序日志、logs/mysql SQL 日志、logs/php 实例服务日志等。开启文件日志后 info / warn / error 全部记录，按“级别 + 当前日期”自动分文件（如 Info20261022.log、Warn20261022.log、Error20261022.log）。当前程序日志目录：{{ activePath || "（未加载）" }}</div>
                             </a-form-item>
@@ -115,7 +115,7 @@
                     </a-card>
 
                     <!-- ===================== 浮动球设置 ===================== -->
-                    <a-card v-show="activeTab === 'ball'" class="pane-card">
+                    <a-card v-show="activeTab === 'ball'" class="pane-card card-head-tool">
                         <template #title>桌面浮动球</template>
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="ballEnabled">
@@ -149,13 +149,13 @@
 
                     <!-- ===================== 工具列表编辑 ===================== -->
                     <div v-show="activeTab === 'tools'" class="tools-pane">
-                        <a-card class="pane-card tools-card" :body-style="{ padding: 0 }">
+                        <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }">
                             <template #title>功能列表</template>
                             <template #extra>
                                 <a-space>
                                     <span class="hint hint-inline">快捷键为系统全局热键</span>
                                     <a-button size="small" @click="resetTools">恢复默认列表</a-button>
-                                    <a-button type="primary" size="small" @click="openAdd">
+                                    <a-button size="small" @click="openAdd">
                                         <template #icon><icon-plus /></template>新增功能
                                     </a-button>
                                 </a-space>
@@ -167,10 +167,10 @@
                                         <a-table-column title="排序" :width="88">
                                             <template #cell="{ rowIndex }">
                                                 <a-space :size="2">
-                                                    <a-button size="mini" :disabled="rowIndex === 0" @click="move(rowIndex, -1)">
+                                                    <a-button size="small" :disabled="rowIndex === 0" @click="move(rowIndex, -1)">
                                                         <icon-up />
                                                     </a-button>
-                                                    <a-button size="mini" :disabled="rowIndex === tools.length - 1"
+                                                    <a-button size="small" :disabled="rowIndex === tools.length - 1"
                                                         @click="move(rowIndex, 1)">
                                                         <icon-down />
                                                     </a-button>
@@ -185,7 +185,9 @@
                                                     <i v-if="isIconfontIcon(record.icon)" class="icon iconfont-preview"
                                                         :class="record.icon" />
                                                     <component v-else :is="iconComp(record.icon)" class="arco-preview" />
-                                                    <span class="icon-text" :title="record.icon">{{ iconLabel(record.icon) }}</span>
+                                                    <a-tooltip :content="record.icon">
+                                                        <span class="icon-text">{{ iconLabel(record.icon) }}</span>
+                                                    </a-tooltip>
                                                 </span>
                                                 <span v-else class="off">—</span>
                                             </template>
@@ -259,7 +261,7 @@
                             <component v-else-if="editForm.icon" :is="iconComp(editForm.icon)" class="form-icon" />
                         </template>
                         <template #append>
-                            <a-button @click="() => { proxy?.$refs['selectModalIconRef']?.open(); }">图标</a-button>
+                            <a-button size="small" @click="() => { proxy?.$refs['selectModalIconRef']?.open(); }">图标</a-button>
                             <select-icon-modal ref="selectModalIconRef"
                                 :type="isIconfontIcon(editForm.icon) ? 'iconfont' : 'arco'"
                                 @change="iconChange"></select-icon-modal>
@@ -371,6 +373,7 @@ const BUILTINS: BuiltinDef[] = [
     builtin("mysql", "MySQL管理", { path: "/tools/mysql", single: true, fullscreen: true }),
     builtin("php", "PHP管理", { path: "/tools/php", single: true, width: 1200, height: 800 }),
     builtin("nginx", "Nginx管理", { path: "/tools/nginx", single: true, width: 1200, height: 800 }),
+    builtin("docker", "Docker管理", { path: "/tools/docker", single: true, width: 1200, height: 800 }),
     builtin("npm", "Npm管理", { path: "/tools/npm", single: true, width: 1200, height: 800 }),
     builtin("settings", "设置", { path: "/tools/settings", single: true, quick: true }),
 ];
@@ -716,7 +719,9 @@ const DEFAULT_TOOLS: ToolRow[] = [
     { id: "mysql", key: "mysql", name: "MySQL管理", path: "/tools/mysql", event: "", icon: "icon-MySQL", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
     { id: "php", key: "php", name: "PHP管理", path: "/tools/php", event: "", icon: "icon-php", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
     { id: "nginx", key: "nginx", name: "Nginx管理", path: "/tools/nginx", event: "", icon: "icon-ngnix", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
+    { id: "docker", key: "docker", name: "Docker管理", path: "/tools/docker", event: "", icon: "computer", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
     { id: "npm", key: "npm", name: "Npm管理", path: "/tools/npm", event: "", icon: "icon-npm", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
+    { id: "speedtest", key: "speedtest", name: "网速测速", path: "/tools/speedtest", event: "", icon: "icon-wangluo1", single: true, fullscreen: false, disableFullscreen: false, width: 1080, height: 720, shortcut: "", quick: false },
 ];
 
 /* ---------------- 表格高度自适应（继承窗口高度，表体内部滚动） ---------------- */

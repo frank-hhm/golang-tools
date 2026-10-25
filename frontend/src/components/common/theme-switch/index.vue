@@ -1,10 +1,12 @@
 <template>
     <!-- 暗黑模式切换开关：主窗口与 /win 工具窗（BlankLayout，含设置页窗口）标题栏共用。
          带日/月图标指示当前深浅；跨窗口切换时经 storage 事件自动同步开关状态。 -->
-    <a-switch size="small" :checked="dark" title="切换浅色/暗黑主题" @change="toggle">
-        <template #checked-icon><icon-moon /></template>
-        <template #unchecked-icon><icon-sun /></template>
-    </a-switch>
+    <a-tooltip content="切换浅色/暗黑主题">
+        <a-switch size="small" :checked="dark" @change="toggle">
+            <template #checked-icon><icon-moon /></template>
+            <template #unchecked-icon><icon-sun /></template>
+        </a-switch>
+    </a-tooltip>
 </template>
 <script lang="ts">
 export default {

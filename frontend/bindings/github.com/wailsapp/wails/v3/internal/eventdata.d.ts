@@ -10,6 +10,9 @@ import type { Events } from "@wailsio/runtime";
 import type * as app$0 from "../../../../../go-tools/services/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as docker$0 from "../../../../../go-tools/tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as mysql$0 from "../../../../../go-tools/tools/mysql/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -38,6 +41,9 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "ball:action": string;
             "capture:newframe": screenshot$0.CaptureFrame | null;
+            "docker:pull": docker$0.PullProgress;
+            "docker:serverlog": docker$0.ContainerLogLine;
+            "docker:setup": docker$0.SetupProgress;
             "mysql:install": mysql$0.InstallProgress;
             "nginx:install": nginx$0.InstallProgress;
             "npm:install": npm$0.InstallProgress;

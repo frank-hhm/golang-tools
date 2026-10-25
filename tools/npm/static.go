@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -256,14 +255,4 @@ func humanBytes(v int64) string {
 		return strconv.FormatInt(v, 10) + " B"
 	}
 	return strconv.FormatFloat(f, 'f', 1, 64) + " " + units[i]
-}
-
-// freePort 探测可用端口
-func freePort(port int) error {
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return err
-	}
-	_ = ln.Close()
-	return nil
 }

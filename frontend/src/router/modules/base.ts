@@ -9,6 +9,7 @@ const TOOLS = [
     { key: "Mysql", menu_name: "MySQL管理", path: "tools/mysql", component: () => import('@/views/tools/mysql/index.vue') },
     { key: "Php", menu_name: "PHP管理", path: "tools/php", component: () => import('@/views/tools/php/index.vue') },
     { key: "Nginx", menu_name: "Nginx管理", path: "tools/nginx", component: () => import('@/views/tools/nginx/index.vue') },
+    { key: "Docker", menu_name: "Docker管理", path: "tools/docker", component: () => import('@/views/tools/docker/index.vue') },
     { key: "Npm", menu_name: "npm管理", path: "tools/npm", component: () => import('@/views/tools/npm/index.vue') },
     { key: "Timestamp", menu_name: "时间戳转换", path: "tools/timestamp", component: () => import('@/views/tools/timestamp/index.vue') },
     { key: "Strrandom", menu_name: "随机字符串生成", path: "tools/strrandom", component: () => import('@/views/tools/strrandom/index.vue') },
@@ -20,6 +21,7 @@ const TOOLS = [
     { key: "Screenshot", menu_name: "截图预览", path: "tools/screenshot", component: () => import('@/views/tools/screenshot/index.vue') },
     { key: "Video", menu_name: "视频录制", path: "tools/video", component: () => import('@/views/tools/video/index.vue') },
     { key: "Colorpicker", menu_name: "颜色取色器", path: "tools/colorpicker", component: () => import('@/views/tools/colorpicker/index.vue') },
+    { key: "Speedtest", menu_name: "网速测速", path: "tools/speedtest", component: () => import('@/views/tools/speedtest/index.vue') },
     { key: "Settings", menu_name: "设置", path: "tools/settings", component: () => import('@/views/tools/settings/index.vue') },
 
 ];

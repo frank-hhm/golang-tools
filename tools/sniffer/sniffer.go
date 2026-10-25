@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go-tools/tools/portcheck"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -669,4 +671,17 @@ func updatePortProcessMap() {
 	mapMutex.Lock()
 	portProcessMap = newMap
 	mapMutex.Unlock()
+}
+
+// PortTaken 报告代理监听端口能否使用：先看各工具实例的登记端口，再看系统里是否已被监听。
+// 返回非空字符串即占用原因，空串表示可用。
+func PortTaken(port int) string { return portcheck.Taken(port, "") }
+
+// SuggestPort 从 from 起找一个可用的代理端口（默认基准 8888）：
+// 既跳过被实例登记的端口，也跳过系统里已绑不上的端口
+func SuggestPort(from int) int {
+	if from <= 0 {
+		from = 8888
+	}
+	return portcheck.Suggest(from, 100)
 }
