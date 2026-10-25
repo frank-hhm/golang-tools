@@ -83,6 +83,13 @@ export function BallOpen(): $CancellablePromise<void> {
 }
 
 /**
+ * BrowserActivateTab 切换标签。
+ */
+export function BrowserActivateTab(spaceID: string, tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(2142159075, spaceID, tabID);
+}
+
+/**
  * BrowserAttach 让指定空间挂到调用方的窗口上：首次调用会创建 WebView2 环境
  * （冷启动约 200~400ms），之后同一空间只做矩形更新与导航。
  * 
@@ -91,6 +98,13 @@ export function BallOpen(): $CancellablePromise<void> {
  */
 export function BrowserAttach(spaceID: string, windowName: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
     return $Call.ByID(2001320792, spaceID, windowName, x, y, w, h);
+}
+
+/**
+ * BrowserBack 后退。
+ */
+export function BrowserBack(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(933969958, spaceID);
 }
 
 /**
@@ -108,24 +122,59 @@ export function BrowserCloseAll(): $CancellablePromise<void> {
 }
 
 /**
- * BrowserDevTools 打开该空间的开发者工具（独立窗口）。
+ * BrowserCloseTab 关闭标签；关掉最后一个会自动开一个首页标签。
+ */
+export function BrowserCloseTab(spaceID: string, tabID: string): $CancellablePromise<void> {
+    return $Call.ByID(4188308142, spaceID, tabID);
+}
+
+/**
+ * BrowserConfig 返回整份浏览器配置（设置抽屉打开时拉一次）。
+ */
+export function BrowserConfig(): $CancellablePromise<config$0.BrowserConfig> {
+    return $Call.ByID(144641787);
+}
+
+/**
+ * BrowserDevTools 打开活动标签的开发者工具（独立窗口）。
  */
 export function BrowserDevTools(spaceID: string): $CancellablePromise<void> {
     return $Call.ByID(3250434155, spaceID);
 }
 
 /**
- * BrowserEval 在页面里执行一段脚本（地址栏取标题、读取选中文本等轻量操作用）。
+ * BrowserEval 在活动标签里执行一段脚本。
  */
 export function BrowserEval(spaceID: string, script: string): $CancellablePromise<void> {
     return $Call.ByID(1038581467, spaceID, script);
 }
 
 /**
- * BrowserNavigate 导航到 url（http/https/file 或 about:blank）。
+ * BrowserFocusShell 把键盘焦点交回前端页面（网页区抢焦点时用，Ctrl+L 等场景）。
+ */
+export function BrowserFocusShell(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(871904027, spaceID);
+}
+
+/**
+ * BrowserForward 前进。
+ */
+export function BrowserForward(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(2981070134, spaceID);
+}
+
+/**
+ * BrowserNavigate 导航当前活动标签（支持 http/https/file/about:blank）。
  */
 export function BrowserNavigate(spaceID: string, url: string): $CancellablePromise<void> {
     return $Call.ByID(4193098034, spaceID, url);
+}
+
+/**
+ * BrowserNewTab 新建标签，返回标签 ID。url 为空时用空间首页。
+ */
+export function BrowserNewTab(spaceID: string, url: string, activate: boolean): $CancellablePromise<string> {
+    return $Call.ByID(4281394812, spaceID, url, activate);
 }
 
 /**
@@ -137,6 +186,29 @@ export function BrowserOpenWindow(): $CancellablePromise<void> {
 }
 
 /**
+ * BrowserRebuild 关掉再重开一个空间：代理/UA 等 environment 级设置改完后生效。
+ */
+export function BrowserRebuild(spaceID: string, windowName: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
+    return $Call.ByID(3759950892, spaceID, windowName, x, y, w, h);
+}
+
+/**
+ * BrowserReload 刷新。
+ */
+export function BrowserReload(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(430652528, spaceID);
+}
+
+/**
+ * BrowserRestoreSession 把上次会话里该空间的标签重新开出来（用户点击才执行）。
+ * 
+ * 返回恢复出来的标签数；空间还没 attach 时返回错误，前端应先 attach。
+ */
+export function BrowserRestoreSession(spaceID: string): $CancellablePromise<number> {
+    return $Call.ByID(3724703247, spaceID);
+}
+
+/**
  * BrowserRuntime 返回 WebView2 运行时版本；返回空串表示本机不可用（前端据此提示）。
  */
 export function BrowserRuntime(): $CancellablePromise<string> {
@@ -144,10 +216,28 @@ export function BrowserRuntime(): $CancellablePromise<string> {
 }
 
 /**
- * BrowserRuntimeInfo 返回运行时版本与浏览器配置里当前空间数量（页面顶部状态条用）。
+ * BrowserRuntimeInfo 返回运行时版本与浏览器配置摘要（页面顶部状态条用）。
  */
 export function BrowserRuntimeInfo(): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(3590807963);
+}
+
+/**
+ * BrowserSaveConfig 保存浏览器设置（全局默认 + 空间列表 + 空间上限）。
+ * 
+ * 走 config.Update 的读—改—写，不会覆盖其它设置的并发修改。
+ * 保存后不自动重建已经开着的空间：代理/UA 这类是 environment 级参数，
+ * 必须关掉重开才生效，由前端在保存后调用 BrowserRebuild 明确触发。
+ */
+export function BrowserSaveConfig($in: config$0.BrowserConfig): $CancellablePromise<void> {
+    return $Call.ByID(263413514, $in);
+}
+
+/**
+ * BrowserSessionInfo 返回上次会话摘要，供前端显示「恢复上次标签页」入口。
+ */
+export function BrowserSessionInfo(): $CancellablePromise<{ [_ in string]?: any } | null> {
+    return $Call.ByID(1135789167);
 }
 
 /**
@@ -158,17 +248,48 @@ export function BrowserSetBounds(spaceID: string, x: number, y: number, w: numbe
 }
 
 /**
- * BrowserSpaces 返回浏览器全局配置里的空间列表（含代理等，供页面切换空间时展示）。
+ * BrowserSetVisible 显示/隐藏网页区。
+ * 
+ * 网页区是原生窗口，会盖住前端的一切覆盖层：打开设置抽屉、弹窗类 UI 时
+ * 前端先把它藏起来，关掉再显示。空间未创建时静默成功（没有可藏的东西）。
+ */
+export function BrowserSetVisible(spaceID: string, visible: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4200628739, spaceID, visible);
+}
+
+/**
+ * BrowserSpaceState 返回一个空间的标签快照。
+ */
+export function BrowserSpaceState(spaceID: string): $CancellablePromise<browser$0.SpaceInfo> {
+    return $Call.ByID(732785434, spaceID);
+}
+
+/**
+ * BrowserSpaceStates 返回全部空间的标签快照。
+ */
+export function BrowserSpaceStates(): $CancellablePromise<browser$0.SpaceInfo[] | null> {
+    return $Call.ByID(721425995);
+}
+
+/**
+ * BrowserSpaces 返回浏览器全局配置里的空间列表（含代理等，供页面展示与切换）。
  */
 export function BrowserSpaces(): $CancellablePromise<config$0.BrowserSpace[] | null> {
     return $Call.ByID(2950666494);
 }
 
 /**
- * BrowserStats 返回资源占用快照：空间数 + 本程序空间下的 WebView2 进程数与常驻内存。
+ * BrowserStats 返回资源占用快照：空间数 + 标签数 + WebView2 进程数与常驻内存。
  */
 export function BrowserStats(): $CancellablePromise<browser$0.Stat> {
     return $Call.ByID(1850874760);
+}
+
+/**
+ * BrowserStop 停止加载。
+ */
+export function BrowserStop(spaceID: string): $CancellablePromise<void> {
+    return $Call.ByID(2042896313, spaceID);
 }
 
 /**
@@ -734,6 +855,13 @@ export function DockerSuggestPort($from: number): $CancellablePromise<number> {
 }
 
 /**
+ * ExportConfig 弹保存框导出一份配置快照，返回实际写入的路径（取消返回空串）。
+ */
+export function ExportConfig(): $CancellablePromise<string> {
+    return $Call.ByID(2160778251);
+}
+
+/**
  * GetAppLogo 返回当前应用 logo 的 base64 PNG 字符串（自定义路径优先，否则内置默认）
  */
 export function GetAppLogo(): $CancellablePromise<string> {
@@ -815,6 +943,16 @@ export function GetSystemInfo(): $CancellablePromise<sysinfo$0.SystemInfo | null
  */
 export function Greet(name: string): $CancellablePromise<string> {
     return $Call.ByID(209610756, name);
+}
+
+/**
+ * ImportConfig 弹打开框导入配置快照，返回被导入的文件路径（取消返回空串）。
+ * 
+ * 覆盖范围就是 ExportConfig 导出的那些字段；目录、Logo、球位等机器绑定项
+ * 保留本机当前值。导入后跑一遍 SaveConfig，让日志器/热键/自启/浮动球全部跟着生效。
+ */
+export function ImportConfig(): $CancellablePromise<string> {
+    return $Call.ByID(1489744468);
 }
 
 /**
@@ -1678,6 +1816,13 @@ export function OcrImage(data: string): $CancellablePromise<string> {
  */
 export function OpenCaptureOverlay(): $CancellablePromise<void> {
     return $Call.ByID(611954573);
+}
+
+/**
+ * OpenConfigDir 在资源管理器中打开配置文件所在目录（手工备份/替换 config.json 用）。
+ */
+export function OpenConfigDir(): $CancellablePromise<void> {
+    return $Call.ByID(217538284);
 }
 
 /**

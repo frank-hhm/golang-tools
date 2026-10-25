@@ -6,13 +6,9 @@
                 <common-tool-icon v-if="toolIcon" :name="toolIcon" :size="18" />
                 <img v-else-if="appLogo" :src="appLogo" class="tb-logo" alt="" />
             </template>
-            <common-theme-switch />
-            <a-tooltip content="刷新">
-                <a-button size="small" @click="reload"><icon-refresh /></a-button>
-            </a-tooltip>
-            <a-tooltip v-if="!isSettingsPage" content="设置">
-                <a-button size="small" @click="toggleSettings"><icon-settings /></a-button>
-            </a-tooltip>
+            <!-- 标题栏只留窗口控制：暗黑开关只在浏览器页保留（主页在 layouts/index.vue），
+                 刷新/设置不再重复占用工具窗标题栏，需要时到主页或页面自身入口去操作 -->
+            <common-theme-switch v-if="isBrowserPage" />
             <a-tooltip v-if="!noFullscreen" content="全屏">
                 <a-button size="small" @click="toggleFullscreen"><icon-fullscreen /></a-button>
             </a-tooltip>
@@ -33,7 +29,6 @@
 import { computed, getCurrentInstance, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { Window } from "@wailsio/runtime";
-import { useToolWindow } from "@/views/index/useToolWindow";
 import { DEFAULT_TOOL_ICONS, normalizeToolIcon } from "@/utils/tool-icon";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 
@@ -44,7 +39,6 @@ import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
  */
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const route = useRoute();
-const { openToolWindow } = useToolWindow();
 const title = computed(() => (route.meta?.menu_name as string) || "go-tools");
 
 /** 标题栏图标：用该工具在功能配置里的图标（含用户自定义），配置里没有再退内置默认表 */
@@ -68,22 +62,17 @@ async function loadIcon() {
 
 onMounted(loadIcon);
 
-// 当前页即设置页时，视图菜单不再重复展示“设置”入口
-const isSettingsPage = computed(() => route.path.includes("/tools/settings"));
+// 暗黑开关只在浏览器工具窗保留（主页在 layouts/index.vue 里）
+const isBrowserPage = computed(() => route.path.includes("/tools/browser"));
 // 工具配置“禁用全屏”（URL query fs=0）：隐藏最大化按钮与“切换全屏”菜单
 const noFullscreen = computed(() => String(route.query.fs ?? "") === "0");
 // 内容区内边距：默认给；取色器等需要内容铺满边缘的工具页去掉 padding
 const noPadding = computed(() => route.path.includes("/tools/colorpicker"));
 
-const reload = () => location.reload();
 // 用最大化实现“铺满显示器”，避免排他全屏把自绘标题栏顶出屏幕
 const toggleFullscreen = () => Window.ToggleMaximise();
 const minimise = () => Window.Minimise();
 const close = () => Window.Close();
-
-// 打开设置：走单例工具窗口，不在当前窗口跳转；设置窗口已存在时由后端直接复用（显示+取消最小化+聚焦）
-const toggleSettings = () => openToolWindow("/tools/settings", "设置", { single: true });
-
 </script>
 
 <style scoped>

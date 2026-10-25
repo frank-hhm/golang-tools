@@ -62,6 +62,11 @@ export interface BrowserConfig {
     "enabled": boolean;
 
     /**
+     * MaxSpaces 空间数量上限（设置页可改）。超限禁止新建并提示。
+     */
+    "maxSpaces": number;
+
+    /**
      * 全局首页，空间未单独设置时使用
      */
     "homepage": string;
@@ -70,6 +75,26 @@ export interface BrowserConfig {
      * 地址栏搜索模板，%s 会被替换为查询词
      */
     "searchURL": string;
+
+    /**
+     * 全局默认代理模式：system / direct / custom
+     */
+    "proxyMode": string;
+
+    /**
+     * 全局默认代理地址（ProxyMode=custom 时使用）
+     */
+    "proxy": string;
+
+    /**
+     * 全局默认代理绕过列表
+     */
+    "proxyBypass": string;
+
+    /**
+     * 全局默认 UA
+     */
+    "userAgent": string;
 
     /**
      * 启动时默认打开的空间 ID
@@ -106,7 +131,12 @@ export interface BrowserSpace {
     "homepage": string;
 
     /**
-     * 代理，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080；空 = 直连
+     * ProxyMode 代理模式：system / direct / custom；空 = 用全局 browser.proxyMode
+     */
+    "proxyMode": string;
+
+    /**
+     * Proxy 代理地址，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080（ProxyMode=custom 时生效）
      */
     "proxy": string;
 

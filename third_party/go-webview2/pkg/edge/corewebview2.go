@@ -661,3 +661,126 @@ func (i *ICoreWebView2) OpenDevToolsWindow() error {
 	}
 	return nil
 }
+
+// ============================================================
+// 导航与状态（go-tools 扩展）
+//
+// 下面这批方法在 ICoreWebView2 的 vtable 里本来就存在，上游 go-webview2
+// 只是没有导出成 Go 方法。这里按同样的调用约定补上，方便在宿主里做
+// 「后退/前进/刷新/停止/状态回传」。
+// ============================================================
+
+// Reload 重新加载当前页面（等同 F5，保留缓存）。
+func (i *ICoreWebView2) Reload() error {
+	hr, _, _ := i.vtbl.Reload.Call(uintptr(unsafe.Pointer(i)))
+	if windows.Handle(hr) != windows.S_OK {
+		return windows.Errno(hr)
+	}
+	return nil
+}
+
+// Stop 停止当前导航（等同 Esc）。
+func (i *ICoreWebView2) Stop() error {
+	hr, _, _ := i.vtbl.Stop.Call(uintptr(unsafe.Pointer(i)))
+	if windows.Handle(hr) != windows.S_OK {
+		return windows.Errno(hr)
+	}
+	return nil
+}
+
+// GoBack 后退一步（无历史时返回错误）。
+func (i *ICoreWebView2) GoBack() error {
+	hr, _, _ := i.vtbl.GoBack.Call(uintptr(unsafe.Pointer(i)))
+	if windows.Handle(hr) != windows.S_OK {
+		return windows.Errno(hr)
+	}
+	return nil
+}
+
+// GoForward 前进一步（无历史时返回错误）。
+func (i *ICoreWebView2) GoForward() error {
+	hr, _, _ := i.vtbl.GoForward.Call(uintptr(unsafe.Pointer(i)))
+	if windows.Handle(hr) != windows.S_OK {
+		return windows.Errno(hr)
+	}
+	return nil
+}
+
+// GetCanGoBack 是否可以后退。
+func (i *ICoreWebView2) GetCanGoBack() (bool, error) {
+	var canGoBack int32 // BOOL
+	hr, _, _ := i.vtbl.GetCanGoBack.Call(
+		uintptr(unsafe.Pointer(i)),
+		uintptr(unsafe.Pointer(&canGoBack)),
+	)
+	if windows.Handle(hr) != windows.S_OK {
+		return false, windows.Errno(hr)
+	}
+	return canGoBack != 0, nil
+}
+
+// GetCanGoForward 是否可以前进。
+func (i *ICoreWebView2) GetCanGoForward() (bool, error) {
+	var canGoForward int32 // BOOL
+	hr, _, _ := i.vtbl.GetCanGoForward.Call(
+		uintptr(unsafe.Pointer(i)),
+		uintptr(unsafe.Pointer(&canGoForward)),
+	)
+	if windows.Handle(hr) != windows.S_OK {
+		return false, windows.Errno(hr)
+	}
+	return canGoForward != 0, nil
+}
+
+// GetDocumentTitle 当前页面标题。
+//
+// 比「往页面里注入脚本再 postMessage 回来」可靠：SPA 改标题、关闭注入脚本的
+// 页面都能拿到值。
+func (i *ICoreWebView2) GetDocumentTitle() (string, error) {
+	var title *uint16
+	hr, _, _ := i.vtbl.GetDocumentTitle.Call(
+		uintptr(unsafe.Pointer(i)),
+		uintptr(unsafe.Pointer(&title)),
+	)
+	if windows.Handle(hr) != windows.S_OK {
+		return "", windows.Errno(hr)
+	}
+	if title == nil {
+		return "", nil
+	}
+	result := windows.UTF16PtrToString(title)
+	windows.CoTaskMemFree(unsafe.Pointer(title))
+	return result, nil
+}
+
+// AddSourceChanged 注册 URL 变化事件。
+//
+// 与 NavigationCompleted 的区别：单页应用里 pushState/replaceState 也会触发
+// SourceChanged，所以地址栏能跟上「同一个文档内换路由」的情况。
+func (i *ICoreWebView2) AddSourceChanged(eventHandler *ICoreWebView2SourceChangedEventHandler, token *_EventRegistrationToken) error {
+	hr, _, _ := i.vtbl.AddSourceChanged.Call(
+		uintptr(unsafe.Pointer(i)),
+		uintptr(unsafe.Pointer(eventHandler)),
+		uintptr(unsafe.Pointer(token)),
+	)
+	if windows.Handle(hr) != windows.S_OK {
+		return windows.Errno(hr)
+	}
+	return nil
+}
+
+// AddNewWindowRequested 注册「页面想开新窗口」事件（target=_blank / window.open）。
+//
+// 不注册时 WebView2 会自己弹一个窗口；注册后由宿主决定：转成内嵌新标签，
+// 并把这个事件的 Handled 置 true。
+func (i *ICoreWebView2) AddNewWindowRequested(eventHandler *ICoreWebView2NewWindowRequestedEventHandler, token *_EventRegistrationToken) error {
+	hr, _, _ := i.vtbl.AddNewWindowRequested.Call(
+		uintptr(unsafe.Pointer(i)),
+		uintptr(unsafe.Pointer(eventHandler)),
+		uintptr(unsafe.Pointer(token)),
+	)
+	if windows.Handle(hr) != windows.S_OK {
+		return windows.Errno(hr)
+	}
+	return nil
+}

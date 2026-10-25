@@ -234,6 +234,130 @@
                             </div>
                         </a-card>
                     </div>
+                    <!-- ===================== 浏览器（全局默认） ===================== -->
+                    <a-card v-show="activeTab === 'browser'" class="pane-card card-head-tool">
+                        <template #title>浏览器默认设置</template>
+                        <template #extra>
+                            <a-space>
+                                <span class="hint hint-inline">空间明细在浏览器页右上角齿轮里改</span>
+                                <a-button size="small" @click="openBrowserWindow">
+                                    <template #icon><icon-compass /></template>打开浏览器
+                                </a-button>
+                            </a-space>
+                        </template>
+                        <a-form :model="browserForm" :style="{ maxWidth: '720px' }" layout="vertical">
+                            <a-form-item>
+                                <template #label>空间数量上限</template>
+                                <a-input-number v-model="browserForm.maxSpaces" :min="spaceMin" :max="20"
+                                    @change="scheduleBrowserSave(0)" />
+                                <span class="hint">
+                                    当前已有 {{ browserForm.spaces.length }} 个空间，最多可建 {{ browserForm.maxSpaces }} 个。
+                                    一个空间 = 一套独立 profile（登录态/缓存）+ 一套独立代理，空间内多标签共享登录态。
+                                </span>
+                            </a-form-item>
+                            <a-form-item>
+                                <template #label>默认首页</template>
+                                <a-input v-model="browserForm.homepage" placeholder="about:blank" allow-clear
+                                    @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)"
+                                    @clear="scheduleBrowserSave(0)" />
+                                <span class="hint">空间里留空首页时用这个；新标签与“关光标签自动补一个”都用它。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <template #label>地址栏搜索模板</template>
+                                <a-input v-model="browserForm.searchURL" placeholder="https://www.bing.com/search?q=%s"
+                                    allow-clear @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)"
+                                    @clear="scheduleBrowserSave(0)" />
+                                <span class="hint">地址栏输入的不是网址时走这个地址，<code>%s</code> 会被替换成搜索词。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <template #label>默认代理</template>
+                                <a-radio-group size="medium" v-model="browserForm.proxyMode" type="button"
+                                    @change="scheduleBrowserSave(0)">
+                                    <a-radio value="system">跟随系统</a-radio>
+                                    <a-radio value="direct">直连</a-radio>
+                                    <a-radio value="custom">自定义</a-radio>
+                                </a-radio-group>
+                                <span class="hint">空间里没单独设置代理时用这档；“跟随系统”就是系统代理设置，不做任何覆盖。</span>
+                            </a-form-item>
+                            <a-form-item v-if="browserForm.proxyMode === 'custom'">
+                                <template #label>代理地址与绕过列表</template>
+                                <div class="bs-pair">
+                                    <a-input v-model="browserForm.proxy" allow-clear
+                                        placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+                                        @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)" />
+                                    <a-input v-model="browserForm.proxyBypass" allow-clear placeholder="绕过：localhost,127.0.0.1"
+                                        @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)" />
+                                </div>
+                                <span class="hint">代理与 UA 是环境级参数，改完需要重新打开浏览器页（或在齿轮里保存）才生效。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <template #label>默认 User-Agent</template>
+                                <a-textarea v-model="browserForm.userAgent" :auto-size="{ minRows: 1, maxRows: 3 }"
+                                    placeholder="留空使用内置默认 UA" allow-clear @blur="scheduleBrowserSave(0)" />
+                            </a-form-item>
+                            <a-form-item>
+                                <template #label>启动时打开的空间</template>
+                                <a-select v-model="browserForm.defaultSpace" :style="{ maxWidth: '280px' }"
+                                    placeholder="选择默认空间" @change="scheduleBrowserSave(0)">
+                                    <a-option v-for="s in browserForm.spaces" :key="s.id" :value="s.id"
+                                        :label="s.name ? `${s.name}（${s.id}）` : s.id" />
+                                </a-select>
+                            </a-form-item>
+                        </a-form>
+
+                        <a-divider :margin="8" />
+                        <div class="space-head">
+                            <span class="space-title">空间列表</span>
+                            <a-tooltip content="增删空间、单独设置代理/UA/首页请到浏览器页右上角齿轮">
+                                <icon-question-circle class="bs-help" />
+                            </a-tooltip>
+                        </div>
+                        <a-table :data="spaceRows" :pagination="false" size="small" row-key="id"
+                            :scroll="{ x: 640 }" class="space-table">
+                            <template #columns>
+                                <a-table-column title="名称" data-index="name" :width="130" ellipsis tooltip />
+                                <a-table-column title="标识" data-index="id" :width="110" ellipsis tooltip />
+                                <a-table-column title="首页" data-index="homepage" ellipsis tooltip />
+                                <a-table-column title="代理" :width="150" ellipsis tooltip>
+                                    <template #cell="{ record }">
+                                        <a-tag size="small">{{ record.proxyText }}</a-tag>
+                                    </template>
+                                </a-table-column>
+                                <a-table-column title="UA" :width="110" ellipsis tooltip>
+                                    <template #cell="{ record }">
+                                        <span v-if="record.uaText" class="on">{{ record.uaText }}</span>
+                                        <span v-else class="off">跟随全局</span>
+                                    </template>
+                                </a-table-column>
+                            </template>
+                        </a-table>
+                    </a-card>
+
+                    <!-- ===================== 配置导出 / 导入 ===================== -->
+                    <a-card v-show="activeTab === 'config'" class="pane-card card-head-tool">
+                        <template #title>配置同步</template>
+                        <div class="cfg-sync">
+                            <div class="cfg-sync-label">导出 / 导入配置</div>
+                            <a-space>
+                                <a-button size="small" @click="exportConfig">
+                                    <template #icon><icon-export /></template>导出配置
+                                </a-button>
+                                <a-popconfirm
+                                    content="导入会覆盖本机的工具列表、浏览器空间与代理、主题等设置（目录 / Logo / 浮动球位置保留本机值）。继续？"
+                                    type="warning" position="lt" @ok="importConfig">
+                                    <a-button size="small" type="primary">
+                                        <template #icon><icon-import /></template>导入配置
+                                    </a-button>
+                                </a-popconfirm>
+                                <a-button size="small" @click="openConfigDir">打开配置目录</a-button>
+                            </a-space>
+                            <div class="hint">
+                                导出的是一份可搬运的 JSON：工具列表、工具设置、浏览器空间与代理、主题、开机自启。
+                                机器绑定字段不会导出——浮动球位置、插件/数据/日志目录、Logo 与 SQL 日志的绝对路径。
+                                把文件放到云盘或另一台机器上，用“导入配置”即可恢复同样的环境。
+                            </div>
+                        </div>
+                    </a-card>
                 </div>
             </a-card>
         </a-col>
@@ -410,6 +534,8 @@ const SETTING_TABS = [
     { key: "general", label: "通用", icon: "IconSettings" },
     { key: "paths", label: "目录", icon: "IconFolder" },
     { key: "ball", label: "浮动球", icon: "IconDesktop" },
+    { key: "browser", label: "浏览器", icon: "IconCompass" },
+    { key: "config", label: "配置", icon: "IconSync" },
     { key: "tools", label: "工具", icon: "IconApps" },
 ];
 const activeTab = ref("general");
@@ -530,6 +656,102 @@ async function clearBallIcon() {
     scheduleSave(0);
 }
 
+/* ---------------- 浏览器（全局默认） + 配置导出/导入 ---------------- */
+
+/** 浏览器设置：与浏览器页齿轮抽屉共用同一份 config.browser（后端归一化） */
+const browserForm = ref<any>({
+    enabled: true,
+    maxSpaces: 5,
+    homepage: "about:blank",
+    searchURL: "https://www.bing.com/search?q=%s",
+    proxyMode: "system",
+    proxy: "",
+    proxyBypass: "",
+    userAgent: "",
+    defaultSpace: "",
+    spaces: [],
+});
+
+/** 上限不能小于已有空间数，否则保存必被后端拒 */
+const spaceMin = computed(() => Math.max(1, browserForm.value.spaces?.length || 1));
+
+/** 代理模式 → 人话（空间没单独设置时显式写出跟随的档位） */
+function proxyModeText(mode: string, proxy: string): string {
+    if (mode === "direct") return "直连";
+    if (mode === "custom") return proxy ? `代理 ${proxy}` : "自定义（未填）";
+    return "跟随系统";
+}
+
+/** 空间列表只读概览：明细编辑在浏览器页齿轮抽屉里 */
+const spaceRows = computed(() =>
+    (browserForm.value.spaces || []).map((s: any) => ({
+        id: s.id,
+        name: s.name || "未命名",
+        homepage: s.homepage || `跟随全局（${browserForm.value.homepage || "about:blank"}）`,
+        proxyText: s.proxyMode
+            ? proxyModeText(s.proxyMode, s.proxy)
+            : `跟随全局：${proxyModeText(browserForm.value.proxyMode, browserForm.value.proxy)}`,
+        uaText: s.userAgent || "",
+    })),
+);
+
+let browserSaveTimer = 0;
+function scheduleBrowserSave(delay = 400) {
+    clearTimeout(browserSaveTimer);
+    browserSaveTimer = window.setTimeout(() => { void saveBrowser(); }, delay);
+}
+
+/** 浏览器设置单独落盘：走 BrowserSaveConfig，只换 browser 段，不会碰其他设置 */
+async function saveBrowser() {
+    saving.value = true;
+    try {
+        await GoTools?.BrowserSaveConfig({ ...browserForm.value });
+    } catch (e: any) {
+        Message.error(`浏览器设置保存失败：${String(e?.message || e)}`);
+    } finally {
+        saving.value = false;
+    }
+}
+
+async function openBrowserWindow() {
+    try {
+        await GoTools?.BrowserOpenWindow();
+    } catch (e: any) {
+        Message.error(`打开浏览器失败：${String(e?.message || e)}`);
+    }
+}
+
+/** 导出配置：Go 侧弹保存框，机器绑定字段已在导出时剔除 */
+async function exportConfig() {
+    try {
+        const path = await GoTools?.ExportConfig();
+        if (path) Message.success(`已导出到 ${path}`);
+    } catch (e: any) {
+        Message.error(`导出失败：${String(e?.message || e)}`);
+    }
+}
+
+/** 导入配置：覆盖设置段，目录/Logo/球位保留本机值，导入后重新拉一遍配置 */
+async function importConfig() {
+    try {
+        const path = await GoTools?.ImportConfig();
+        if (!path) return;
+        await load();
+        applyTheme(String(form.general.theme || "light") as ThemeMode);
+        Message.success("配置已导入");
+    } catch (e: any) {
+        Message.error(`导入失败：${String(e?.message || e)}`);
+    }
+}
+
+async function openConfigDir() {
+    try {
+        await GoTools?.OpenConfigDir();
+    } catch (e: any) {
+        Message.error(`打开配置目录失败：${String(e?.message || e)}`);
+    }
+}
+
 function normTool(t: any): ToolRow {
     return {
         id: t.id || t.key || "",
@@ -557,6 +779,10 @@ async function load() {
             form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "" };
             form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
             form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "" };
+            if (cfg.browser) {
+                // 整段拷贝：页面上直接绑到 browserForm，保存时整段回传
+                browserForm.value = { ...cfg.browser, spaces: cfg.browser.spaces || [] };
+            }
             tools.value = (cfg.tools || []).map(normTool);
         }
         activePath.value = (await GoTools?.GetLogDir()) || "";
@@ -970,6 +1196,45 @@ onBeforeUnmount(() => {
 
 .path-row :deep(.arco-input-wrapper) {
     flex: 1;
+}
+
+/* 配置同步：没有表单控件绑定，用普通块排版，标签/提示跟表单风格对齐 */
+.cfg-sync {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 720px;
+}
+
+.cfg-sync-label {
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+/* 浏览器代理地址 + 绕过列表并排（地址要长，绕过列表短） */
+.bs-pair {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 8px;
+    width: 100%;
+}
+
+/* 空间列表小标题：跟表单标签同字号，右侧带一个解释图标 */
+.space-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.space-title {
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+.bs-help {
+    color: var(--color-text-3);
+    cursor: help;
 }
 
 /* 表单项内容默认横排（nowrap）：提示文案独占一行，避免与控件挤在同一行 */

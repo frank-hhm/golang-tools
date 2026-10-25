@@ -2238,6 +2238,11 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	if len(cfg.ToolSettings) == 0 {
 		cfg.ToolSettings = config.CurrentConfig().ToolSettings
 	}
+	// 浏览器空间有自己的保存入口（设置页的浏览器面板 / 浏览器页齿轮抽屉），
+	// 其他设置页保存时 payload 里没有 spaces，沿用当前值避免把空间与代理冲成默认。
+	if len(cfg.Browser.Spaces) == 0 {
+		cfg.Browser = config.CurrentConfig().Browser
+	}
 	path, err := config.SaveAppConfig(cfg)
 	if err != nil {
 		applog.Errorf("config", "保存配置失败: %v", err)

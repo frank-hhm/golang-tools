@@ -67,9 +67,16 @@ type Chromium struct {
 	acceleratorKeyPressed            *ICoreWebView2AcceleratorKeyPressedEventHandler
 	navigationCompleted              *ICoreWebView2NavigationCompletedEventHandler
 	processFailed                    *ICoreWebView2ProcessFailedEventHandler
+	sourceChanged                    *ICoreWebView2SourceChangedEventHandler
+	newWindowRequested               *ICoreWebView2NewWindowRequestedEventHandler
 
 	environment            *ICoreWebView2Environment
 	webview2RuntimeVersion string
+
+	// envOnly 只建 environment、不建 controller。
+	// 一个空间下有多个标签（每个标签一个 controller）时，environment 只能建一次，
+	// 由第一个 controller 建完后交给后面的复用。
+	envOnly bool
 
 	// Settings
 	Debug                 bool
@@ -82,11 +89,15 @@ type Chromium struct {
 	globalPermission *CoreWebView2PermissionState
 
 	// Callbacks
-	MessageCallback                          func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
-	MessageWithAdditionalObjectsCallback     func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
-	WebResourceRequestedCallback             func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
-	NavigationCompletedCallback              func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
-	ProcessFailedCallback                    func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
+	MessageCallback                      func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+	MessageWithAdditionalObjectsCallback func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+	WebResourceRequestedCallback         func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
+	NavigationCompletedCallback          func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
+	ProcessFailedCallback                func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
+	SourceChangedCallback                func(sender *ICoreWebView2, args *ICoreWebView2SourceChangedEventArgs)
+	// NewWindowRequestedCallback 页面想开新窗口（target=_blank / window.open）。
+	// 返回 true 表示宿主接管（转成自己的新标签），WebView2 不再弹默认窗口。
+	NewWindowRequestedCallback               func(sender *ICoreWebView2, uri string) bool
 	ContainsFullScreenElementChangedCallback func(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs)
 	AcceleratorKeyCallback                   func(uint) bool
 
@@ -122,6 +133,8 @@ func NewChromium() *Chromium {
 	e.navigationCompleted = newICoreWebView2NavigationCompletedEventHandler(e)
 	e.processFailed = newICoreWebView2ProcessFailedEventHandler(e)
 	e.containsFullScreenElementChanged = newICoreWebView2ContainsFullScreenElementChangedEventHandler(e)
+	e.sourceChanged = newICoreWebView2SourceChangedEventHandler(e)
+	e.newWindowRequested = newICoreWebView2NewWindowRequestedEventHandler(e)
 	/*
 		// Pinner seems to panic in some cases as reported on Discord, maybe during shutdown when GC detects pinned objects
 		// to be released that have not been unpinned.
@@ -221,6 +234,95 @@ func (e *Chromium) Embed(hwnd uintptr) bool {
 	return true
 }
 
+// ============================================================
+// 多标签支持（go-tools 扩展）
+//
+// 一个“空间”= 一份 environment（独立 profile + 独立代理）。该空间下的多个
+// 标签各自是一个 controller，但它们必须共用同一个 environment：
+//   - 共用才能共享 cookie/登录态（切标签不掉登录）；
+//   - 不共用就是一个标签一份浏览器主进程，内存翻倍。
+//
+// 因此拆成两步：先 CreateEnvironmentOnly 建环境，后续每个标签拿这个环境
+// 调 EmbedWithEnvironment 建 controller。两步都必须在同一条 STA 线程上。
+// ============================================================
+
+// pumpUntilInited 抽消息直到回调把 inited 置位。
+//
+// WebView2 的创建回调是靠窗口消息送回来的，不抽消息就永远不会完成。
+func (e *Chromium) pumpUntilInited() {
+	var msg w32.Msg
+	for {
+		if atomic.LoadUintptr(&e.inited) != 0 {
+			return
+		}
+		r, _, _ := w32.User32GetMessageW.Call(
+			uintptr(unsafe.Pointer(&msg)),
+			0,
+			0,
+			0,
+		)
+		if r == 0 {
+			return
+		}
+		w32.User32TranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
+		w32.User32DispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
+	}
+}
+
+// CreateEnvironmentOnly 只建 environment，不建 controller。
+//
+// 建好的环境用 GetEnvironment() 取，交给同空间其它标签复用。
+func (e *Chromium) CreateEnvironmentOnly() (*ICoreWebView2Environment, error) {
+	e.envOnly = true
+	dataPath := e.DataPath
+	if dataPath == "" {
+		currentExePath := make([]uint16, windows.MAX_PATH)
+		_, _ = windows.GetModuleFileName(windows.Handle(0), &currentExePath[0], windows.MAX_PATH)
+		currentExeName := filepath.Base(windows.UTF16ToString(currentExePath))
+		dataPath = filepath.Join(os.Getenv("AppData"), currentExeName)
+	}
+	browserArgs := strings.Join(e.AdditionalBrowserArgs, " ")
+	if err := createCoreWebView2EnvironmentWithOptions(e.BrowserPath, dataPath, e.envCompleted, browserArgs); err != nil {
+		return nil, fmt.Errorf("调用 Webview2Loader 失败: %w", err)
+	}
+	e.webview2RuntimeVersion, _ = webviewloader.GetAvailableCoreWebView2BrowserVersionString(e.BrowserPath)
+
+	e.pumpUntilInited()
+	if e.environment == nil {
+		return nil, fmt.Errorf("WebView2 environment 创建失败")
+	}
+	return e.environment, nil
+}
+
+// EmbedWithEnvironment 用一个已存在的 environment 创建 controller。
+//
+// 与 Embed 的差别只在于不重复建环境（同一个 profile 建两份环境会互抢锁）。
+func (e *Chromium) EmbedWithEnvironment(hwnd uintptr, env *ICoreWebView2Environment) bool {
+	if env == nil {
+		e.errorCallback(fmt.Errorf("environment 为空"))
+		return false
+	}
+	e.hwnd = hwnd
+	env.vtbl.AddRef.Call(uintptr(unsafe.Pointer(env)))
+	e.environment = env
+	e.envOnly = false
+	if err := env.CreateCoreWebView2Controller(e.hwnd, e.controllerCompleted); err != nil {
+		e.errorCallback(fmt.Errorf("创建 controller 失败: %w", err))
+		return false
+	}
+	e.pumpUntilInited()
+	if e.controller == nil {
+		return false
+	}
+	e.Init("window.external={invoke:s=>window.chrome.webview.postMessage(s)}")
+	return true
+}
+
+// GetEnvironment 返回已建好的 environment（未建完时为 nil）。
+func (e *Chromium) GetEnvironment() *ICoreWebView2Environment {
+	return e.environment
+}
+
 func (e *Chromium) SetPadding(padding Rect) {
 	if e.padding.Left == padding.Left && e.padding.Top == padding.Top &&
 		e.padding.Right == padding.Right && e.padding.Bottom == padding.Bottom {
@@ -302,6 +404,43 @@ func (e *Chromium) Hide() error {
 	return e.controller.PutIsVisible(false)
 }
 
+// Back 后退一步（go-tools 扩展）。
+func (e *Chromium) Back() error {
+	if e.webview == nil || e.shuttingDown {
+		return fmt.Errorf("webview 尚未就绪")
+	}
+	return e.webview.GoBack()
+}
+
+// Forward 前进一步。
+func (e *Chromium) Forward() error {
+	if e.webview == nil || e.shuttingDown {
+		return fmt.Errorf("webview 尚未就绪")
+	}
+	return e.webview.GoForward()
+}
+
+// Reload 重新加载当前页面。
+func (e *Chromium) Reload() error {
+	if e.webview == nil || e.shuttingDown {
+		return fmt.Errorf("webview 尚未就绪")
+	}
+	return e.webview.Reload()
+}
+
+// Stop 停止当前导航。
+func (e *Chromium) Stop() error {
+	if e.webview == nil || e.shuttingDown {
+		return fmt.Errorf("webview 尚未就绪")
+	}
+	return e.webview.Stop()
+}
+
+// GetWebView 返回底层的 ICoreWebView2（未就绪时为 nil）。
+func (e *Chromium) GetWebView() *ICoreWebView2 {
+	return e.webview
+}
+
 func (e *Chromium) QueryInterface(_, _ uintptr) uintptr {
 	return 0
 }
@@ -326,6 +465,12 @@ func (e *Chromium) EnvironmentCompleted(res uintptr, env *ICoreWebView2Environme
 
 	env.vtbl.AddRef.Call(uintptr(unsafe.Pointer(env)))
 	e.environment = env
+
+	// 只建环境模式：不建 controller，由调用方拿去给多个标签复用。
+	if e.envOnly {
+		atomic.StoreUintptr(&e.inited, 1)
+		return 0
+	}
 
 	err := env.CreateCoreWebView2Controller(e.hwnd, e.controllerCompleted)
 	if err != nil {
@@ -379,6 +524,14 @@ func (e *Chromium) CreateCoreWebView2ControllerCompleted(res uintptr, controller
 	if err != nil {
 		e.errorCallback(err)
 	}
+	err = e.webview.AddSourceChanged(e.sourceChanged, &token)
+	if err != nil {
+		e.errorCallback(err)
+	}
+	err = e.webview.AddNewWindowRequested(e.newWindowRequested, &token)
+	if err != nil {
+		e.errorCallback(err)
+	}
 	err = e.webview.AddProcessFailed(e.processFailed, &token)
 	if err != nil {
 		e.errorCallback(err)
@@ -401,6 +554,30 @@ func (e *Chromium) CreateCoreWebView2ControllerCompleted(res uintptr, controller
 func (e *Chromium) ContainsFullScreenElementChanged(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs) uintptr {
 	if e.ContainsFullScreenElementChangedCallback != nil {
 		e.ContainsFullScreenElementChangedCallback(sender, args)
+	}
+	return 0
+}
+
+func (e *Chromium) SourceChanged(sender *ICoreWebView2, args *ICoreWebView2SourceChangedEventArgs) uintptr {
+	if e.SourceChangedCallback != nil {
+		e.SourceChangedCallback(sender, args)
+	}
+	return 0
+}
+
+func (e *Chromium) NewWindowRequested(sender *ICoreWebView2, args *ICoreWebView2NewWindowRequestedEventArgs) uintptr {
+	if e.NewWindowRequestedCallback == nil {
+		return 0
+	}
+	uri, err := args.GetUri()
+	if err != nil {
+		e.errorCallback(err)
+		return 0
+	}
+	if e.NewWindowRequestedCallback(sender, uri) {
+		if err := args.PutHandled(true); err != nil {
+			e.errorCallback(err)
+		}
 	}
 	return 0
 }

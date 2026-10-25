@@ -87,7 +87,10 @@ type BrowserSpace struct {
 	ID       string `json:"id"`       // 稳定标识（同时用作 profile 子目录名）
 	Name     string `json:"name"`     // 显示名，如"工作""测试"
 	Homepage string `json:"homepage"` // 空间首页；空 = 用全局 browser.homepage
-	Proxy    string `json:"proxy"`    // 代理，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080；空 = 直连
+	// ProxyMode 代理模式：system / direct / custom；空 = 用全局 browser.proxyMode
+	ProxyMode string `json:"proxyMode"`
+	// Proxy 代理地址，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080（ProxyMode=custom 时生效）
+	Proxy string `json:"proxy"`
 	// ProxyBypass 代理绕过列表（Chrome 语法），如 "localhost,127.0.0.1,*.local"
 	ProxyBypass string `json:"proxyBypass"`
 	UserAgent   string `json:"userAgent"`  // 自定义 UA；空 = 默认
@@ -102,9 +105,15 @@ type BrowserSpace struct {
 // 在别的机器上下载回来即可得到同样的空间与代理设置（profile 目录里的登录态
 // 属于运行时数据，不进配置）。
 type BrowserConfig struct {
-	Enabled      bool           `json:"enabled"`      // 是否启用浏览器面板（关掉不影响其他工具）
+	Enabled bool `json:"enabled"` // 是否启用浏览器面板（关掉不影响其他工具）
+	// MaxSpaces 空间数量上限（设置页可改）。超限禁止新建并提示。
+	MaxSpaces    int            `json:"maxSpaces"`
 	Homepage     string         `json:"homepage"`     // 全局首页，空间未单独设置时使用
 	SearchURL    string         `json:"searchURL"`    // 地址栏搜索模板，%s 会被替换为查询词
+	ProxyMode    string         `json:"proxyMode"`    // 全局默认代理模式：system / direct / custom
+	Proxy        string         `json:"proxy"`        // 全局默认代理地址（ProxyMode=custom 时使用）
+	ProxyBypass  string         `json:"proxyBypass"`  // 全局默认代理绕过列表
+	UserAgent    string         `json:"userAgent"`    // 全局默认 UA
 	DefaultSpace string         `json:"defaultSpace"` // 启动时默认打开的空间 ID
 	Spaces       []BrowserSpace `json:"spaces"`       // 空间列表（至少一个）
 }
@@ -120,13 +129,18 @@ type AppConfig struct {
 	ToolSettings map[string]ToolSettings `json:"toolSettings"` // 工具级设置，键为工具 Key（如 mysql）
 }
 
-// defaultBrowserConfig 浏览器默认配置：一个直连的默认空间。
-// 不预置任何代理，避免用户不知情地把流量导到不存在的端口上。
+// DefaultMaxSpaces 浏览器空间数量默认上限。
+const DefaultMaxSpaces = 5
+
+// defaultBrowserConfig 浏览器默认配置：一个跟随系统代理的默认空间。
+// 不预置具体代理地址，避免用户不知情地把流量导到不存在的端口上。
 func defaultBrowserConfig() BrowserConfig {
 	return BrowserConfig{
 		Enabled:      true,
+		MaxSpaces:    DefaultMaxSpaces,
 		Homepage:     "about:blank",
 		SearchURL:    "https://www.bing.com/search?q=%s",
+		ProxyMode:    "system",
 		DefaultSpace: "default",
 		Spaces: []BrowserSpace{
 			{ID: "default", Name: "默认空间"},
@@ -200,6 +214,15 @@ func configFilePath() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
+// ConfigDir 返回配置文件所在目录（不存在则创建）。
+func ConfigDir() (string, error) {
+	p, err := configFilePath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(p), nil
+}
+
 // BallIconMaskPath 浮动球球心图标的 alpha 遮罩 PNG 路径（与 config.json 同目录）：
 // 前端把选中图标渲染成黑色字形遮罩上传，Go 侧只取 alpha 通道按主题文字色着色。
 func BallIconMaskPath() (string, error) {
@@ -227,6 +250,15 @@ func normalizeBrowserConfig(b *BrowserConfig) {
 	if strings.TrimSpace(b.SearchURL) == "" {
 		b.SearchURL = "https://www.bing.com/search?q=%s"
 	}
+	b.MaxSpaces = normalizeMaxSpaces(b.MaxSpaces)
+	b.ProxyMode = normalizeProxyMode(b.ProxyMode)
+	b.Proxy = strings.TrimSpace(b.Proxy)
+	b.ProxyBypass = strings.TrimSpace(b.ProxyBypass)
+	b.UserAgent = strings.TrimSpace(b.UserAgent)
+	if b.ProxyMode == "custom" && b.Proxy == "" {
+		// 选了自定义代理却没填地址：回落到跟随系统，别把流量导到空代理上
+		b.ProxyMode = "system"
+	}
 
 	seen := make(map[string]bool, len(b.Spaces))
 	out := make([]BrowserSpace, 0, len(b.Spaces))
@@ -249,15 +281,53 @@ func normalizeBrowserConfig(b *BrowserConfig) {
 		sp.ProxyBypass = strings.TrimSpace(sp.ProxyBypass)
 		sp.UserAgent = strings.TrimSpace(sp.UserAgent)
 		sp.ProfileDir = strings.TrimSpace(sp.ProfileDir)
+		// 空间代理模式留空 = 跟随全局，不能强行填成 system（否则再也跟不上全局变更）
+		if strings.TrimSpace(sp.ProxyMode) != "" {
+			sp.ProxyMode = normalizeProxyMode(sp.ProxyMode)
+			if sp.ProxyMode == "custom" && sp.Proxy == "" {
+				sp.ProxyMode = ""
+			}
+		}
 		out = append(out, sp)
 	}
 	if len(out) == 0 {
 		out = defaultBrowserConfig().Spaces
 		seen = map[string]bool{out[0].ID: true}
 	}
+	// 空间数超过上限时只保留前面的：上限是用户明确设置的约束
+	if len(out) > b.MaxSpaces {
+		out = out[:b.MaxSpaces]
+		seen = make(map[string]bool, len(out))
+		for _, sp := range out {
+			seen[sp.ID] = true
+		}
+	}
 	b.Spaces = out
 	if !seen[b.DefaultSpace] {
 		b.DefaultSpace = out[0].ID
+	}
+}
+
+// normalizeMaxSpaces 把空间上限限定在一个合理区间（0/负数走默认值）。
+func normalizeMaxSpaces(n int) int {
+	if n <= 0 {
+		return DefaultMaxSpaces
+	}
+	if n > 20 {
+		return 20
+	}
+	return n
+}
+
+// normalizeProxyMode 把代理模式收敛到 system / direct / custom 三态之一。
+func normalizeProxyMode(m string) string {
+	switch strings.ToLower(strings.TrimSpace(m)) {
+	case "direct":
+		return "direct"
+	case "custom":
+		return "custom"
+	default:
+		return "system"
 	}
 }
 
@@ -272,6 +342,33 @@ func BrowserSpaceByID(cfg AppConfig, id string) (BrowserSpace, bool) {
 		}
 	}
 	return BrowserSpace{}, false
+}
+
+// ResolveBrowserSpace 取空间并把「留空即跟随全局」的字段补齐。
+//
+// 配置模型是「全局默认 + 空间覆盖」：空间里没填的项一律回落全局，
+// 这样改一次全局默认就能同时影响所有没单独设置过的空间。
+func ResolveBrowserSpace(cfg AppConfig, id string) (BrowserSpace, bool) {
+	sp, ok := BrowserSpaceByID(cfg, id)
+	if !ok {
+		return sp, false
+	}
+	g := cfg.Browser
+	if strings.TrimSpace(sp.Homepage) == "" {
+		sp.Homepage = g.Homepage
+	}
+	if strings.TrimSpace(sp.ProxyMode) == "" {
+		sp.ProxyMode = g.ProxyMode
+		sp.Proxy = g.Proxy
+		sp.ProxyBypass = g.ProxyBypass
+	} else if sp.ProxyMode == "custom" && strings.TrimSpace(sp.Proxy) == "" {
+		sp.Proxy = g.Proxy
+		sp.ProxyBypass = g.ProxyBypass
+	}
+	if strings.TrimSpace(sp.UserAgent) == "" {
+		sp.UserAgent = g.UserAgent
+	}
+	return sp, true
 }
 
 // BrowserProfileDir 返回空间的 profile 目录（不存在则创建）。
