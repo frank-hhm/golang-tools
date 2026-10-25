@@ -96,6 +96,10 @@ tasks:
       - task: frontend:run
         vars:
           SCRIPT: '{{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
+      # vite build 会清空 dist，把 .gitkeep 一起带走；而它是 //go:embed 的编译期
+      # 依赖，补回来免得 git 一直显示这个文件被删除。用 node 写文件，不依赖 shell。
+      - >-
+        node -e "const fs=require('fs');fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/.gitkeep','')"
     env:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
 

@@ -75,6 +75,8 @@ func init() {
 }
 
 func main() {
+	checkAssets(assets)
+
 	// 配置与日志初始化与桌面版走同一套逻辑，日志目录也一致
 	startupCfg := config.LoadAppConfig()
 	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))

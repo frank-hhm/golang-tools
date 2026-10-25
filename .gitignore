@@ -4,11 +4,16 @@ bin/
 *.exe
 *.exe~
 /go-tools
+# 由 wails3 generate syso 生成、构建完会被删掉，不该进版本库
+*.syso
 
 # 前端依赖与产物
+# dist 由 npm run build 生成，不进版本库；但要保留一个占位文件，
+# 否则 clone 下来 frontend/dist 目录不存在，//go:embed all:frontend/dist 会直接编译失败。
 node_modules
 frontend/node_modules
-frontend/dist
+frontend/dist/*
+!frontend/dist/.gitkeep
 
 # 运行时日志
 Log/

@@ -75,6 +75,8 @@ func init() {
 }
 
 func main() {
+	checkAssets(assets)
+
 	// 加载全局配置（用户配置目录 config.json）并初始化可配置文件日志
 	startupCfg := config.LoadAppConfig()
 	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))
