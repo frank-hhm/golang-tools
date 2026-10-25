@@ -1,28 +1,35 @@
 <template>
-    <div class="basic-layout">
+    <div class="basic-layout" :class="{ 'is-web': !caps.nativeWindows }">
         <!-- 自绘标题栏：复用公共 WinTitleBar（拖动/no-drag 与样式均在组件内），这里仅提供主窗口特有按钮 -->
-        <WinTitleBar :title="appTitle">
-            <template #icon>
+        <WinTitleBar :title="barTitle">
+            <!-- Web 模式没有窗口：Logo 已由侧栏品牌区承担，顶部只留当前页名 -->
+            <template v-if="caps.nativeWindows" #icon>
                 <img v-if="appLogo" :src="appLogo" class="tb-logo" alt="" />
             </template>
             <common-theme-switch />
             <a-tooltip content="设置">
                 <a-button size="small" @click="openSettings"><icon-settings /></a-button>
             </a-tooltip>
-            <a-tooltip content="关闭">
+            <!-- 关闭按钮只在真有窗口时给：Web 模式下没有窗口可关，Window.Close() 只会报错 -->
+            <a-tooltip v-if="caps.nativeWindows" content="关闭">
                 <a-button size="small" status="danger" @click="close"><icon-close /></a-button>
             </a-tooltip>
         </WinTitleBar>
+        <!-- Web 模式没有窗口可开，工具切换全部靠左侧固定导航 -->
+        <SideNav v-if="!caps.nativeWindows" :title="appTitle" :logo="appLogo" />
         <div class="layout-content">
             <router-view />
         </div>
     </div>
 </template>
 <script setup lang="ts">
-import { getCurrentInstance, onMounted, onUnmounted, ref } from "vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import { Events, Window } from "@wailsio/runtime";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import { useCaps } from "@/utils/caps";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
+import SideNav from "@/components/layouts/SideNav.vue";
 
 /**
  * 主窗口基础布局（无边框）。
@@ -31,10 +38,23 @@ import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
  */
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const { openToolWindow } = useToolWindow();
+/** 平台能力：决定显示侧边导航、以及顶部要不要给窗口按钮 */
+const caps = useCaps();
+const route = useRoute();
 
 const appTitle = ref("Tools");
 // 应用 Logo：自定义路径优先、否则内置默认，由后端统一返回 base64（同浮动球用的那张）
 const appLogo = ref("");
+
+/**
+ * 标题栏文字：桌面版就是应用名（窗口标题）；
+ * Web 模式的应用名已由侧栏品牌区承担，顶部改显当前页面名，否则一路翻页顶部永远同一个词。
+ */
+const barTitle = computed(() => {
+    if (caps.nativeWindows) return appTitle.value;
+    const page = String(route.meta?.menu_name || "");
+    return page || appTitle.value;
+});
 
 function openSettings() {
     openToolWindow("/tools/settings", "设置", { single: true });
@@ -68,17 +88,30 @@ onUnmounted(() => { off?.(); });
 </script>
 <style scoped>
 .basic-layout {
+    /* 标题栏高度与侧边导航宽度：两处布局计算共用，改一处即可 */
+    --titlebar-h: 40px;
+    --side-nav-w: 0px;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
+/* Web 运行模式：顶部保留主题与设置，左侧让给固定导航 */
+.basic-layout.is-web {
+    --side-nav-w: 208px;
+}
+
+/* 顶部栏左端让开侧栏，由侧栏的品牌区占位，视觉上连成一整列 */
+.basic-layout.is-web :deep(.win-titlebar) {
+    left: var(--side-nav-w);
+}
+
 .layout-content {
-    left: 0;
-    top: 40px;
+    left: var(--side-nav-w);
+    top: var(--titlebar-h);
     position: fixed;
-    width: calc(100% - (2*var(--base-padding)));
-    height: calc(100% - 40px - (2*var(--base-padding)));
+    width: calc(100% - var(--side-nav-w) - (2*var(--base-padding)));
+    height: calc(100% - var(--titlebar-h) - (2*var(--base-padding)));
     padding: var(--base-padding);
     background: var(--color-bg-1);
     overflow-y: scroll;

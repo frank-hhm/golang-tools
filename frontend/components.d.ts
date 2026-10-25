@@ -20,6 +20,7 @@ declare module '@vue/runtime-core' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SelectIconModal: typeof import('./src/components/common/select-icon-modal/index.vue')['default']
+    SideNav: typeof import('./src/components/layouts/SideNav.vue')['default']
     StatIcon: typeof import('./src/components/common/stat-icon/index.vue')['default']
     TermConsole: typeof import('./src/components/business/term-console/index.vue')['default']
     ThemeSwitch: typeof import('./src/components/common/theme-switch/index.vue')['default']
