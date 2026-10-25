@@ -545,17 +545,8 @@ func registryTags(cli *http.Client, base, repo, user, pass string) string {
 
 /* ============================ 加速站（daemon.json） ============================ */
 
-func daemonFilePath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(home, ".docker")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("创建 %s 失败: %v", dir, err)
-	}
-	return filepath.Join(dir, daemonJSONName), nil
-}
+// daemonFilePath 由平台提供：Windows 是 %USERPROFILE%\.docker\daemon.json，
+// Linux 是 /etc/docker/daemon.json（见 daemon_windows.go / daemon_other.go）
 
 // GetDaemonConfig 读引擎的 daemon.json（只回传加速站与不安全仓库两项 + 其余键数量）
 func GetDaemonConfig() (DaemonConfig, error) {
