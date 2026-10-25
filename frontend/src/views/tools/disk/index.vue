@@ -487,9 +487,11 @@ async function enter(p: string) {
     }
 }
 
-/** 刷新当前目录，同时更新盘符容量（删除/复制之后剩余空间会变） */
+/** 刷新：搜索结果里点刷新就按同样条件重搜，否则重读当前目录；顺手更新盘符容量 */
 async function reload() {
-    await enter(current.value || listing.value.path);
+    const kw = keyword.value.trim();
+    if (searchHits.value && kw) await doSearch();
+    else await enter(current.value || listing.value.path);
     loadDrives();
 }
 
@@ -581,6 +583,8 @@ async function submitName(): Promise<boolean> {
             await GoTools.DiskRename(renameTarget.value?.path, name);
         }
         Message.success(nameMode.value === "rename" ? "已重命名" : "已创建");
+        // 回车与点「确定」走同一条路：这里主动关一下，回车也能收起弹窗
+        nameVisible.value = false;
         await reload();
         return true;
     } catch (e) {
