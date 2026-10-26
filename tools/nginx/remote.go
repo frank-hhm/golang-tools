@@ -50,7 +50,13 @@ var nginxSeries = []seriesProbe{
 var nginxFallback = []string{"1.29.1", "1.28.0", "1.27.5", "1.26.3", "1.25.5", "1.24.0"}
 
 // FetchRemoteVersions 返回可在线安装的 Nginx 版本（按版本降序）
+//
+// Linux 上不是“下载一个 zip”：发行版带的是打过补丁的构建，官方便携二进制
+// 根本不存在，所以这里问的是仓库能装哪个版本，安装时交给包管理器。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
+	if systemPackaged {
+		return systemRemoteVersions(), nil
+	}
 	cands := map[string]bool{}
 	if body, err := httpGet(nginxDownloadPage); err == nil {
 		for _, m := range nginxLinkRe.FindAllStringSubmatch(body, -1) {

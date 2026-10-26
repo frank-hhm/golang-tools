@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/services/sysx"
 	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 )
@@ -212,14 +213,14 @@ func compareVersion(a, b string) int {
 // findMysqld 在版本目录内定位 mysqld.exe：根/bin、根一级子目录/bin、根、根一级子目录
 func findMysqld(dir string) string {
 	try := []string{
-		filepath.Join(dir, "bin", "mysqld.exe"),
-		filepath.Join(dir, "mysqld.exe"),
+		filepath.Join(dir, "bin", binFileName),
+		filepath.Join(dir, binFileName),
 	}
 	if subs, err := os.ReadDir(dir); err == nil {
 		for _, s := range subs {
 			if s.IsDir() {
 				sub := filepath.Join(dir, s.Name())
-				try = append(try, filepath.Join(sub, "bin", "mysqld.exe"), filepath.Join(sub, "mysqld.exe"))
+				try = append(try, filepath.Join(sub, "bin", binFileName), filepath.Join(sub, binFileName))
 			}
 		}
 	}
@@ -249,10 +250,10 @@ func normalizeVersionName(name string) string {
 
 /* ============================ 版本库 ============================ */
 
-// ListVersions 聚合三渠道版本，按版本号降序；同版本优先 bundled > downloaded > local
+// ListVersions 聚合四渠道版本，按版本号降序；同版本优先 bundled > downloaded > local > system
 func ListVersions() ([]ServerVersion, error) {
 	out := map[string]ServerVersion{}
-	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2}
+	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2, "system": 3}
 
 	add := func(source, ver, path string) {
 		if ver == "" || path == "" {
@@ -285,10 +286,18 @@ func ListVersions() ([]ServerVersion, error) {
 	}
 	// local：mysql-locals.json 登记
 	for _, lv := range loadLocals() {
-		if st, err := os.Stat(lv.Path); err == nil && !st.IsDir() && strings.EqualFold(st.Name(), "mysqld.exe") {
+		if st, err := os.Stat(lv.Path); err == nil && !st.IsDir() && strings.EqualFold(st.Name(), binFileName) {
 			add("local", lv.Version, lv.Path)
 		} else if p := findMysqld(lv.Path); p != "" { // 登记的是目录
 			add("local", lv.Version, p)
+		}
+	}
+	// system：系统包管理器装的（Linux 上这是主要来源）
+	//
+	// 版本号只能问二进制自己：/usr/sbin/mysqld 没有“目录名”可用。
+	if bin := sysx.Which(binFileName); bin != "" {
+		if ver := sysx.ProbeVersion(bin, "--version"); ver != "" {
+			add("system", ver, bin)
 		}
 	}
 
@@ -384,6 +393,9 @@ func RemoveVersion(version string) error {
 	}
 	if target.Source == "bundled" {
 		return fmt.Errorf("内置版本不可删除")
+	}
+	if target.Source == "system" {
+		return fmt.Errorf("版本 %s 由系统包管理器提供，请用 %s 卸载", version, sysx.PkgManager())
 	}
 	cfgs, _ := ListInstances()
 	for _, c := range cfgs {
@@ -483,8 +495,14 @@ func probeSeriesLatest(p seriesProbe) (string, int64, bool) {
 	return "", 0, false
 }
 
-// FetchRemoteVersions 并发探测各 series 的最新版本，按版本降序返回；全部失败时报错
+// FetchRemoteVersions 拉取可安装版本列表。
+//
+// Linux 上不是“下载一个 zip”：官方 winx64 zip 到了 Linux 上根本跑不起来，
+// 所以这里问的是发行版仓库能装哪个版本，安装时交给包管理器。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
+	if systemPackaged {
+		return systemRemoteVersions(), nil
+	}
 	type res struct {
 		ver  string
 		size int64
@@ -518,6 +536,81 @@ func FetchRemoteVersions() ([]RemoteVersion, error) {
 	return out, nil
 }
 
+/* ============================ 系统包（Linux） ============================ */
+
+// systemRemoteVersions 把发行版仓库里的可安装版本包成统一的 RemoteVersion。
+func systemRemoteVersions() []RemoteVersion {
+	cands := sysx.PackageCandidates(systemPkgNames)
+	out := make([]RemoteVersion, 0, len(cands))
+	for _, c := range cands {
+		// 归一：仓库里的 "8.0.36-2ubuntu3" 与 mysqld --version 报告的
+		// "8.0.36" 是同一个包，不统一版本库与实例就对不上。
+		ver := sysx.TrimVersion(c.Version)
+		if ver == "" {
+			continue
+		}
+		out = append(out, RemoteVersion{Version: ver, URL: sysx.PkgScheme + c.Pkg})
+	}
+	return out
+}
+
+// systemPackageVersion 反查“版本号 → 包名”。
+func systemPackageVersion(version string) string {
+	for _, c := range sysx.PackageCandidates(systemPkgNames) {
+		if sysx.TrimVersion(c.Version) == version {
+			return c.Pkg
+		}
+	}
+	return ""
+}
+
+// installSystemVersion 交给系统包管理器安装。
+//
+// 包管理器会顺手建 mysql 用户、建 /var/lib/mysql 并注册 systemd 服务，因此
+// 面板的实例应当指向它装好的 mysqld；启动时由 runAsUserArgs 把 --user 补上。
+func installSystemVersion(version string) error {
+	pkg := systemPackageVersion(version)
+	if pkg == "" {
+		return fmt.Errorf("发行版仓库里没有版本 %s（镜像可能已更新，请刷新在线版本列表）", version)
+	}
+	installMu.Lock()
+	if installing[version] {
+		installMu.Unlock()
+		return fmt.Errorf("版本 %s 正在安装中", version)
+	}
+	installing[version] = true
+	installMu.Unlock()
+
+	go func() {
+		defer func() {
+			installMu.Lock()
+			delete(installing, version)
+			installMu.Unlock()
+		}()
+		info := func(note string) {
+			emitInstall(InstallProgress{Version: version, Stage: "info", Note: note})
+		}
+		if sysx.PkgManager() == "" {
+			emitInstall(InstallProgress{Version: version, Stage: "error",
+				Note: "本机没有 dnf/yum/apt-get，请手工安装 MySQL 后刷新版本库"})
+			return
+		}
+		info(fmt.Sprintf("使用系统包管理器安装 %s %s（需 root）…", pkg, version))
+		err := sysx.InstallPackages([]string{pkg}, func(line string) {
+			if strings.TrimSpace(line) != "" {
+				info(line)
+			}
+		})
+		if err != nil {
+			emitInstall(InstallProgress{Version: version, Stage: "error", Note: err.Error()})
+			return
+		}
+		info("安装完成；版本库刷新后会出现 system 来源的版本")
+		emitInstall(InstallProgress{Version: version, Stage: "done", Percent: 100})
+	}()
+	return nil
+}
+
 /* ============================ 版本安装（下载+解压拍平） ============================ */
 
 var (
@@ -528,6 +621,9 @@ var (
 // InstallVersion 异步下载安装版本；进度与安装日志（stage=info）经 "mysql:install" 事件推送。
 // 兜底：插件目录已有 mysql-<ver>-winx64.zip 时直接离线解压安装。
 func InstallVersion(version string) error {
+	if systemPackaged {
+		return installSystemVersion(version)
+	}
 	if !versionRe.MatchString(version) {
 		return fmt.Errorf("非法版本号: %s", version)
 	}
@@ -1026,18 +1122,25 @@ func StartInstance(id string) error {
 		return err
 	}
 
+	// Linux 上 mysqld 常以 mysql 用户跑：目录归属与 --user 必须先就位，
+	// 否则初始化会以 "Please read Security section" 或权限错误告终。
+	if err := prepareInstanceDir(instDir); err != nil {
+		return err
+	}
+	userArgs := runAsUserArgs()
+
 	// 首次启动：data 为空则免交互初始化（root 空密码）
 	if empty, err := dirIsEmpty(dataDir); err == nil && empty {
-		initCmd := exec.Command(exe, "--defaults-file=my.ini", "--initialize-insecure")
+		initCmd := exec.Command(exe, append([]string{"--defaults-file=my.ini", "--initialize-insecure"}, userArgs...)...)
 		initCmd.Dir = instDir // 与 redis 同理：cwd + 相对文件名，避免路径拼接问题
 		initCmd.SysProcAttr = hideWindowAttr()
 		out, err := initCmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("初始化数据目录失败: %v\n%s\n%s", err, string(out), errTail(errPath, 8))
+			return fmt.Errorf("初始化数据目录失败: %v\n%s\n%s%s", err, string(out), errTail(errPath, 8), initFailHint(string(out)))
 		}
 	}
 
-	cmd := exec.Command(exe, "--defaults-file=my.ini")
+	cmd := exec.Command(exe, append([]string{"--defaults-file=my.ini"}, userArgs...)...)
 	cmd.Dir = instDir
 	cmd.SysProcAttr = hideWindowAttr()
 	if err := cmd.Start(); err != nil {
@@ -1062,7 +1165,8 @@ func StartInstance(id string) error {
 	for time.Now().Before(deadline) {
 		select {
 		case <-p.done:
-			return fmt.Errorf("进程启动后退出，请查看日志。\n%s", errTail(errPath, 10))
+			tail := errTail(errPath, 10)
+			return fmt.Errorf("进程启动后退出，请查看日志。\n%s%s", tail, initFailHint(tail))
 		default:
 		}
 		if tcpUp(cfg.Port) {

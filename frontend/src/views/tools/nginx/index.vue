@@ -282,19 +282,19 @@
                     { title: '操作', dataIndex: 'ops', width: 90, slotName: 'ops', fixed: 'right', align: 'right' },
                 ]">
                 <template #source="{ record }">
-                    <a-tag size="small" :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : 'orange'">{{ srcLabel(record.source) }}</a-tag>
+                    <a-tag size="small" :color="record.source === 'bundled' ? 'purple' : record.source === 'downloaded' ? 'green' : record.source === 'system' ? 'gray' : 'orange'">{{ srcLabel(record.source) }}</a-tag>
                 </template>
                 <template #ops="{ record }">
                     <a-popconfirm :content="`确定删除 Nginx ${record.version}？若仍有实例引用该版本会被拒绝。`"
-                        type="warning" position="lt" :disabled="record.source === 'bundled'"
+                        type="warning" position="lt" :disabled="record.source === 'bundled' || record.source === 'system'"
                         @ok="removeVersion(record)">
-                        <a-button size="small" status="danger" :disabled="record.source === 'bundled'">删除</a-button>
+                        <a-button size="small" status="danger" :disabled="record.source === 'bundled' || record.source === 'system'">删除</a-button>
                     </a-popconfirm>
                 </template>
             </a-table>
             <a-row class="add-local" :gutter="8">
                 <a-col :span="16">
-                    <a-input v-model="localDirInput" placeholder="注册本机已有 Nginx：填写 nginx.exe 所在目录" />
+                    <a-input v-model="localDirInput" placeholder="注册本机已有 Nginx：填写 nginx 所在目录" />
                 </a-col>
                 <a-col :span="4">
                     <a-button size="small" block @click="chooseLocalDir">浏览…</a-button>
@@ -471,7 +471,7 @@ const installedSet = computed(() => new Set<string>(localVersions.value.map((v: 
 
 /* ============================ 小工具 ============================ */
 function srcLabel(s: string): string {
-    return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : "本机";
+    return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : s === "system" ? "系统包" : "本机";
 }
 function stageText(p: any): string {
     if (!p) return "";
@@ -516,12 +516,13 @@ async function loadInstances() {
     refreshStates();
 }
 async function refreshStates() {
-    for (const inst of instances.value) {
+    // 并发问：实例串行 await 就是 N 次往返，Web 模式跑在远程服务器上时尤其明显
+    await Promise.all(instances.value.map(async (inst) => {
         try {
             states[inst.id] = await GoTools.NginxSrvStatus(inst.id);
             if (selectedId.value === inst.id && !logTimer) startLogPolling();
-        } catch (e) { /* ignore */ }
-    }
+        } catch (e) { /* 单个实例失败不影响其它实例 */ }
+    }));
 }
 function selectInst(id: string) {
     selectedId.value = id;

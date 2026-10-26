@@ -17,6 +17,14 @@ import { ScreenshotService as GoScreenshot } from "bindings/go-tools/tools/scree
 
 const app = createApp(App);
 
+/**
+ * 平台能力预取：与路由解析、首屏 chunk 加载并行跑。
+ *
+ * 各页面据此决定显不显示 Windows 专属入口，所以挂载前必须拿到；但没必要等
+ * router.isReady() 之后才发请求（那样白等一个完整往返）。这里先发起、后 await。
+ */
+const capsReady = loadCaps();
+
 /** 启用 Go → Arco Message 消息桥接（demo，监听 ui:message 事件） */
 setupGoMessage();
 
@@ -37,8 +45,9 @@ app.config.globalProperties.$GoTools = {
 };
 
 router.isReady().then(async () => {
-    // 平台能力必须先于挂载拿到：各页面据此决定显不显示 Windows 专属入口（安装引擎、WSL2、截图…）
-    await loadCaps()
+    let caps = await capsReady
+    // 预取失败（运行时比请求晚就绪）时补一次，否则整会话都停在保守默认值上
+    if (!caps.os) caps = await loadCaps()
     app.mount("#app")
     // 主题：同步应用本地记忆（多窗口即时同步），再用后端配置作为首次运行回退
     initTheme()

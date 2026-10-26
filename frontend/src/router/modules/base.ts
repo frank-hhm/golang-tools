@@ -1,8 +1,8 @@
 import BasicLayout from "@/components/layouts/index.vue";
 import BlankLayout from "@/components/layouts/BlankLayout.vue";
 
-/** 工具路由定义（相对路径，供多种父布局复用） */
-const TOOLS = [
+/** 工具路由定义（相对路径，供多种父布局复用）；导出供路由预热按路径找 loader */
+export const TOOLS = [
     { key: "Sniffer", menu_name: "抓包工具", path: "tools/sniffer", component: () => import('@/views/tools/sniffer/index.vue') },
     { key: "Usbserial", menu_name: "USB调试", path: "tools/usbserial", component: () => import('@/views/tools/usbserial/index.vue') },
     { key: "Redis", menu_name: "Redis管理", path: "tools/redis", component: () => import('@/views/tools/redis/index.vue') },

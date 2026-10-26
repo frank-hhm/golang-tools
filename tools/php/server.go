@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/services/sysx"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -242,14 +243,14 @@ func normalizeVersionName(name string) string {
 	return name
 }
 
-// findPHP 在版本目录内定位 php.exe：根、一级子目录、一级子目录根
+// findPHP 在版本目录内定位 php 可执行文件：根、一级子目录
 func findPHP(dir string) string {
-	try := []string{filepath.Join(dir, "php.exe")}
+	try := []string{filepath.Join(dir, binFileName)}
 	if subs, err := os.ReadDir(dir); err == nil {
 		for _, s := range subs {
 			if s.IsDir() {
 				sub := filepath.Join(dir, s.Name())
-				try = append(try, filepath.Join(sub, "php.exe"))
+				try = append(try, filepath.Join(sub, binFileName))
 			}
 		}
 	}
@@ -268,10 +269,10 @@ func isNTSPath(p string) bool {
 
 /* ============================ 版本库 ============================ */
 
-// ListVersions 聚合三渠道版本，按版本号降序；同版本优先 bundled > downloaded > local
+// ListVersions 聚合四渠道版本，按版本号降序；同版本优先 bundled > downloaded > local > system
 func ListVersions() ([]ServerVersion, error) {
 	out := map[string]ServerVersion{}
-	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2}
+	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2, "system": 3}
 
 	add := func(source, ver, path string) {
 		if ver == "" || path == "" {
@@ -303,12 +304,18 @@ func ListVersions() ([]ServerVersion, error) {
 	}
 	// local：php-locals.json 登记
 	for _, lv := range loadLocals() {
-		if st, err := os.Stat(lv.Path); err == nil && !st.IsDir() && strings.EqualFold(st.Name(), "php.exe") {
+		if st, err := os.Stat(lv.Path); err == nil && !st.IsDir() && strings.EqualFold(st.Name(), binFileName) {
 			add("local", lv.Version, lv.Path)
 		} else if st != nil && st.IsDir() {
 			if p := findPHP(lv.Path); p != "" { // 登记的是目录
 				add("local", lv.Version, p)
 			}
+		}
+	}
+	// system：系统包管理器装的（Linux 上这是唯一可行的来源）
+	if bin := sysx.Which(binFileName); bin != "" {
+		if ver := sysx.ProbeVersion(bin, "-v"); ver != "" {
+			add("system", ver, bin)
 		}
 	}
 
@@ -409,6 +416,9 @@ func RemoveVersion(version string) error {
 	}
 	if target.Source == "bundled" {
 		return fmt.Errorf("内置版本不可删除")
+	}
+	if target.Source == "system" {
+		return fmt.Errorf("版本 %s 由系统包管理器提供，请用 %s 卸载", version, sysx.PkgManager())
 	}
 	cfgs, _ := ListInstances()
 	for _, c := range cfgs {
@@ -551,8 +561,11 @@ func phpArchiveIndex(force bool) map[string]string {
 }
 
 // FetchRemoteVersions 解析官方 releases 目录索引得到可安装版本（含真实文件名，避免拼接错误 404）。
-// 网络失败时回退内置常量清单。
+// 网络失败时回退内置常量清单；Linux 则问发行版仓库（官方包都是 Windows 构建）。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
+	if systemPackaged {
+		return systemRemoteVersions(), nil
+	}
 	idx := phpReleaseIndex(true)
 	if len(idx) == 0 {
 		return phpFallbackList(), nil
@@ -749,6 +762,9 @@ var (
 
 // InstallVersion 异步安装版本；nts=true 装非线程安全版。进度经 "php:install" 事件推送。
 func InstallVersion(version string, nts bool) error {
+	if systemPackaged {
+		return installSystemVersion(version)
+	}
 	if !versionRe.MatchString(version) {
 		return fmt.Errorf("非法版本号: %s", version)
 	}
@@ -766,6 +782,80 @@ func InstallVersion(version string, nts bool) error {
 		}
 	}
 	go installAsync(version, nts)
+	return nil
+}
+
+/* ============================ 系统包（Linux） ============================ */
+
+// systemRemoteVersions 把发行版仓库里的可安装版本包成统一的 RemoteVersion。
+func systemRemoteVersions() []RemoteVersion {
+	cands := sysx.PackageCandidates(systemPkgNames)
+	out := make([]RemoteVersion, 0, len(cands))
+	for _, c := range cands {
+		// 归一：仓库里的 "8.1.2-1ubuntu2.14" 与 php -v 报告的 "8.1.2"
+		// 是同一个包，不统一版本库与实例就对不上。
+		ver := sysx.TrimVersion(c.Version)
+		if ver == "" {
+			continue
+		}
+		out = append(out, RemoteVersion{Version: ver, URL: sysx.PkgScheme + c.Pkg})
+	}
+	return out
+}
+
+// systemPackageVersion 反查“版本号 → 包名”。
+func systemPackageVersion(version string) string {
+	for _, c := range sysx.PackageCandidates(systemPkgNames) {
+		if sysx.TrimVersion(c.Version) == version {
+			return c.Pkg
+		}
+	}
+	return ""
+}
+
+// installSystemVersion 交给系统包管理器安装。
+//
+// nts 参数在这里没有意义：线程安全与否是 Windows VC 构建的选择，Linux 包只有一个。
+func installSystemVersion(version string) error {
+	pkg := systemPackageVersion(version)
+	if pkg == "" {
+		return fmt.Errorf("发行版仓库里没有版本 %s（镜像可能已更新，请刷新在线版本列表）", version)
+	}
+	installMu.Lock()
+	if installing[version] {
+		installMu.Unlock()
+		return fmt.Errorf("版本 %s 正在安装中", version)
+	}
+	installing[version] = true
+	installMu.Unlock()
+
+	go func() {
+		defer func() {
+			installMu.Lock()
+			delete(installing, version)
+			installMu.Unlock()
+		}()
+		info := func(note string) {
+			emitInstall(InstallProgress{Version: version, Stage: "info", Note: note})
+		}
+		if sysx.PkgManager() == "" {
+			emitInstall(InstallProgress{Version: version, Stage: "error",
+				Note: "本机没有 dnf/yum/apt-get，请手工安装 php-cli 后刷新版本库"})
+			return
+		}
+		info(fmt.Sprintf("使用系统包管理器安装 %s %s（需 root）…", pkg, version))
+		err := sysx.InstallPackages([]string{pkg}, func(line string) {
+			if strings.TrimSpace(line) != "" {
+				info(line)
+			}
+		})
+		if err != nil {
+			emitInstall(InstallProgress{Version: version, Stage: "error", Note: err.Error()})
+			return
+		}
+		info("安装完成；版本库刷新后会出现 system 来源的版本")
+		emitInstall(InstallProgress{Version: version, Stage: "done", Percent: 100})
+	}()
 	return nil
 }
 

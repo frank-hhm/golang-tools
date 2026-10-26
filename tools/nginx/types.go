@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/services/sysx"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -229,13 +230,13 @@ func normalizeVersionName(name string) string {
 	return name
 }
 
-// findNginx 在版本目录内定位 nginx.exe：根、一级子目录
+// findNginx 在版本目录内定位 nginx 二进制：根、一级子目录
 func findNginx(dir string) string {
-	try := []string{filepath.Join(dir, "nginx.exe")}
+	try := []string{filepath.Join(dir, binFileName)}
 	if subs, err := os.ReadDir(dir); err == nil {
 		for _, s := range subs {
 			if s.IsDir() {
-				try = append(try, filepath.Join(dir, s.Name(), "nginx.exe"))
+				try = append(try, filepath.Join(dir, s.Name(), binFileName))
 			}
 		}
 	}
@@ -249,10 +250,10 @@ func findNginx(dir string) string {
 
 /* ============================ 版本库 ============================ */
 
-// ListVersions 聚合三渠道版本，按版本号降序；同版本优先 bundled > downloaded > local
+// ListVersions 聚合各渠道版本，按版本号降序；同版本优先 bundled > downloaded > local > system
 func ListVersions() ([]ServerVersion, error) {
 	out := map[string]ServerVersion{}
-	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2}
+	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2, "system": 3}
 
 	add := func(source, ver, path string) {
 		if ver == "" || path == "" {
@@ -283,13 +284,20 @@ func ListVersions() ([]ServerVersion, error) {
 	}
 	for _, lv := range loadLocals() {
 		if st, err := os.Stat(lv.Path); err == nil {
-			if !st.IsDir() && strings.EqualFold(st.Name(), "nginx.exe") {
+			if !st.IsDir() && strings.EqualFold(st.Name(), binFileName) {
 				add("local", lv.Version, lv.Path)
 			} else if st.IsDir() {
 				if p := findNginx(lv.Path); p != "" {
 					add("local", lv.Version, p)
 				}
 			}
+		}
+	}
+	// system：系统包管理器装的（Linux 上这是主要来源，Windows 下也认 PATH 里的）
+	// 版本号必须问二进制自己：/usr/sbin/nginx 没有“目录名”可当版本号。
+	if bin := sysx.Which(binFileName); bin != "" {
+		if ver := sysx.ProbeVersion(bin, "-v"); ver != "" {
+			add("system", ver, bin)
 		}
 	}
 
@@ -346,12 +354,12 @@ func AddLocalVersion(dir string) error {
 	if st, err := os.Stat(dir); err == nil {
 		if st.IsDir() {
 			exe = findNginx(dir)
-		} else if strings.EqualFold(st.Name(), "nginx.exe") {
+		} else if strings.EqualFold(st.Name(), binFileName) {
 			exe = dir
 		}
 	}
 	if exe == "" {
-		return fmt.Errorf("目录中未找到 nginx.exe（支持根目录或一级子目录）")
+		return fmt.Errorf("目录中未找到 %s（支持根目录或一级子目录）", binFileName)
 	}
 	ver := normalizeVersionName(filepath.Base(filepath.Dir(exe)))
 	if strings.Count(ver, ".") < 2 {
@@ -390,6 +398,11 @@ func RemoveVersion(version string) error {
 	}
 	if target.Source == "bundled" {
 		return fmt.Errorf("内置版本不可删除")
+	}
+	if target.Source == "system" {
+		// 包管理器装的东西不归面板管：手动删 /usr/sbin 下的二进制只会把 dpkg/rpm
+		// 数据库弄脏。真要卸请走系统命令，这里如实告诉用户。
+		return fmt.Errorf("版本 %s 由系统包管理器提供，请用 %s 卸载", version, sysx.PkgManager())
 	}
 	cfgs, _ := ListInstances()
 	for _, c := range cfgs {
@@ -430,7 +443,7 @@ func RemoveVersion(version string) error {
 	return fmt.Errorf("未知来源: %s", target.Source)
 }
 
-// nginxExe 定位版本目录中的 nginx.exe
+// nginxExe 定位版本目录中的 nginx 二进制
 func nginxExe(version string) string {
 	vers, _ := ListVersions()
 	for _, v := range vers {
@@ -455,6 +468,87 @@ func probeVersion(exe string) (string, error) {
 	return "", fmt.Errorf("无法解析版本号")
 }
 
+/* ============================ 系统包（Linux） ============================ */
+
+// systemRemoteVersions 把发行版仓库里的可安装版本包成统一的 RemoteVersion。
+//
+// URL 写成 pkg:<包名>：前端仍按版本号展示，不需要为 Linux 多一条分支；
+// 安装时认前缀就知道该调包管理器。版本号用 TrimVersion 归一——仓库里的
+// "1.24.0-1ubuntu2" 装完 `nginx -v` 只会报告 "1.24.0"，两边必须长得一样，
+// 否则实例里选的版本号回头找不到对应二进制。
+func systemRemoteVersions() []RemoteVersion {
+	cands := sysx.PackageCandidates(systemPkgNames)
+	out := make([]RemoteVersion, 0, len(cands))
+	for _, c := range cands {
+		ver := sysx.TrimVersion(c.Version)
+		if ver == "" {
+			continue
+		}
+		out = append(out, RemoteVersion{Version: ver, URL: sysx.PkgScheme + c.Pkg, Release: seriesOf(ver)})
+	}
+	return out
+}
+
+// systemPackageVersion 反查“版本号 → 包名”。
+//
+// 不能拿版本号拼包名：同一版本在不同发行版上带不同后缀，而且仓库随时会推进。
+func systemPackageVersion(version string) string {
+	for _, c := range sysx.PackageCandidates(systemPkgNames) {
+		if sysx.TrimVersion(c.Version) == version {
+			return c.Pkg
+		}
+	}
+	return ""
+}
+
+// installSystemVersion 交给系统包管理器安装。
+//
+// 与下载安装的本质差别：依赖解析、运行用户创建、安装到标准路径全由包管理器
+// 负责，面板不再解压一份到 plugins 目录——否则一台机器上会出现两份二进制。
+// 安装输出逐行走 stage=info 进日志框，与下载安装的观感一致。
+func installSystemVersion(version string) error {
+	pkg := systemPackageVersion(version)
+	if pkg == "" {
+		return fmt.Errorf("发行版仓库里没有版本 %s（镜像可能已更新，请刷新在线版本列表）", version)
+	}
+	installMu.Lock()
+	if installing[version] {
+		installMu.Unlock()
+		return fmt.Errorf("版本 %s 正在安装中", version)
+	}
+	installing[version] = true
+	installMu.Unlock()
+
+	go func() {
+		defer func() {
+			installMu.Lock()
+			delete(installing, version)
+			installMu.Unlock()
+		}()
+		info := func(note string) {
+			emitInstall(InstallProgress{Version: version, Stage: "info", Note: note})
+		}
+		if sysx.PkgManager() == "" {
+			emitInstall(InstallProgress{Version: version, Stage: "error",
+				Note: "本机没有 dnf/yum/apt-get，请手工安装 nginx 后刷新版本库"})
+			return
+		}
+		info(fmt.Sprintf("使用系统包管理器安装 %s %s（需 root）…", pkg, version))
+		err := sysx.InstallPackages([]string{pkg}, func(line string) {
+			if strings.TrimSpace(line) != "" {
+				info(line)
+			}
+		})
+		if err != nil {
+			emitInstall(InstallProgress{Version: version, Stage: "error", Note: err.Error()})
+			return
+		}
+		info("安装完成；版本库刷新后会出现 system 来源的版本")
+		emitInstall(InstallProgress{Version: version, Stage: "done", Percent: 100})
+	}()
+	return nil
+}
+
 /* ============================ 下载与解压 ============================ */
 
 var (
@@ -464,6 +558,9 @@ var (
 
 // InstallVersion 异步安装版本；进度经 "nginx:install" 事件推送
 func InstallVersion(version string) error {
+	if systemPackaged {
+		return installSystemVersion(version)
+	}
 	if !versionRe.MatchString(version) {
 		return fmt.Errorf("非法版本号: %s", version)
 	}

@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"go-tools/appdirs"
+	"go-tools/services/sysx"
 	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
 )
@@ -236,10 +237,10 @@ func compareVersion(a, b string) int {
 	return 0
 }
 
-// findRedisServer 在目录（含一级子目录）内定位 redis-server.exe
+// findRedisServer 在目录（含子目录）内定位 redis-server 可执行文件
 func findRedisServer(dir string) string {
 	var found string
-	direct := filepath.Join(dir, "redis-server.exe")
+	direct := filepath.Join(dir, binFileName)
 	if st, err := os.Stat(direct); err == nil && !st.IsDir() {
 		return direct
 	}
@@ -247,7 +248,7 @@ func findRedisServer(dir string) string {
 		if err != nil {
 			return nil
 		}
-		if !st.IsDir() && strings.EqualFold(st.Name(), "redis-server.exe") {
+		if !st.IsDir() && strings.EqualFold(st.Name(), binFileName) {
 			found = p
 			return filepath.SkipAll
 		}
@@ -258,11 +259,11 @@ func findRedisServer(dir string) string {
 
 /* ============================ 版本库 ============================ */
 
-// ListVersions 聚合三渠道版本，按版本号降序；同版本优先 bundled > downloaded > local
+// ListVersions 聚合四渠道版本，按版本号降序；同版本优先 bundled > downloaded > local > system
 func ListVersions() ([]ServerVersion, error) {
 	migrateOnce.Do(migrateLegacyDownloads)
 	out := map[string]ServerVersion{}
-	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2}
+	priority := map[string]int{"bundled": 0, "downloaded": 1, "local": 2, "system": 3}
 
 	add := func(source, ver, path string) {
 		if ver == "" || path == "" {
@@ -314,10 +315,19 @@ func ListVersions() ([]ServerVersion, error) {
 	}
 	// local：locals.json 登记
 	for _, lv := range loadLocals() {
-		if st, err := os.Stat(lv.Path); err == nil && !st.IsDir() && strings.EqualFold(st.Name(), "redis-server.exe") {
+		if st, err := os.Stat(lv.Path); err == nil && !st.IsDir() && strings.EqualFold(st.Name(), binFileName) {
 			add("local", lv.Version, lv.Path)
 		} else if p := findRedisServer(lv.Path); p != "" { // 登记的是目录
 			add("local", lv.Version, p)
+		}
+	}
+	// system：系统包管理器装的（Linux 上这是主要来源，Windows 下也认 PATH 里的）
+	//
+	// 版本号必须问二进制自己：/usr/bin/redis-server 没有“目录名”可以当版本号。
+	// 探测失败就不列，宁可少一条也不要凭空造一个版本号。
+	if bin := sysx.Which(binFileName); bin != "" {
+		if ver := sysx.ProbeVersion(bin, "--version"); ver != "" {
+			add("system", ver, bin)
 		}
 	}
 
@@ -502,6 +512,11 @@ func RemoveVersion(version string) error {
 	if target.Source == "bundled" {
 		return fmt.Errorf("内置版本不可删除")
 	}
+	if target.Source == "system" {
+		// 包管理器装的东西不归面板管：手动删 /usr/bin 下的二进制只会把 dpkg/rpm
+		// 数据库弄脏。真要卸请走系统命令，这里如实告诉用户。
+		return fmt.Errorf("版本 %s 由系统包管理器提供，请用 %s 卸载", version, sysx.PkgManager())
+	}
 	cfgs, _ := ListInstances()
 	for _, c := range cfgs {
 		if c.Version == version && isProcessRunning(c.ID, c.Port, c.Password) {
@@ -569,8 +584,14 @@ type ghRelease struct {
 	Assets  []ghAsset `json:"assets"`
 }
 
-// FetchRemoteVersions 拉取线上版本列表（过滤 >=7.0，优先 msys2 zip 构建）
+// FetchRemoteVersions 拉取可安装版本列表。
+//
+// Linux 上不是“下载一个 zip”：Redis 官方只发源码，没有任何可携二进制，
+// 所以这里问的是发行版仓库能装哪个版本，安装时交给包管理器。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
+	if systemPackaged {
+		return systemRemoteVersions(), nil
+	}
 	req, err := http.NewRequest(http.MethodGet, ghReleasesAPI, nil)
 	if err != nil {
 		return nil, err
@@ -627,6 +648,87 @@ func FetchRemoteVersions() ([]RemoteVersion, error) {
 	return out, nil
 }
 
+/* ============================ 系统包（Linux） ============================ */
+
+// systemRemoteVersions 把发行版仓库里的可安装版本包成统一的 RemoteVersion。
+//
+// URL 写成 pkg:<包名>：前端仍按版本号展示，不需要为 Linux 多一条分支；
+// 安装时认前缀就知道该调包管理器。版本号必须归一：仓库里的
+// "5:7.0.15-1ubuntu0.2" 和 redis-server --version 报告的 "7.0.15"
+// 是同一个包，不统一两边就对不上。
+func systemRemoteVersions() []RemoteVersion {
+	cands := sysx.PackageCandidates(systemPkgNames)
+	out := make([]RemoteVersion, 0, len(cands))
+	for _, c := range cands {
+		ver := sysx.TrimVersion(c.Version)
+		if ver == "" {
+			continue
+		}
+		out = append(out, RemoteVersion{Version: ver, URL: sysx.PkgScheme + c.Pkg})
+	}
+	return out
+}
+
+// systemPackageVersion 反查“版本号 → 包名”。
+//
+// 不能拿版本号拼包名：同一版本在不同发行版上带不同后缀，而且仓库随时会推进。
+func systemPackageVersion(version string) string {
+	for _, c := range sysx.PackageCandidates(systemPkgNames) {
+		if sysx.TrimVersion(c.Version) == version {
+			return c.Pkg
+		}
+	}
+	return ""
+}
+
+// installSystemVersion 交给系统包管理器安装。
+//
+// 与下载安装的本质差别：依赖解析、运行用户创建、安装到标准路径全由包管理器
+// 负责，面板不再解压一份到 plugins 目录——否则一个机器上会出现两份 Redis。
+// 安装输出逐行走 stage=info 进日志框，与下载安装的观感一致。
+func installSystemVersion(version string) error {
+	pkg := systemPackageVersion(version)
+	if pkg == "" {
+		return fmt.Errorf("发行版仓库里没有版本 %s（镜像可能已更新，请刷新在线版本列表）", version)
+	}
+	installMu.Lock()
+	if installing[version] {
+		installMu.Unlock()
+		return fmt.Errorf("版本 %s 正在安装中", version)
+	}
+	installing[version] = true
+	installMu.Unlock()
+
+	go func() {
+		defer func() {
+			installMu.Lock()
+			delete(installing, version)
+			installMu.Unlock()
+		}()
+		info := func(note string) {
+			emitInstall(InstallProgress{Version: version, Stage: "info", Note: note})
+		}
+		if sysx.PkgManager() == "" {
+			emitInstall(InstallProgress{Version: version, Stage: "error",
+				Note: "本机没有 dnf/yum/apt-get，请手工安装 redis 后刷新版本库"})
+			return
+		}
+		info(fmt.Sprintf("使用系统包管理器安装 %s %s（需 root）…", pkg, version))
+		err := sysx.InstallPackages([]string{pkg}, func(line string) {
+			if strings.TrimSpace(line) != "" {
+				info(line)
+			}
+		})
+		if err != nil {
+			emitInstall(InstallProgress{Version: version, Stage: "error", Note: err.Error()})
+			return
+		}
+		info("安装完成；版本库刷新后会出现 system 来源的版本")
+		emitInstall(InstallProgress{Version: version, Stage: "done", Percent: 100})
+	}()
+	return nil
+}
+
 /* ============================ 版本安装（下载+解压） ============================ */
 
 var (
@@ -639,6 +741,9 @@ func emitInstall(p InstallProgress) { emit("redis:install", p) }
 // InstallVersion 异步下载安装版本；进度与安装日志（stage=info）经 "redis:install" 事件推送。
 // 兜底：若插件目录（<exedir>/plugins/redis）或下载缓存目录已存在对应 zip，直接离线解压安装。
 func InstallVersion(version string) error {
+	if systemPackaged {
+		return installSystemVersion(version)
+	}
 	if !versionRe.MatchString(version) {
 		return fmt.Errorf("非法版本号: %s", version)
 	}

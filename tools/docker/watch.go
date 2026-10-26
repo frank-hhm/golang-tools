@@ -21,7 +21,9 @@ import (
 	"go-tools/services/applog"
 )
 
-// ErrUnsupported 非 Windows 平台桩的统一错误：它不是「引擎抖动」，重试没有意义
+// ErrUnsupported 表示当前平台压根不提供该能力：它不是「引擎抖动」，重试没有意义。
+// 注意与 docker_other.go 的分工：Linux 上引擎的安装/启停是真实现的，只有 WSL2、
+// Hyper-V、Desktop 安装器这类概念才归到这个错误上（且现在改成具体文案而不是复用它）。
 var ErrUnsupported = errors.New("非 Windows 平台暂不支持 Docker 管理")
 
 // APIStatusError 带 HTTP 状态码的 Engine API 错误。

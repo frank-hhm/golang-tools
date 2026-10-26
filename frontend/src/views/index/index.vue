@@ -56,7 +56,8 @@
                 </a-radio-group>
               </template>
               <div class="svc-cards" v-if="filteredServices.length">
-                <div v-for="(s, i) in filteredServices" :key="i" class="svc-card" @click="openServiceDetail(s)">
+                <div v-for="(s, i) in filteredServices" :key="i" class="svc-card" @click="openServiceDetail(s)"
+                                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
                   <div class="svc-card-top">
                     <div class="svc-logo" :class="'logo-' + s.type">
                       <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />
@@ -109,7 +110,8 @@
           <div class="tools-grid">
             <a-tooltip v-for="(item, index) in toolsList" :key="item.id || index"
               :content="item.shortcut ? item.name + ' (' + item.shortcut + ')' : item.name">
-              <div class="tool-cell" @click="onToolClick(item)">
+              <div class="tool-cell" @click="onToolClick(item)" @mouseenter="prefetchRoute(item.path)"
+                @pointerdown="prefetchRoute(item.path)">
                 <div class="tool-icon-wrap">
                   <i v-if="isIconfontIcon(item.icon)" class="icon tool-icon" :class="item.icon" />
                   <component v-else :is="iconComp(item.icon) || 'IconApps'" class="tool-icon" />
@@ -132,6 +134,7 @@ import { useToolEvents, type ToolItem } from "./events";
 import { useToolWindow } from "./useToolWindow";
 import { arcoIconComp as iconComp, isIconfontIcon, normalizeToolIcon } from "@/utils/tool-icon";
 import { isToolAvailable } from "@/utils/caps";
+import { prefetchRoute } from "@/router/prefetch";
 
 interface ToolRow extends ToolItem {
   id?: string;

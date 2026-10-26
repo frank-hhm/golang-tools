@@ -276,13 +276,27 @@ func defaultDocRoot(id, name string) string {
 	return filepath.Join(base, dir)
 }
 
-// nginxConfSrcDir 返回 Nginx 安装目录下的 conf 子目录绝对路径（mime.types 等内置文件所在地）
+// nginxConfSrcDir 返回 conf 子目录绝对路径（mime.types / fastcgi_params 等内置文件所在地）
+//
+// Windows 绿色版把 conf/ 放在 nginx.exe 同级；Linux 系统包的二进制在
+// /usr/sbin、conf 却在 /etc/nginx。找不到系统目录时回退二进制同级：宁可让
+// include 指向一个不存在的绝对路径（报错清楚），也不要退化成相对 prefix 的
+// 路径（那个位置永远不会有 mime.types，启动失败莫名）。
 func nginxConfSrcDir(version string) string {
 	exe := nginxExe(version)
 	if exe == "" {
 		return ""
 	}
-	return filepath.Dir(exe) + "/conf" // 用正斜杠，写入 nginx.conf 后跨平台一致
+	local := filepath.Join(filepath.Dir(exe), "conf")
+	if st, err := os.Stat(local); err == nil && st.IsDir() {
+		return local
+	}
+	if systemConfDir != "" {
+		if st, err := os.Stat(systemConfDir); err == nil && st.IsDir() {
+			return systemConfDir
+		}
+	}
+	return local // 用正斜杠，写入 nginx.conf 后跨平台一致
 }
 
 /* ============================ 启动 / 停止 / 重载 ============================ */
@@ -316,6 +330,10 @@ func StartInstance(id string) error {
 	}
 	if err := ensureConf(cfg, prefix, confPath); err != nil {
 		return fmt.Errorf("准备 nginx.conf 失败: %v", err)
+	}
+	// Linux 上 worker 会降权到 nginx/www-data：临时目录得让它能写
+	if err := preparePrefixDirs(prefix); err != nil {
+		return fmt.Errorf("准备实例目录失败: %v", err)
 	}
 	docRoot := cfg.DocRoot
 	if docRoot == "" {
@@ -650,6 +668,11 @@ func ensureConf(cfg *InstanceConfig, prefix, confPath string) error {
 	b.WriteString("    default_type  application/octet-stream;\n")
 	b.WriteString("    sendfile        on;\n")
 	b.WriteString("    keepalive_timeout  65;\n")
+	// 临时目录显式指到实例的 temp/：不写的话 nginx 会在 prefix 下自建
+	// client_body_temp 等目录（只有 master 能写、worker 降权后写不进去，上传就 500）。
+	for _, tmp := range []string{"client_body_temp", "proxy_temp", "fastcgi_temp", "uwsgi_temp", "scgi_temp"} {
+		fmt.Fprintf(&b, "    %s_path \"%s\";\n", tmp, filepath.ToSlash(filepath.Join(prefix, "temp", tmp)))
+	}
 	b.WriteString("    server {\n")
 	fmt.Fprintf(&b, "        listen       %d;\n", cfg.Port)
 	b.WriteString("        server_name  localhost;\n")

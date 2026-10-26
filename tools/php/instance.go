@@ -347,7 +347,12 @@ func StartInstance(id string) error {
 	if err != nil {
 		return err
 	}
-	iniPath := filepath.Join(phpDir, "php.ini")
+	// php.ini 放哪里：Windows 绿色版必须与 php.exe 同级（PHP 默认加载位置）；
+	// Linux 的 /usr/bin 是系统目录写不得，实例配置放实例目录再用 -c 指定。
+	iniPath := filepath.Join(instDir, "php.ini")
+	if perBinaryIni {
+		iniPath = filepath.Join(phpDir, "php.ini")
+	}
 	if err := ensureIni(cfg, phpDir, iniPath); err != nil {
 		return fmt.Errorf("准备 php.ini 失败: %v", err)
 	}

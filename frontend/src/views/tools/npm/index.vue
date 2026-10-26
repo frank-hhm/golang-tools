@@ -961,12 +961,13 @@ async function loadInstances() {
     refreshStates();
 }
 async function refreshStates() {
-    for (const inst of instances.value) {
+    // 并发问：实例串行 await 就是 N 次往返，Web 模式跑在远程服务器上时尤其明显
+    await Promise.all(instances.value.map(async (inst) => {
         try {
             states[inst.id] = await GoTools.NpmSrvStatus(inst.id);
             if (states[inst.id]?.registry) registryVal.value = states[inst.id].registry;
-        } catch (e) { /* ignore */ }
-    }
+        } catch (e) { /* 单个实例失败不影响其它实例 */ }
+    }));
 }
 function selectInst(id: string) {
     selectedId.value = id;

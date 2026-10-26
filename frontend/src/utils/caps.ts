@@ -23,12 +23,17 @@ const state = reactive<Capabilities>({
 
 let pending: Promise<Capabilities> | null = null;
 
-/** 读取平台能力（进程内只请求一次，重复调用复用同一个 Promise） */
+/**
+ * 读取平台能力（进程内只请求一次，重复调用复用同一个 Promise）。
+ *
+ * 失败时把 pending 清掉：预取可能发得比运行时就绪更早，一次失败不该让整个
+ * 会话都停在保守默认值上（Windows 桌面版那样会丢掉所有原生窗口入口）。
+ */
 export function loadCaps(): Promise<Capabilities> {
     if (!pending) {
         pending = App.GetCapabilities()
             .then((c) => Object.assign(state, c || {}))
-            .catch(() => { /* 取不到就保持保守默认值 */ })
+            .catch(() => { pending = null; /* 取不到就保持保守默认值，下次调用可重试 */ })
             .then(() => ({ ...state } as Capabilities));
     }
     return pending;

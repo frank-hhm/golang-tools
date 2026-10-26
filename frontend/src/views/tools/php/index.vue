@@ -306,7 +306,7 @@
             <div class="vm-head">
                 <span class="vm-head-title"><icon-desktop /> 本地可用版本</span>
                 <div class="vm-head-ops">
-                    <span class="vm-head-tip">内置版本不可删除；运行中实例引用时拒绝删除</span>
+                    <span class="vm-head-tip">内置版本与系统包版本不可删除；运行中实例引用时拒绝删除</span>
                     <a-button size="small" @click="loadLocalVersions">
                         <template #icon><icon-refresh /></template>刷新
                     </a-button>
@@ -318,21 +318,21 @@
                 </div>
                 <div v-for="v in localVersions" :key="v.version" class="vm-local-row">
                     <span class="vm-ver">v{{ v.version }}</span>
-                    <a-tag size="small" :color="v.source === 'bundled' ? 'purple' : v.source === 'downloaded' ? 'green' : 'orange'">
+                    <a-tag size="small" :color="v.source === 'bundled' ? 'purple' : v.source === 'downloaded' ? 'green' : v.source === 'system' ? 'gray' : 'orange'">
                         {{ srcLabel(v.source) }}
                     </a-tag>
                     <a-tooltip :content="v.path">
                         <span class="vm-path">{{ v.path }}</span>
                     </a-tooltip>
                     <a-popconfirm :content="`确定删除 PHP ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`"
-                        type="warning" position="lt" :disabled="v.source === 'bundled'" @ok="removeVersion(v)">
-                        <a-button size="small" status="danger" :disabled="v.source === 'bundled'">删除</a-button>
+                        type="warning" position="lt" :disabled="v.source === 'bundled' || v.source === 'system'" @ok="removeVersion(v)">
+                        <a-button size="small" status="danger" :disabled="v.source === 'bundled' || v.source === 'system'">删除</a-button>
                     </a-popconfirm>
                 </div>
             </div>
             <a-row class="add-local" :gutter="8">
                 <a-col :span="16">
-                    <a-input v-model="localDirInput" placeholder="注册本机已有 PHP：填写 php.exe 所在目录" allow-clear />
+                    <a-input v-model="localDirInput" placeholder="注册本机已有 PHP：填写 php 所在目录" allow-clear />
                 </a-col>
                 <a-col :span="4">
                     <a-button size="small" block @click="chooseLocalDir">浏览…</a-button>
@@ -700,7 +700,7 @@ const filteredExtensions = computed(() => {
 
 /* ============================ 小工具 ============================ */
 function srcLabel(s: string): string {
-    return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : "本机";
+    return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : s === "system" ? "系统包" : "本机";
 }
 function stageText(p: any): string {
     if (!p) return "";
@@ -803,13 +803,14 @@ async function refreshStates(silent = false) {
     stateInflight = true;
     let ok = 0;
     try {
-        for (const inst of instances.value) {
+        // 并发问每个实例：串行 await 会变成 N 次往返，Web 模式在远程服务器上尤其明显
+        await Promise.all(instances.value.map(async (inst) => {
             try {
                 states[inst.id] = await GoTools.PhpSrvStatus(inst.id);
                 ok++;
                 if (selectedId.value === inst.id && !logTimer) startLogPolling();
             } catch (e) { /* 单个实例失败不影响其它实例 */ }
-        }
+        }));
     } finally {
         stateQuietUntil = ok === 0 && instances.value.length > 0 ? Date.now() + 15000 : 0;
         stateInflight = false;

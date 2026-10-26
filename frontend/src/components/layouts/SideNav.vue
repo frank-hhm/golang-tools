@@ -18,7 +18,9 @@
             <div class="nav-group">工具</div>
 
             <div v-for="t in tools" :key="t.id || t.path" class="nav-item"
-                :class="{ 'is-active': isActive(t.path) }" @click="go(t.path)">
+                :class="{ 'is-active': isActive(t.path) }" @click="go(t.path)"
+                @mouseenter="prefetchRoute(t.path)" @focusin="prefetchRoute(t.path)"
+                @pointerdown="prefetchRoute(t.path)">
                 <i v-if="isIconfontIcon(t.icon)" class="icon nav-icon" :class="t.icon" />
                 <component v-else :is="iconComp(t.icon) || 'IconApps'" class="nav-icon" />
                 <span class="nav-text" :title="t.name">{{ t.name }}</span>
@@ -35,6 +37,7 @@ import { useRoute, useRouter } from "vue-router";
 import { Events } from "@wailsio/runtime";
 import { arcoIconComp as iconComp, isIconfontIcon } from "@/utils/tool-icon";
 import { navToolsFromConfig, type NavTool } from "@/utils/navtools";
+import { prefetchRoute } from "@/router/prefetch";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const route = useRoute();

@@ -70,21 +70,22 @@
           <div class="ver-scroll">
             <div v-for="v in localVersions" :key="v.version + v.source" class="ver-item">
               <a-tag size="small"
-                :color="v.source === 'bundled' ? 'green' : (v.source === 'downloaded' ? 'arcoblue' : 'orange')">{{
+                :color="v.source === 'bundled' ? 'green' : (v.source === 'downloaded' ? 'arcoblue' : (v.source === 'system' ? 'gray' : 'orange'))">{{
                   srcLabel(v.source) }}</a-tag>
               <span class="ver-name">MySQL {{ v.version }}</span>
               <a-tooltip :content="v.path">
                 <span class="ver-path">{{ v.path }}</span>
               </a-tooltip>
               <a-popconfirm :content="`确定删除 MySQL ${v.version}？若仍有实例引用该版本会被拒绝。`" type="warning" position="lt"
+                :disabled="v.source === 'bundled' || v.source === 'system'"
                 @ok="removeVersion(v)">
-                <a-button size="small" status="danger" :disabled="v.source === 'bundled'">删除</a-button>
+                <a-button size="small" status="danger" :disabled="v.source === 'bundled' || v.source === 'system'">删除</a-button>
               </a-popconfirm>
             </div>
             <a-empty v-if="localVersions.length === 0" :image="false" description="尚未安装任何版本，可从下方在线安装或添加本机目录" />
           </div>
           <div class="ver-actions">
-            <a-input v-model="localDirInput" size="small" placeholder="本机 mysqld.exe 所在目录" allow-clear />
+            <a-input v-model="localDirInput" size="small" placeholder="本机 mysqld 所在目录" allow-clear />
             <a-button size="small" @click="chooseLocalDir"><template #icon><icon-folder /></template>选目录</a-button>
             <a-button size="small" @click="addLocalDir">添加</a-button>
           </div>
@@ -422,7 +423,7 @@ function pushInstallLog(txt: string) {
 }
 
 function srcLabel(s: string): string {
-  return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : "本机";
+  return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : s === "system" ? "系统包" : "本机";
 }
 
 function stageText(p: any): string {
@@ -465,14 +466,15 @@ async function refreshSrvStates(silent = false) {
   srvStatesInflight = true;
   let ok = 0;
   try {
-    for (const inst of srvInstances.value) {
+    // 并发问每个实例：串行 await 会变成 N 次往返，Web 模式在远程服务器上尤其明显
+    await Promise.all(srvInstances.value.map(async (inst) => {
       try {
         const status = await GoTools.MySQLSrvStatus(inst.id);
         srvStates[inst.id] = status;
         ok++;
         if (logsVisible.value && logsInst.value?.id === inst.id) logsStatus.value = status;
       } catch (e) { /* 单个实例失败不影响其它实例 */ }
-    }
+    }));
   } finally {
     // 一轮全失败：多半是引擎离线，退避 15 秒再来问
     srvStatesQuietUntil = ok === 0 && srvInstances.value.length > 0 ? Date.now() + 15000 : 0;

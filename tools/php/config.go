@@ -153,14 +153,13 @@ func ensureIni(cfg *InstanceConfig, phpDir, iniPath string) error {
 			return err
 		}
 		fixed, changed := iniSetExtDir(string(text), phpDir)
-		if changed {
+		if changed && rewriteExtDir {
 			return os.WriteFile(iniPath, []byte(fixed), 0o644)
 		}
 		return nil
 	}
 	written := false
-	for _, name := range []string{"php.ini-development", "php.ini-production", "php.ini"} {
-		src := filepath.Join(phpDir, name)
+	for _, src := range iniTemplateCandidates(phpDir) {
 		data, err := os.ReadFile(src)
 		if err != nil || len(data) == 0 {
 			continue
@@ -181,7 +180,7 @@ func ensureIni(cfg *InstanceConfig, phpDir, iniPath string) error {
 		return err
 	}
 	fixed, changed := iniSetExtDir(string(text), phpDir)
-	if changed {
+	if changed && rewriteExtDir {
 		return os.WriteFile(iniPath, []byte(fixed), 0o644)
 	}
 	return nil
