@@ -411,7 +411,7 @@
             <!-- 类型切换：本地 / 线上 / Docker 只看一类，不用在长弹窗里找 -->
             <a-radio-group size="medium" v-model="verTab" type="button">
                 <a-radio value="local">已安装版本 {{ localVersions.length }}</a-radio>
-                <a-radio value="remote">在线可安装 {{ remoteVersions.length }}</a-radio>
+                <a-radio value="remote">{{ sysPkg ? '仓库可安装' : '在线可安装' }} {{ remoteVersions.length }}</a-radio>
                 <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
             </a-radio-group>
             <!-- 已安装版本 -->
@@ -440,7 +440,10 @@
                             #icon><icon-folder /></template>选目录</a-button>
                     <a-button size="small" @click="addLocalDir">添加</a-button>
                 </div>
-                <div class="ver-hint">离线安装：将 redis zip 放入 <span class="mono">{{ srvServersDir }}</span> 后点「安装」即可</div>
+                <div v-if="sysPkg" class="ver-hint">版本由发行版仓库提供：在上面选一个版本点「安装」即可（包管理器装到标准路径并注册服务）；
+                    也可把已有的 redis-server 目录加进来
+                </div>
+                <div v-else class="ver-hint">离线安装：将 redis zip 放入 <span class="mono">{{ srvServersDir }}</span> 后点「安装」即可</div>
             </a-card>
             </div>
 
@@ -455,7 +458,7 @@
             <div v-show="verTab === 'remote'">
             <a-card size="small" :body-style="{ padding: '8px 12px' }">
                 <template #title>
-                    <span class="ver-sec-title"><icon-cloud /> 在线版本（GitHub redis-windows 发行版，&gt;=7.0）</span>
+                    <span class="ver-sec-title"><icon-cloud /> {{ sysPkg ? '仓库可安装（发行版包，装到系统标准路径）' : '在线版本（GitHub redis-windows 发行版，>=7.0）' }}</span>
                 </template>
                 <template #extra>
                     <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">
@@ -465,7 +468,7 @@
                 <div class="ver-scroll">
                     <div v-for="r in remoteVersions" :key="r.version" class="ver-item">
                         <span class="ver-name">Redis {{ r.version }}</span>
-                        <span class="ver-path">{{ r.size ? (r.size / 1024 / 1024).toFixed(0) + ' MB' : '' }}</span>
+                        <span class="ver-path">{{ remoteVerText(r) }}</span>
                         <a-button size="small"
                             :disabled="!!installProgress[r.version] || installedSet.has(r.version)"
                             @click="installVersion(r)">{{ installedSet.has(r.version) ? '已安装' : '安装' }}</a-button>
@@ -642,8 +645,12 @@ import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import { remoteVerText, useSysPkg } from "@/utils/caps";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+
+/** 系统包模式（Linux）：版本来自发行版仓库，没有绿色版 zip 那套离线安装 */
+const sysPkg = useSysPkg();
 
 const CACHE_KEY = "redis_connections_cache";
 

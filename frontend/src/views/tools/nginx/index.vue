@@ -189,7 +189,8 @@
                     <template v-if="instForm.mode === 'docker'">
                         容器里跑 nginx：实例的 conf/ 与 logs/ 以及站点目录都挂载进容器，改配置后点「重载」（重启容器）生效；首次启动会自动拉镜像
                     </template>
-                    <template v-else>使用本机插件目录下的 nginx.exe，可在「版本管理」获取</template>
+                    <template v-if="sysPkg">使用系统安装的 nginx（发行版包），可在「版本管理」选已安装的版本</template>
+                    <template v-else>使用本机插件目录下的 nginx，可在「版本管理」获取</template>
                 </template>
             </a-form-item>
             <!-- 两种模式的行数和列宽对齐（Docker 只多一个容器名），切模式时弹窗高度不跳 -->
@@ -269,7 +270,7 @@
         <!-- 类型切换：本地 / 线上 / Docker 只看一类，不用在长弹窗里找 -->
         <a-radio-group class="ver-tab" size="medium" v-model="verTab" type="button">
             <a-radio value="local">本地版本 {{ localVersions.length }}</a-radio>
-            <a-radio value="remote">线上可安装 {{ remoteVersions.length }}</a-radio>
+            <a-radio value="remote">{{ sysPkg ? '仓库可安装' : '线上可安装' }} {{ remoteVersions.length }}</a-radio>
             <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
         </a-radio-group>
         <div v-show="verTab === 'local'" class="ver-block">
@@ -312,7 +313,7 @@
         </div>
         <div v-show="verTab === 'remote'" class="ver-block">
             <div class="ver-title">
-                线上版本
+                {{ sysPkg ? '仓库可安装版本（发行版包）' : '线上版本' }}
                 <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">刷新</a-button>
             </div>
             <a-spin :loading="remoteLoading" style="width:100%">
@@ -320,11 +321,11 @@
                     :columns="[
                         { title: '版本', dataIndex: 'version', width: 110 },
                         { title: '产品线', dataIndex: 'release', width: 90 },
-                        { title: '包大小', dataIndex: 'size', width: 100, slotName: 'size' },
+                        { title: sysPkg ? '包名' : '包大小', dataIndex: 'size', width: 100, slotName: 'size' },
                         { title: '状态', dataIndex: 'st', width: 150, slotName: 'st' },
                         { title: '操作', dataIndex: 'ops', width: 100, slotName: 'ops', fixed: 'right', align: 'right' },
                     ]">
-                    <template #size="{ record }">{{ fmtBytes(record.size) }}</template>
+                    <template #size="{ record }">{{ remoteVerText(record) }}</template>
                     <template #st="{ record }">
                         <span v-if="installedSet.has(record.version)" class="com-state is-on">
                             <com-badge status="success" />已安装
@@ -381,8 +382,12 @@ import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import { remoteVerText, useSysPkg } from "@/utils/caps";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+
+/** 系统包模式（Linux）：版本来自发行版仓库，nginx 装到 /usr/sbin */
+const sysPkg = useSysPkg();
 
 interface InstConfig {
     id: string; name: string; version: string; port: number; sslPort: number; docRoot: string; workers: number; stubStatus: boolean;
@@ -480,12 +485,6 @@ function stageText(p: any): string {
     if (p.stage === "done") return "完成";
     if (p.stage === "info") return "准备中";
     return "失败";
-}
-function fmtBytes(b: number): string {
-    if (!b) return "-";
-    const units = ["B", "KB", "MB", "GB"]; let i = 0; let v = b;
-    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-    return v.toFixed(i > 0 ? 1 : 0) + " " + units[i];
 }
 function fmtUptimeS(sec?: number): string {
     if (!sec || sec <= 0) return "-";

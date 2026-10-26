@@ -1,4 +1,4 @@
-import { reactive } from "vue";
+import { computed, reactive } from "vue";
 import { App } from "bindings/go-tools/services/app/index";
 import type { Capabilities } from "bindings/go-tools/services/sysx/models";
 
@@ -47,6 +47,27 @@ export function useCaps() {
 /** 能真正开原生窗口（Windows 桌面版） */
 export function isNativeWindows() {
     return state.nativeWindows;
+}
+
+/**
+ * 系统包模式（Linux 的 hybrid/system）：版本与扩展都来自发行版仓库。
+ *
+ * 绿色版那套「下载 zip 解压到插件目录 / 往 ext 里放 dll」在这里一条也走不通，
+ * 页面要据此换成包管理器引导与 pkg: 包名，而不是给一个点了必然失败的按钮。
+ */
+export function useSysPkg() {
+    return computed(() => state.pkgMode !== "green");
+}
+
+/**
+ * 在线版本条目的右侧文案：绿色版是下载体积，系统包模式是 pkg:<包名> 里的包名。
+ * 四个工具（PHP / MySQL / Redis / Nginx）的版本管理都用这一份，避免各自拼。
+ */
+export function remoteVerText(r: any): string {
+    const url = String(r?.url || "");
+    if (url.startsWith("pkg:")) return url.slice(4);
+    const size = Number(r?.size || 0);
+    return size > 0 ? (size / 1024 / 1024).toFixed(0) + " MB" : "";
 }
 
 /**

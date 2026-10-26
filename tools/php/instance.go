@@ -458,9 +458,10 @@ func StopInstance(id string) error {
 		srvRunMu.Unlock()
 	}
 	if tcpUp(cfg.Port) {
-		// 端口仍被占用：尝试结束本程序之前拉起的同名孤儿进程（按镜像名，会一并影响
-		// 其他同名进程，故仅在用户主动点「停止」时执行）
-		if pids := pidsByName("php.exe"); len(pids) > 0 {
+		// 端口仍被占用：尝试结束本程序之前拉起的同名孤儿进程（按二进制名，会一并影响
+		// 其他同名进程，故仅在用户主动点「停止」时执行）。名字用平台常量：Linux 系统包的
+		// 进程名是 php，写成 php.exe 在那边永远匹配不到，孤儿进程会一直占着端口。
+		if pids := pidsByName(binFileName); len(pids) > 0 {
 			for _, pid := range pids {
 				_ = killTree(pid)
 			}
@@ -470,7 +471,7 @@ func StopInstance(id string) error {
 		}
 	}
 	if tcpUp(cfg.Port) {
-		return fmt.Errorf("停止失败：端口 %d 仍在监听（可能是外部启动的 php.exe 或服务被其他程序占用）", cfg.Port)
+		return fmt.Errorf("停止失败：端口 %d 仍在监听（可能是外部启动的 PHP 进程，或端口被其他程序占用）", cfg.Port)
 	}
 	return nil
 }

@@ -28,12 +28,13 @@
                 <a-button size="small" v-if="caps.nativeWindows && engine.isDesktop" @click="emit('open-switch')">
                     <template #icon><icon-swap /></template>切换后端
                 </a-button>
-                <!-- 引擎在跑、或正在启动等待时都能叫停：会结束 Docker Desktop 进程并提权停 com.docker.service -->
+                <!-- 引擎在跑、或正在启动等待时都能叫停：Windows 会结束 Docker Desktop 进程，
+                     Linux 则走 systemctl stop docker（后端按平台实现） -->
                 <a-popconfirm
-                    :content="setupBusy === 'start' ? '停止正在进行的启动？已开始的拉取/启动会被中断。' : '停止 Docker 引擎？所有运行中的容器会被中断，Docker Desktop 与 com.docker.service 都会结束。'"
+                    :content="stopEngineTip"
                     type="warning" position="lt" :disabled="setupBusy === 'stop'" @ok="emit('stop-engine')">
                     <a-button size="small"
-                        v-if="caps.nativeWindows && (engine.available || setupBusy === 'start' || setupBusy === 'stop')"
+                        v-if="engine.available || setupBusy === 'start' || setupBusy === 'stop'"
                         status="danger" :loading="setupBusy === 'stop'" :disabled="setupBusy === 'stop'">
                         <template #icon><icon-poweroff /></template>{{ setupBusy === 'start' ? '停止启动' : (setupBusy === 'stop' ? '停止中' : '停止引擎') }}
                     </a-button>
@@ -252,50 +253,106 @@
                         安装会请求管理员权限并弹出安装器窗口；取消 UAC 即中止，不会留下半途状态。引擎就绪后本面板自动切回容器视图。
                     </div>
                 </template>
-
-                <div v-if="setupStage" class="setup-prog" :class="'st-' + setupStage">
-                    <div class="prog-head">
-                        <span class="prog-label">
-                            <com-badge :status="setupStage === 'error' ? 'danger' : (setupStage === 'done' ? 'success' : 'processing')"
-                                :animated="setupStage !== 'done' && setupStage !== 'error'" />
-                            {{ setupStage === 'error' ? '执行失败' : (setupStage === 'done' ? '已完成' : '进行中') }}
-                        </span>
-                        <span class="prog-pct">{{ setupPercent }}%</span>
-                    </div>
-                    <!-- 百分比自己画：进度条自带文字会把 100% 撑成一条很长的绿条，显得很重 -->
-                    <a-progress :percent="setupPercent / 100" size="small" :show-text="false"
-                        :status="setupStage === 'error' ? 'danger' : (setupStage === 'done' ? 'success' : 'normal')" />
-                    <div class="setup-note">{{ setupNote }}</div>
-                </div>
-
-                <div v-if="setupLogs.length" class="setup-logs">
-                    <div class="setup-head">
-                        <span class="setup-subtitle">
-                            <icon-history /> 安装日志 <span class="count-pill">{{ setupLogs.length }}</span>
-                        </span>
-                        <a-button size="small" type="text" @click="emit('clear-logs')">
-                            <template #icon><icon-delete /></template>清空
-                        </a-button>
-                    </div>
-                    <div ref="logBoxRef" class="setup-log-box">
-                        <div v-for="(l, i) in setupLogs" :key="'sl' + i" class="log-line">{{ l }}</div>
-                    </div>
-                </div>
             </div>
 
-            <!-- 非桌面构建（Linux / Web 模式）：引擎交给系统包管理器和 systemd，面板只负责连上去 -->
+            <!-- 非桌面构建（Linux / Web 模式）：引擎装/起/停都由发行版包管理器与 systemd 完成，
+                 但后端已经实现了对应绑定，这里不能只给一段文字说明 -->
             <div v-else class="setup-block">
                 <div class="setup-head">
                     <span class="setup-title">
-                        <icon-exclamation-circle /> 引擎由系统服务管理
+                        <icon-experiment /> {{ env.dockerInstalled ? 'Docker 引擎控制' : '安装 Docker Engine' }}
+                    </span>
+                    <span class="setup-head-extra">
+                        <a-tag size="small" :color="env.dockerInstalled ? 'orange' : 'gray'">
+                            {{ env.dockerInstalled ? '已安装 · 未运行' : '未安装' }}
+                        </a-tag>
+                        <a-tooltip v-if="licenseNotes.length" position="bottom" :content-style="{ maxWidth: '460px' }">
+                            <template #content>
+                                <div class="tip-lines">
+                                    <div v-for="(l, i) in licenseNotes" :key="'lt' + i" class="lt-line">{{ l }}</div>
+                                </div>
+                            </template>
+                            <a-typography-text class="setup-warn" type="warning">
+                                <icon-exclamation-circle />
+                            </a-typography-text>
+                        </a-tooltip>
                     </span>
                 </div>
-                <div class="mode-hint">
-                    <div>本面板不接管引擎的安装与启停：装包、开机自启都交给系统，面板只通过
-                        <span class="mono">{{ caps.os === 'windows' ? '命名管道' : 'unix socket' }}</span> 连上去。</div>
-                    <div>1. 安装引擎：<span class="mono">yum install -y docker-ce</span>（或 apt 装 docker.io）</div>
-                    <div>2. 启动并开机自启：<span class="mono">systemctl enable --now docker</span></div>
-                    <div>3. 当前用户需在 docker 组内，或以 root 运行本面板，否则读不到 /var/run/docker.sock</div>
+
+                <template v-if="env.dockerInstalled">
+                    <div class="setup-hint">
+                        <span class="hint-label">可执行文件</span>
+                        <a-tooltip :content="env.dockerExePath" :disabled="!env.dockerExePath">
+                            <span class="mono hint-path">{{ env.dockerExePath || 'docker' }}</span>
+                        </a-tooltip>
+                        <span class="hint-sub">启停走 systemctl（需 root + systemd），容器管理不受影响</span>
+                    </div>
+                    <a-space :size="8" class="setup-row">
+                        <a-button size="small" :loading="setupBusy === 'start'" :disabled="!!setupBusy"
+                            @click="emit('start-engine')">
+                            <template #icon><icon-play-arrow /></template>启动引擎
+                        </a-button>
+                        <!-- 改完加速站 / daemon.json 要重启才生效，Linux 上没有 Desktop 的“重启”按钮，得在这里给 -->
+                        <a-button size="small" :loading="setupBusy === 'restart'" :disabled="!!setupBusy"
+                            @click="emit('restart-engine')">
+                            <template #icon><icon-refresh /></template>重启引擎
+                        </a-button>
+                        <a-popconfirm :content="stopEngineTip" type="warning" @ok="emit('stop-engine')">
+                            <a-button size="small" status="danger" :loading="setupBusy === 'stop'" :disabled="!!setupBusy">
+                                <template #icon><icon-poweroff /></template>停止引擎
+                            </a-button>
+                        </a-popconfirm>
+                    </a-space>
+                    <div v-if="!caps.isRoot" class="mode-hint">
+                        面板当前不是 root：systemctl 动作会被拒绝并提示对应命令（sudo systemctl restart docker），
+                        但只要当前用户在 docker 组，容器管理照常可用。
+                    </div>
+                </template>
+
+                <template v-else>
+                    <div class="mode-hint">
+                        <div>安装与开机自启交给发行版：面板调用 <span class="mono">apt/dnf</span> 装包，再用
+                            <span class="mono">systemctl start docker</span> 拉起。</div>
+                        <div v-if="!caps.isRoot">当前不是 root，安装按钮会提示需要 sudo；也可直接在服务器执行：
+                            <span class="mono">yum install -y docker-ce</span> 或 <span class="mono">apt install -y docker.io</span></div>
+                        <div v-if="caps.initSystem !== 'systemd'">未检测到 systemd：面板无法启停服务，需手工运行 dockerd。</div>
+                    </div>
+                    <a-space :size="8" class="setup-row">
+                        <a-button type="primary" size="small" :loading="setupBusy === 'install'" :disabled="!!setupBusy"
+                            @click="emit('install-docker')">
+                            <template #icon><icon-download /></template>安装 Docker Engine
+                        </a-button>
+                    </a-space>
+                </template>
+            </div>
+
+            <!-- 进度与日志：Windows 安装向导与 Linux 引擎控制共用同一套展示 -->
+            <div v-if="setupStage" class="setup-prog" :class="'st-' + setupStage">
+                <div class="prog-head">
+                    <span class="prog-label">
+                        <com-badge :status="setupStage === 'error' ? 'danger' : (setupStage === 'done' ? 'success' : 'processing')"
+                            :animated="setupStage !== 'done' && setupStage !== 'error'" />
+                        {{ setupStage === 'error' ? '执行失败' : (setupStage === 'done' ? '已完成' : '进行中') }}
+                    </span>
+                    <span class="prog-pct">{{ setupPercent }}%</span>
+                </div>
+                <!-- 百分比自己画：进度条自带文字会把 100% 撑成一条很长的绿条，显得很重 -->
+                <a-progress :percent="setupPercent / 100" size="small" :show-text="false"
+                    :status="setupStage === 'error' ? 'danger' : (setupStage === 'done' ? 'success' : 'normal')" />
+                <div class="setup-note">{{ setupNote }}</div>
+            </div>
+
+            <div v-if="setupLogs.length" class="setup-logs">
+                <div class="setup-head">
+                    <span class="setup-subtitle">
+                        <icon-history /> 安装日志 <span class="count-pill">{{ setupLogs.length }}</span>
+                    </span>
+                    <a-button size="small" type="text" @click="emit('clear-logs')">
+                        <template #icon><icon-delete /></template>清空
+                    </a-button>
+                </div>
+                <div ref="logBoxRef" class="setup-log-box">
+                    <div v-for="(l, i) in setupLogs" :key="'sl' + i" class="log-line">{{ l }}</div>
                 </div>
             </div>
         </div>
@@ -346,6 +403,7 @@ const emit = defineEmits<{
     (e: "refresh"): void;
     (e: "stop-engine"): void;
     (e: "start-engine"): void;
+    (e: "restart-engine"): void;
     (e: "abort-setup"): void;
     (e: "enable-wsl"): void;
     (e: "update-wsl"): void;
@@ -360,6 +418,15 @@ const emit = defineEmits<{
     (e: "update:urlInput", v: string): void;
     (e: "update:webDownload", v: boolean): void;
 }>();
+
+/** 停止确认文案：Windows 要额外提醒 Docker Desktop 与系统服务会一起结束，Linux 只停服务 */
+const stopEngineTip = computed(() => {
+    if (props.setupBusy === "start") return "停止正在进行的启动？已开始的拉取/启动会被中断。";
+    if (caps.os === "windows") {
+        return "停止 Docker 引擎？所有运行中的容器会被中断，Docker Desktop 与 com.docker.service 都会结束。";
+    }
+    return "停止 Docker 引擎？所有运行中的容器会被中断（systemctl stop docker）。";
+});
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 

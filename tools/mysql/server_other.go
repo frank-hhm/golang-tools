@@ -80,6 +80,17 @@ func initFailHint(output string) string {
 	return ""
 }
 
+// myIniPlatformLines 平台相关的 socket / pid 文件位置。
+//
+// Linux 上 mysqld 默认把 socket 放到 /var/run/mysqld/mysqld.sock——那是全局唯一
+// 路径，第二个实例启动时会因 bind 失败直接退出（“Another process ... is using unix
+// socket file”）。多实例必须各用各的 socket 与 pid 文件，放在各自实例目录里。
+func myIniPlatformLines(instDir string) string {
+	return fmt.Sprintf("socket=%s\npid-file=%s\n",
+		filepath.ToSlash(filepath.Join(instDir, "mysql.sock")),
+		filepath.ToSlash(filepath.Join(instDir, "mysqld.pid")))
+}
+
 // hideWindowAttr 非 Windows 平台无需隐藏窗口
 func hideWindowAttr() *syscall.SysProcAttr {
 	return nil

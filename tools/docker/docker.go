@@ -72,6 +72,11 @@ func GetEngineStatus() (EngineInfo, error) {
 	info.Endpoint = endpointDesc()
 	if err != nil {
 		info.Error = err.Error()
+		// 引擎卡片只展示这一条错误：把“接下来做什么”一并带上，
+		// 否则用户看到的就是一句“无法连接”，不知道该查服务、查权限还是查安装
+		if hint := daemonUnavailableHint(dialFailures()); hint != "" {
+			info.Error += "\n" + hint
+		}
 		return info, nil // 不返回 error：前端按 Available 分支渲染引导
 	}
 	info.Available = true

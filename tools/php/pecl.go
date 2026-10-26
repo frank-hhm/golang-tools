@@ -337,7 +337,11 @@ func ExtCatalog(id string, force bool) ([]RemoteExtensionInfo, error) {
 		return nil, err
 	}
 	if isDockerMode(cfg) {
-		return nil, dockerGateError("扩展安装（pecl/Windows dll）")
+		return nil, dockerGateError("扩展管理")
+	}
+	// Linux 不走“下载 dll”这条路：扩展由发行版包提供，见 pecl_other.go
+	if systemPackaged {
+		return extCatalogSystem(cfg, id)
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
@@ -451,11 +455,14 @@ func InstallExtension(id, ext string, enable bool) error {
 		return err
 	}
 	if isDockerMode(cfg) {
-		return dockerGateError("扩展安装（pecl/Windows dll）")
+		return dockerGateError("扩展管理")
 	}
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	if ext == "" || strings.ContainsAny(ext, `/\ .`) {
 		return fmt.Errorf("非法扩展名: %s", ext)
+	}
+	if systemPackaged {
+		return installExtensionSystem(cfg, ext, enable)
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {
@@ -504,11 +511,14 @@ func SearchExtension(id, ext string) (*ExtSearchResult, error) {
 		return nil, err
 	}
 	if isDockerMode(cfg) {
-		return nil, dockerGateError("扩展搜索（pecl/Windows dll）")
+		return nil, dockerGateError("扩展搜索")
 	}
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	if ext == "" {
 		return nil, fmt.Errorf("扩展名不能为空")
+	}
+	if systemPackaged {
+		return searchExtensionSystem(ext)
 	}
 	series := majorSeries(cfg.Version)
 	kind := "ts"
@@ -562,11 +572,14 @@ func RemoveExtension(id, ext string) error {
 		return err
 	}
 	if isDockerMode(cfg) {
-		return dockerGateError("扩展卸载（pecl/Windows dll）")
+		return dockerGateError("扩展卸载")
 	}
 	ext = strings.ToLower(strings.TrimSpace(ext))
 	if ext == "" || strings.ContainsAny(ext, `/\ .`) {
 		return fmt.Errorf("非法扩展名: %s", ext)
+	}
+	if systemPackaged {
+		return removeExtensionSystem(ext)
 	}
 	exe := phpExe(cfg.Version, cfg.NTS)
 	if exe == "" {

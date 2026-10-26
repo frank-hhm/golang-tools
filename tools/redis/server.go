@@ -416,7 +416,7 @@ func copyDir(src, dst string) error {
 
 type localEntry struct {
 	Version string `json:"version"`
-	Path    string `json:"path"` // 目录或 redis-server.exe 路径
+	Path    string `json:"path"` // 目录或 redis-server 可执行文件路径
 }
 
 func loadLocals() []localEntry {
@@ -447,7 +447,7 @@ func saveLocals(list []localEntry) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// AddLocalVersion 注册本机已有的 redis-server 目录（或 exe 路径）
+// AddLocalVersion 注册本机已有的 redis-server 目录（或可执行文件路径）
 func AddLocalVersion(dir string) error {
 	dir = strings.Trim(dir, `"`)
 	if dir == "" {
@@ -460,17 +460,20 @@ func AddLocalVersion(dir string) error {
 	exe := ""
 	if st.IsDir() {
 		exe = findRedisServer(dir)
-	} else if strings.EqualFold(st.Name(), "redis-server.exe") {
+	} else if strings.EqualFold(st.Name(), binFileName) {
 		exe = dir
 	}
 	if exe == "" {
-		return fmt.Errorf("目录中未找到 redis-server.exe")
+		return fmt.Errorf("目录中未找到 %s", binFileName)
 	}
-	ver := st.Name()
-	if st.IsDir() {
-		ver = normalizeVersionName(ver)
-	} else {
-		ver = normalizeVersionName(filepath.Base(filepath.Dir(exe)))
+	// 版本号优先问二进制自己：Linux 的 /usr/bin/redis-server 路径里没有版本信息。
+	ver := sysx.ProbeVersion(exe, "--version")
+	if ver == "" {
+		if st.IsDir() {
+			ver = normalizeVersionName(st.Name())
+		} else {
+			ver = normalizeVersionName(filepath.Base(filepath.Dir(exe)))
+		}
 	}
 	list := loadLocals()
 	for i := range list {
@@ -590,7 +593,12 @@ type ghRelease struct {
 // 所以这里问的是发行版仓库能装哪个版本，安装时交给包管理器。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
 	if systemPackaged {
-		return systemRemoteVersions(), nil
+		list := systemRemoteVersions()
+		if len(list) == 0 {
+			// 空列表在界面上等于“没东西可装”，得把原因和命令一并说清楚
+			return nil, fmt.Errorf("%s", sysx.PackageHint(systemPkgNames))
+		}
+		return list, nil
 	}
 	req, err := http.NewRequest(http.MethodGet, ghReleasesAPI, nil)
 	if err != nil {

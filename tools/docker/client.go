@@ -61,6 +61,27 @@ const endpointSweepGap = 2 * time.Second
 // endpointProber 实探一个候选能不能用（单测换成假引擎）
 var endpointProber = probeEndpointLive
 
+// sweepErrs 最近一轮全量重扫里每个候选的拨号错误（与候选顺序一一对应）。
+// 只用来回答“为什么连不上”：socket 不存在、没权限、无人监听这三种情况
+// 在拨号层都是“失败”，但用户要做的下一步完全不同。
+var (
+	sweepMu   sync.Mutex
+	sweepErrs []error
+)
+
+func setSweepFailures(errs []error) {
+	sweepMu.Lock()
+	sweepErrs = errs
+	sweepMu.Unlock()
+}
+
+// dialFailures 最近一轮候选重扫的失败原因快照（给平台诊断文案用）
+func dialFailures() []error {
+	sweepMu.Lock()
+	defer sweepMu.Unlock()
+	return append([]error(nil), sweepErrs...)
+}
+
 // resolveEndpoint 取当前生效端点；未钉住时按限流做一次全量重扫
 func resolveEndpoint() endpoint {
 	endpMu.Lock()
@@ -79,17 +100,24 @@ func sweepLocked() endpoint {
 	endpSweptAt = time.Now()
 	cands := endpointCandidates()
 	tried := make([]string, 0, len(cands))
+	errs := make([]error, 0, len(cands))
 	for i, ep := range cands {
 		if err := endpointProber(ep); err == nil {
 			setEndpointLocked(ep, true)
+			setSweepFailures(nil)
 			applog.Infof("docker", "引擎端点定为 %s（第 %d/%d 个候选应答）", ep.desc, i+1, len(cands))
 			return ep
+		} else {
+			// 带上失败原因：权限不足与 socket 不存在在日志里长得一模一样，
+			// 不区分就只能给出“请确认服务正在运行”这种无用提示
+			tried = append(tried, shortEndpoint(ep)+"（"+classifyDialError(err)+"）")
+			errs = append(errs, err)
 		}
-		tried = append(tried, shortEndpoint(ep))
 	}
 	// 一个都不应答：仍按首选候选回话，不钉住；引擎一起来下一轮就能跟上
 	fb := cands[0]
 	setEndpointLocked(fb, false)
+	setSweepFailures(errs)
 	endpDesc = fb.desc + "（试过的候选都没应答：" + strings.Join(tried, "、") + "）"
 	return fb
 }

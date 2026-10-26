@@ -331,7 +331,7 @@ func ListVersions() ([]ServerVersion, error) {
 
 type localEntry struct {
 	Version string `json:"version"`
-	Path    string `json:"path"` // 目录或 php.exe 路径
+	Path    string `json:"path"` // 目录或 php 可执行文件路径
 }
 
 func loadLocals() []localEntry {
@@ -362,7 +362,7 @@ func saveLocals(list []localEntry) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// AddLocalVersion 注册本机已有的 PHP 目录（或 php.exe 路径）
+// AddLocalVersion 注册本机已有的 PHP 目录（或 php 可执行文件路径）
 func AddLocalVersion(dir string) error {
 	dir = strings.Trim(dir, `"`)
 	if dir == "" {
@@ -372,21 +372,23 @@ func AddLocalVersion(dir string) error {
 	if st, err := os.Stat(dir); err == nil {
 		if st.IsDir() {
 			exe = findPHP(dir)
-		} else if strings.EqualFold(st.Name(), "php.exe") {
+		} else if strings.EqualFold(st.Name(), binFileName) {
 			exe = dir
 		}
 	}
 	if exe == "" {
-		return fmt.Errorf("目录中未找到 php.exe（支持根目录或一级子目录）")
+		return fmt.Errorf("目录中未找到 %s（支持根目录或一级子目录）", binFileName)
 	}
-	ver := normalizeVersionName(filepath.Base(filepath.Dir(exe)))
+	// 版本号优先问二进制自己：Linux 的 /usr/bin/php 路径里没有版本信息。
+	ver := ""
+	if v, err := probeVersion(exe); err == nil {
+		ver = v
+	}
+	if strings.Count(ver, ".") < 2 {
+		ver = normalizeVersionName(filepath.Base(filepath.Dir(exe)))
+	}
 	if strings.Count(ver, ".") < 2 {
 		ver = normalizeVersionName(filepath.Base(dir))
-	}
-	if strings.Count(ver, ".") < 2 {
-		if v, err := probeVersion(exe); err == nil {
-			ver = v
-		}
 	}
 	list := loadLocals()
 	for i := range list {
@@ -564,7 +566,12 @@ func phpArchiveIndex(force bool) map[string]string {
 // 网络失败时回退内置常量清单；Linux 则问发行版仓库（官方包都是 Windows 构建）。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
 	if systemPackaged {
-		return systemRemoteVersions(), nil
+		list := systemRemoteVersions()
+		if len(list) == 0 {
+			// 空列表在界面上等于“没东西可装”，得把原因和命令一并说清楚
+			return nil, fmt.Errorf("%s", sysx.PackageHint(systemPkgNames))
+		}
+		return list, nil
 	}
 	idx := phpReleaseIndex(true)
 	if len(idx) == 0 {

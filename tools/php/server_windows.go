@@ -3,6 +3,7 @@
 package php
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -24,6 +25,18 @@ const perBinaryIni = true
 
 // rewriteExtDir Windows 绿色版的扩展放在 <php>/ext，必须由面板指过去。
 const rewriteExtDir = true
+
+// extIniValue 决定写进 php.ini 的扩展加载值，并回答“这枚扩展在本机是否存在”。
+//
+// Windows 绿色版的扩展是 <php>/ext 下的 php_<name>.dll，写全文件名最稳；
+// 找不到 dll 时返回 ok=false，由调用方决定是拒绝启用还是照常写名字。
+func extIniValue(name, phpDir string) (string, bool) {
+	dll := filepath.Join(phpDir, "ext", "php_"+name+".dll")
+	if _, err := os.Stat(dll); err == nil {
+		return "php_" + name + ".dll", true // 与官方 php.ini 注释行的写法保持一致
+	}
+	return name, false
+}
 
 // iniTemplateCandidates php.ini 模板就在 php.exe 同级目录。
 func iniTemplateCandidates(phpDir string) []string {

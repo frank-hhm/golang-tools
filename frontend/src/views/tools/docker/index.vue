@@ -7,6 +7,7 @@
       :setup-stage="setupStage" :setup-percent="setupPercent" :setup-note="setupNote" :setup-logs="setupLogs"
       :target-backend-label="targetBackendLabel" :probe-at="probeAt" @open-env="openEnv" @open-settings="openSettings"
       @open-switch="openSwitch" @refresh="manualRefresh" @stop-engine="stopEngine" @start-engine="startEngine"
+      @restart-engine="restartEngine"
       @abort-setup="abortSetup" @enable-wsl="enableWsl2" @update-wsl="updateWsl" @enable-hyperv="enableHyperV"
       @download-installer="downloadInstaller" @install-docker="installDocker" @clear-logs="setupLogs = []"
       @change-dir="applyInstallDir" />
@@ -631,6 +632,25 @@ async function startEngine() {
     await loadEnv();
   }
   if (setupBusy.value === "start") setupBusy.value = "";
+}
+
+/** 重启引擎：Linux 上改完加速站（daemon.json）只能靠 systemctl restart 生效，
+ *  没有 Docker Desktop 那套“重启按钮”。进度经 docker:setup 事件回到 setupNote。 */
+async function restartEngine() {
+  setupBusy.value = "restart";
+  setupStage.value = "starting";
+  setupPercent.value = 0;
+  setupNote.value = "正在重启 Docker 引擎（daemon.json 的改动此时生效）…";
+  try {
+    await GoTools.DockerSrvRestartEngine();
+    Message.success("Docker 引擎已重启");
+    await loadEngine(true);
+    await loadEnv();
+  } catch (e: any) {
+    Message.error("重启失败: " + String(e?.message || e));
+    await loadEnv();
+  }
+  if (setupBusy.value === "restart") setupBusy.value = "";
 }
 
 async function abortSetup() {

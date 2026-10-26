@@ -197,6 +197,7 @@
                             <template v-if="instForm.mode === 'docker'">
                                 容器内跑 php -S，站点目录挂载到 /var/www/html；首次启动会自动拉取镜像（可能几分钟）
                             </template>
+                            <template v-if="sysPkg">使用系统安装的 PHP（php -S 内置服务器，版本在「版本管理」里选）</template>
                             <template v-else>使用插件目录下的本机 PHP（php -S 内置服务器）</template>
                         </template>
                     </a-form-item>
@@ -204,12 +205,13 @@
 
                 <!-- 本地：版本 / 构型 / 端口 同一行 -->
                 <template v-if="instForm.mode !== 'docker'">
-                    <a-col :span="10">
+                    <a-col :span="sysPkg ? 17 : 10">
                         <a-form-item field="version" label="PHP 版本" required>
                             <a-select v-model="instForm.version" placeholder="选择已安装版本" :options="versionOptions" />
                         </a-form-item>
                     </a-col>
-                    <a-col :span="7">
+                    <!-- Linux 只有一种 php-cli 构建，NTS/ZTS 是 Windows 绿色版才有的区分 -->
+                    <a-col v-if="!sysPkg" :span="7">
                         <a-form-item field="nts" label="构型"
                             tooltip="NTS 非线程安全，php -S 内置服务器用这个；ZTS 线程安全，供 Apache 等多线程环境">
                             <a-radio-group v-model="instForm.nts" type="button" size="medium">
@@ -289,10 +291,11 @@
         <div class="vm-summary">
             <a-radio-group size="medium" v-model="verTab" type="button">
                 <a-radio value="local">本地版本 {{ localVersions.length }}</a-radio>
-                <a-radio value="remote">线上可安装 {{ remoteVersions.length }}</a-radio>
+                <a-radio value="remote">{{ sysPkg ? '仓库可安装' : '线上可安装' }} {{ remoteVersions.length }}</a-radio>
                 <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
             </a-radio-group>
-            <div class="vm-sum-item vm-sum-dir">
+            <!-- 插件目录只在绿色版有意义：Linux 的版本都在系统路径里，没有可复制的存放目录 -->
+            <div v-if="!sysPkg" class="vm-sum-item vm-sum-dir">
                 <span class="vm-sum-label">插件目录</span>
                 <a-tooltip :content="pluginsDirVal || '加载中…'">
                     <span class="vm-dir">{{ pluginsDirVal || '…' }}</span>
@@ -353,7 +356,7 @@
         <!-- 线上版本：固定高度滚动 -->
         <div v-show="verTab === 'remote'" class="vm-section">
             <div class="vm-head">
-                <span class="vm-head-title"><icon-cloud /> 线上版本（windows.php.net）</span>
+                <span class="vm-head-title"><icon-cloud /> {{ sysPkg ? '仓库可安装版本（发行版包，装到系统标准路径）' : '线上版本（windows.php.net）' }}</span>
                 <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">
                     <template #icon><icon-refresh /></template>刷新
                 </a-button>
@@ -364,11 +367,11 @@
                     :columns="[
                         { title: '版本', dataIndex: 'version', width: 100 },
                         { title: '产品线', dataIndex: 'release', width: 80 },
-                        { title: '包大小', dataIndex: 'size', width: 90, slotName: 'size' },
+                        { title: sysPkg ? '包名' : '包大小', dataIndex: 'size', width: 90, slotName: 'size' },
                         { title: '状态', dataIndex: 'st', width: 190, slotName: 'st' },
                         { title: '安装', dataIndex: 'ops', width: 150, slotName: 'ops', fixed: 'right', align: 'right' },
                     ]">
-                    <template #size="{ record }">{{ fmtBytes(record.size) }}</template>
+                    <template #size="{ record }">{{ remoteVerText(record) }}</template>
                     <template #st="{ record }">
                         <span v-if="installedSet.has(record.version)" class="com-state is-on">
                             <com-badge status="success" />已安装
@@ -391,6 +394,11 @@
                         <a-button v-if="installedSet.has(record.version)" size="small" @click="loadLocalVersions">已安装</a-button>
                         <a-button v-else-if="installProgress[record.version] && installProgress[record.version].stage !== 'error'"
                             size="small" disabled>安装中…</a-button>
+                        <template v-else-if="sysPkg">
+                            <a-tooltip content="Linux 只有一条 php-cli 包可用，不区分 NTS/ZTS">
+                                <a-button size="small" @click="installVersion(record, true)">安装</a-button>
+                            </a-tooltip>
+                        </template>
                         <template v-else>
                             <a-tooltip content="非线程安全（推荐，php -S 场景）">
                                 <a-button size="small" @click="installVersion(record, true)">NTS</a-button>
@@ -403,7 +411,8 @@
                     </template>
                 </a-table>
             </a-spin>
-            <div class="vm-tip">离线安装：将 php zip（如 php-8.3.36-nts-Win32-vs16-x64.zip）放入插件目录后刷新本地版本即可。</div>
+            <div v-if="sysPkg" class="vm-tip">版本由发行版仓库提供：点「安装」即由包管理器装好 php-cli（含标准扩展），装完刷新本地版本即可选。</div>
+            <div v-else class="vm-tip">离线安装：将 php zip（如 php-8.3.36-nts-Win32-vs16-x64.zip）放入插件目录后刷新本地版本即可。</div>
         </div>
 
         <!-- 任务日志：固定高度滚动；Docker 页签不涉及下载/安装，不占这一块地方 -->
@@ -493,30 +502,31 @@
             <a-input-search v-model="extFilter" placeholder="搜索扩展名" size="small" style="width:200px" allow-clear />
         </div>
         <a-table :data="filteredExtensions" size="small" :pagination="false" row-key="name" :scroll="{ y: 260 }"
-            :columns="[
-                { title: '扩展', dataIndex: 'name', width: 140 },
-                { title: 'DLL', dataIndex: 'dll', ellipsis: true, tooltip: true },
-                { title: '内置', dataIndex: 'system', width: 60, slotName: 'system' },
-                { title: '有 DLL', dataIndex: 'available', width: 72, slotName: 'available' },
-                { title: '已启用', dataIndex: 'enabled', width: 80, slotName: 'enabled' },
-                { title: '已加载', dataIndex: 'loaded', width: 72, slotName: 'loaded' },
-            ]">
-            <template #system="{ record }"><a-tag v-if="record.system" size="small">核心</a-tag></template>
+            :columns="extColumns">
+            <!-- 绿色版：按 ext 目录里的 dll 判断能不能开；Linux：扩展由发行版包提供，没有 dll 这一层。
+                 已随系统加载的模块（Core、date 这类）没有对应包，不能拿扩展名硬拼包名。 -->
+            <template #dll="{ record }">
+                <template v-if="sysPkg">{{ record.system ? '—' : 'php-' + record.name }}</template>
+                <template v-else>{{ record.dll }}</template>
+            </template>
+            <template #system="{ record }"><a-tag v-if="record.system" size="small">{{ sysPkg ? '系统' : '核心' }}</a-tag></template>
             <template #available="{ record }"><a-tag v-if="record.available" color="green" size="small">√</a-tag></template>
             <template #enabled="{ record }">
-                <a-tag v-if="record.system" size="small" color="gray">核心内置</a-tag>
+                <a-tag v-if="record.system" size="small" color="gray">{{ sysPkg ? '随系统加载' : '核心内置' }}</a-tag>
                 <a-tag v-else-if="!record.available && !record.enabled" size="small" color="gray">无 DLL</a-tag>
                 <a-switch v-else v-model="record.enabled" size="small"
                     @change="(v: any) => toggleExt(record, !!v)" />
             </template>
             <template #loaded="{ record }"><a-tag v-if="record.loaded" color="arcoblue" size="small">√</a-tag></template>
         </a-table>
-        <div class="offline-tip">切换开关会写入 php.ini；重启实例后“已加载”才会刷新。</div>
+        <div v-if="sysPkg" class="offline-tip">这里的扩展由发行版包提供（如 php-curl），随系统 php.ini / scan 目录加载；
+            增删请用下方「扩展安装」（包管理器），卸载也只能用包管理器。</div>
+        <div v-else class="offline-tip">切换开关会写入 php.ini；重启实例后“已加载”才会刷新。</div>
     
         <a-divider style="margin: 12px 0" />
     
         <div class="ext-section-head">
-            <span class="ext-section-title"><icon-cloud /> 在线可下载安装（PECL Windows）</span>
+            <span class="ext-section-title"><icon-cloud /> {{ sysPkg ? '扩展安装（发行版包 php-<ext>，需 root）' : '在线可下载安装（PECL Windows）' }}</span>
             <a-button size="small" :loading="remoteExtsLoading" @click="loadRemoteExts(true)">
                 <template #icon><icon-refresh /></template>强制刷新
             </a-button>
@@ -555,7 +565,7 @@
                         <a-button v-if="record.matchable && !record.installed" size="small"
                             :disabled="record.busy" @click="installRemoteExt(record.name)">安装并启用</a-button>
                         <a-popconfirm v-if="record.downloaded && !record.busy"
-                            :content="`删除已下载的扩展 ${record.name}？DLL 文件会被移除，内置 DLL 不受影响。`"
+                            :content="sysPkg ? `卸载 ${record.name}？Linux 上扩展由包管理器管理，这里只会提示对应命令` : `删除已下载的扩展 ${record.name}？DLL 文件会被移除，内置 DLL 不受影响。`"
                             type="warning" position="lt" @ok="removeRemoteExt(record.name)">
                             <a-button size="small" status="danger" :loading="record.busy">删除</a-button>
                         </a-popconfirm>
@@ -563,7 +573,8 @@
                 </template>
             </a-table>
         </a-spin>
-        <div class="offline-tip">DLL 将安装到 PHP 版本 ext 目录；删除仅针对在线获取版本，内置 DLL 不可删除。安装完成后请重启实例生效。</div>
+        <div v-if="sysPkg" class="offline-tip">安装交给发行版包管理器（php-&lt;扩展名&gt;），需要 root；仓库里没有的扩展会提示改用 pecl 编译。安装完成后请重启实例生效。</div>
+        <div v-else class="offline-tip">DLL 将安装到 PHP 版本 ext 目录；删除仅针对在线获取版本，内置 DLL 不可删除。安装完成后请重启实例生效。</div>
     </a-modal>
 
     <!-- 禁用函数 -->
@@ -595,8 +606,12 @@ import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import { remoteVerText, useSysPkg } from "@/utils/caps";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+
+/** 系统包模式（Linux）：版本与扩展都来自发行版仓库，没有 Windows 绿色版 zip/dll */
+const sysPkg = useSysPkg();
 
 interface InstConfig { id: string; name: string; version: string; port: number; nts: boolean; docRoot: string; router: string; enableLogs: boolean; mode: string; image: string; containerName: string }
 
@@ -697,6 +712,26 @@ const filteredExtensions = computed(() => {
     const q = extFilter.value.trim().toLowerCase();
     return q ? extensions.value.filter((e: any) => e.name.toLowerCase().includes(q) || (e.dll || "").toLowerCase().includes(q)) : extensions.value;
 });
+/**
+ * 本地扩展表头：绿色版按 ext 目录里的 dll 判断能不能开；
+ * Linux 上扩展由发行版包提供（没有 dll），改成展示对应的包名。
+ */
+const extColumns = computed(() => sysPkg.value
+    ? [
+        { title: "扩展", dataIndex: "name", width: 140 },
+        { title: "发行版包", dataIndex: "dll", slotName: "dll", ellipsis: true },
+        { title: "内置", dataIndex: "system", width: 60, slotName: "system" },
+        { title: "已启用", dataIndex: "enabled", width: 110, slotName: "enabled" },
+        { title: "已加载", dataIndex: "loaded", width: 72, slotName: "loaded" },
+    ]
+    : [
+        { title: "扩展", dataIndex: "name", width: 140 },
+        { title: "DLL", dataIndex: "dll", ellipsis: true, tooltip: true },
+        { title: "内置", dataIndex: "system", width: 60, slotName: "system" },
+        { title: "有 DLL", dataIndex: "available", width: 72, slotName: "available" },
+        { title: "已启用", dataIndex: "enabled", width: 80, slotName: "enabled" },
+        { title: "已加载", dataIndex: "loaded", width: 72, slotName: "loaded" },
+    ]);
 
 /* ============================ 小工具 ============================ */
 function srcLabel(s: string): string {
@@ -709,12 +744,6 @@ function stageText(p: any): string {
     if (p.stage === "done") return "完成";
     if (p.stage === "info") return "准备中";
     return "失败";
-}
-function fmtBytes(b: number): string {
-    if (!b) return "-";
-    const units = ["B", "KB", "MB", "GB"]; let i = 0; let v = b;
-    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-    return v.toFixed(i > 0 ? 1 : 0) + " " + units[i];
 }
 function fmtUptimeS(sec?: number): string {
     if (!sec || sec <= 0) return "-";
@@ -1098,12 +1127,15 @@ function showInstallError(version: string, note: string) {
         okText: "知道了",
         content: () => h("div", { style: "font-size:13px;line-height:1.7" }, [
             h("div", { style: "color:var(--color-text-1);word-break:break-all" }, shortErr(note)),
+            // Linux 没有“放个 zip 进去”这条路：失败只可能是包管理器/权限/网络
             h("div", { style: "margin-top:8px;color:var(--color-text-3);font-size:12px" },
-                "可稍后重试；或将对应 php zip 放入以下插件目录后刷新本地版本，离线安装。"),
+                sysPkg.value
+                    ? "可稍后重试；若提示需要 root、仓库无此版本或网络不通，请按提示在服务器上执行对应命令后刷新。"
+                    : "可稍后重试；或将对应 php zip 放入以下插件目录后刷新本地版本，离线安装。"),
             h("div", {
                 style: "margin-top:6px;padding:6px 8px;border-radius:4px;background:var(--color-fill-2);" +
                     "font-family:Consolas,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--color-text-2)",
-            }, pluginsDirVal.value || "插件目录加载中…"),
+            }, sysPkg.value ? "由发行版包管理器提供（apt / dnf）" : (pluginsDirVal.value || "插件目录加载中…")),
         ]),
         onClose: () => { errModalOpen = false; },
     });

@@ -210,7 +210,7 @@ func compareVersion(a, b string) int {
 	return 0
 }
 
-// findMysqld 在版本目录内定位 mysqld.exe：根/bin、根一级子目录/bin、根、根一级子目录
+// findMysqld 在版本目录内定位 mysqld：根/bin、根一级子目录/bin、根、根一级子目录
 func findMysqld(dir string) string {
 	try := []string{
 		filepath.Join(dir, "bin", binFileName),
@@ -313,7 +313,7 @@ func ListVersions() ([]ServerVersion, error) {
 
 type localEntry struct {
 	Version string `json:"version"`
-	Path    string `json:"path"` // 目录或 mysqld.exe 路径
+	Path    string `json:"path"` // 目录或 mysqld 可执行文件路径
 }
 
 func loadLocals() []localEntry {
@@ -344,7 +344,7 @@ func saveLocals(list []localEntry) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// AddLocalVersion 注册本机已有的 MySQL 目录（或 mysqld.exe 路径）
+// AddLocalVersion 注册本机已有的 MySQL 目录（或 mysqld 可执行文件路径）
 func AddLocalVersion(dir string) error {
 	dir = strings.Trim(dir, `"`)
 	if dir == "" {
@@ -354,16 +354,21 @@ func AddLocalVersion(dir string) error {
 	if st, err := os.Stat(dir); err == nil {
 		if st.IsDir() {
 			exe = findMysqld(dir)
-		} else if strings.EqualFold(st.Name(), "mysqld.exe") {
+		} else if strings.EqualFold(st.Name(), binFileName) {
 			exe = dir
 		}
 	}
 	if exe == "" {
-		return fmt.Errorf("目录中未找到 mysqld.exe（支持根目录或 bin/、一级子目录）")
+		return fmt.Errorf("目录中未找到 %s（支持根目录或 bin/、一级子目录）", binFileName)
 	}
-	ver := normalizeVersionName(filepath.Base(filepath.Dir(filepath.Dir(exe)))) // <base>/bin/mysqld.exe → <base> 名
-	if strings.Count(ver, ".") < 2 {
-		ver = normalizeVersionName(filepath.Base(filepath.Dir(exe)))
+	// 版本号优先问二进制自己：Linux 系统包的 mysqld 在 /usr/sbin，路径里没有版本信息，
+	// 只靠目录名推导会把 /usr/sbin 认成版本号。
+	ver := sysx.ProbeVersion(exe, "--version")
+	if ver == "" {
+		ver = normalizeVersionName(filepath.Base(filepath.Dir(filepath.Dir(exe)))) // <base>/bin/mysqld → <base> 名
+		if strings.Count(ver, ".") < 2 {
+			ver = normalizeVersionName(filepath.Base(filepath.Dir(exe)))
+		}
 	}
 	list := loadLocals()
 	for i := range list {
@@ -501,7 +506,12 @@ func probeSeriesLatest(p seriesProbe) (string, int64, bool) {
 // 所以这里问的是发行版仓库能装哪个版本，安装时交给包管理器。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
 	if systemPackaged {
-		return systemRemoteVersions(), nil
+		list := systemRemoteVersions()
+		if len(list) == 0 {
+			// 空列表在界面上等于“没东西可装”，得把原因和命令一并说清楚
+			return nil, fmt.Errorf("%s", sysx.PackageHint(systemPkgNames))
+		}
+		return list, nil
 	}
 	type res struct {
 		ver  string
@@ -1396,6 +1406,7 @@ func buildMyIni(cfg *InstanceConfig, basedir, instDir, dataDir string) string {
 	fmt.Fprintf(&b, "port=%d\n", cfg.Port)
 	fmt.Fprintf(&b, "log-error=%s\n", filepath.ToSlash(filepath.Join(instDir, "mysql.err")))
 	fmt.Fprintf(&b, "max_connections=%d\n", maxConn)
+	b.WriteString(myIniPlatformLines(instDir))
 	b.WriteString("skip-name-resolve\n")
 	return b.String()
 }

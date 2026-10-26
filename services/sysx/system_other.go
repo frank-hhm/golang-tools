@@ -27,6 +27,9 @@ func PackageCandidate(pkg string) string { return "" }
 // PackageCandidates 非 Linux 平台恒为空。
 func PackageCandidates(pkgs []string) []PkgCandidate { return nil }
 
+// PackageHint 非 Linux 平台不会拿“系统包”当版本来源，不需要提示。
+func PackageHint(pkgs []string) string { return "" }
+
 // InstallPackages 非 Linux 平台没有可用的系统包安装通道。
 //
 // Windows 上的四个服务走的是自带的绿色版 zip（plugins 目录），这条路本来

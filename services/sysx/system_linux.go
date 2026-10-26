@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -73,6 +74,24 @@ func PackageCandidate(pkg string) string {
 		return m[1]
 	}
 	return ""
+}
+
+// PackageHint 系统包候选全为空时给用户的下一步。
+//
+// 两种情况的返回值都是空列表，但动作完全不同：没有 apt-get/dnf/yum 的镜像
+// （容器常见）得先装包管理器；有包管理器却查不到包，多半是软件源没启用。
+// 工具包把这句话当成错误返回，前端就能直接把命令行展示出来。
+func PackageHint(pkgs []string) string {
+	names := strings.Join(pkgs, " / ")
+	mgr := PkgManager()
+	if mgr == "" {
+		return fmt.Sprintf("未检测到 apt-get / dnf / yum，无法从发行版仓库取版本列表；请手工安装 %s 后刷新", names)
+	}
+	if len(pkgs) == 0 {
+		return fmt.Sprintf("发行版仓库里没有可安装的包（管理器 %s）", filepath.Base(mgr))
+	}
+	return fmt.Sprintf("发行版仓库里没有 %s：请在服务器执行 sudo %s install -y %s 后刷新，或确认软件源已启用",
+		names, filepath.Base(mgr), pkgs[len(pkgs)-1])
 }
 
 // PackageCandidates 按给定顺序批量查询（保持顺序，去掉查不到的）。

@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go-tools/services/sysx"
 )
 
 const nginxDownloadPage = "https://nginx.org/en/download.html"
@@ -55,7 +57,12 @@ var nginxFallback = []string{"1.29.1", "1.28.0", "1.27.5", "1.26.3", "1.25.5", "
 // 根本不存在，所以这里问的是仓库能装哪个版本，安装时交给包管理器。
 func FetchRemoteVersions() ([]RemoteVersion, error) {
 	if systemPackaged {
-		return systemRemoteVersions(), nil
+		list := systemRemoteVersions()
+		if len(list) == 0 {
+			// 空列表在界面上等于“没东西可装”，得把原因和命令一并说清楚
+			return nil, fmt.Errorf("%s", sysx.PackageHint(systemPkgNames))
+		}
+		return list, nil
 	}
 	cands := map[string]bool{}
 	if body, err := httpGet(nginxDownloadPage); err == nil {

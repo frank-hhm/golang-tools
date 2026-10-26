@@ -41,6 +41,28 @@ var defaultPipes = []string{
 
 const errDaemonUnavailable = "无法连接 Docker 引擎（请确认 Docker Desktop 或 Docker Engine 正在运行）"
 
+// classifyDialError 给单个候选管道的拨号失败起个短名。
+// 管道不存在 / 拒绝访问 / 忙 的下一步动作不同，混成一句“没应答”帮不上忙。
+func classifyDialError(err error) string {
+	switch {
+	case err == nil:
+		return "正常"
+	case errors.Is(err, windows.ERROR_FILE_NOT_FOUND), errors.Is(err, windows.ERROR_PATH_NOT_FOUND):
+		return "管道不存在"
+	case errors.Is(err, windows.ERROR_ACCESS_DENIED):
+		return "拒绝访问"
+	case errors.Is(err, windows.ERROR_PIPE_BUSY):
+		return "管道忙"
+	case errors.Is(err, windows.ERROR_PIPE_NOT_CONNECTED), errors.Is(err, windows.ERROR_BROKEN_PIPE):
+		return "管道已断开"
+	}
+	return "拨号失败"
+}
+
+// daemonUnavailableHint Windows 侧不额外补命令：启动/安装都有按钮可点，
+// errDaemonUnavailable 里已经写明要确认 Desktop 或 Engine 正在运行。
+func daemonUnavailableHint([]error) string { return "" }
+
 /* ============================ 命名管道 Conn ============================ */
 
 type pipeConn struct {

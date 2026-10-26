@@ -682,11 +682,10 @@ func SetExtension(id, name string, enable bool) (string, error) {
 	}
 	lines := strings.Split(text, "\n")
 	target := strings.ToLower(name)
-	dll := filepath.Join(phpDir, "ext", "php_"+name+".dll")
-	extValue := name
-	if _, err := os.Stat(dll); err == nil {
-		extValue = "php_" + name + ".dll" // 与官方 php.ini 注释行的写法保持一致
-	} else if enable {
+	// extValue/present 由平台层决定：Windows 要 <php>/ext/php_<name>.dll 存在，
+	// Linux 只写扩展名（可能在 scan 目录里，看文件是看不到的）。
+	extValue, present := extIniValue(name, phpDir)
+	if enable && !present {
 		return "", fmt.Errorf("扩展 %s 不在 %s 中，无法启用", name, filepath.ToSlash(filepath.Join(phpDir, "ext")))
 	}
 	matched := false
@@ -723,10 +722,11 @@ func SetExtension(id, name string, enable bool) (string, error) {
 			lines = append(lines, extMarker, line)
 		}
 	}
-	// 确保 extension_dir 正确
-	fixed, changed := iniSetExtDir(strings.Join(lines, "\n"), phpDir)
-	if changed {
-		lines = strings.Split(fixed, "\n")
+	// 确保 extension_dir 正确（仅绿色版：Linux 的 extension_dir 是发行版的，不能改）
+	if rewriteExtDir {
+		if fixed, changed := iniSetExtDir(strings.Join(lines, "\n"), phpDir); changed {
+			lines = strings.Split(fixed, "\n")
+		}
 	}
 	iniPath, err := iniPathOf(id)
 	if err != nil {

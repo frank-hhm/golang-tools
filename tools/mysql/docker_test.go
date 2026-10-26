@@ -59,7 +59,10 @@ func TestDockerSpecOf(t *testing.T) {
 		ID: "inst-1", Name: "本地库", Port: 3307, Image: "mysql:8.4",
 		RootPassword: "secret", MaxConnections: 200,
 	}
-	spec := dockerSpecOf(cfg, `C:\data\mysql\inst-1\data`)
+	// 数据目录用当前平台的绝对路径构造：Windows 上才需要把反斜杠转成 docker 认的正斜杠，
+	// 硬编码 C:\... 会让同一个测试在 Linux 上因 filepath.ToSlash 不处理反斜杠而假失败。
+	dataDir := filepath.Join(t.TempDir(), "mysql", "inst-1", "data")
+	spec := dockerSpecOf(cfg, dataDir)
 
 	if spec.Name != "go-tools-mysql-inst-1" || spec.Image != "mysql:8.4" {
 		t.Fatalf("基础字段错误: %+v", spec)
@@ -67,7 +70,7 @@ func TestDockerSpecOf(t *testing.T) {
 	if spec.ContainerPort != 3306 || spec.HostPort != 3307 || spec.HostIP != "127.0.0.1" {
 		t.Fatalf("端口映射错误: %+v", spec)
 	}
-	wantBind := "C:/data/mysql/inst-1/data:/var/lib/mysql"
+	wantBind := filepath.ToSlash(dataDir) + ":/var/lib/mysql"
 	if len(spec.Binds) != 1 || spec.Binds[0] != wantBind {
 		t.Fatalf("数据目录挂载应为容器路径正斜杠, 实际: %#v", spec.Binds)
 	}
@@ -82,7 +85,7 @@ func TestDockerSpecOf(t *testing.T) {
 	}
 
 	// 空密码：与本地模式 --initialize-insecure 对齐，走官方镜像的允许空密码开关
-	nopw := dockerSpecOf(&InstanceConfig{ID: "inst-2", Port: 3308, Image: "mysql:8.4"}, `D:\d`)
+	nopw := dockerSpecOf(&InstanceConfig{ID: "inst-2", Port: 3308, Image: "mysql:8.4"}, filepath.Join(t.TempDir(), "d"))
 	if len(nopw.Env) != 1 || nopw.Env[0] != "MYSQL_ALLOW_EMPTY_PASSWORD=yes" {
 		t.Fatalf("空密码应注入 MYSQL_ALLOW_EMPTY_PASSWORD, 实际: %#v", nopw.Env)
 	}
