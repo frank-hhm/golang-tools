@@ -6,13 +6,14 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/gopacket v1.1.19
 	github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
+	github.com/pkg/sftp v1.13.12
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/wailsapp/go-webview2 v1.0.22
 	github.com/wailsapp/wails/v3 v3.0.0-beta.12
 	go.bug.st/serial v1.8.0
-	golang.org/x/crypto v0.53.0
-	golang.org/x/sys v0.46.0
-	golang.org/x/text v0.39.0
+	golang.org/x/crypto v0.54.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/text v0.40.0
 )
 
 require (
@@ -24,6 +25,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect

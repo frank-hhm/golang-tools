@@ -19,6 +19,7 @@ import (
 	"go-tools/appdirs"
 	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
+	"go-tools/tools/srvstate"
 )
 
 func init() {
@@ -276,6 +277,8 @@ type srvRunning struct {
 	done    chan struct{}
 	logFile *os.File
 	mem     *ring
+	// 就绪 / 主动停止标记：退出时据此区分「崩溃」与「用户停止」，见 srvstate
+	srvstate.Flag
 	// Docker 模式无宿主子进程，改记容器 ID
 	containerID string
 }
@@ -405,6 +408,14 @@ func StartInstance(id string) error {
 		}
 		srvRunMu.Unlock()
 		_ = lf.Close()
+		// 就绪后非主动停止的退出＝崩溃：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			code := -1
+			if cmd.ProcessState != nil {
+				code = cmd.ProcessState.ExitCode()
+			}
+			srvEmit("php"+srvstate.EventSuffix, srvstate.NewEvent("php", "local", id, cfg.Name, cfg.Port, code))
+		}
 	}()
 
 	// 等待就绪（最多 15s；进程提前退出则立即报错并附日志尾部）
@@ -416,6 +427,7 @@ func StartInstance(id string) error {
 		default:
 		}
 		if tcpUp(cfg.Port) {
+			p.MarkReady()
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -438,6 +450,10 @@ func StopInstance(id string) error {
 	p := trackedSrv(id)
 	if p == nil && !tcpUp(cfg.Port) {
 		return fmt.Errorf("实例未在运行")
+	}
+	// 先标记主动停止：此后进程退出属于预期，不发「异常退出」通知
+	if p != nil {
+		p.MarkStopping()
 	}
 	pid := 0
 	if p != nil && p.cmd != nil && p.cmd.Process != nil {

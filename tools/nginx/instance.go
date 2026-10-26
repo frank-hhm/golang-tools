@@ -18,6 +18,7 @@ import (
 	"go-tools/appdirs"
 	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
+	"go-tools/tools/srvstate"
 
 	"github.com/shirou/gopsutil/v3/process"
 )
@@ -201,6 +202,8 @@ type srvRunning struct {
 	done        chan struct{}
 	started     time.Time
 	containerID string // 容器模式没有 cmd，改记容器 ID
+	// 就绪 / 主动停止标记：退出时据此区分「崩溃」与「用户停止」，见 srvstate
+	srvstate.Flag
 }
 
 var (
@@ -361,6 +364,14 @@ func StartInstance(id string) error {
 			delete(srvProcs, id)
 		}
 		srvRunMu.Unlock()
+		// 就绪后非主动停止的退出＝崩溃：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			code := -1
+			if cmd.ProcessState != nil {
+				code = cmd.ProcessState.ExitCode()
+			}
+			srvEmit("nginx"+srvstate.EventSuffix, srvstate.NewEvent("nginx", "local", id, cfg.Name, cfg.Port, code))
+		}
 	}()
 
 	// nginx 启动后 master 会立即返回（worker 由 master 派生），等待端口就绪
@@ -372,6 +383,7 @@ func StartInstance(id string) error {
 		default:
 		}
 		if tcpUp(cfg.Port) {
+			p.MarkReady()
 			return nil
 		}
 		time.Sleep(300 * time.Millisecond)
@@ -395,6 +407,10 @@ func StopInstance(id string) error {
 	p := trackedSrv(id)
 	if p == nil && !tcpUp(cfg.Port) {
 		return fmt.Errorf("实例未在运行")
+	}
+	// 先标记主动停止：此后进程退出属于预期，不发「异常退出」通知
+	if p != nil {
+		p.MarkStopping()
 	}
 	prefix, _ := instanceDir(id)
 	confPath, _ := instanceConfPath(id)

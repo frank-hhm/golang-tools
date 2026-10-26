@@ -791,6 +791,7 @@ import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import { restoreInstalls, runningTasks } from "@/store/modules/tasks";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -1607,6 +1608,15 @@ onMounted(async () => {
     if (wantId && instances.value.some((i) => i.id === wantId)) selectInst(wantId);
     loadLocalVersions();
     loadOverview();
+    // 离开页面时还在装/还在切版本：从任务台账把页面自己的进度补回来
+    restoreInstalls("npm", "install", installProgress, pushInstallLog);
+    runningTasks("npm", "npmver").then((list) => {
+        const t = list[0];
+        if (!t) return;
+        cliBusy.value = t.name;
+        cliProgress.value = { stage: t.stage, percent: t.percent, note: t.note };
+        pushCliLog(`接管未完成的切换：${t.title}（${t.percent}%）`);
+    });
     srvTimer = setInterval(refreshStates, 3000);
     // 单例窗口已打开时，主页再次点击其他实例 → 通过事件切换
     offSelInst = Events.On("tool:select-inst", (ev: any) => {

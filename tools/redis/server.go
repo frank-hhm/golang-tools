@@ -41,6 +41,7 @@ import (
 	"go-tools/services/sysx"
 	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
+	"go-tools/tools/srvstate"
 )
 
 func init() {
@@ -1102,6 +1103,8 @@ type runningProc struct {
 	mu      sync.Mutex
 	logs    []string // 环形缓冲（本进程生命周期内）
 	done    chan struct{}
+	// 就绪 / 主动停止标记：退出时据此区分「崩溃」与「用户停止」，见 srvstate
+	srvstate.Flag
 	// containerID 容器模式的实例没有 cmd，改用容器 ID 标识（停止/日志/状态都走 docker API）
 	containerID string
 }
@@ -1265,6 +1268,14 @@ func StartInstance(id string) error {
 			delete(runProcs, id)
 		}
 		runMu.Unlock()
+		// 就绪后非主动停止的退出＝崩溃：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			code := -1
+			if cmd.ProcessState != nil {
+				code = cmd.ProcessState.ExitCode()
+			}
+			emit("redis"+srvstate.EventSuffix, srvstate.NewEvent("redis", "local", id, cfg.Name, cfg.Port, code))
+		}
 	}()
 
 	// 等待就绪（最多 8s）
@@ -1272,6 +1283,7 @@ func StartInstance(id string) error {
 	for time.Now().Before(deadline) {
 		if isProcessRunning(id, cfg.Port, cfg.Password) {
 			appendProcLog(p, id, fmt.Sprintf("[go-tools] 实例 %s 启动成功 (port=%d ver=%s pid=%d)", cfg.Name, cfg.Port, cfg.Version, cmd.Process.Pid))
+			p.MarkReady()
 			return nil
 		}
 		select {
@@ -1319,6 +1331,10 @@ func StopInstance(id string) error {
 	p := trackedProc(id)
 	if !isProcessRunning(id, cfg.Port, cfg.Password) && p == nil {
 		return fmt.Errorf("实例未在运行")
+	}
+	// 先标记主动停止：此后进程退出属于预期，不发「异常退出」通知
+	if p != nil {
+		p.MarkStopping()
 	}
 	// 优雅关闭
 	if c, derr := dial(fmt.Sprintf("127.0.0.1:%d", cfg.Port), cfg.Password, 0, time.Second); derr == nil {

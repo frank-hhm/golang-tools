@@ -186,6 +186,7 @@ func DefaultConfig() AppConfig {
 			{ID: "nginx", Key: "nginx", Name: "Nginx管理", Path: "/tools/nginx", Icon: "icon-ngnix", Single: true, Width: 1200, Height: 800},
 			{ID: "docker", Key: "docker", Name: "Docker管理", Path: "/tools/docker", Icon: "computer", Single: true, Width: 1200, Height: 800},
 			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "code", Single: true, Fullscreen: true, Quick: true},
+			{ID: "ftp", Key: "ftp", Name: "文件传输", Path: "/tools/ftp", Icon: "folder", Single: true, Fullscreen: true, Quick: true},
 			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1200, Height: 800},
 			{ID: "browser", Key: "browser", Name: "浏览器", Path: "/tools/browser", Icon: "computer", Single: true, Fullscreen: true},
 			{ID: "disk", Key: "disk", Name: "磁盘管理", Path: "/tools/disk", Icon: "folder", Single: true, Width: 1360, Height: 860},
@@ -439,6 +440,7 @@ func normalizeConfig(cfg *AppConfig) {
 		{"nginx", "nginx", "Nginx管理", "/tools/nginx", "icon-ngnix"},
 		{"docker", "docker", "Docker管理", "/tools/docker", "computer"},
 		{"term", "term", "终端连接", "/tools/term", "code"},
+		{"ftp", "ftp", "文件传输", "/tools/ftp", "folder"},
 		{"npm", "npm", "Npm管理", "/tools/npm", "icon-npm"},
 		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-wangluo1"},
 		{"browser", "browser", "浏览器", "/tools/browser", "computer"},
@@ -472,6 +474,11 @@ func normalizeConfig(cfg *AppConfig) {
 			if extra.key == "disk" {
 				// 文件管理器列多：默认给大一点的窗口，不留空白边
 				newTool.Width, newTool.Height = 1360, 860
+			}
+			if extra.key == "ftp" {
+				// 双栏文件管理要满屏，左右两栏都不挤
+				newTool.Width, newTool.Height = 0, 0
+				newTool.Fullscreen = true
 			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}

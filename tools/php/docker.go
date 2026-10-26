@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"go-tools/tools/docker"
+	"go-tools/tools/srvstate"
 )
 
 const (
@@ -276,7 +277,7 @@ func dockerStart(cfg *InstanceConfig) error {
 	srvRunMu.Lock()
 	srvProcs[cfg.ID] = p
 	srvRunMu.Unlock()
-	watchDockerExit(cfg.ID, id, p)
+	watchDockerExit(cfg, id, p)
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
@@ -286,6 +287,7 @@ func dockerStart(cfg *InstanceConfig) error {
 		default:
 		}
 		if tcpUp(cfg.Port) {
+			p.MarkReady()
 			return nil
 		}
 		time.Sleep(300 * time.Millisecond)
@@ -297,8 +299,14 @@ func dockerStart(cfg *InstanceConfig) error {
 // watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐）。
 // 交给 docker 包的共享看护：引擎一时问不到（管道忙/熔断/自更新）时按运行中处理并退避，
 // 只有容器真的停了或被删除才摘除——否则一次抖动就把还在跑的实例从进程表抹掉。
-func watchDockerExit(instID, containerID string, p *srvRunning) {
-	docker.WatchContainerExit(containerID, func() { forgetSrv(instID, p) })
+func watchDockerExit(cfg *InstanceConfig, containerID string, p *srvRunning) {
+	docker.WatchContainerExit(containerID, func() {
+		// 就绪后非主动停止的退出＝容器崩了：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			srvEmit("php"+srvstate.EventSuffix, srvstate.NewEvent("php", "docker", cfg.ID, cfg.Name, cfg.Port, -1))
+		}
+		forgetSrv(cfg.ID, p)
+	})
 }
 
 // forgetSrv 从进程表摘除该实例（幂等：只有仍指向同一对象时才删）
@@ -321,6 +329,10 @@ func dockerStop(cfg *InstanceConfig) error {
 	if id == "" {
 		return fmt.Errorf("未找到该实例对应的容器（可能已被删除）")
 	}
+	// 先标记主动停止：停容器会触发退出回调，不发「异常退出」通知
+	if p := trackedSrv(cfg.ID); p != nil {
+		p.MarkStopping()
+	}
 	if err := docker.StopContainer(id, 10); err != nil {
 		return fmt.Errorf("停止容器失败: %v", err)
 	}
@@ -341,6 +353,10 @@ func dockerRemove(cfg *InstanceConfig) error {
 	id := dockerContainerID(cfg)
 	if id == "" {
 		return nil // 从未起过容器
+	}
+	// 删容器会触发退出回调：先标记主动操作，避免误报「异常退出」
+	if p := trackedSrv(cfg.ID); p != nil {
+		p.MarkStopping()
 	}
 	if err := docker.RemoveContainer(id, true); err != nil {
 		return fmt.Errorf("删除容器失败: %v", err)

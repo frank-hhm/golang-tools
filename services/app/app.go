@@ -59,6 +59,9 @@ type App struct {
 	notifyMu  sync.Mutex
 	notifyWin application.Window // 系统风格通知卡片（屏幕右下角，驻留至手动关闭）
 
+	// nativeNotify 当前构建能否弹原生通知卡（面板模式为 false，见 SetNativeNotify）
+	nativeNotify atomic.Bool
+
 	// 截图选区浮层（WebView 版）：Go 侧只持有窗口句柄
 	capMu    sync.Mutex
 	capWinMu sync.Mutex         // 串行化浮层窗口的创建（启动预热与热键调起可能撞在一起）
@@ -66,6 +69,20 @@ type App struct {
 	capBusy  bool               // 一次截图进行中，拒绝重入
 	capReady bool               // 浮层已回报本次冻结帧就绪，看门狗据此判断要不要销毁
 	capGen   uint64             // 截图轮次：兜底定时器只处置自己那一轮，不得误杀已完结的浮层
+
+	// 心跳/存活：页面点亮后每 500ms 报一次活，断线就说明画面冻住或 JS 卡死——
+	// 一个吃点击的全屏透明窗口必须马上收掉（老机器 + 高负载下真的会卡死）。
+	capShown   bool      // 浮层已点亮（CaptureReady 走完 Show），只有这之后才开始计时
+	capShowAt  time.Time // 本轮 Show 的时刻：量「点亮 → 首帧上屏」耗时
+	capPainted bool      // 本轮已收到「首帧已上屏」回报（只认第一次）
+	capPingAt  time.Time // 最近一次页面心跳
+	// capSlow 实测首帧合成过慢：说明这台机器吃不消分层透明窗口（老集显软件合成），
+	// 下一轮重建时改用实心背景。capSolid 标记当前窗口用的就是实心背景。
+	// capSlowHits 连续慢了几次才算数：冷建第一张图（合成器首次为该窗口落地）
+	// 偶尔也会慢过阈值，单次就切会把快机器误判成慢机器。
+	capSlow     bool
+	capSlowHits int
+	capSolid    bool
 
 	// 图钉置顶：每张钉住的截图开一个无边框置顶小窗，id → 图片数据/窗口
 	pinMu   sync.Mutex
@@ -1982,7 +1999,22 @@ func (a *App) ToastClose() {
 // ShowNotification 在屏幕右下角弹出一张系统风格的通知卡片（仿 Windows 通知：
 // 应用名 + 标题 + 内容 + 关闭钮），驻留直到用户点 ✕ 或代码调用 NotifyClose。
 func (a *App) ShowNotification(title string, content string) {
-	if a.app == nil {
+	a.showNotifyCard(title, content, "info")
+}
+
+// ShowNotificationLevel 带等级的通知卡片（success / warning / error），
+// 安装任务的完成/失败用它把颜色区分开。
+func (a *App) ShowNotificationLevel(title string, content string, level string) {
+	a.showNotifyCard(title, content, level)
+}
+
+// showNotifyCard 真正建窗口的地方。
+//
+// 只在能弹原生窗口的构建里生效：面板（-tags server）与 Linux 上
+// NewWithOptions 会“成功”但窗口永远不会出现，白占一个窗口对象，
+// 通知交给浏览器 Notification 来做。
+func (a *App) showNotifyCard(title string, content string, level string) {
+	if a.app == nil || !a.nativeNotify.Load() {
 		return
 	}
 	const notifyW, notifyH = 380, 132
@@ -2004,6 +2036,9 @@ func (a *App) ShowNotification(title string, content string) {
 	}
 	a.notifyMu.Unlock()
 
+	if level == "" {
+		level = "info"
+	}
 	w := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             fmt.Sprintf("win:notify-%d", time.Now().UnixNano()),
 		Title:            "通知",
@@ -2016,8 +2051,8 @@ func (a *App) ShowNotification(title string, content string) {
 		DisableResize:    true,
 		StartState:       application.WindowStateNormal,
 		BackgroundColour: application.NewRGB(243, 243, 243),
-		URL: fmt.Sprintf("/#/widget/notify?title=%s&content=%s",
-			url.QueryEscape(title), url.QueryEscape(content)),
+		URL: fmt.Sprintf("/#/widget/notify?title=%s&content=%s&level=%s",
+			url.QueryEscape(title), url.QueryEscape(content), url.QueryEscape(level)),
 		Windows: application.WindowsWindow{
 			// 无边框通知卡支持前端 app-region: drag 拖动
 			NonClientRegionSupport: true,
@@ -2026,6 +2061,14 @@ func (a *App) ShowNotification(title string, content string) {
 	a.notifyMu.Lock()
 	a.notifyWin = w
 	a.notifyMu.Unlock()
+}
+
+// SetNativeNotify 告知当前构建能不能弹原生通知卡。
+//
+// 桌面版入口置 true；面板（-tags server）保持 false，否则每次任务结束
+// 都会建一个永远不会显示的通知窗口。
+func (a *App) SetNativeNotify(v bool) {
+	a.nativeNotify.Store(v)
 }
 
 // NotifyClose 关闭通知卡片

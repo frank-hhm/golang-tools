@@ -383,6 +383,7 @@ import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { remoteVerText, useSysPkg } from "@/utils/caps";
+import { restoreInstalls } from "@/store/modules/tasks";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -858,6 +859,8 @@ onMounted(async () => {
     const wantId = String(route.query.inst ?? "");
     if (wantId && instances.value.some((i) => i.id === wantId)) selectInst(wantId);
     loadLocalVersions();
+    // 离开页面时安装还在跑：从任务台账把进度表与日志补回来
+    restoreInstalls("nginx", "install", installProgress, pushInstallLog);
     srvTimer = setInterval(refreshStates, 3000);
     // 单例窗口已打开时，主页再次点击其他实例 → 通过事件切换
     offSelInst = Events.On("tool:select-inst", (ev: any) => {

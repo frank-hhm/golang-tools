@@ -10,6 +10,7 @@ import (
 
 	"go-tools/services/applog"
 	"go-tools/services/config"
+	"go-tools/services/winui"
 	"go-tools/tools/screenshot"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -37,8 +38,32 @@ const captureReadyTimeout = 6 * time.Second
 
 // captureHoldTimeout 浮层调起后一直没人收场（拉起来就去干别的、也不按 ESC）
 // 时的兜底回收。capBusy 一旦占住，后续热键会被静默忽略，所以不能无限期等。
-// 取 3 分钟：正常框选/标注根本用不到这么久，又不至于误收正在编辑的图。
-const captureHoldTimeout = 3 * time.Minute
+// 取 90 秒：正常框选/标注根本用不到这么久，而一个吃点击的全屏窗口压着不放的
+// 代价（老机器上就是「屏幕啥都点不了」），比误收一张正在编辑的图高得多。
+const captureHoldTimeout = 90 * time.Second
+
+// capturePingTimeout 浮层点亮后页面心跳的最长间隔。页面每 500ms 报一次活，
+// 连续这么久一次都没来就说明 JS 线程/合成器已经卡死：窗口仍会吃掉屏幕上所有
+// 点击，必须直接收掉（老机器被别的程序抢满 CPU 时就是这个表现）。
+//
+// 取 6s（等于漏掉 12 次心跳）而不是更短：机器被压满时 JS 定时器本身就会被推迟
+// 一两秒，卡得太紧会误收用户正在用的浮层——那是比“慢”更讨厌的体验。
+const capturePingTimeout = 6 * time.Second
+
+// capturePaintTimeout 点亮之后首帧上屏的容忍时长。超过它仍未收到「已上屏」回报，
+// 说明合成卡住了：用户看不到画面，点击却已经被浮层拦下，同样直接收窗。
+// 这个窗口比心跳窗口更危险（画面都没有，用户只会以为“屏幕死了”），所以看紧一点。
+const capturePaintTimeout = 5 * time.Second
+
+// captureSlowPaint 「点亮 → 首帧上屏」超过这个时长即记为慢机器：下一轮改用实心
+// 背景重建窗口，绕开分层透明窗口在老集显上的软件合成开销。
+const captureSlowPaint = 800 * time.Millisecond
+
+// captureEscGrace 兜底 ESC 命中后等页面自己收场的宽限：页面活着时优先让它按
+// 自己的语义处理（正在输入文字时 ESC 只退出输入态，不取消整张截图）。
+// 1.2s：页面收场要等两帧合成（把浮层擦成透明）+ 一趟绑定往返，机器吃紧时
+// 两帧就可能要几百毫秒。
+const captureEscGrace = 1200 * time.Millisecond
 
 // OpenCaptureOverlay 冻结主屏一帧并打开全屏选区编辑浮层。
 // 重复触发（热键连按）时直接忽略，避免把已经打开的浮层再刷一遍。
@@ -80,6 +105,11 @@ func (a *App) OpenCaptureOverlay() error {
 	a.capMu.Lock()
 	a.plat.capFrame = frame
 	a.capReady = false
+	// 新的一轮：清掉上一轮的心跳/上屏状态，否则看门狗会拿旧时间戳开始计时
+	a.capShown = false
+	a.capPainted = false
+	a.capPingAt = time.Time{}
+	a.capShowAt = time.Time{}
 	a.capMu.Unlock()
 
 	win, created := a.ensureCaptureWindow(frame)
@@ -102,6 +132,9 @@ func (a *App) OpenCaptureOverlay() error {
 	if !created {
 		a.app.Event.Emit("capture:newframe", frame)
 	}
+	// 兜底热键：只要浮层可能吃掉点击，ESC / Ctrl+Alt+Esc 就必须是原生的，
+	// 不能只靠页面里的 keydown（页面卡死或压根没获焦时就彻底没退路了）。
+	a.armCaptureGuard()
 	// 兜底：前端若因故没能回报就绪，超时后销毁窗口，别把后续截图卡死。
 	// 两个定时器都只在“自己这一轮还没收场”时才动手（见 capGen）。
 	go a.captureReadyWatchdog(gen)
@@ -130,7 +163,7 @@ func (a *App) captureIdleRecycle(gen uint64) {
 		return
 	}
 	applog.Warnf("capture", "浮层 %s 无人收场，自动隐藏并释放截图标志", captureHoldTimeout)
-	a.hideCaptureOverlay()
+	a.abortCaptureOverlay("截图浮层停留过久，已自动关闭")
 }
 
 // TryActivateNativeTool 供 Go 原生入口（全局热键、浮动球菜单）直接触发工具事件：
@@ -194,6 +227,18 @@ func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Windo
 	}
 	screenW := int(float64(frame.W) / dpr)
 	screenH := int(float64(frame.H) / dpr)
+
+	// 背景策略：默认透明（首帧合成前露出真实桌面，没有黑屏闪动）；但若实测到这台
+	// 机器点亮后迟迟出不来首帧，说明分层透明窗口（WS_EX_LAYERED，老集显走软件
+	// 合成）拖不动整屏重绘，那就换成实心背景——代价是首帧前可能闪一帧底色，
+	// 换来画面能真的出来，而不是「窗口挡着点击却什么都不显示」。
+	solid := a.pickCaptureBackground()
+	bgType := application.BackgroundTypeTransparent
+	bgColour := application.NewRGBA(0, 0, 0, 0)
+	if solid {
+		bgType = application.BackgroundTypeSolid
+		bgColour = application.NewRGB(24, 24, 24)
+	}
 	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:          captureOverlayName,
 		Title:         "截图",
@@ -207,8 +252,8 @@ func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Windo
 		Hidden:        true, // 等前端把冻结帧画出来再显示，避免黑屏一闪（见上方注释：不可叠加 Fullscreen）
 		// 透明背景：Show 后、页面首帧合成前的那一帧露出桌面而非黑色（见文件头注释）。
 		// 也只有配合 IgnoreMouseEvents 才会点击穿透，这里不设，交互照常。
-		BackgroundType:   application.BackgroundTypeTransparent,
-		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+		BackgroundType:   bgType,
+		BackgroundColour: bgColour,
 		URL:              "/#/widget/capture",
 		Windows: application.WindowsWindow{
 			// 全屏浮层不要 Win11 圆角与投影，否则四角会露出真实桌面
@@ -217,8 +262,25 @@ func (a *App) newCaptureWindow(frame *screenshot.CaptureFrame) application.Windo
 			HiddenOnTaskbar: true,
 		},
 	})
-	applog.Infof("capture", "选区浮层窗口已创建（隐藏）%dx%d dpr=%.2f", screenW, screenH, dpr)
+	applog.Infof("capture", "选区浮层窗口已创建（隐藏）%dx%d dpr=%.2f 背景=%s", screenW, screenH, dpr, bgName(solid))
 	return win
+}
+
+// pickCaptureBackground 决定本轮建窗用不用实心背景，并把结果记为当前窗口的实际形态。
+// 只在实测过首帧合成过慢（capSlow）时用实心；一旦切过去就不再切回：老机器不会
+// 因为截了几张图就变快，来回重建反而每轮都要重付一次 WebView2 冷启动开销。
+func (a *App) pickCaptureBackground() bool {
+	a.capMu.Lock()
+	defer a.capMu.Unlock()
+	a.capSolid = a.capSlow
+	return a.capSolid
+}
+
+func bgName(solid bool) string {
+	if solid {
+		return "实心（已避开分层合成）"
+	}
+	return "透明"
 }
 
 // PrewarmCaptureOverlay 预建隐藏的浮层窗口（不抓屏），把“新建 WebView2 窗口 +
@@ -260,9 +322,15 @@ func (a *App) GetCaptureFrame() *screenshot.CaptureFrame {
 
 // CaptureReady 浮层已完成首帧渲染，可以亮出来了。
 func (a *App) CaptureReady() {
+	now := time.Now()
 	a.capMu.Lock()
 	w := a.capWin
+	gen := a.capGen
 	a.capReady = true
+	// 点亮之后的存活计时从这里起算：心跳和首帧上屏都在亮出来之后才有意义
+	a.capShown = true
+	a.capShowAt = now
+	a.capPingAt = now
 	a.capMu.Unlock()
 	if w == nil {
 		return
@@ -275,6 +343,127 @@ func (a *App) CaptureReady() {
 	w.Fullscreen()
 	w.Show()
 	w.Focus()
+	// 亮着的时候才盯着它活不活（见 captureAliveWatchdog）
+	go a.captureAliveWatchdog(gen)
+}
+
+// CapturePing 浮层页面心跳：可见期间每 ~500ms 报一次活。
+//
+// 为什么需要它：浮层是全屏、置顶、默认吃点击的窗口。页面一旦因机器吃紧（别的程序
+// 抢满 CPU/内存）而冻住，用户看到的就是「画面停在那，整屏什么都点不了」——除了
+// 任务管理器没有任何退路。有了心跳，Go 侧就能在一两秒内自己把窗口收掉。
+// painted=true 表示这是「首帧已上屏」后的第一次心跳，用来量点亮到真正出画面的耗时。
+func (a *App) CapturePing(painted bool) {
+	now := time.Now()
+	a.capMu.Lock()
+	if !a.capBusy || !a.capShown {
+		// 已经收过场（或还没点亮）：旧页面的定时器迟到的包一律忽略
+		a.capMu.Unlock()
+		return
+	}
+	a.capPingAt = now
+	slow := false
+	if painted && !a.capPainted {
+		a.capPainted = true
+		d := now.Sub(a.capShowAt)
+		if d > captureSlowPaint {
+			a.capSlowHits++
+		} else {
+			a.capSlowHits = 0
+		}
+		// 连续两次都慢才改背景：冷建第一张图时合成器首次为该窗口落地，
+		// 偶尔也会超过阈值，单次就切会把快机器也误判成慢机器。
+		if a.capSlowHits >= 2 && !a.capSlow {
+			a.capSlow = true
+			slow = true
+		}
+	}
+	a.capMu.Unlock()
+	if slow {
+		applog.Warnf("capture", "连续两次点亮→首帧上屏超过 %s，下次改用实心背景重建浮层", captureSlowPaint)
+	}
+}
+
+// captureAliveWatchdog 点亮后的存活看门狗：页面心跳断了或首帧迟迟不上屏，
+// 就直接把浮层收掉——宁可丢一次截图，也不能留一个看不见（或停住）却吃掉全部
+// 点击的全屏窗口压着桌面。
+//
+// 与 captureReadyWatchdog 分工：那个管「还没点亮就跑死」，这个管「点亮之后跑死」。
+// 同样靠 gen 认轮，避免上一轮的定时器关掉用户正在用的新浮层。
+func (a *App) captureAliveWatchdog(gen uint64) {
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for range tick.C {
+		now := time.Now()
+		a.capMu.Lock()
+		if a.capGen != gen || !a.capBusy || !a.capShown {
+			a.capMu.Unlock()
+			return
+		}
+		dead := now.Sub(a.capPingAt) > capturePingTimeout
+		blind := !a.capPainted && now.Sub(a.capShowAt) > capturePaintTimeout
+		silent := now.Sub(a.capPingAt)
+		litFor := now.Sub(a.capShowAt)
+		a.capMu.Unlock()
+		switch {
+		case dead:
+			applog.Warnf("capture", "浮层心跳中断 %s（>%s），自动关闭", silent.Round(time.Millisecond), capturePingTimeout)
+			a.abortCaptureOverlay("截图浮层无响应，已自动关闭")
+			return
+		case blind:
+			applog.Warnf("capture", "浮层点亮 %s 仍未出首帧（>%s），自动关闭", litFor.Round(time.Millisecond), capturePaintTimeout)
+			a.abortCaptureOverlay("截图画面未能显示，已自动关闭")
+			return
+		}
+	}
+}
+
+// abortCaptureOverlay 异常收场：收起浮层 + 提示用户（否则用户只会发现「截图没出来」，
+// 完全不知道刚才那一下是怎么回事）。提示用原生小窗，不依赖浮层自己的页面。
+func (a *App) abortCaptureOverlay(text string) {
+	a.hideCaptureOverlay()
+	a.ShowMessage("warning", text)
+}
+
+// armCaptureGuard 登记截图期间的原生兜底热键。
+//
+// 页面里的 keydown 只在「页面活着且窗口有焦点」时生效，而这正是出问题时的两个前提。
+// 原生热键由系统投递，不经过 WebView：页面卡死、画面停住都能靠它收场。
+func (a *App) armCaptureGuard() {
+	winui.SetGuardHotkeys([]winui.GuardHotkey{
+		{ID: "capture-esc", Shortcut: "Esc", Fn: a.captureEscFromGuard},
+		{ID: "capture-force-close", Shortcut: "Ctrl+Alt+Esc", Fn: func() {
+			applog.Warnf("capture", "兜底热键 Ctrl+Alt+Esc：直接关闭浮层")
+			a.hideCaptureOverlay()
+		}},
+	})
+}
+
+// disarmCaptureGuard 注销兜底热键（收场时必须调，否则 ESC 一直被本进程抢着）。
+func (a *App) disarmCaptureGuard() {
+	winui.ClearGuardHotkeys()
+}
+
+// captureEscFromGuard 兜底 ESC：页面活着时先让它按自己的语义处理——正在输入文字时
+// ESC 只退出输入态，不该取消整张截图；页面没响应就直接收窗。
+func (a *App) captureEscFromGuard() {
+	a.capMu.Lock()
+	alive := a.capBusy && a.capShown && !a.capPingAt.IsZero() &&
+		time.Since(a.capPingAt) < capturePingTimeout
+	gen := a.capGen
+	a.capMu.Unlock()
+	if alive && a.app != nil {
+		a.app.Event.Emit("capture:esc")
+		time.Sleep(captureEscGrace)
+		a.capMu.Lock()
+		still := a.capGen == gen && a.capBusy && a.capShown
+		a.capMu.Unlock()
+		if !still {
+			return
+		}
+	}
+	applog.Warnf("capture", "兜底热键 Esc：页面未响应，直接关闭浮层")
+	a.hideCaptureOverlay()
 }
 
 // CaptureFinish 结束一次截图：成品图写剪贴板，按需打开预览窗口，最后收掉浮层。
@@ -491,13 +680,32 @@ func (a *App) captureReadyWatchdog(gen uint64) {
 func (a *App) hideCaptureOverlay() {
 	a.capMu.Lock()
 	w := a.capWin
+	// 实测首帧合成过慢、而当前窗口又是透明背景建的：这一轮不再复用，直接销毁，
+	// 下一轮按实心背景重建（背景类型只能在建窗时定）。只切一次，之后 capSolid
+	// 与 capSlow 一致，回到普通的隐藏复用。
+	rebuild := w != nil && a.capSlow && !a.capSolid
+	if rebuild {
+		a.capWin = nil
+	}
 	a.plat.capFrame = nil
 	a.capReady = false
 	a.capBusy = false
+	a.capShown = false
+	a.capPainted = false
+	a.capPingAt = time.Time{}
+	a.capShowAt = time.Time{}
 	a.capMu.Unlock()
-	if w != nil {
-		w.Hide()
+	// ESC 兜底热键随浮层进出：留着就是跟其它应用抢 ESC
+	a.disarmCaptureGuard()
+	if w == nil {
+		return
 	}
+	if rebuild {
+		applog.Infof("capture", "本机透明合成过慢，浮层改为实心背景重建")
+		w.Close()
+		return
+	}
+	w.Hide()
 }
 
 // destroyCaptureOverlay 彻底关闭并丢弃浮层窗口对象（看门狗超时/异常时用）。
@@ -508,7 +716,12 @@ func (a *App) destroyCaptureOverlay() {
 	a.plat.capFrame = nil
 	a.capReady = false
 	a.capBusy = false
+	a.capShown = false
+	a.capPainted = false
+	a.capPingAt = time.Time{}
+	a.capShowAt = time.Time{}
 	a.capMu.Unlock()
+	a.disarmCaptureGuard()
 	if w != nil {
 		w.Close()
 	}

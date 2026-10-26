@@ -10,7 +10,13 @@ import type { Events } from "@wailsio/runtime";
 import type * as app$0 from "../../../../../go-tools/services/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as tasks$0 from "../../../../../go-tools/services/tasks/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as docker$0 from "../../../../../go-tools/tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as ftp$0 from "../../../../../go-tools/tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as mysql$0 from "../../../../../go-tools/tools/mysql/models.js";
@@ -47,6 +53,10 @@ declare module "@wailsio/runtime" {
             "docker:pull": docker$0.PullProgress;
             "docker:serverlog": docker$0.ContainerLogLine;
             "docker:setup": docker$0.SetupProgress;
+            "ftp:server": ftp$0.ServerStatus;
+            "ftp:serverlog": ftp$0.ServerLog;
+            "ftp:session": ftp$0.SessionEvent;
+            "ftp:transfer": ftp$0.Transfer;
             "mysql:install": mysql$0.InstallProgress;
             "nginx:install": nginx$0.InstallProgress;
             "npm:install": npm$0.InstallProgress;
@@ -58,6 +68,7 @@ declare module "@wailsio/runtime" {
             "serial:data": usbserial$0.SerialData;
             "serial:status": usbserial$0.ConnStatusEvent;
             "sniffer:flow": sniffer$0.Flow;
+            "task:update": tasks$0.Task;
             "term:data": term$0.DataEvent;
             "term:exit": term$0.ExitEvent;
             "time": string;

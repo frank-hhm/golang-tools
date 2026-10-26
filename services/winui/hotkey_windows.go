@@ -58,7 +58,17 @@ var (
 
 	// hkIds 仅在热键线程读写：下标 i 对应热键 id=i+1，值为工具 ID
 	hkIds []string
+
+	// 兜底热键：SetGuardHotkeys 从任意 goroutine 写入 guardList，热键线程在
+	// 重载时把它注册成 id=hkGuardBase+i，并拷一份到只在热键线程读写的 guardIDs
+	guardMu   sync.Mutex
+	guardList []GuardHotkey
+	guardIDs  []GuardHotkey
 )
+
+// hkGuardBase 兜底热键的 id 起点：与工具热键（从 1 开始递增）隔开足够远，
+// 两边各自增删都不会撞号。
+const hkGuardBase = 100
 
 // StartHotkeys 启动全局热键线程（幂等）；已启动则请求按当前配置重载。
 func StartHotkeys(h Host) {
@@ -80,14 +90,44 @@ func StartHotkeys(h Host) {
 	go hkThread()
 }
 
-// ReloadHotkeys 请求热键线程按当前配置重新注册（从任意 goroutine 调用）。
-func ReloadHotkeys() {
+// SetGuardHotkeys 用给定清单替换「临时兜底热键」（从任意 goroutine 调用，异步生效）。
+// 传 nil 即全部注销。截图浮层点亮前登记、收场时注销：这类热键必须随浮层进出，
+// 常驻注册会把 ESC 从其它应用手里抢走。
+//
+// 清单没变就不触发重载：重载要把配置里的工具热键全部注销再注册，每截一图来一遍
+// 既没必要，又给了「重新注册瞬时失败」丢热键的机会。
+func SetGuardHotkeys(list []GuardHotkey) {
+	guardMu.Lock()
+	same := len(list) == len(guardList)
+	for i := 0; same && i < len(list); i++ {
+		if list[i].ID != guardList[i].ID || list[i].Shortcut != guardList[i].Shortcut {
+			same = false
+		}
+	}
+	guardList = list
+	guardMu.Unlock()
+	if same {
+		return
+	}
+	requestHotkeyReload()
+}
+
+// ClearGuardHotkeys 注销全部兜底热键。
+func ClearGuardHotkeys() { SetGuardHotkeys(nil) }
+
+// requestHotkeyReload 请求热键线程按当前配置 + 兜底清单重载（任一如仍未启动则忽略）。
+func requestHotkeyReload() {
 	hkMu.Lock()
 	h := hkHwnd
 	hkMu.Unlock()
 	if h != 0 {
 		ballPostMsg.Call(h, hkWM_APP_RELOAD, 0, 0)
 	}
+}
+
+// ReloadHotkeys 请求热键线程按当前配置重新注册（从任意 goroutine 调用）。
+func ReloadHotkeys() {
+	requestHotkeyReload()
 }
 
 // hkThread 在专用 OS 线程上建消息窗口并泵消息。
@@ -156,6 +196,15 @@ func hkWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case hkWM_HOTKEY:
 		id := int(wParam)
+		// 兜底热键：回调一刀切进独立 goroutine，热键线程立刻回去泵消息
+		if id >= hkGuardBase && id-hkGuardBase < len(guardIDs) {
+			g := guardIDs[id-hkGuardBase]
+			if g.Fn != nil {
+				applog.Infof("hotkey", "兜底热键触发 %s -> %s", g.Shortcut, g.ID)
+				go g.Fn()
+			}
+			return 0
+		}
 		var toolID string
 		if id-1 >= 0 && id-1 < len(hkIds) {
 			toolID = hkIds[id-1]
@@ -178,7 +227,7 @@ func hkWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	return r
 }
 
-// hkApply 注销全部旧热键并按当前配置重新注册（仅在热键线程调用）。
+// hkApply 注销全部旧热键并按当前配置 + 兜底清单重新注册（仅在热键线程调用）。
 func hkApply() {
 	hkMu.Lock()
 	hwnd := hkHwnd
@@ -190,6 +239,10 @@ func hkApply() {
 		hkUnregProc.Call(hwnd, uintptr(i+1))
 	}
 	hkIds = nil
+	for i := range guardIDs {
+		hkUnregProc.Call(hwnd, uintptr(hkGuardBase+i))
+	}
+	guardIDs = nil
 
 	if hkHost == nil {
 		return
@@ -213,6 +266,36 @@ func hkApply() {
 		hkIds = append(hkIds, b.ID)
 	}
 	applog.Infof("hotkey", "已注册 %d 个全局热键", len(hkIds))
+	hkApplyGuard(hwnd)
+}
+
+// hkApplyGuard 注册兜底热键（仅在热键线程、工具热键之后调用）。
+// 注册失败不是致命问题：浮层页面自身仍有 ESC，只是少了页面卡死时的退路。
+func hkApplyGuard(hwnd uintptr) {
+	guardMu.Lock()
+	list := append([]GuardHotkey(nil), guardList...)
+	guardMu.Unlock()
+	for _, g := range list {
+		sc := strings.TrimSpace(g.Shortcut)
+		if sc == "" {
+			continue
+		}
+		mods, vk, ok := parseShortcut(sc)
+		if !ok {
+			applog.Warnf("hotkey", "无法解析兜底热键 %q（%s）", sc, g.ID)
+			continue
+		}
+		id := len(guardIDs)
+		r, _, _ := hkRegProc.Call(hwnd, uintptr(hkGuardBase+id), uintptr(mods|hkMOD_NOREPEAT), uintptr(vk))
+		if r == 0 {
+			applog.Warnf("hotkey", "注册兜底热键失败 %q（%s），可能与其他应用冲突", sc, g.ID)
+			continue
+		}
+		guardIDs = append(guardIDs, g)
+	}
+	if len(guardIDs) > 0 {
+		applog.Infof("hotkey", "已注册 %d 个兜底热键", len(guardIDs))
+	}
 }
 
 // parseShortcut 解析 "Ctrl+Alt+S" 形式为 (修饰键, 虚拟键码, 是否有效)。

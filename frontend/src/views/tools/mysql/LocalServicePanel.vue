@@ -11,7 +11,9 @@
       <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
       <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="MySQL" />
       <a-list :bordered="false" size="small">
-        <a-list-item v-for="inst in srvInstances" :key="inst.id">
+        <!-- 行样式对齐 PHP 实例列表：badge + 名称 + 版本 tag + ···；点行→右侧实例总览 -->
+        <a-list-item v-for="inst in srvInstances" :key="inst.id"
+          :class="{ active: selectedSrvId === inst.id }" @click="selectInstance(inst)">
           <a-space>
             <com-badge :status="srvStates[inst.id]?.running ? 'success' : 'normal'"
               :animated="!!srvStates[inst.id]?.running" />
@@ -36,12 +38,9 @@
                   <a-doption value="logs"><icon-list /> 日志/状态</a-doption>
                   <a-doption value="connect"><icon-link /> 连接</a-doption>
                   <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                  <a-doption value="del"><icon-delete /> 删除</a-doption>
                 </template>
               </a-dropdown>
-              <a-popconfirm :content="`确定删除实例「${inst.name}」？运行中会先停止；数据目录保留。`" type="warning" position="lt"
-                @ok="removeInstance(inst)">
-                <a-button size="small" status="danger"><icon-delete /></a-button>
-              </a-popconfirm>
             </a-space>
           </template>
         </a-list-item>
@@ -232,7 +231,7 @@
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item field="maxConnections" label="最大连接数" tooltip="0 = 使用 MySQL 默认值 151">
+            <a-form-item field="maxConnections" label="最大连接数" tooltip="0 = MySQL 默认 151；小于 20 按 20 生效（面板自身需要多条并发连接，过小会报 Error 1040）">
               <a-input-number v-model="instForm.maxConnections" :min="0" />
             </a-form-item>
           </a-col>
@@ -244,55 +243,18 @@
       </a-form>
     </a-modal>
 
-    <!-- 日志/状态 -->
-    <a-modal v-model:visible="logsVisible" :title="logsInst ? `实例 ${logsInst.name}（:${logsInst.port}）` : '实例日志'"
-      :width="660" :footer="false">
-      <div v-if="logsStatus" class="ls-grid">
-        <div class="ls-item"><span>模式</span><b>{{ logsStatus.mode === 'docker' ? 'Docker' : '本地' }}</b></div>
-        <div class="ls-item"><span>状态</span><b :class="{ ok: logsStatus.running }">{{ logsStatus.running ? '运行中' : '已停止'
-          }}</b></div>
-        <div class="ls-item"><span>版本</span><b>{{ logsStatus.mode === 'docker' ? (logsStatus.image || '-') : (logsStatus.version
-          || '-') }}</b></div>
-        <div class="ls-item"><span>PID</span><b>{{ logsStatus.mode === 'docker' ? '容器内' : (logsStatus.pid || '-') }}</b></div>
-        <template v-if="logsStatus.mode === 'docker'">
-          <div class="ls-item"><span>容器</span>
-            <a-tooltip :content="logsStatus.container || '-'" :disabled="!logsStatus.container">
-              <b class="ellipsis">{{ logsStatus.container || '-' }}</b>
-            </a-tooltip>
-          </div>
-          <div class="ls-item"><span>容器状态</span><b>{{ logsStatus.containerState || '-' }}</b></div>
-        </template>
-        <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(logsStatus.uptimeSeconds) }}</b></div>
-        <div class="ls-item"><span>线程连接</span><b>{{ logsStatus.threadsConnected ?? '-' }}</b></div>
-        <div class="ls-item"><span>线程活跃</span><b>{{ logsStatus.threadsRunning ?? '-' }}</b></div>
-        <div class="ls-item"><span>最大连接</span><b>{{ logsStatus.maxConnections ?? '-' }}</b></div>
-      </div>
-      <a-tooltip v-if="logsStatus?.mode === 'docker' && logsStatus.dataDir" :content="logsStatus.dataDir">
-        <div class="ls-dir">
-          数据目录映射：<span class="mono">{{ logsStatus.dataDir }}</span> → <span class="mono">/var/lib/mysql</span>
-        </div>
-      </a-tooltip>
-      <div ref="logBoxRef" class="ls-log">
-        <div v-for="(l, i) in logsLines" :key="i" class="ls-line">{{ l }}</div>
-        <div v-if="logsLines.length === 0" class="empty-tip">暂无日志</div>
-      </div>
-      <div class="ls-actions">
-        <a-button size="small" @click="logsLines = []"><template #icon><icon-delete /></template>清空</a-button>
-        <a-button size="small" type="outline" :disabled="!logsStatus?.running" @click="connectInstance(logsInst)">
-          <template #icon><icon-link /></template>连接此实例
-        </a-button>
-      </div>
-    </a-modal>
+    <!-- 日志/状态已统一到主区域「实例总览」（点行/菜单“日志·状态”均进入），不再弹窗 -->
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { remoteVerText, useSysPkg } from "@/utils/caps";
+import { restoreInstalls } from "@/store/modules/tasks";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -315,7 +277,9 @@ function imgTag(image: string): string {
   return i >= 0 ? s.slice(i + 1) : (s || "Docker");
 }
 
-const emit = defineEmits<{ (e: "connect", cfg: SrvConnConfig): void }>();
+/** 父页面当前选中的实例：行高亮用 */
+defineProps<{ selectedSrvId?: string }>();
+const emit = defineEmits<{ (e: "connect", cfg: SrvConnConfig): void; (e: "select", inst: SrvInstanceConfig): void }>();
 
 /** 系统包模式（Linux）：版本来自发行版仓库，没有绿色版 zip 那套离线安装 */
 const sysPkg = useSysPkg();
@@ -335,13 +299,8 @@ const dockerInstCount = computed(() => srvInstances.value.filter((i: any) => i.m
 /** 版本管理里 Docker 镜像区的刷新信号：弹窗不销毁，每次打开自增一次触发重拉 */
 const verReload = ref(0);
 const instVisible = ref(false);
-const logsVisible = ref(false);
 const localDirInput = ref("");
 const srvPluginsDir = ref("");
-const logsInst = ref<SrvInstanceConfig | null>(null);
-const logsStatus = ref<any>(null);
-const logsLines = ref<string[]>([]);
-const logBoxRef = ref<HTMLElement | null>(null);
 
 const instForm = reactive<SrvInstanceConfig>({
   id: "", name: "", version: "", port: 3306, rootPassword: "", maxConnections: 0,
@@ -441,13 +400,6 @@ function stageText(p: any): string {
   return "失败";
 }
 
-function fmtUptimeS(sec: number): string {
-  if (!sec || sec <= 0) return "-";
-  const d = Math.floor(sec / 86400); const h2 = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
-  if (d > 0) return `${d}d ${h2}h ${m}m`; if (h2 > 0) return `${h2}h ${m}m`; return `${m}m ${s}s`;
-}
-
 async function loadLocalVersions() {
   try { localVersions.value = (await GoTools.MySQLSrvListVersions()) || []; }
   catch (e) { localVersions.value = []; }
@@ -479,7 +431,6 @@ async function refreshSrvStates(silent = false) {
         const status = await GoTools.MySQLSrvStatus(inst.id);
         srvStates[inst.id] = status;
         ok++;
-        if (logsVisible.value && logsInst.value?.id === inst.id) logsStatus.value = status;
       } catch (e) { /* 单个实例失败不影响其它实例 */ }
     }));
   } finally {
@@ -625,15 +576,24 @@ async function onSrvAction(v: string, inst: SrvInstanceConfig) {
     catch (e: any) { Message.error("停止失败: " + (e?.message || e)); }
     refreshSrvStates();
   } else if (v === "logs") {
-    openLogs(inst);
+    selectInstance(inst); // 日志/状态统一进右侧总览
   } else if (v === "connect") {
     connectInstance(inst);
   } else if (v === "edit") {
     openInstModal(inst);
+  } else if (v === "del") {
+    // 行内不再常驻红色删除按钮（对齐 PHP 实例列表），确认走弹窗
+    Modal.confirm({
+      title: "删除实例",
+      content: `确定删除实例「${inst.name}」？运行中会先停止；数据目录保留。`,
+      okText: "删除",
+      cancelText: "取消",
+      onOk: () => removeInstance(inst),
+    });
   }
 }
 
-/** 删除实例（确认由 Popconfirm 承担） */
+/** 删除实例（确认由 onSrvAction 的弹窗承担） */
 async function removeInstance(inst: SrvInstanceConfig) {
   try {
     await GoTools.MySQLSrvRemoveInstance(inst.id);
@@ -641,6 +601,11 @@ async function removeInstance(inst: SrvInstanceConfig) {
     await loadSrvInstances();
     Message.success("实例已删除");
   } catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
+}
+
+/** 点行 → 右侧实例总览（不进连接；连接走菜单或总览里的按钮） */
+function selectInstance(inst: SrvInstanceConfig) {
+  emit("select", { ...inst });
 }
 
 /** 实例连接交给父页面打开（需要合并已保存连接） */
@@ -653,34 +618,6 @@ function connectInstance(inst: SrvInstanceConfig | null) {
   });
 }
 
-let logsTimer: any = null;
-/** 日志轮询单飞 + 失败退避：引擎卡住时不要每 2 秒叠一个新请求上去 */
-let logsInflight = false;
-let logsQuietUntil = 0;
-async function openLogs(inst: SrvInstanceConfig) {
-  logsInst.value = inst;
-  logsLines.value = [];
-  logsStatus.value = srvStates[inst.id] || null;
-  logsVisible.value = true;
-  logsQuietUntil = 0;
-  try { logsLines.value = (await GoTools.MySQLSrvLogs(inst.id, 300)) || []; } catch (e) { /* ignore */ }
-  if (logsTimer) clearInterval(logsTimer);
-  logsTimer = setInterval(async () => {
-    if (!logsVisible.value) { clearInterval(logsTimer); logsTimer = null; return; }
-    if (logsInflight || Date.now() < logsQuietUntil) return;
-    logsInflight = true;
-    try {
-      logsLines.value = (await GoTools.MySQLSrvLogs(inst.id, 300)) || [];
-      logsQuietUntil = 0;
-      nextTick(() => { if (logBoxRef.value) logBoxRef.value.scrollTop = logBoxRef.value.scrollHeight; });
-    } catch (e) {
-      logsQuietUntil = Date.now() + 15000;
-    } finally {
-      logsInflight = false;
-    }
-  }, 2000);
-}
-
 onMounted(async () => {
   await loadSrvInstances();
   // 镜像清单不进表单，只用来标记「实例引用的镜像本机还没拉」
@@ -690,16 +627,18 @@ onMounted(async () => {
   const wantId = String(route.query.inst ?? "");
   if (wantId) {
     const target = srvInstances.value.find((i) => i.id === wantId);
-    if (target) openLogs(target);
+    if (target) selectInstance(target);
   }
   loadLocalVersions();
+  // 离开页面时安装还在跑：从任务台账把进度表与日志补回来，免得回来看到可点的“安装”
+  restoreInstalls("mysql", "install", installProgress, pushInstallLog);
   srvTimer = setInterval(() => { refreshSrvStates(true); }, 3000);
   // 单例窗口已打开时，主页再次点击其他实例 → 通过事件切换
   offSelInst = Events.On("tool:select-inst", (ev: any) => {
     const p = ev?.data ?? ev;
     if (p?.type !== "mysql" || !p?.id) return;
     const target = srvInstances.value.find((i) => i.id === String(p.id));
-    if (target) openLogs(target);
+    if (target) selectInstance(target);
   });
   offInstall = Events.On("mysql:install", (ev: any) => {
     const p = ev?.data ?? ev;
@@ -726,7 +665,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (srvTimer) clearInterval(srvTimer);
-  if (logsTimer) clearInterval(logsTimer);
   if (offInstall) offInstall();
   if (offSelInst) offSelInst();
 });
@@ -738,6 +676,20 @@ onUnmounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* 实例行（对齐 PHP）：整行可点、选中高亮、hover 背景 */
+.side-card :deep(.arco-list-item) {
+  cursor: pointer;
+}
+
+.side-card :deep(.arco-list-item.active),
+.side-card :deep(.arco-list-item.active:hover) {
+  background: var(--color-primary-light-1);
+}
+
+.side-card :deep(.arco-list-item:hover) {
+  background: var(--color-fill-2);
 }
 
 /* 卡片撑满左栏，body 弹性填充供列表滚动 */
@@ -809,13 +761,6 @@ onUnmounted(() => {
   white-space: normal;
 }
 
-.empty-tip {
-  color: var(--color-text-3);
-  text-align: center;
-  font-size: var(--base-size-small);
-  padding: var(--base-padding);
-}
-
 /* ---- 版本管理弹窗 ---- */
 .ver-sec-title {
   display: inline-flex;
@@ -874,25 +819,6 @@ onUnmounted(() => {
   margin-top: var(--base-radius-default);
 }
 
-/* 日志弹窗：docker 实例的数据目录映射行 */
-.ls-dir {
-  font-size: var(--base-size-small);
-  color: var(--color-text-3);
-  margin-bottom: var(--base-radius-default);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ls-item b.ellipsis {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-}
-
 .mono {
   font-family: Consolas, monospace;
   background: var(--color-fill-2);
@@ -947,58 +873,6 @@ onUnmounted(() => {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
-}
-
-/* 日志/状态弹窗 */
-.ls-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
-  margin-bottom: var(--base-margin);
-}
-
-.ls-item {
-  background: var(--color-fill-1);
-  border-radius: var(--base-radius-default);
-  padding: var(--base-radius-default) var(--base-radius-large);
-  font-size: var(--base-size-small);
-}
-
-.ls-item span {
-  color: var(--color-text-3);
-  display: block;
-}
-
-.ls-item b {
-  font-size: var(--base-size-small);
-}
-
-.ls-item b.ok {
-  color: rgb(var(--green-6));
-}
-
-.ls-log {
-  background: var(--color-fill-1);
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--base-radius-default);
-  padding: var(--base-padding) var(--base-radius-large);
-  max-height: 320px;
-  overflow-y: auto;
-  font-family: Consolas, monospace;
-  font-size: var(--base-size-small);
-  color: var(--color-text-1);
-  line-height: 1.5;
-}
-
-.ls-line {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.ls-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: var(--base-radius-large);
 }
 
 /* Docker 镜像行：下拉占满剩余宽度，右侧一个方形按钮打开 Docker 管理窗口

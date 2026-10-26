@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"go-tools/tools/docker"
+	"go-tools/tools/srvstate"
 )
 
 const (
@@ -261,7 +262,7 @@ func dockerStart(cfg *InstanceConfig) error {
 	runMu.Lock()
 	runProcs[cfg.ID] = p
 	runMu.Unlock()
-	watchDockerExit(cfg.ID, id, p)
+	watchDockerExit(cfg, id, p)
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
@@ -271,6 +272,7 @@ func dockerStart(cfg *InstanceConfig) error {
 		default:
 		}
 		if isProcessRunning(cfg.ID, cfg.Port, cfg.Password) {
+			p.MarkReady()
 			return nil
 		}
 		time.Sleep(300 * time.Millisecond)
@@ -281,8 +283,14 @@ func dockerStart(cfg *InstanceConfig) error {
 
 // watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐：退出即从进程表摘除）。
 // 引擎一时问不到（管道忙/熔断/自更新）时由共享看护退避重试，不误判为退出。
-func watchDockerExit(instID, containerID string, p *runningProc) {
-	docker.WatchContainerExit(containerID, func() { forgetProc(instID, p) })
+func watchDockerExit(cfg *InstanceConfig, containerID string, p *runningProc) {
+	docker.WatchContainerExit(containerID, func() {
+		// 就绪后非主动停止的退出＝容器崩了：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			emit("redis"+srvstate.EventSuffix, srvstate.NewEvent("redis", "docker", cfg.ID, cfg.Name, cfg.Port, -1))
+		}
+		forgetProc(cfg.ID, p)
+	})
 }
 
 // forgetProc 从进程表摘除该实例并关 done 通道（幂等：只有仍指向同一对象时才删）
@@ -309,6 +317,7 @@ func dockerStop(cfg *InstanceConfig) error {
 		return fmt.Errorf("停止容器失败: %v", err)
 	}
 	if p := trackedProc(cfg.ID); p != nil {
+		p.MarkStopping() // 先标记主动停止，容器退出回调不再发异常通知
 		forgetProc(cfg.ID, p)
 	}
 	if isProcessRunning(cfg.ID, cfg.Port, cfg.Password) {
@@ -321,6 +330,10 @@ func dockerStop(cfg *InstanceConfig) error {
 func dockerRemove(cfg *InstanceConfig) error {
 	if p, err := specSigPath(cfg); err == nil {
 		_ = os.Remove(p) // 规格签名随容器一起作废
+	}
+	// 删容器会触发退出回调：先标记主动操作，避免误报「异常退出」
+	if p := trackedProc(cfg.ID); p != nil {
+		p.MarkStopping()
 	}
 	id := dockerContainerID(cfg)
 	if id == "" {

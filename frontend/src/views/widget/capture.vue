@@ -140,6 +140,7 @@ import {
     type Tool, type WinRect, canvasToPngDataURL, clampToScreen, composeExport, drawShape, handlePos, hitWindow,
     moveRect, normalizeRect, rectSize, resizeRect, shapeIsMeaningful, shouldAppendPoint, winToRect,
 } from "./captureDraw";
+import { sysNotify } from "@/utils/notify";
 
 const {
     proxy: { $GoTools },
@@ -376,10 +377,63 @@ function installErrorReport() {
 
 /** offNewFrame 复用浮层时后端推送“有新冻结帧”事件的解绑句柄 */
 let offNewFrame: any = null;
+/** offGuardEsc 后端兜底热键（原生 ESC）事件的解绑句柄 */
+let offGuardEsc: any = null;
+/** beatTimer 浮层可见期间的心跳定时器 */
+let beatTimer: number | null = null;
 /** starting 防止冷挂载与 newframe 事件几乎同时触发时重复初始化 */
 let starting = false;
 /** pending 上一轮还没跑完就又来了新帧时攒下的帧，跑完立刻按它重来一遍 */
 let pending: Frame | null = null;
+
+/* ---------------- 心跳 / 原生 ESC 兜底 ---------------- */
+/**
+ * 报一次活。
+ *
+ * 浮层全屏、置顶且默认吃点击：页面一旦被机器负载冻住，用户看到的就是「画面停住、
+ * 整屏什么都点不了」。后端靠这个 500ms 心跳判断页面还活着，断了就自己收窗，
+ * 不必等用户去按 ESC（那时往往也按不动）。
+ */
+function ping(painted: boolean) {
+    try {
+        $GoTools?.CapturePing?.(painted);
+    } catch {
+        /* 心跳通道不可用时不能打断截图主流程 */
+    }
+}
+
+function startHeartbeat() {
+    stopHeartbeat();
+    let painted = false;
+    // 第一次 rAF 回调 = 首帧真正交给合成器：从这里起算「点亮 → 上屏」的耗时，
+    // 后端据此判断这台机器吃不住透明分层窗口，下次改用实心背景重建。
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            if (painted) return;
+            painted = true;
+            ping(true);
+        });
+    });
+    beatTimer = window.setInterval(() => ping(false), 500);
+    ping(false);
+}
+
+function stopHeartbeat() {
+    if (beatTimer !== null) {
+        clearInterval(beatTimer);
+        beatTimer = null;
+    }
+}
+
+/** 原生 ESC 兜底：后端热键命中后发来，语义与页面自己的 ESC 完全一致 */
+function onGuardEsc() {
+    // 正在输入文字时，ESC 只退出输入态，不该取消整张截图
+    if (editBox.value) {
+        commitBox();
+        return;
+    }
+    onCancel();
+}
 
 onMounted(async () => {
     installErrorReport();
@@ -393,6 +447,8 @@ onMounted(async () => {
         if (Array.isArray(d)) d = d[0];
         void beginCapture(isFrame(d) ? d : null);
     });
+    // 原生兜底 ESC（页面卡死/未获焦时页面内 keydown 救不了场）
+    offGuardEsc = Events.On("capture:esc", () => onGuardEsc());
     // 冷建路径：后端在开窗前已备好冻结帧，首挂载直接取帧即可。
     await beginCapture();
 });
@@ -455,8 +511,15 @@ async function beginCapture(pre?: Frame | null) {
         hover.value = hitWindow(f.cursorX, f.cursorY, f.windows || []);
         await nextTick();
         // 点亮浮层排在铺整屏源画布之前：bgUrls 已让画面可见，而源画布要分配
-        // 整屏位图并逐带 drawImage（实测几十毫秒），挪到首帧合成之后再补
+        // 整屏位图并逐带 drawImage（实测几十毫秒），挪到首帧合成之后再补。
+        //
+        // 为什么不等到 raf2 之后再 CaptureReady：窗口还在隐藏时 rAF 未必会被调度
+        // （隐藏窗口的合成器是暂停的），在这上面等下两帧就把“能不能亮”交给了运气。
+        // 「已经挡点击但画面还没出来」那一段改由后端首帧超时兜底（见 capture.go 的
+        // capturePaintTimeout）：真出不来就自己收窗，不把用户困在冻结的画面上。
         $GoTools.CaptureReady();
+        // 点亮之后必须报活：后端会盯着心跳，断了就认定页面已冻住并收窗
+        startHeartbeat();
         const tReady = performance.now();
         raf2().then(() => {
             buildSrcCanvas();
@@ -577,6 +640,7 @@ function ensureSrc(): boolean {
 }
 
 onBeforeUnmount(() => {
+    stopHeartbeat();
     unbindEvents();
     if (offNewFrame) {
         try {
@@ -585,6 +649,14 @@ onBeforeUnmount(() => {
             /* ignore */
         }
         offNewFrame = null;
+    }
+    if (offGuardEsc) {
+        try {
+            offGuardEsc();
+        } catch {
+            /* ignore */
+        }
+        offGuardEsc = null;
     }
 });
 
@@ -793,6 +865,9 @@ function onCancel() {
  * 顺带把 .cap 整棵树卸掉，下次 mount 拿到的标注画布是全新的，不会残留旧笔迹。
  */
 async function blankOverlay() {
+    // 收场路径：先停心跳。页面不会卸载（窗口留着复用），不停的话隐藏期间每 500ms
+    // 还在往后端发 IPC，正是机器吃紧时最不想要的那点开销。
+    stopHeartbeat();
     ready.value = false;
     sel.value = null;
     hover.value = null;
@@ -1042,11 +1117,7 @@ async function saveFile() {
         const path = await $GoTools.SaveCaptureFile(data);
         if (path) {
             // 保存成功：走公共系统通知（原生 Toast）——浮层即将关闭，用 Message 看不见
-            try {
-                $GoTools.ShowSystemNotification("截图已保存", path);
-            } catch {
-                /* 通知失败不影响收场 */
-            }
+            sysNotify("截图已保存", path);
             onCancel();
         }
     } catch (e: any) {

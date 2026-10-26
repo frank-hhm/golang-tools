@@ -128,14 +128,20 @@ func encodeFrame(img *image.RGBA) ([]string, int, error) {
 	return []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())}, 0, nil
 }
 
-// pngBandCount 选出能整除屏高且不超出可用核数的最大水平带数。
+// pngBandCount 选出能整除屏高且不超出可用并行度的最大水平带数。
 // 整除是为了让浮层能用统一的 bandH 定位各带，避免半像素缝；
 // 带数到 8 之后再升收益很小（实测 8 带 ~11ms、单张 ~59ms），却会把体积与解码份数抬上去。
+//
+// 并行度取一半核：抓屏这一瞬正是用户感觉到「卡」的时候（典型是后台还在跑别的重活），
+// 把每个核都塞满 deflate 只会把整机拖得更死——少用一半核心，编码只慢几毫秒。
 func pngBandCount(h int) int {
 	if h <= 0 {
 		return 1
 	}
-	cpus := runtime.GOMAXPROCS(0)
+	cpus := runtime.GOMAXPROCS(0) / 2
+	if cpus < 2 {
+		cpus = 2
+	}
 	for _, n := range [...]int{8, 6, 4, 2} {
 		if cpus >= n && h%n == 0 {
 			return n

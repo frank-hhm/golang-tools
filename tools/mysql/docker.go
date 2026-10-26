@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"go-tools/tools/docker"
+	"go-tools/tools/srvstate"
 )
 
 const (
@@ -109,8 +110,13 @@ func dockerSpecOf(cfg *InstanceConfig, hostDataDir string) docker.ContainerSpec 
 		HostIP:        "127.0.0.1",
 	}
 	if cfg.MaxConnections > 0 {
-		// 官方镜像把额外命令参数直接传给 mysqld
-		spec.Cmd = []string{fmt.Sprintf("--max-connections=%d", cfg.MaxConnections)}
+		// 官方镜像把额外命令参数直接传给 mysqld；小于 20 按 20 生效，
+		// 与本地模式同一地板（面板自身并发连接会把过小的上限挤爆成 Error 1040）
+		maxConn := cfg.MaxConnections
+		if maxConn < 20 {
+			maxConn = 20
+		}
+		spec.Cmd = []string{fmt.Sprintf("--max-connections=%d", maxConn)}
 	}
 	return spec
 }
@@ -180,7 +186,7 @@ func dockerStart(cfg *InstanceConfig) error {
 	srvRunMu.Lock()
 	srvProcs[cfg.ID] = p
 	srvRunMu.Unlock()
-	watchDockerExit(cfg.ID, id, p)
+	watchDockerExit(cfg, id, p)
 
 	// 等待就绪（首次初始化数据目录较慢，给 3 分钟；其余 60s）
 	budget := 60 * time.Second
@@ -197,6 +203,7 @@ func dockerStart(cfg *InstanceConfig) error {
 		if tcpUp(cfg.Port) {
 			if db, ok := pingRoot(cfg.Port, cfg.RootPassword); ok {
 				db.Close()
+				p.MarkReady()
 				return nil
 			}
 		}
@@ -209,8 +216,14 @@ func dockerStart(cfg *InstanceConfig) error {
 // watchDockerExit 跟踪容器退出（与本地模式的 cmd.Wait 语义对齐）。
 // 改由 docker 包的共享看护负责：引擎一时问不到不等于容器没了，退避重试，
 // 避免 Desktop 抖一下就把还在跑的 MySQL 从进程表里抹掉。
-func watchDockerExit(instID, containerID string, p *srvRunning) {
-	docker.WatchContainerExit(containerID, func() { forgetSrv(instID, p) })
+func watchDockerExit(cfg *InstanceConfig, containerID string, p *srvRunning) {
+	docker.WatchContainerExit(containerID, func() {
+		// 就绪后非主动停止的退出＝容器崩了：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			srvEmit("mysql"+srvstate.EventSuffix, srvstate.NewEvent("mysql", "docker", cfg.ID, cfg.Name, cfg.Port, -1))
+		}
+		forgetSrv(cfg.ID, p)
+	})
 }
 
 // forgetSrv 从进程表摘除该实例并关 done 通道（幂等：只有仍指向同一对象时才删）
@@ -232,6 +245,10 @@ func dockerStop(cfg *InstanceConfig) error {
 	id := dockerContainerID(cfg)
 	if id == "" {
 		return fmt.Errorf("未找到该实例对应的容器（可能已被删除）")
+	}
+	// 先标记主动停止：停容器会触发退出回调，不发「异常退出」通知
+	if p := trackedSrv(cfg.ID); p != nil {
+		p.MarkStopping()
 	}
 	if err := docker.StopContainer(id, 10); err != nil {
 		return fmt.Errorf("停止容器失败: %v", err)
@@ -259,6 +276,10 @@ func dockerRemove(cfg *InstanceConfig) error {
 	id := dockerContainerID(cfg)
 	if id == "" {
 		return nil // 从未起过容器
+	}
+	// 删容器会触发退出回调：先标记主动操作，避免误报「异常退出」
+	if p := trackedSrv(cfg.ID); p != nil {
+		p.MarkStopping()
 	}
 	if err := docker.RemoveContainer(id, true); err != nil {
 		return fmt.Errorf("删除容器失败: %v", err)

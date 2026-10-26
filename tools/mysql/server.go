@@ -10,7 +10,11 @@ package mysql
 //   - 实例：配置持久化 go-tools/mysql-instances.json；数据/日志在
 //     go-tools/mysql-instances/<id>/（my.ini + data/ + mysql.err）。
 //     首次启动自动 mysqld --initialize-insecure（root 空密码），
-//     配置了 RootPassword 则启动后 ALTER USER 设置。
+//     配置了 RootPassword 则在宣告就绪前落库并二次验证（就绪 = 配置密码真能连）。
+//     my.ini 刻意不启用 skip-name-resolve：TCP 127.0.0.1 需要反解回
+//     localhost 才能命中 root@localhost，否则任何回环连接都是 Error 1130。
+//     数据目录的判据是「有没有系统表」（dataDirReady）：残缺/无效的目录
+//     （初始化被打断、磁盘写满等）会先改名留档再重建，不会把实例卡死。
 //   - 停止优先 SHUTDOWN（SQL），兜底 Kill；状态走 SHOW GLOBAL STATUS/VARIABLES；
 //     日志为文件型（log-error），Logs() 读尾部行，前端轮询刷新。
 //   - 安装进度经 "mysql:install" 事件推送（InstallProgress，stage 与 redis 一致）。
@@ -39,6 +43,7 @@ import (
 	"go-tools/services/sysx"
 	"go-tools/tools/logtail"
 	"go-tools/tools/portcheck"
+	"go-tools/tools/srvstate"
 )
 
 func init() {
@@ -1025,6 +1030,8 @@ type srvRunning struct {
 	cmd         *exec.Cmd
 	done        chan struct{}
 	containerID string // Docker 模式：本实例对应的容器 ID（cmd 为 nil）
+	// 就绪 / 主动停止标记：退出时据此区分「崩溃」与「用户停止」，见 srvstate
+	srvstate.Flag
 }
 
 var (
@@ -1139,13 +1146,30 @@ func StartInstance(id string) error {
 	}
 	userArgs := runAsUserArgs()
 
-	// 首次启动：data 为空则免交互初始化（root 空密码）
-	if empty, err := dirIsEmpty(dataDir); err == nil && empty {
+	// 首次启动：数据目录还不是「可用的 MySQL 目录」就先免交互初始化（root 空密码）。
+	//
+	// 判据必须是「系统表在不在」而不是「目录空不空」：初始化写到一半被打断、磁盘
+	// 写满、目录被人清过一部分，都会留下「非空但无效」的数据目录——mysqld 每次
+	// 都以 "Failed to find valid data directory" 拒绝启动，而「非空」判据会让初始化
+	// 永远被跳过，实例从此再也起不来（只有人工删目录能救）。
+	if !dataDirReady(dataDir) {
+		bak, err := quarantineDataDir(dataDir)
+		if err != nil {
+			return fmt.Errorf("数据目录 %s 不是有效的 MySQL 目录，备份它时又失败: %w", dataDir, err)
+		}
+		if bak != "" {
+			note := fmt.Sprintf("原有数据目录不是有效的 MySQL 数据目录，已备份到 %s（确认无用可自行删除）", bak)
+			appendErrNote(errPath, note)
+		}
 		initCmd := exec.Command(exe, append([]string{"--defaults-file=my.ini", "--initialize-insecure"}, userArgs...)...)
 		initCmd.Dir = instDir // 与 redis 同理：cwd + 相对文件名，避免路径拼接问题
 		initCmd.SysProcAttr = hideWindowAttr()
 		out, err := initCmd.CombinedOutput()
 		if err != nil {
+			// 半成品数据目录留不得：留下它，下次启动又会跳过初始化并卡在同一条报错上
+			if half, qerr := quarantineDataDir(dataDir); qerr == nil && half != "" {
+				appendErrNote(errPath, "初始化失败，半成品数据目录已备份到 "+half)
+			}
 			return fmt.Errorf("初始化数据目录失败: %v\n%s\n%s%s", err, string(out), errTail(errPath, 8), initFailHint(string(out)))
 		}
 	}
@@ -1168,6 +1192,14 @@ func StartInstance(id string) error {
 			delete(srvProcs, id)
 		}
 		srvRunMu.Unlock()
+		// 就绪后非主动停止的退出＝崩溃：发事件让主程序弹系统通知
+		if p.Abnormal() {
+			code := -1
+			if cmd.ProcessState != nil {
+				code = cmd.ProcessState.ExitCode()
+			}
+			srvEmit("mysql"+srvstate.EventSuffix, srvstate.NewEvent("mysql", "local", id, cfg.Name, cfg.Port, code))
+		}
 	}()
 
 	// 等待就绪（最多 60s；进程提前退出则立即报错并附错误日志尾部）
@@ -1180,19 +1212,30 @@ func StartInstance(id string) error {
 		default:
 		}
 		if tcpUp(cfg.Port) {
-			if db, ok := pingRoot(cfg.Port, cfg.RootPassword); ok {
+			// 就绪判据必须「配置的密码真能连」，不能用 pingRoot 的「空密码回退」
+			// 冒充成功：首次初始化后库内 root 是空密码，若这里因空密码放行就收工，
+			// 配置的 RootPassword 永远不会落库——面板「连接此实例」带着配置密码
+			// 连过来就是 Error 1045 (using password: YES)。
+			if db, err := openRoot(cfg.Port, cfg.RootPassword); err == nil {
+				// 探测池必须关：SetMaxOpenConns(1) 的池会占住一条连接槽，
+				// 不关就是进程级泄漏（max_connections 小的实例直接 Error 1040）
 				db.Close()
+				p.MarkReady()
 				return nil
 			}
-			// 端口已监听但密码未生效：可能历史密码待改（首次初始化后配置了 RootPassword）
 			if cfg.RootPassword != "" {
+				// 空密码还能进（刚初始化完的状态）→ 补一次 ALTER 把配置密码落库
 				if db, ok := applyRootPassword(cfg); ok {
 					db.Close()
+					p.MarkReady()
 					return nil
 				}
 			}
 		}
 		time.Sleep(500 * time.Millisecond)
+	}
+	if tcpUp(cfg.Port) {
+		return fmt.Errorf("服务已在 %d 端口监听，但 root 认证失败：库内密码与实例配置的 RootPassword 不一致（密码被手工改过时，先用正确密码登录后 ALTER USER 改回，或修正配置里的密码）。\n%s", cfg.Port, errTail(errPath, 10))
 	}
 	return fmt.Errorf("启动超时：60s 内未就绪，请查看日志。\n%s", errTail(errPath, 10))
 }
@@ -1236,6 +1279,10 @@ func StopInstance(id string) error {
 	p := trackedSrv(id)
 	if !tcpUp(cfg.Port) && p == nil {
 		return fmt.Errorf("实例未在运行")
+	}
+	// 先标记主动停止：此后进程退出属于预期，不发「异常退出」通知
+	if p != nil {
+		p.MarkStopping()
 	}
 	if db, ok := pingRoot(cfg.Port, cfg.RootPassword); ok {
 		_, _ = db.Exec("SHUTDOWN")
@@ -1373,6 +1420,14 @@ func PortTaken(port int, excludeID string) string {
 
 /* ============================ 小工具 ============================ */
 
+// dirIsEmpty 判断目录是否为空（目录不存在/打不开时返回错误）。
+//
+// 坑在 Readdirnames 的约定：读到末尾即使一个名字都没有，也返回 io.EOF。
+// 直接透传 err 时，空目录得到 (true, io.EOF)，而调用方普遍写成
+// "err == nil && empty"，于是空目录被判成「非空」——本地模式新实例的首次
+// 初始化会因此被跳过，mysqld 对着空目录启动直接报 "Failed to find valid
+// data directory"（失败启动还会在目录里留下 auto.cnf，让它从此变「非空但
+// 无效」，下次继续卡在同一条错上）。这里把 io.EOF 归一为「空」。
 func dirIsEmpty(dir string) (bool, error) {
 	f, err := os.Open(dir)
 	if err != nil {
@@ -1380,7 +1435,65 @@ func dirIsEmpty(dir string) (bool, error) {
 	}
 	defer f.Close()
 	names, err := f.Readdirnames(1)
-	return len(names) == 0, err
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	return len(names) == 0, nil
+}
+
+// dataDirReady 判断数据目录是不是一个「可以拿去启动」的 MySQL 数据目录：
+// 认系统表本体——8.0 的数据字典 mysql/mysql.ibd，或老版本就有的共享表空间 ibdata1。
+//
+// 不能用「目录是否为空」代替：目录非空但没系统表（初始化写一半）的实例启动必败，
+// 而按空判据会永远跳过初始化，只能人工删目录才能恢复。
+func dataDirReady(dir string) bool {
+	for _, rel := range []string{
+		filepath.Join("mysql", "mysql.ibd"), // MySQL 8.0：数据字典
+		"ibdata1",                           // 5.7 及更早：共享表空间
+	} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// quarantineDataDir 把不能用的数据目录改名留档，再重建一个空目录，返回备份路径。
+//
+// 改名而不是删除：无效目录多半是「初始化写到一半」或「磁盘写满」留下的，用户的表
+// 可能还在里面，删了就真没了；留档后既能自愈启动，又能人工打捞。
+// 目录本来就不存在或为空时返回空串（不需要备份）。
+func quarantineDataDir(dataDir string) (string, error) {
+	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+		return "", os.MkdirAll(dataDir, 0o755)
+	}
+	if empty, err := dirIsEmpty(dataDir); err == nil && empty {
+		return "", nil
+	}
+	bak := dataDir + ".broken-" + time.Now().Format("20060102-150405-000")
+	if err := os.Rename(dataDir, bak); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return "", err
+	}
+	return bak, nil
+}
+
+// appendErrNote 往 mysql.err 追加一行 go-tools 自己的说明（备份路径/重建原因）。
+//
+// mysqld 的 log-error 是 append 模式，不会截断；写在这里能跟着实例日志一起被前端
+// 读走，比只记应用日志更容易被用户看到（数据目录被挪走这种事必须留个交代）。
+func appendErrNote(errPath, note string) {
+	if errPath == "" || note == "" {
+		return
+	}
+	f, err := os.OpenFile(errPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "[go-tools] %s\n", note)
 }
 
 // errTail 读 mysql.err 尾部 k 行（拼进错误信息，免跳页面排查）
@@ -1398,6 +1511,11 @@ func buildMyIni(cfg *InstanceConfig, basedir, instDir, dataDir string) string {
 	maxConn := cfg.MaxConnections
 	if maxConn <= 0 {
 		maxConn = 151
+	} else if maxConn < 20 {
+		// 20 是可用性地板：面板自身要并发拿连接——连接管理每个连接池上限 5 条、
+		// 状态每 3s 轮询一条，多开几个连接或同时查询就能超过个位数。
+		// 配成 1 这种极端值，整套 UI 会互相挤到狂刷 Error 1040。
+		maxConn = 20
 	}
 	var b strings.Builder
 	b.WriteString("# go-tools 自动生成，请勿手改（每次启动覆盖）\n[mysqld]\n")
@@ -1407,7 +1525,12 @@ func buildMyIni(cfg *InstanceConfig, basedir, instDir, dataDir string) string {
 	fmt.Fprintf(&b, "log-error=%s\n", filepath.ToSlash(filepath.Join(instDir, "mysql.err")))
 	fmt.Fprintf(&b, "max_connections=%d\n", maxConn)
 	b.WriteString(myIniPlatformLines(instDir))
-	b.WriteString("skip-name-resolve\n")
+	// 刻意不写 skip-name-resolve。开了它，TCP 127.0.0.1 会以字面量主机名去
+	// 匹配账户，而 --initialize-insecure 只建了 root@localhost——于是面板、
+	// 连接管理与外部客户端的所有回环连接统统吃 Error 1130（Host '127.0.0.1'
+	// is not allowed），实例「建好了却永远连不上」。开着反解时系统会把回环
+	// 反查为 localhost（hosts 被 Docker Desktop 塞过条目也实测不受影响），
+	// 每次连接的反查开销另有 host cache 兜底，可忽略。
 	return b.String()
 }
 

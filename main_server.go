@@ -38,7 +38,9 @@ import (
 	"go-tools/services/applog"
 	"go-tools/services/config"
 	"go-tools/services/panel"
+	"go-tools/services/tasks"
 	"go-tools/tools/docker"
+	"go-tools/tools/ftp"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -86,6 +88,13 @@ func init() {
 	application.RegisterEvent[docker.SetupProgress]("docker:setup")
 	application.RegisterEvent[term.DataEvent]("term:data")
 	application.RegisterEvent[term.ExitEvent]("term:exit")
+	// 文件传输：任务进度、远端断线，以及服务端状态/日志
+	application.RegisterEvent[ftp.Transfer]("ftp:transfer")
+	application.RegisterEvent[ftp.SessionEvent]("ftp:session")
+	application.RegisterEvent[ftp.ServerStatus]("ftp:server")
+	application.RegisterEvent[ftp.ServerLog]("ftp:serverlog")
+	// 统一的安装/下载任务增量：前端只认这一种形状
+	application.RegisterEvent[tasks.Task](tasks.UpdateEvent)
 }
 
 func main() {
@@ -152,16 +161,33 @@ func main() {
 	appInstance.SetApp(app)
 	appInstance.SetTrayIcon(trayIconData)
 	appInstance.SetDefaultLogo(defaultLogoPNG)
+	// 面板跑在浏览器里，没有原生通知窗口可开：终态通知由前端 Notification 负责
+	appInstance.SetNativeNotify(false)
 
 	// 事件发射器：各工具包把进度/日志推给前端，与桌面版完全相同
-	usbserial.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	redis.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	mysql.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	docker.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	php.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	nginx.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	npm.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
-	term.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
+	// 不同的是这里多一道 tasks.Observe：浏览器标签页关掉后，重新打开还能
+	// 从快照里把“装到哪了”取回来，而不是从零开始。
+	tasks.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
+	emit := func(name string, data ...any) {
+		tasks.Observe(name, data...)
+		app.Event.Emit(name, data...)
+	}
+	tasks.SetNotifier(func(t tasks.Task) {
+		// 没有原生窗口：只落日志（系统通知交给浏览器 Notification）
+		applog.Infof("task", "%s %s（%s）", t.Title, t.Status, t.Note)
+	})
+
+	usbserial.SetEmitter(emit)
+	redis.SetEmitter(emit)
+	mysql.SetEmitter(emit)
+	docker.SetEmitter(emit)
+	php.SetEmitter(emit)
+	nginx.SetEmitter(emit)
+	npm.SetEmitter(emit)
+	term.SetEmitter(emit)
+	ftp.SetEmitter(emit)
+	// 面板部署里服务端同样可开：配了自动启动就在进程内拉起
+	ftp.StartAutoServer()
 
 	// 对外服务：登录鉴权 + 安全入口 + 反向代理到上面的回环地址
 	panelSrv, err := panel.New(fmt.Sprintf("127.0.0.1:%d", innerPort), panelSet, panel.Options{
@@ -193,6 +219,7 @@ func main() {
 
 	// 兜底收尾：service 生命周期正常时会关一遍，这里防退出路径绕过，把远端 shell 挂住
 	term.CloseAll()
+	ftp.CloseAll()
 
 	if runErr != nil {
 		log.Fatal(runErr)

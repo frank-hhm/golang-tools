@@ -646,6 +646,7 @@ import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { remoteVerText, useSysPkg } from "@/utils/caps";
+import { restoreInstalls } from "@/store/modules/tasks";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -1429,6 +1430,8 @@ onMounted(async () => {
         if (target) openLogs(target);
     }
     loadLocalVersions();
+    // 离开页面时安装还在跑：从任务台账把进度表与日志补回来，免得回来看到可点的“安装”
+    restoreInstalls("redis", "install", installProgress, pushInstallLog);
     srvTimer = setInterval(refreshSrvStates, 3000);
     // 单例窗口已打开时，主页再次点击其他实例 → 通过事件切换
     offSelInst = Events.On("tool:select-inst", (ev: any) => {

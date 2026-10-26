@@ -12,31 +12,29 @@
               <a-button size="small" @click="openAddModal()">新增连接</a-button>
             </template>
             <a-list :bordered="false" size="small">
+              <!-- 行样式对齐 PHP 实例列表：badge + 名称 + 端口 tag + ···（操作全收菜单），整行可点、选中高亮 -->
               <a-list-item v-for="c in savedConns" :key="c.id" :class="{ active: c.id === st.activeConnId }"
                 @click="openConnection(c)">
                 <a-space>
                   <com-badge :status="isOpen(c.id) ? 'success' : 'normal'" :animated="isOpen(c.id)" />
-                  <div class="conn-name">{{ c.name || (c.host + ':' + c.port) }}</div>
+                  <a-tooltip :content="c.host + ':' + c.port">
+                    <div class="conn-name">{{ c.name || (c.host + ':' + c.port) }}</div>
+                  </a-tooltip>
+                  <a-tag v-if="c.name" size="small" color="gray">{{ c.port }}</a-tag>
                 </a-space>
                 <template #actions>
-                  <a-space :size="2">
-                    <a-dropdown trigger="hover" @select="(v: any) => onConnAction(v, c)">
-                      <icon-more class="conn-more" @click.stop />
-                      <template #content>
-                        <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
-                        <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                      </template>
-                    </a-dropdown>
-                    <span @click.stop>
-                      <a-popconfirm :content="`确定删除连接「${c.name}」？`" type="warning" position="lt" @ok="removeConn(c)">
-                        <a-button size="small" status="danger" class="conn-del"><icon-delete /></a-button>
-                      </a-popconfirm>
-                    </span>
-                  </a-space>
+                  <a-dropdown trigger="hover" @select="(v: any) => onConnAction(v, c)">
+                    <icon-more class="conn-more" @click.stop />
+                    <template #content>
+                      <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
+                      <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                      <a-doption value="del"><icon-delete /> 删除</a-doption>
+                    </template>
+                  </a-dropdown>
                 </template>
               </a-list-item>
               <a-list-item v-if="savedConns.length === 0">
-                <a-empty :image="false" description="暂无连接" />
+                <div class="conn-empty">暂无连接，点击右上「新增连接」</div>
               </a-list-item>
             </a-list>
           </a-card>
@@ -44,12 +42,77 @@
 
         <a-col class="side-cols mt6" :span="24">
           <!-- 本地服务（mysqld 进程管理）独立组件 -->
-          <LocalServicePanel @connect="onSrvConnect" />
+          <LocalServicePanel :selected-srv-id="srvCfg?.id || ''" @select="openSrvOverview" @connect="onSrvConnect" />
         </a-col>
       </a-row>
     </a-col>
     <a-col :span="19" class="main-col">
-      <a-row :gutter="6" class="main-row">
+      <!-- 实例总览（对齐 PHP 主区域）：点左栏实例进来，状态栅格 + 实时错误日志 -->
+      <a-card v-if="srvCfg" class="srv-panel card-head-tool" :body-style="{ padding: 0 }">
+        <template #title>
+          <a-space>
+            <com-badge :status="srvState?.running ? 'success' : 'normal'" :animated="!!srvState?.running" />
+            <span>{{ srvCfg.name }}</span>
+            <a-tooltip v-if="srvCfg.mode === 'docker'" :content="srvCfg.image || ''">
+              <a-tag color="purple" size="small">Docker {{ imgTagOf(srvCfg.image) }} · :{{ srvCfg.port }}</a-tag>
+            </a-tooltip>
+            <a-tag v-else color="arcoblue" size="small">mysqld :{{ srvCfg.port }}</a-tag>
+          </a-space>
+        </template>
+        <template #extra>
+          <a-space>
+            <a-button size="small" :disabled="!!srvState?.running || srvStartBusy || srvStopBusy"
+              :loading="srvStartBusy" @click="srvDoStart">启动</a-button>
+            <a-popconfirm :content="`停止实例「${srvCfg.name}」？正在处理的请求会中断。`" type="warning" position="lt"
+              :disabled="!srvState?.running || srvStopBusy" @ok="srvDoStop">
+              <a-button size="small" status="danger"
+                :disabled="!srvState?.running || srvStartBusy || srvStopBusy" :loading="srvStopBusy">
+                {{ srvStopBusy ? '停止中' : '停止' }}</a-button>
+            </a-popconfirm>
+            <a-button size="small" :disabled="srvStartBusy || srvStopBusy || !srvState?.running"
+              :loading="srvStartBusy" @click="srvDoRestart">{{ srvStartBusy ? '重启中' : '重启' }}</a-button>
+            <a-button size="small" type="primary" :disabled="!srvState?.running" @click="srvConnect">
+              <template #icon><icon-link /></template>连接此实例</a-button>
+          </a-space>
+        </template>
+        <div class="srv-grid">
+          <div class="ls-item"><span>MySQL 版本</span><b>{{ srvState?.version || srvCfg.version || '-' }}</b></div>
+          <div class="ls-item"><span>运行模式</span><b>{{ srvCfg.mode === 'docker' ? 'Docker 容器' : '本地 mysqld' }}</b></div>
+          <div class="ls-item"><span>运行状态</span>
+            <b class="com-state" :class="srvState?.running ? 'ok' : 'no'">
+              <com-badge :status="srvState?.running ? 'success' : 'normal'" :animated="!!srvState?.running" />
+              {{ srvState?.running ? '运行中' : '已停止' }}
+            </b>
+          </div>
+          <div class="ls-item" v-if="srvCfg.mode === 'docker'"><span>容器</span>
+            <a-tooltip :content="srvState?.container || '-'">
+              <b class="ellipsis">{{ srvState?.container || '-' }}{{ srvState?.containerState ? '（' + srvState.containerState + '）' : '' }}</b>
+            </a-tooltip>
+          </div>
+          <div class="ls-item" v-else><span>PID</span><b>{{ srvState?.pid || '-' }}</b></div>
+          <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(srvState?.uptimeSeconds) }}</b></div>
+          <div class="ls-item"><span>端口</span><b>{{ srvCfg.port }}</b></div>
+          <div class="ls-item">
+            <span>数据目录</span>
+            <a-tooltip :content="srvState?.dataDir || '-'"><b class="ellipsis">{{ srvState?.dataDir || '-' }}</b></a-tooltip>
+          </div>
+          <div class="ls-item"><span>线程连接</span><b>{{ srvState?.threadsConnected ?? '-' }}</b></div>
+          <div class="ls-item"><span>线程活跃</span><b>{{ srvState?.threadsRunning ?? '-' }}</b></div>
+          <div class="ls-item"><span>最大连接</span><b>{{ srvState?.maxConnections ?? '-' }}</b></div>
+        </div>
+        <div class="srv-log-head">
+          <span>错误日志（mysql.err，实时）</span>
+          <a-space :size="6">
+            <a-button size="small" @click="clearSrvLog">
+              <template #icon><icon-delete /></template>清空</a-button>
+          </a-space>
+        </div>
+        <div ref="srvLogBoxRef" class="srv-log">
+          <div v-for="(l, i) in srvLogLines" :key="i" class="srv-line">{{ l }}</div>
+          <div v-if="srvLogLines.length === 0" class="conn-empty">暂无日志</div>
+        </div>
+      </a-card>
+      <a-row v-else :gutter="6" class="main-row">
         <a-col :span="6" class="main-row-col" v-if="st.activeConnId">
           <a-card class="side-card tree-card card-head-tool" size="small" :body-style="{ padding: 0 }">
             <template #title>
@@ -80,7 +143,7 @@
           <!-- 右侧：主内容 -->
           <div class="main-panel">
             <div v-if="!st.activeConnId" class="empty-state">
-              <a-empty description="请从左侧打开一个 MySQL 连接">
+              <a-empty description="请从左侧打开一个 MySQL 连接，或点选实例查看总览">
                 <a-button size="small" @click="openAddModal()"><template #icon><icon-plus /></template>新建连接</a-button>
               </a-empty>
             </div>
@@ -535,9 +598,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, h, onMounted, onUnmounted, reactive, ref } from "vue";
-import { Message } from "@arco-design/web-vue";
+import { computed, getCurrentInstance, h, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
+import { Message, Modal } from "@arco-design/web-vue";
 import LocalServicePanel from "./LocalServicePanel.vue";
+import { sysNotify } from "@/utils/notify";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const CACHE_KEY = "mysql_connections_cache";
@@ -846,8 +910,18 @@ async function saveConnection() {
 function onConnAction(v: string, c: ConnConfig) {
   if (v === "open") openConnection(c);
   else if (v === "edit") openEditModal(c);
+  else if (v === "del") {
+    // 行内不再常驻红色删除按钮（对齐 PHP 实例列表），确认走弹窗
+    Modal.confirm({
+      title: "删除连接",
+      content: `确定删除连接「${c.name || (c.host + ":" + c.port)}」？已打开的会话会一起关闭。`,
+      okText: "删除",
+      cancelText: "取消",
+      onOk: () => removeConn(c),
+    });
+  }
 }
-/** 删除连接（确认由 Popconfirm 承担） */
+/** 删除连接（确认由 onConnAction 的弹窗承担） */
 async function removeConn(c: ConnConfig) {
   try {
     if (isOpen(c.id)) {
@@ -862,6 +936,7 @@ async function removeConn(c: ConnConfig) {
 }
 
 async function openConnection(c: ConnConfig) {
+  leaveSrvOverview(); // 打开连接时切回连接工作区
   try {
     await GoTools.MySQLOpen({ ...c });
   } catch (e: any) { Message.error(String(e?.message || e)); return; }
@@ -885,6 +960,136 @@ function onSrvConnect(cfg: ConnConfig) {
     persistConnections();
   }
   openConnection(cfg);
+}
+
+/* ===== 实例总览（对齐 PHP 主区域）：点左栏实例 → 右侧状态栅格 + 实时错误日志 ===== */
+const srvCfg = ref<any>(null);
+const srvState = ref<any>(null);
+const srvLogLines = ref<string[]>([]);
+const srvLogBoxRef = ref<HTMLElement | null>(null);
+const srvStartBusy = ref(false);
+const srvStopBusy = ref(false);
+let srvStateTimer: any = null;
+let srvLogTimer: any = null;
+let srvLogInflight = false;
+let srvLogQuietUntil = 0;
+
+/** Docker 镜像 tag（mysql:8.4 → 8.4），与本地服务面板标签一致 */
+function imgTagOf(img: string) {
+  const s = String(img || "");
+  const i = s.lastIndexOf(":");
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+function fmtUptimeS(sec?: number) {
+  if (!sec || sec <= 0) return "-";
+  const s = Math.floor(sec);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
+function scrollSrvLog() {
+  nextTick(() => { if (srvLogBoxRef.value) srvLogBoxRef.value.scrollTop = srvLogBoxRef.value.scrollHeight; });
+}
+
+async function refreshSrvState() {
+  const cfg = srvCfg.value;
+  if (!cfg) return;
+  try { srvState.value = await GoTools.MySQLSrvStatus(cfg.id); } catch (e) { /* 保留旧值，不打断面板 */ }
+}
+
+function stopSrvTimers() {
+  if (srvStateTimer) { clearInterval(srvStateTimer); srvStateTimer = null; }
+  if (srvLogTimer) { clearInterval(srvLogTimer); srvLogTimer = null; }
+}
+
+/** 打开实例总览：状态 3s 一轮、日志 2s 一轮（单飞 + 失败退避，与本地服务面板同节奏） */
+async function openSrvOverview(inst: any) {
+  if (!inst?.id) return;
+  srvCfg.value = { ...inst };
+  srvState.value = null;
+  srvLogLines.value = [];
+  srvLogQuietUntil = 0;
+  stopSrvTimers();
+  await refreshSrvState();
+  try {
+    srvLogLines.value = (await GoTools.MySQLSrvLogs(inst.id, 300)) || [];
+    scrollSrvLog();
+  } catch (e) { /* 日志读不到不影响状态栏 */ }
+  srvStateTimer = setInterval(refreshSrvState, 3000);
+  srvLogTimer = setInterval(async () => {
+    const cfg = srvCfg.value;
+    if (!cfg || srvLogInflight || Date.now() < srvLogQuietUntil) return;
+    srvLogInflight = true;
+    try {
+      srvLogLines.value = (await GoTools.MySQLSrvLogs(cfg.id, 300)) || [];
+      scrollSrvLog();
+    } catch (e) {
+      srvLogQuietUntil = Date.now() + 15000;
+    } finally {
+      srvLogInflight = false;
+    }
+  }, 2000);
+}
+
+/** 退出总览（打开连接时调用），右栏回到连接工作区 */
+function leaveSrvOverview() {
+  srvCfg.value = null;
+  srvState.value = null;
+  stopSrvTimers();
+}
+
+/** 清空只是前端视图；短时抑制轮询，否则 2s 后旧日志又被拉回来 */
+function clearSrvLog() {
+  srvLogLines.value = [];
+  srvLogQuietUntil = Date.now() + 60000;
+}
+
+async function srvDoStart() {
+  const cfg = srvCfg.value;
+  if (!cfg || srvStartBusy.value || srvStopBusy.value) return;
+  srvStartBusy.value = true;
+  try {
+    await GoTools.MySQLSrvStart(cfg.id);
+    Message.success(`实例 ${cfg.name} 已启动`);
+  } catch (e: any) { Message.error("启动失败: " + (e?.message || e)); }
+  finally { srvStartBusy.value = false; refreshSrvState(); }
+}
+
+async function srvDoStop() {
+  const cfg = srvCfg.value;
+  if (!cfg || srvStopBusy.value) return;
+  srvStopBusy.value = true;
+  try {
+    await GoTools.MySQLSrvStop(cfg.id);
+    Message.success(`实例 ${cfg.name} 已停止`);
+  } catch (e: any) { Message.error("停止失败: " + (e?.message || e)); }
+  finally { srvStopBusy.value = false; refreshSrvState(); }
+}
+
+/** 没有单独的重启接口：停完再起（与本地服务面板「切版本后重启」一致） */
+async function srvDoRestart() {
+  const cfg = srvCfg.value;
+  if (!cfg || srvStartBusy.value || srvStopBusy.value) return;
+  srvStartBusy.value = true;
+  try {
+    await GoTools.MySQLSrvStop(cfg.id);
+    await GoTools.MySQLSrvStart(cfg.id);
+    Message.success(`实例 ${cfg.name} 已重启`);
+  } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
+  finally { srvStartBusy.value = false; refreshSrvState(); }
+}
+
+/** 从总览进连接：并入已保存连接并在右侧打开工作区（自动退出总览） */
+function srvConnect() {
+  const cfg = srvCfg.value;
+  if (!cfg) return;
+  if (!srvState.value?.running) { Message.warning("请先启动实例"); return; }
+  onSrvConnect({
+    id: "srv-" + cfg.id, name: `${cfg.name}(${cfg.mode === "docker" ? "容器" : "本地"})`,
+    host: "127.0.0.1", port: cfg.port, user: "root", password: cfg.rootPassword, database: "",
+  } as any);
 }
 
 function resetActive() {
@@ -1963,6 +2168,8 @@ async function genBackup() {
     const tables = st.backup.all ? [] : st.backup.tables;
     st.backup.sql = await GoTools.MySQLBackup(st.backup.connId, st.backup.db, tables);
     Message.success("备份已生成");
+    // 大库备份耗时较长，用户可能已切到别的页面：再发一条系统原生通知
+    sysNotify("MySQL 备份完成", `${st.backup.db}（${st.backup.all ? "全部表" : tables.length + " 张表"}）`);
   } catch (e: any) { Message.error(String(e?.message || e)); }
   st.backup.loading = false;
 }
@@ -2032,6 +2239,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener("keydown", onCtxKeydown);
+  stopSrvTimers();
 });
 </script>
 
@@ -2088,6 +2296,26 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
+/* 左栏列表行（连接/实例）对齐 PHP：整行可点、选中高亮、hover 背景 */
+.side-card :deep(.arco-list-item) {
+  cursor: pointer;
+}
+
+.side-card :deep(.arco-list-item.active),
+.side-card :deep(.arco-list-item.active:hover) {
+  background: var(--color-primary-light-1);
+}
+
+.side-card :deep(.arco-list-item:hover) {
+  background: var(--color-fill-2);
+}
+
+.conn-empty {
+  color: var(--color-text-3);
+  font-size: 12px;
+  padding: 6px 0;
+}
+
 .main-col {
   height: 100%;
   min-width: 0;
@@ -2128,6 +2356,101 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background: var(--color-bg-2);
+}
+
+/* ---- 实例总览（对齐 PHP 主区域） ---- */
+.srv-panel {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.srv-panel :deep(.arco-card-body) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.srv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
+.ls-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ls-item > span {
+  color: var(--color-text-3);
+  flex-shrink: 0;
+}
+
+.ls-item b {
+  font-weight: 500;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ls-item b.ok {
+  color: rgb(var(--green-6));
+}
+
+.ls-item b.no {
+  color: var(--color-text-3);
+}
+
+/* b 为省略号设了 overflow:hidden，会把状态圆点光晕切掉一圈 */
+.ls-item b.com-state {
+  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srv-log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px 4px;
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.srv-log {
+  flex: 1;
+  min-height: 160px;
+  overflow: auto;
+  background: var(--color-fill-2);
+  margin: 0 14px 12px;
+  padding: 8px;
+  border-radius: 4px;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+}
+
+.srv-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
 }
 
 .empty-state {
@@ -2456,11 +2779,4 @@ onUnmounted(() => {
   color: var(--color-text-2);
 }
 
-.conn-del {
-  color: var(--color-text-3);
-}
-
-.conn-del:hover {
-  color: rgb(var(--danger-6));
-}
 </style>

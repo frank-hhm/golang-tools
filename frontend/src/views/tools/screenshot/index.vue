@@ -175,6 +175,7 @@ import {
     type Pt, type Rect, type Shape, type Tool,
     canvasToPngDataURL, clampToScreen, drawShape, normalizeRect, shapeIsMeaningful, shouldAppendPoint,
 } from "@/views/widget/captureDraw";
+import { sysNotify } from "@/utils/notify";
 
 const {
     proxy: { $GoTools },
@@ -513,7 +514,8 @@ async function saveFile() {
     try {
         const path = await $GoTools.SaveCaptureFile(data);
         if (path) {
-            try { $GoTools.ShowSystemNotification("截图已保存", path); } catch { /* 通知失败不影响 */ }
+            // 保存成功：浮层/窗口可能已不在前台，走系统原生通知（右下角 Toast）
+            sysNotify("截图已保存", path);
         }
     } catch (e: any) {
         Message.error("保存失败：" + (e?.message || e));

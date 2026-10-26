@@ -22,6 +22,8 @@
         <div class="layout-content">
             <router-view />
         </div>
+        <!-- 安装/下载任务浮标：任务在 Go 侧独立跑，这里保证离开页面也能看到进度 -->
+        <task-hub />
     </div>
 </template>
 <script setup lang="ts">
@@ -33,6 +35,7 @@ import { useCaps } from "@/utils/caps";
 import { routeLoading } from "@/router/permission";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 import SideNav from "@/components/layouts/SideNav.vue";
+import TaskHub from "@/components/business/task-hub/index.vue";
 
 /**
  * 主窗口基础布局（无边框）。

@@ -11,6 +11,7 @@ export const TOOLS = [
     { key: "Nginx", menu_name: "Nginx管理", path: "tools/nginx", component: () => import('@/views/tools/nginx/index.vue') },
     { key: "Docker", menu_name: "Docker管理", path: "tools/docker", component: () => import('@/views/tools/docker/index.vue') },
     { key: "Term", menu_name: "终端连接", path: "tools/term", component: () => import('@/views/tools/term/index.vue') },
+    { key: "Ftp", menu_name: "文件传输", path: "tools/ftp", component: () => import('@/views/tools/ftp/index.vue') },
     { key: "Npm", menu_name: "npm管理", path: "tools/npm", component: () => import('@/views/tools/npm/index.vue') },
     { key: "Timestamp", menu_name: "时间戳转换", path: "tools/timestamp", component: () => import('@/views/tools/timestamp/index.vue') },
     { key: "Strrandom", menu_name: "随机字符串生成", path: "tools/strrandom", component: () => import('@/views/tools/strrandom/index.vue') },

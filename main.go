@@ -4,13 +4,17 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	appsvc "go-tools/services/app"
 	"go-tools/services/applog"
 	"go-tools/services/config"
+	"go-tools/services/tasks"
 	"go-tools/tools/docker"
+	"go-tools/tools/ftp"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -18,6 +22,7 @@ import (
 	"go-tools/tools/redis"
 	"go-tools/tools/screenshot"
 	"go-tools/tools/sniffer"
+	"go-tools/tools/srvstate"
 	"go-tools/tools/term"
 	"go-tools/tools/usbserial"
 
@@ -72,6 +77,13 @@ func init() {
 	// 终端会话：输出流与断开通知
 	application.RegisterEvent[term.DataEvent]("term:data")
 	application.RegisterEvent[term.ExitEvent]("term:exit")
+	// 文件传输：任务进度、远端断线，以及服务端状态/日志
+	application.RegisterEvent[ftp.Transfer]("ftp:transfer")
+	application.RegisterEvent[ftp.SessionEvent]("ftp:session")
+	application.RegisterEvent[ftp.ServerStatus]("ftp:server")
+	application.RegisterEvent[ftp.ServerLog]("ftp:serverlog")
+	// 统一的安装/下载任务增量：前端只认这一种形状
+	application.RegisterEvent[tasks.Task](tasks.UpdateEvent)
 }
 
 func main() {
@@ -120,42 +132,45 @@ func main() {
 
 	// 注入应用实例，使 App 可以向前端推送事件
 	appInstance.SetApp(app)
+	appInstance.SetNativeNotify(true) // 桌面版能弹原生通知卡
 
-	// 注入事件发射器，使 usbserial 包可将收到/状态数据实时推送给前端
-	usbserial.SetEmitter(func(name string, data ...any) {
+	// 所有工具包共用同一个发射器：
+	//  1. 先交给 tasks 记账（离开页面也记得装到哪了，终态还能弹通知）；
+	//  2. 再原样转给前端。
+	tasks.SetEmitter(func(name string, data ...any) { app.Event.Emit(name, data...) })
+	emit := func(name string, data ...any) {
+		tasks.Observe(name, data...)
+		if strings.HasSuffix(name, srvstate.EventSuffix) {
+			notifyServerExit(appInstance, name, data...)
+		}
+		if name == ftp.EventTransfer {
+			notifyTransferDone(appInstance, data...)
+		}
 		app.Event.Emit(name, data...)
-	})
+	}
 
-	// 注入事件发射器，使 redis 包可将监控命令实时推送给前端
-	redis.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
-	})
-
-	// 注入事件发射器，使 mysql 包可将安装进度实时推送给前端
-	mysql.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
-	})
-
-	// 注入事件发射器，使 docker 包可将镜像拉取进度、容器日志实时推送给前端
-	docker.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
-	})
-
-	// 注入事件发射器，使 php/nginx/npm 包可将安装进度、全局包操作实时推送给前端
-	php.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
-	})
-	nginx.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
-	})
-	npm.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
+	// 安装/下载任务结束弹 Windows 系统原生通知（右下角 Toast，自动进通知中心）：
+	// 标题按任务类型区分（安装完成 / 下载完成 / 操作完成），正文是具体版本或镜像。
+	tasks.SetNotifier(func(t tasks.Task) {
+		switch t.Status {
+		case tasks.StatusDone:
+			_ = appInstance.ShowSystemNotification(srvstate.DoneTitle(t.Tool, t.Kind), srvstate.ClipNotice(t.Title, 80))
+		case tasks.StatusError:
+			_ = appInstance.ShowSystemNotification(srvstate.FailTitle(t.Tool, t.Kind), srvstate.ClipNotice(t.Title+"："+t.Note, 120))
+		}
 	})
 
-	// 注入事件发射器，使 term 包可将远端终端输出实时推送给前端
-	term.SetEmitter(func(name string, data ...any) {
-		app.Event.Emit(name, data...)
-	})
+	usbserial.SetEmitter(emit)
+	redis.SetEmitter(emit)
+	mysql.SetEmitter(emit)
+	docker.SetEmitter(emit)
+	php.SetEmitter(emit)
+	nginx.SetEmitter(emit)
+	npm.SetEmitter(emit)
+	term.SetEmitter(emit)
+	ftp.SetEmitter(emit)
+	// 服务端若配了“随应用启动”就在这里拉起（失败只记日志，不阻断启动）
+	ftp.StartAutoServer()
 
 	// Create a new window with the necessary options.
 	// 'Title' is the title of the window.
@@ -210,9 +225,76 @@ func main() {
 	// 这里再补一手，避免将来有哪条退出路径绕过服务生命周期，
 	// 把远端 shell 一直挂在服务器上。
 	term.CloseAll()
+	ftp.CloseAll()
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+// notifyServerExit 把「实例异常退出」事件转成 Windows 系统原生通知。
+//
+// 工具包只负责在进程/容器退出时发事件（并区分崩溃与用户主动停止），
+// 文案与弹窗留在这里：面板/浏览器构建没有系统通知中心，自然不会走到这条路径。
+func notifyServerExit(a *appsvc.App, event string, data ...any) {
+	if len(data) == 0 {
+		return
+	}
+	buf, err := json.Marshal(data[0])
+	if err != nil {
+		return
+	}
+	var ev srvstate.Event
+	if err := json.Unmarshal(buf, &ev); err != nil || ev.Tool == "" {
+		log.Printf("实例退出通知：解析 %s 负载失败: %v", event, err)
+		return
+	}
+	if err := a.ShowSystemNotification(ev.Title(), srvstate.ClipNotice(ev.Content(), 120)); err != nil {
+		log.Printf("实例退出通知：%s 弹出失败: %v", event, err)
+	}
+}
+
+// notifyTransferDone 把「上传/下载结束」事件转成系统原生通知。
+//
+// 只在终态弹：进度事件每 200ms 一次，不能跟着弹。前端页面内不再重复弹，
+// 这样即使用户已经切到其它工具页，也能知道大文件传完了。
+func notifyTransferDone(a *appsvc.App, data ...any) {
+	if len(data) == 0 {
+		return
+	}
+	buf, err := json.Marshal(data[0])
+	if err != nil {
+		return
+	}
+	var tr ftp.Transfer
+	if err := json.Unmarshal(buf, &tr); err != nil || tr.ID == "" {
+		return
+	}
+	var title, body string
+	switch tr.State {
+	case ftp.StateDone:
+		if tr.Dir == ftp.DirUp {
+			title = "上传完成"
+		} else {
+			title = "下载完成"
+		}
+		body = tr.Name
+	case ftp.StateFailed:
+		if tr.Dir == ftp.DirUp {
+			title = "上传失败"
+		} else {
+			title = "下载失败"
+		}
+		body = tr.Name
+		if tr.Err != "" {
+			body += "：" + tr.Err
+		}
+	default:
+		// 排队/进行中/已取消不打扰
+		return
+	}
+	if err := a.ShowSystemNotification(title, srvstate.ClipNotice(body, 120)); err != nil {
+		log.Printf("传输通知：%s 弹出失败: %v", title, err)
 	}
 }

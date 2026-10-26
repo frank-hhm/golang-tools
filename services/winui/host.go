@@ -21,6 +21,17 @@ type Hotkey struct {
 	Shortcut string
 }
 
+// GuardHotkey 一条「临时兜底热键」：不来自配置，只在某类全屏交互（截图选区浮层）
+// 期间临时注册，用于页面卡死/未获焦时仍能靠键盘收场。
+//
+// Fn 在独立 goroutine 里执行——命中回调发生在热键线程，任何等待（关窗要走主线程）
+// 都会连带堵住系统热键投递。
+type GuardHotkey struct {
+	ID       string // 仅用于日志
+	Shortcut string // 形如 "Esc"、"Ctrl+Alt+Esc"
+	Fn       func()
+}
+
 // Host 由主程序（package main 的未导出适配类型）实现。
 // 全部方法都可能被原生线程/球线程调用，实现方须保证并发安全。
 type Host interface {

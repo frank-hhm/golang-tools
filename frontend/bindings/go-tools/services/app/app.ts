@@ -24,6 +24,9 @@ import * as sysinfo$0 from "../sysinfo/models.js";
 import * as sysx$0 from "../sysx/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as tasks$0 from "../tasks/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as browser$0 from "../../tools/browser/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -31,6 +34,9 @@ import * as disk$0 from "../../tools/disk/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as docker$0 from "../../tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as ftp$0 from "../../tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as mysql$0 from "../../tools/mysql/models.js";
@@ -323,6 +329,18 @@ export function CaptureFinish(data: string, openPreview: boolean): $CancellableP
  */
 export function CaptureLog(note: string): $CancellablePromise<void> {
     return $Call.ByID(2688753707, note);
+}
+
+/**
+ * CapturePing 浮层页面心跳：可见期间每 ~500ms 报一次活。
+ * 
+ * 为什么需要它：浮层是全屏、置顶、默认吃点击的窗口。页面一旦因机器吃紧（别的程序
+ * 抢满 CPU/内存）而冻住，用户看到的就是「画面停在那，整屏什么都点不了」——除了
+ * 任务管理器没有任何退路。有了心跳，Go 侧就能在一两秒内自己把窗口收掉。
+ * painted=true 表示这是「首帧已上屏」后的第一次心跳，用来量点亮到真正出画面的耗时。
+ */
+export function CapturePing(painted: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1920166543, painted);
 }
 
 /**
@@ -1015,6 +1033,230 @@ export function DockerSuggestPort($from: number): $CancellablePromise<number> {
  */
 export function ExportConfig(): $CancellablePromise<string> {
     return $Call.ByID(2160778251);
+}
+
+/**
+ * FtpCancelTransfer 取消一个传输任务
+ */
+export function FtpCancelTransfer(id: string): $CancellablePromise<void> {
+    return $Call.ByID(755456982, id);
+}
+
+/**
+ * FtpChooseKeyFile 选 SSH 私钥文件，取消返回空串
+ */
+export function FtpChooseKeyFile(): $CancellablePromise<string> {
+    return $Call.ByID(3559942091);
+}
+
+/**
+ * FtpChooseLocalFiles 选本机要上传的文件（可多选）
+ */
+export function FtpChooseLocalFiles(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1592797880);
+}
+
+/**
+ * FtpChooseLocalFolder 选本机目录（上传整棵目录 / 下载目标目录）
+ */
+export function FtpChooseLocalFolder(title: string): $CancellablePromise<string> {
+    return $Call.ByID(212743125, title);
+}
+
+/**
+ * FtpChooseServerRoot 选择服务端根目录；取消返回空串
+ */
+export function FtpChooseServerRoot(): $CancellablePromise<string> {
+    return $Call.ByID(4145477049);
+}
+
+/**
+ * FtpCloseSession 主动关闭会话
+ */
+export function FtpCloseSession(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(3376932523, sessionID);
+}
+
+/**
+ * FtpDeleteAccount 删除虚拟账号（同时断开它的在线连接）
+ */
+export function FtpDeleteAccount(id: string): $CancellablePromise<ftp$0.Account[] | null> {
+    return $Call.ByID(2377698255, id);
+}
+
+/**
+ * FtpDeleteConnection 删除记录，返回更新后的完整列表
+ */
+export function FtpDeleteConnection(id: string): $CancellablePromise<ftp$0.Connection[] | null> {
+    return $Call.ByID(1680774984, id);
+}
+
+/**
+ * FtpDownload 下载远端文件/目录到本地目录
+ */
+export function FtpDownload(sessionID: string, remotePaths: string[] | null, localDir: string): $CancellablePromise<ftp$0.Transfer[] | null> {
+    return $Call.ByID(1489009191, sessionID, remotePaths, localDir);
+}
+
+/**
+ * FtpFirewallAllow 在系统防火墙放行当前端口（Windows 会弹 UAC）
+ */
+export function FtpFirewallAllow(port: number): $CancellablePromise<void> {
+    return $Call.ByID(1929019772, port);
+}
+
+/**
+ * FtpFirewallRemove 删除程序的防火墙放行规则
+ */
+export function FtpFirewallRemove(port: number): $CancellablePromise<void> {
+    return $Call.ByID(368981031, port);
+}
+
+/**
+ * FtpKickServerConn 踢掉一条在线连接
+ */
+export function FtpKickServerConn(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2621339644, id);
+}
+
+/**
+ * FtpListAccounts 虚拟账号列表（不含密码）
+ */
+export function FtpListAccounts(): $CancellablePromise<ftp$0.Account[] | null> {
+    return $Call.ByID(1868629159);
+}
+
+/**
+ * FtpListConnections 连接记录列表（密码字段恒为空）
+ */
+export function FtpListConnections(): $CancellablePromise<ftp$0.Connection[] | null> {
+    return $Call.ByID(4264776904);
+}
+
+/**
+ * FtpListDir 浏览远端目录
+ */
+export function FtpListDir(sessionID: string, dir: string): $CancellablePromise<ftp$0.Listing> {
+    return $Call.ByID(3198625626, sessionID, dir);
+}
+
+/**
+ * FtpListTransfers 当前传输任务列表（新的在前）
+ */
+export function FtpListTransfers(): $CancellablePromise<ftp$0.Transfer[] | null> {
+    return $Call.ByID(1541001945);
+}
+
+/**
+ * FtpMkdir 在远端目录下新建一层目录
+ */
+export function FtpMkdir(sessionID: string, dir: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(4208389346, sessionID, dir, name);
+}
+
+/**
+ * FtpOpenServerRoot 在文件管理器里打开服务端根目录（空则打开当前配置的根目录）
+ */
+export function FtpOpenServerRoot(path: string): $CancellablePromise<void> {
+    return $Call.ByID(1006791716, path);
+}
+
+/**
+ * FtpOpenSession 按记录建立 SFTP 会话，返回会话句柄
+ */
+export function FtpOpenSession(connID: string): $CancellablePromise<ftp$0.SessionInfo> {
+    return $Call.ByID(3890207785, connID);
+}
+
+/**
+ * FtpPreview 预览远端文件（文本/图片）
+ */
+export function FtpPreview(sessionID: string, path: string): $CancellablePromise<ftp$0.Preview> {
+    return $Call.ByID(2917365733, sessionID, path);
+}
+
+/**
+ * FtpRemove 删除远端文件或空目录
+ */
+export function FtpRemove(sessionID: string, targets: string[] | null): $CancellablePromise<number> {
+    return $Call.ByID(907887327, sessionID, targets);
+}
+
+/**
+ * FtpRename 重命名远端文件/目录
+ */
+export function FtpRename(sessionID: string, target: string, newName: string): $CancellablePromise<void> {
+    return $Call.ByID(2160839049, sessionID, target, newName);
+}
+
+/**
+ * FtpRetryTransfer 重试一个失败/取消的任务
+ */
+export function FtpRetryTransfer(id: string): $CancellablePromise<ftp$0.Transfer> {
+    return $Call.ByID(656087328, id);
+}
+
+/**
+ * FtpSaveAccount 新增/更新虚拟账号；密码留空表示沿用原密码
+ */
+export function FtpSaveAccount(acc: ftp$0.Account): $CancellablePromise<ftp$0.Account[] | null> {
+    return $Call.ByID(3038430449, acc);
+}
+
+/**
+ * FtpSaveConnection 新增/更新一条记录，返回更新后的完整列表
+ */
+export function FtpSaveConnection(c: ftp$0.Connection): $CancellablePromise<ftp$0.Connection[] | null> {
+    return $Call.ByID(3566363018, c);
+}
+
+/**
+ * FtpServerConns 在线连接列表
+ */
+export function FtpServerConns(): $CancellablePromise<ftp$0.ServerConn[] | null> {
+    return $Call.ByID(2406136199);
+}
+
+/**
+ * FtpServerLogs 服务端日志（最近 300 条，旧在前）
+ */
+export function FtpServerLogs(): $CancellablePromise<ftp$0.ServerLog[] | null> {
+    return $Call.ByID(2797892883);
+}
+
+/**
+ * FtpServerSaveConfig 保存监听配置；服务运行中会用新端口重启
+ */
+export function FtpServerSaveConfig(cfg: ftp$0.ServerConfig): $CancellablePromise<ftp$0.ServerStatus> {
+    return $Call.ByID(1714272447, cfg);
+}
+
+/**
+ * FtpServerStart 启动 SFTP 服务端
+ */
+export function FtpServerStart(): $CancellablePromise<ftp$0.ServerStatus> {
+    return $Call.ByID(1807155660);
+}
+
+/**
+ * FtpServerStatus 服务端状态快照（含在线连接、局域网地址）
+ */
+export function FtpServerStatus(): $CancellablePromise<ftp$0.ServerStatus> {
+    return $Call.ByID(3453086258);
+}
+
+/**
+ * FtpServerStop 停止 SFTP 服务端（断开所有在线连接）
+ */
+export function FtpServerStop(): $CancellablePromise<ftp$0.ServerStatus> {
+    return $Call.ByID(916249128);
+}
+
+/**
+ * FtpUpload 上传本地文件/目录到远端目录
+ */
+export function FtpUpload(sessionID: string, localPaths: string[] | null, remoteDir: string): $CancellablePromise<ftp$0.Transfer[] | null> {
+    return $Call.ByID(2027177414, sessionID, localPaths, remoteDir);
 }
 
 /**
@@ -2615,6 +2857,16 @@ export function SetMainWindow(w: application$0.Window): $CancellablePromise<void
 }
 
 /**
+ * SetNativeNotify 告知当前构建能不能弹原生通知卡。
+ * 
+ * 桌面版入口置 true；面板（-tags server）保持 false，否则每次任务结束
+ * 都会建一个永远不会显示的通知窗口。
+ */
+export function SetNativeNotify(v: boolean): $CancellablePromise<void> {
+    return $Call.ByID(951107091, v);
+}
+
+/**
  * SetSerialControlBits 实时切换串口 RTS / DTR 电平
  */
 export function SetSerialControlBits(rts: boolean, dtr: boolean): $CancellablePromise<void> {
@@ -2642,6 +2894,14 @@ export function ShowMessage(level: string, text: string): $CancellablePromise<vo
  */
 export function ShowNotification(title: string, content: string): $CancellablePromise<void> {
     return $Call.ByID(541284893, title, content);
+}
+
+/**
+ * ShowNotificationLevel 带等级的通知卡片（success / warning / error），
+ * 安装任务的完成/失败用它把颜色区分开。
+ */
+export function ShowNotificationLevel(title: string, content: string, level: string): $CancellablePromise<void> {
+    return $Call.ByID(3795708357, title, content, level);
 }
 
 /**
@@ -2702,6 +2962,27 @@ export function StopCaptureSniffer(): $CancellablePromise<void> {
  */
 export function StopSnifferProxy(): $CancellablePromise<void> {
     return $Call.ByID(3926363566);
+}
+
+/**
+ * TaskClear 清掉一条已结束的任务（进行中的不允许删，还在写）。
+ */
+export function TaskClear(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1401327851, id);
+}
+
+/**
+ * TaskClearFinished 一次清掉所有已结束的任务。
+ */
+export function TaskClearFinished(): $CancellablePromise<void> {
+    return $Call.ByID(3956386149);
+}
+
+/**
+ * TaskList 返回安装/下载任务的快照：进行中的在最前，其次是最近结束的。
+ */
+export function TaskList(): $CancellablePromise<tasks$0.Task[] | null> {
+    return $Call.ByID(2647769246);
 }
 
 /**

@@ -244,6 +244,7 @@ import { Message } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import CacheKey from "@/constants/cache-key";
 import { getStorage, setStorage } from "@/utils";
+import { runningTasks as runningPageTasks } from "@/store/modules/tasks";
 import ComposePanel from "./components/ComposePanel.vue";
 import ContainerLogModal from "./components/ContainerLogModal.vue";
 import ContainerTable from "./components/ContainerTable.vue";
@@ -1779,6 +1780,19 @@ onMounted(() => {
   offImageOp = Events.On("docker:imageop", onImageOpEvent);
   offLog = Events.On("docker:serverlog", onLogEvent);
   offSetup = Events.On("docker:setup", onSetupEvent);
+  // 离开页面时引擎还在装/还在下载安装包：从任务台账把向导状态与日志补回来。
+  // 镜像拉取/推送这类任务没补：它们依赖页面内的取消句柄，接管过来只会得到一个
+  // 点了没反应的“取消”；那部分进度由全局任务浮标负责。
+  runningPageTasks("docker", "setup").then((list) => {
+    const t = list[0];
+    if (!t) return;
+    setupBusy.value = "install";
+    setupStage.value = t.stage || "installing";
+    setupPercent.value = t.percent || 0;
+    setupNote.value = t.note || "";
+    pushSetupLog(`接管未完成的任务：${t.title}（${t.percent}%）`);
+    (t.logs || []).slice(-5).forEach((l) => pushSetupLog(l));
+  });
   // 列表定时刷新：安装/切后端/拉取/看日志期间全部跳过（那时 daemon 会短暂下线，
   // 每 5 秒一次的失败调用只会往终端刷 ERR）。
   // 但“引擎已离线”这件事必须一直探：不跟着日志弹窗、任务状态走，

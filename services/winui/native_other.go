@@ -22,3 +22,9 @@ func StartHotkeys(h Host) {}
 
 // ReloadHotkeys 非 Windows 平台空操作。
 func ReloadHotkeys() {}
+
+// SetGuardHotkeys 非 Windows 平台空操作（截图浮层只在 Windows 上存在）。
+func SetGuardHotkeys(list []GuardHotkey) {}
+
+// ClearGuardHotkeys 非 Windows 平台空操作。
+func ClearGuardHotkeys() {}

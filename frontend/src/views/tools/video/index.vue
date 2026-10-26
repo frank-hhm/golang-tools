@@ -195,10 +195,11 @@
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { mimeExt, pickMime, recFilename, savePromptRetry, uploadVideoBlob } from "@/utils/videorec";
+import { sysNotify } from "@/utils/notify";
 
 // 提示统一走 Go 原生通道：完成/成功 → 系统通知中心（原生 Toast）；错误/异常 → Go 自绘 Message 小窗
 function notifyDone(title: string, content: string) {
-  try { GoTools?.ShowSystemNotification(title, content); } catch { /* ignore */ }
+  sysNotify(title, content);
 }
 function notifyError(text: string) {
   try { GoTools?.ShowMessage("error", text); } catch { /* ignore */ }
