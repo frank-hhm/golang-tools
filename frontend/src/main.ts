@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import App from "@/App.vue"
 import router from '@/router'
-import "@/router/permission"
+import { installRouterProgress } from "@/router/permission"
 
 // load
 import { loadPlugins } from "@/plugins"
@@ -12,10 +12,21 @@ import * as Utils from '@/utils'
 import { setupGoMessage } from '@/utils/gomessage'
 import { initTheme, syncThemeFromConfig } from '@/utils/theme'
 import { loadCaps } from '@/utils/caps'
+import { installPanelGuard } from '@/utils/panel'
+import { bindPrefetchRouter, prefetchAllRoutes } from '@/router/prefetch'
 import * as GoToolsBindings from "bindings/go-tools/services/app/index";
 import { ScreenshotService as GoScreenshot } from "bindings/go-tools/tools/screenshot/index";
 
 const app = createApp(App);
+
+/**
+ * 守卫与预热都依赖同一个 router 实例，这里显式注入。
+ * 以前 permission.ts 在模块顶层 import router 后直接 beforeEach，而它的使用方
+ * （layouts → SideNav）又在 router 的导入链上；生产构建合并 chunk 后会在 router
+ * 赋值前执行，抛 TypeError 导致整个 SPA 不挂载。
+ */
+installRouterProgress(router)
+bindPrefetchRouter(router)
 
 /**
  * 平台能力预取：与路由解析、首屏 chunk 加载并行跑。
@@ -51,6 +62,11 @@ router.isReady().then(async () => {
     app.mount("#app")
     // 主题：同步应用本地记忆（多窗口即时同步），再用后端配置作为首次运行回退
     initTheme()
+    if (!caps.nativeWindows) {
+        // Web 模式：登录态过期自动回登录页；随后空闲预热各工具页 chunk
+        installPanelGuard()
+        prefetchAllRoutes()
+    }
     GoToolsBindings.App.GetConfig?.()
         .then((cfg: any) => syncThemeFromConfig(cfg?.general?.theme))
         .catch(() => { /* */ })

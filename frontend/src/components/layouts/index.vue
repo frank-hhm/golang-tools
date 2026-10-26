@@ -1,5 +1,7 @@
 <template>
     <div class="basic-layout" :class="{ 'is-web': !caps.nativeWindows }">
+        <!-- 路由切换进度条：Web 模式下页面 chunk 要下载，远程服务器上不给反馈就像卡死 -->
+        <div class="route-progress" :class="{ 'is-on': routeLoading }"></div>
         <!-- 自绘标题栏：复用公共 WinTitleBar（拖动/no-drag 与样式均在组件内），这里仅提供主窗口特有按钮 -->
         <WinTitleBar :title="barTitle">
             <!-- Web 模式没有窗口：Logo 已由侧栏品牌区承担，顶部只留当前页名 -->
@@ -28,6 +30,7 @@ import { useRoute } from "vue-router";
 import { Events, Window } from "@wailsio/runtime";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { useCaps } from "@/utils/caps";
+import { routeLoading } from "@/router/permission";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 import SideNav from "@/components/layouts/SideNav.vue";
 
@@ -94,6 +97,32 @@ onUnmounted(() => { off?.(); });
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+}
+
+/* 顶部进度条：只在路由解析期间出现，走一条流动高光 */
+.route-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 2000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    background: linear-gradient(90deg, transparent, rgb(var(--primary-6)), rgb(var(--primary-4)), transparent);
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: route-flow 0.9s linear infinite;
+}
+
+.route-progress.is-on {
+    opacity: 1;
+}
+
+@keyframes route-flow {
+    from { background-position: -40% 0; }
+    to { background-position: 140% 0; }
 }
 
 /* Web 运行模式：顶部保留主题与设置，左侧让给固定导航 */

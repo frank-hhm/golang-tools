@@ -114,6 +114,108 @@
                         </a-form>
                     </a-card>
 
+                    <!-- ===================== 访问与安全（仅 Web / 服务模式） ===================== -->
+                    <a-card v-show="activeTab === 'panel'" class="pane-card card-head-tool">
+                        <template #title>面板访问</template>
+                        <template #extra>
+                            <a-space>
+                                <a-tag v-if="panelInfo" size="small"
+                                    :color="panelInfo.enabled ? 'green' : 'orangered'">
+                                    {{ panelInfo.enabled ? "登录保护已开启" : "登录保护已关闭" }}
+                                </a-tag>
+                                <a-link v-if="panelInfo?.accessURL" @click="copyAccess">复制访问地址</a-link>
+                            </a-space>
+                        </template>
+
+                        <a-spin :loading="panelLoading" style="display: block">
+                            <a-form :model="panelForm" :style="{ maxWidth: '720px' }" layout="vertical">
+                                <a-row :gutter="12">
+                                    <a-col :span="12">
+                                        <a-form-item field="panelUsername">
+                                            <template #label>登录账号</template>
+                                            <a-input v-model="panelForm.username" placeholder="admin"
+                                                :style="{ maxWidth: '260px' }" allow-clear />
+                                        </a-form-item>
+                                    </a-col>
+                                    <a-col :span="12">
+                                        <a-form-item field="panelSession">
+                                            <template #label>登录有效期（小时）</template>
+                                            <a-input-number v-model="panelForm.sessionHours" :min="1" :max="720"
+                                                :style="{ width: '140px' }" />
+                                        </a-form-item>
+                                    </a-col>
+                                </a-row>
+                                <span class="hint">改账号或密码后，其它已登录的设备会立即失效，需要重新登录。</span>
+
+                                <a-row :gutter="12" :style="{ marginTop: '16px' }">
+                                    <a-col :span="14">
+                                        <a-form-item field="panelHost">
+                                            <template #label>监听地址</template>
+                                            <a-select v-model="panelForm.host" allow-create allow-search>
+                                                <a-option value="0.0.0.0">0.0.0.0（所有网卡）</a-option>
+                                                <a-option value="127.0.0.1">127.0.0.1（仅本机，走 nginx 反代）</a-option>
+                                            </a-select>
+                                        </a-form-item>
+                                    </a-col>
+                                    <a-col :span="10">
+                                        <a-form-item field="panelPort">
+                                            <template #label>端口</template>
+                                            <a-input-number v-model="panelForm.port" :min="1" :max="65535"
+                                                :style="{ width: '140px' }" />
+                                        </a-form-item>
+                                    </a-col>
+                                </a-row>
+
+                                <a-form-item field="panelEntry">
+                                    <template #label>安全入口</template>
+                                    <div class="path-row">
+                                        <a-input v-model="panelForm.entryPath"
+                                            placeholder="留空关闭，例如 /manage-9f3ad2" allow-clear />
+                                        <a-button size="small" @click="genEntry">随机生成</a-button>
+                                    </div>
+                                    <span class="hint">
+                                        设置后必须先访问该入口地址才能打开登录页；直接访问根地址一律返回 404，
+                                        可挡掉大部分扫端口的机器人。改动立即生效，请记下来。
+                                    </span>
+                                </a-form-item>
+
+                                <a-form-item field="panelEnabled">
+                                    <template #label>登录保护</template>
+                                    <a-switch v-model="panelForm.enabled" type="round" />
+                                    <span class="hint">关闭后任何人访问面板地址都不需要登录，仅适合完全可信的内网临时排障。</span>
+                                </a-form-item>
+
+                                <a-form-item>
+                                    <div class="panel-actions">
+                                        <a-space>
+                                            <a-button type="primary" :loading="panelSaving" @click="savePanel">保存并应用</a-button>
+                                            <a-button @click="loadPanel">还原</a-button>
+                                        </a-space>
+                                        <div v-if="panelInfo?.accessURL" class="panel-access">
+                                            <span class="hint">当前访问地址：</span>
+                                            <code>{{ panelInfo.accessURL }}</code>
+                                            <span v-if="panelInfo.listen" class="hint">（进程监听 {{ panelInfo.listen }}）</span>
+                                        </div>
+                                    </div>
+                                </a-form-item>
+
+                                <a-divider :margin="8" />
+
+                                <a-form-item field="pwdCurrent">
+                                    <template #label>修改登录密码</template>
+                                    <a-input-password v-model="pwdForm.current" placeholder="当前密码"
+                                        :style="{ maxWidth: '260px', marginBottom: '8px' }" />
+                                    <a-input-password v-model="pwdForm.next" placeholder="新密码（至少 8 位）"
+                                        :style="{ maxWidth: '260px', marginBottom: '8px' }" />
+                                    <a-input-password v-model="pwdForm.confirm" placeholder="再输一次新密码"
+                                        :style="{ maxWidth: '260px', marginBottom: '8px' }" />
+                                    <a-button type="outline" :loading="pwdSaving" @click="savePassword">更新密码</a-button>
+                                    <span class="hint">密码用 bcrypt 加盐存储；更新后当前浏览器保持登录，其它设备下线。</span>
+                                </a-form-item>
+                            </a-form>
+                        </a-spin>
+                    </a-card>
+
                     <!-- ===================== 浮动球设置 ===================== -->
                     <a-card v-show="activeTab === 'ball'" class="pane-card card-head-tool">
                         <template #title>桌面浮动球</template>
@@ -450,6 +552,7 @@ import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
 import iconData from "@/components/common/select-icon-modal/icon.json";
 import { applyTheme, type ThemeMode } from "@/utils/theme";
 import { useCaps } from "@/utils/caps";
+import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
 import {
     arcoIconComp as iconComp,
     DEFAULT_TOOL_ICONS,
@@ -540,14 +643,133 @@ const SETTING_TABS = computed(() =>
     [
         { key: "general", label: "通用", icon: "IconSettings", desktopOnly: false },
         { key: "paths", label: "目录", icon: "IconFolder", desktopOnly: false },
+        { key: "panel", label: "访问与安全", icon: "IconLock", desktopOnly: false, webOnly: true },
         { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
         { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
         { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
         { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
-    ].filter((t) => !t.desktopOnly || caps.nativeWindows),
+    ]
+        .filter((t) => !t.desktopOnly || caps.nativeWindows)
+        .filter((t) => !t.webOnly || !caps.nativeWindows),
 );
 const activeTab = ref("general");
 const activeTabMeta = computed(() => SETTING_TABS.value.find((t) => t.key === activeTab.value) || SETTING_TABS.value[0]);
+
+/* ===================== 面板访问（仅 Web / 服务模式） =====================
+ * 这些配置存在服务端的 panel.json 里，桌面版没有这个文件，也没有登录概念，
+ * 所以只在 !caps.nativeWindows 时加载与展示。端口、入口、账号改完即时生效，
+ * 不需要重启进程（进程里还托管着 MySQL/Redis 实例，重启代价很大）。
+ */
+const panelLoading = ref(false);
+const panelSaving = ref(false);
+const pwdSaving = ref(false);
+const panelInfo = ref<PanelInfo | null>(null);
+const panelForm = reactive({
+    username: "",
+    host: "0.0.0.0",
+    port: 8080,
+    entryPath: "",
+    sessionHours: 12,
+    enabled: true,
+});
+const pwdForm = reactive({ current: "", next: "", confirm: "" });
+
+async function loadPanel() {
+    if (caps.nativeWindows) return;
+    panelLoading.value = true;
+    try {
+        const info = await getPanelInfo();
+        panelInfo.value = info;
+        panelForm.username = info.username;
+        panelForm.host = info.host;
+        panelForm.port = info.port;
+        panelForm.entryPath = info.entryPath || "";
+        panelForm.sessionHours = info.sessionHours;
+        panelForm.enabled = info.enabled;
+    } catch (e: any) {
+        Message.error(e?.message || "读取面板配置失败");
+    } finally {
+        panelLoading.value = false;
+    }
+}
+
+/** 随机安全入口：用 crypto 生成不可预测的后缀，避免被人猜中 */
+function genEntry() {
+    const bytes = new Uint8Array(6);
+    if (window.crypto?.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    panelForm.entryPath = "/manage-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function savePanel() {
+    const username = panelForm.username.trim();
+    if (!username) return void Message.warning("登录账号不能为空");
+    const port = Number(panelForm.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return void Message.warning("端口需在 1~65535 之间");
+    const entryPath = panelForm.entryPath.trim();
+    // 与后端 panel.ValidateEntry 保持一致，先在前端挡一次省一次往返
+    if (entryPath && !/^\/[A-Za-z0-9_-]{4,32}$/.test(entryPath)) {
+        return void Message.warning("安全入口需以 / 开头，后接 4~32 位字母、数字、下划线或短横线");
+    }
+    panelSaving.value = true;
+    try {
+        const res = await savePanelSettings({
+            username,
+            host: panelForm.host.trim() || "0.0.0.0",
+            port,
+            entryPath,
+            sessionHours: Number(panelForm.sessionHours) || 12,
+            enabled: panelForm.enabled,
+        });
+        if (res.moved) {
+            // 监听地址或端口变了，当前地址已经关停：只能提示换新地址，
+            // 此时再去请求 /api/panel/info 会直接连不上。
+            panelInfo.value = { ...(panelInfo.value as PanelInfo), ...(res.info as any) };
+            Message.success({ content: `${res.message}，请改用新地址打开：${res.accessURL}`, duration: 10000, closable: true });
+            return;
+        }
+        Message.success(res.message || "已保存");
+        await loadPanel();
+    } catch (e: any) {
+        Message.error(e?.message || "保存失败");
+    } finally {
+        panelSaving.value = false;
+    }
+}
+
+async function savePassword() {
+    if (!pwdForm.current) return void Message.warning("请输入当前密码");
+    if (pwdForm.next.length < 8) return void Message.warning("新密码至少 8 位");
+    if (pwdForm.next !== pwdForm.confirm) return void Message.warning("两次输入的新密码不一致");
+    pwdSaving.value = true;
+    try {
+        const res = await changePanelPassword(pwdForm.current, pwdForm.next);
+        Message.success(res.message || "密码已更新");
+        pwdForm.current = pwdForm.next = pwdForm.confirm = "";
+    } catch (e: any) {
+        Message.error(e?.message || "修改密码失败");
+    } finally {
+        pwdSaving.value = false;
+    }
+}
+
+async function copyAccess() {
+    const url = panelInfo.value?.accessURL;
+    if (!url) return;
+    try {
+        await navigator.clipboard.writeText(url);
+        Message.success("已复制：" + url);
+    } catch {
+        // 非安全上下文（http + 非 localhost）没有剪贴板权限，退化成展示
+        Message.info(url);
+    }
+}
+
+// 懒加载：只有真正切到该页签才请求，避免每次进设置页都打一次接口。
+// 首次进页时面板若还没登录态，这里会 401，由 installPanelGuard 统一跳登录页。
+watch(activeTab, (k) => {
+    if (k === "panel" && !panelInfo.value && !panelLoading.value) void loadPanel();
+});
 
 /** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
 function onThemeChange(val: any) {
@@ -1264,6 +1486,28 @@ onBeforeUnmount(() => {
     color: var(--color-text-3);
     font-size: var(--base-size-small);
     line-height: 1.5;
+}
+
+/* 面板当前访问地址：单独一行弱色描边块，避免长 URL 换行时和按钮缠在一起 */
+.panel-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+}
+
+.panel-access {
+    padding: 6px 10px;
+    border-radius: var(--border-radius-medium);
+    background: var(--color-fill-1);
+    font-size: var(--base-size-small);
+}
+
+.panel-access code {
+    color: rgb(var(--primary-6));
+    word-break: break-all;
+    user-select: all;
 }
 
 .hint-inline {

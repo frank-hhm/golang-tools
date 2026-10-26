@@ -35,7 +35,10 @@ func gzipAssets(next http.Handler, assets fs.FS) http.Handler {
 			return nil
 		}
 		var buf bytes.Buffer
-		zw, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+		// 压缩级别用默认值：BestSpeed 对上千 KB 的包只快几毫秒，
+		// 但体积要大出 15%~20%，在公网小带宽下传输时间反而更长。
+		// 只在启动时压一次，多花的 CPU 一次性付清。
+		zw, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
 		if err != nil {
 			return nil
 		}

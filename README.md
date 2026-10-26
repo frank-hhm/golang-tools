@@ -70,6 +70,66 @@ Take a moment to familiarize yourself with your project structure:
 - `appdirs/` 三类基础目录的解析与标准布局落建（`Set`/`ApplyLayout`/旧布局迁移）
 - `tools/<服务名>/` 各工具后端（php/nginx/mysql/redis/npm/sniffer/usbserial/screenshot/ocr…）
 
+## Linux / Web 模式部署（带登录授权）
+
+服务端模式（`-tags server`）在 Linux 上跑成一个 Web 面板：进程内起一个对外 HTTP 服务
+（默认 `0.0.0.0:8080`），Wails 自身只监听 `127.0.0.1` 的临时端口，所有请求（页面、静态资源、
+绑定调用、终端/日志 WebSocket）都经这一层反向代理，因此鉴权能覆盖到每个入口。
+
+```bash
+# 编译（Linux / 容器，不依赖 cgo）
+CGO_ENABLED=0 go build -tags server,production -trimpath -o go-tools-server .
+
+# 首次启动会自动生成配置与随机密码，并在控制台打印一次
+./go-tools-server
+```
+
+面板配置单独存放在 `panel.json`（权限 0600，与 `config.json` 分开，避免密码哈希随
+`GetConfig` 绑定下发给前端）：
+
+- Linux：`~/.config/go-tools/panel.json`
+- Windows/macOS：`os.UserConfigDir()/go-tools/panel.json`
+
+常用命令（也可以在网页「设置 → 访问与安全」里改，改完即时生效、无需重启进程）：
+
+| 命令 | 说明 |
+| --- | --- |
+| `./go-tools-server show` | 查看账号、监听地址、安全入口、访问地址 |
+| `./go-tools-server passwd [密码]` | 改密码（不传则随机生成）；旧会话全部失效 |
+| `./go-tools-server user <账号>` | 改登录账号 |
+| `./go-tools-server port <端口>` | 改监听端口，进程内重新监听，无需重启 |
+| `./go-tools-server host <地址>` | 改监听地址（`0.0.0.0` / `127.0.0.1`） |
+| `./go-tools-server entry /manage-xxxx` | 设置安全入口；不设置则根地址直达登录页 |
+| `./go-tools-server on` / `off` | 打开/关闭登录保护（内网紧急排障用） |
+| `./go-tools-server menu` | 交互式菜单（等同于宝塔那种编号菜单） |
+| `./go-tools-server restart` | systemd 托管时重启服务（非 systemd 会给出提示） |
+
+安全入口的语义：设置后必须先访问 `http://<IP>:<端口>/manage-xxxx` 才会被引到登录页，
+直接访问根地址一律返回 404（防扫端口）。入口不改变页面内的绝对路径，所以不会打断
+`/wails/runtime`、`/assets/*`。
+
+> 早期版本用 `WAILS_SERVER_HOST` / `WAILS_SERVER_PORT` 指定监听地址，这两个环境变量
+> 优先级高于应用配置、会绕过鉴权，现已不再读取（启动日志会说明），请改用上面的命令或网页设置。
+
+systemd 示例（注意 `WorkingDirectory` 决定 `plugins/`、`data/`、`logs/` 的默认落点）：
+
+```ini
+[Unit]
+Description=go-tools panel
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/go-tools
+ExecStart=/opt/go-tools/go-tools-server
+Restart=on-failure
+# 非 root 运行时无法重启服务，restart 命令会提示用 sudo/systemctl
+# User=gotools
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## Redis 本地服务管理（内置版本目录）
 
 Redis 工具页支持直接管理本机 `redis-server` 实例，版本二进制有三个渠道：程序内置、在线下载（GitHub redis-windows，≥ 7.0）、手动添加本机目录。

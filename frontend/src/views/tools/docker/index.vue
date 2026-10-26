@@ -200,10 +200,10 @@
       :lines="logLines" @refresh="loadLogs" @clear="logLines = []" @toggle="toggleFollow" @close="closeLogModal" />
 
     <!-- ==================== 容器实时监控 ==================== -->
-    <container-monitor-modal v-model:visible="monVisible" :id="monInst?.id || ''" :name="monInst?.name || ''" />
+    <container-monitor-modal v-if="monVisible" v-model:visible="monVisible" :id="monInst?.id || ''" :name="monInst?.name || ''" />
 
     <!-- ==================== 容器终端（复用通用 term-console） ==================== -->
-    <container-term-modal v-model:visible="termVisible" :id="termInst?.id || ''" :name="termInst?.name || ''" />
+    <container-term-modal v-if="termVisible" v-model:visible="termVisible" :id="termInst?.id || ''" :name="termInst?.name || ''" />
 
     <!-- ==================== 重命名 ==================== -->
     <rename-modal v-model:visible="renameVisible" :current="renameOld" @submit="doRename" />
@@ -238,16 +238,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, defineAsyncComponent, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import CacheKey from "@/constants/cache-key";
 import { getStorage, setStorage } from "@/utils";
 import ComposePanel from "./components/ComposePanel.vue";
 import ContainerLogModal from "./components/ContainerLogModal.vue";
-import ContainerMonitorModal from "./components/ContainerMonitorModal.vue";
 import ContainerTable from "./components/ContainerTable.vue";
-import ContainerTermModal from "./components/ContainerTermModal.vue";
 import DockerSettingsModal from "./components/DockerSettingsModal.vue";
 import EngineCard from "./components/EngineCard.vue";
 import EnvCheckModal from "./components/EnvCheckModal.vue";
@@ -266,6 +264,16 @@ import {
   beLabel, fmtBytes, hostOnly, localRegistryOf,
   type ImageTask, type RunForm, type TaskOp,
 } from "./helpers";
+
+/*
+ * 两个重弹窗改成异步加载：
+ *  - 实时监控：内联引 echarts/core + 图表模块，静态引入会把整个 echarts
+ *    绑进 docker 这个 chunk（实测 1.5MB），而这只是“点开监控”才用得到的东西；
+ *  - 容器终端：引 term-console（xterm + 适配器，300KB+）。
+ * 配合模板上的 v-if（关掉就卸载）才真正省：不点就永远不下这两个包。
+ */
+const ContainerMonitorModal = defineAsyncComponent(() => import("./components/ContainerMonitorModal.vue"));
+const ContainerTermModal = defineAsyncComponent(() => import("./components/ContainerTermModal.vue"));
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 

@@ -1411,8 +1411,8 @@ async function openLogs(inst: SrvInstanceConfig) {
 /* ============================ 生命周期 ============================ */
 
 onMounted(async () => {
-    await loadConnections();
-    await loadSrvInstances();
+    // 两者各一次绑定往返，彼此不依赖：Web 模式跑在远程服务器上，串行 await 就是白白多等一个 RTT
+    await Promise.all([loadConnections(), loadSrvInstances()]);
     // 镜像清单不进表单，只用来标记「实例引用的镜像本机还没拉」
     probeDockerImages();
     // 主页点击服务实例进入（?inst=）：直接打开该实例的日志/状态详情
