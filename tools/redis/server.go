@@ -1107,6 +1107,10 @@ type runningProc struct {
 	srvstate.Flag
 	// containerID 容器模式的实例没有 cmd，改用容器 ID 标识（停止/日志/状态都走 docker API）
 	containerID string
+	// cleared 记录「清空」时已产出的行数（=当时的 cum），Logs 据此跳过旧行；
+	// cum 是进程生命周期内累计产出行数（含被环形缓冲挤掉的），两者配合实现非破坏式视图截止
+	cleared int
+	cum     int
 }
 
 // findInstance 按 ID 取实例配置
@@ -1129,6 +1133,21 @@ var (
 )
 
 const logRingMax = 500
+
+// 非破坏式「清空」截止：清空只记下截止点（文件=字节偏移），
+// 之后 Logs 只返回截止点之后新写入的日志，不删磁盘历史，也不会被下一次轮询回填。
+var (
+	fileCutMu  sync.Mutex
+	fileCutoff = map[string]int64{} // 孤儿实例 server.log：已截止到的字节偏移
+)
+
+// fileSize 取文件当前大小（不存在/出错返回 0）
+func fileSize(path string) int64 {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.Size()
+	}
+	return 0
+}
 
 func isTracked(id string) bool {
 	runMu.Lock()
@@ -1163,6 +1182,7 @@ func appendProcLog(p *runningProc, id, line string) {
 	}
 	ts := time.Now().Format("15:04:05.000")
 	p.mu.Lock()
+	p.cum++
 	p.logs = append(p.logs, ts+"  "+line)
 	if len(p.logs) > logRingMax {
 		p.logs = p.logs[len(p.logs)-logRingMax:]
@@ -1326,7 +1346,11 @@ func StopInstance(id string) error {
 		if trackedProc(id) == nil && dockerContainerID(cfg) == "" && !isProcessRunning(id, cfg.Port, cfg.Password) {
 			return fmt.Errorf("实例未在运行")
 		}
-		return dockerStop(cfg)
+		if err := dockerStop(cfg); err != nil {
+			return err
+		}
+		CloseAddr(fmt.Sprintf("127.0.0.1:%d", cfg.Port))
+		return nil
 	}
 	p := trackedProc(id)
 	if !isProcessRunning(id, cfg.Port, cfg.Password) && p == nil {
@@ -1365,6 +1389,9 @@ func StopInstance(id string) error {
 	if isProcessRunning(id, cfg.Port, cfg.Password) {
 		return fmt.Errorf("停止失败：实例仍在响应 PING")
 	}
+	// 实例已不再监听，把指向它的已登记连接一律作废：
+	// 留着只会让前端下次操作撞上一次死 socket 的系统错误
+	CloseAddr(fmt.Sprintf("127.0.0.1:%d", cfg.Port))
 	return nil
 }
 
@@ -1428,7 +1455,15 @@ func Logs(id string, n int) ([]string, error) {
 	if p := trackedProc(id); p != nil {
 		p.mu.Lock()
 		logs := append([]string(nil), p.logs...)
+		skip := p.cum - p.cleared // 清空之后再产出的行才展示：跳过前 skip 行（含被环形挤掉的）
 		p.mu.Unlock()
+		if skip < 0 {
+			skip = 0
+		}
+		if skip > len(logs) {
+			skip = len(logs)
+		}
+		logs = logs[skip:]
 		if len(logs) > n {
 			logs = logs[len(logs)-n:]
 		}
@@ -1443,11 +1478,59 @@ func Logs(id string, n int) ([]string, error) {
 					dir = d
 				}
 			}
+			path := filepath.Join(dir, "server.log")
+			fileCutMu.Lock()
+			from := fileCutoff[id]
+			fileCutMu.Unlock()
 			// server.log 只在没跟踪到进程时做兼容读取，取尾巴不该整本入堆
-			return logtail.Lines(filepath.Join(dir, "server.log"), n)
+			if from > 0 {
+				return logtail.LinesAfter(path, from, n)
+			}
+			return logtail.Lines(path, n)
 		}
 	}
 	return nil, fmt.Errorf("实例不存在: %s", id)
+}
+
+// ClearLogs 真实清空指定实例的日志（破坏式：截断 server.log、清空环形缓冲，
+// 释放磁盘占用；旧行不再回填，刷新/重开弹窗都只剩清空之后的新日志）。
+//   - 跟踪中进程：清空内存环形 + 截断自己持有的 server.log 句柄（O_APPEND 打开，截断安全）；
+//   - 容器模式：日志源在 Docker daemon，本地无法截断，退化为清环形（刷新后仍可能带回旧行）；
+//   - 孤儿/停止实例：直接截断 server.log 并归零截止偏移。
+func ClearLogs(id string) error {
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		return nil
+	}
+	if p := trackedProc(id); p != nil {
+		p.mu.Lock()
+		p.logs = nil
+		p.cum = 0
+		p.cleared = 0
+		if p.logFile != nil {
+			_ = p.logFile.Truncate(0)
+			_, _ = p.logFile.Seek(0, io.SeekStart)
+		}
+		p.mu.Unlock()
+		return nil
+	}
+	cfgs, _ := loadInstances()
+	for i := range cfgs {
+		if cfgs[i].ID == id {
+			dir := cfgs[i].DataDir
+			if dir == "" {
+				if d, err := defaultInstanceDataDir(id); err == nil {
+					dir = d
+				}
+			}
+			path := filepath.Join(dir, "server.log")
+			_ = os.Truncate(path, 0)
+			fileCutMu.Lock()
+			fileCutoff[id] = 0
+			fileCutMu.Unlock()
+			return nil
+		}
+	}
+	return fmt.Errorf("实例不存在: %s", id)
 }
 
 // SuggestPort 探测一个可用端口（从 from 起递增）：

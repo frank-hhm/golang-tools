@@ -7,7 +7,13 @@
  *   - 标题行 40px（与窗口标题栏同高），发丝线用项目统一的 border-1
  *   - 标题左对齐 + 加粗，和标题栏左侧的“图标 + 标题”读法一致
  *   - 关闭按钮做成 a-button size="small" 的方块版，hover / active 用同一组 token
+ *   - 弹窗本体统一描边：浅色页面上（尤其 mask=false 的无蒙层弹窗，如主页「全部工具」），
+ *     只靠阴影会跟背景糊在一起，1px 边框把轮廓交代清楚
  */
+
+.arco-modal {
+    border: 1px solid var(--color-border-2);
+}
 
 .arco-modal:not(.arco-modal-simple) .arco-modal-header {
     height: 40px;

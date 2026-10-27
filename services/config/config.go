@@ -70,6 +70,9 @@ type ToolConfig struct {
 	Height            int    `json:"height"`            // 视口高（<=0 继承默认）
 	Shortcut          string `json:"shortcut"`          // 全局热键，如 "Ctrl+Alt+S"，空表示未设置
 	Quick             bool   `json:"quick"`             // 是否出现在浮动球快捷菜单
+	// Home 是否在主页“快捷操作”区直接展示；用指针以区分“未设置”与“显式关闭”。
+	// nil（旧配置/默认项）视为主页展示，前端按 home !== false 处理；关闭后仍可在主页“更多”弹窗里找到。
+	Home *bool `json:"home,omitempty"`
 }
 
 // ToolSettings 单个工具的专属设置（按 ToolConfig.Key 索引，目前仅 mysql 使用）
@@ -127,6 +130,9 @@ type AppConfig struct {
 	Browser      BrowserConfig           `json:"browser"`
 	Tools        []ToolConfig            `json:"tools"`
 	ToolSettings map[string]ToolSettings `json:"toolSettings"` // 工具级设置，键为工具 Key（如 mysql）
+	// Order 各列表的拖拽自定义顺序：键为“面”标识（如 home:stats / home:services / home:tools / php:list），
+	// 值为该面内条目 ID 的有序列表。主页与各服务列表各用独立键，互不共用。随整份配置导出/导入。
+	Order map[string][]string `json:"order"`
 }
 
 // DefaultMaxSpaces 浏览器空间数量默认上限。
@@ -167,31 +173,38 @@ func DefaultConfig() AppConfig {
 			"mysql": {SQLLogEnabled: true},
 		},
 		Tools: []ToolConfig{
-			{ID: "screenshot", Key: "screenshot", Name: "截图", Event: "screenshot", Icon: "icon-jietu", Shortcut: "Ctrl+Alt+A", Quick: true},
-			{ID: "colorpicker", Key: "colorpicker", Name: "颜色取色器", Path: "/tools/colorpicker", Icon: "icon-quseqi", Single: true, Width: 480, Height: 560, Quick: true},
-			{ID: "video", Key: "video", Name: "视频录制", Path: "/tools/video", Icon: "video-camera", Single: true, Fullscreen: true, Quick: true},
-			{ID: "qrcode", Key: "qrcode", Name: "二维码生成", Path: "/tools/qrcode", Icon: "icon-erweima3"},
-			{ID: "timestamp", Key: "timestamp", Name: "时间戳转换", Path: "/tools/timestamp", Icon: "icon-riqishijianzhuanhuanmiaoshu"},
-			{ID: "strrandom", Key: "strrandom", Name: "随机字符串生成", Path: "/tools/strrandom", Icon: "icon-zifuchuan"},
-			{ID: "encdec", Key: "encdec", Name: "文字加密解密", Path: "/tools/encdec", Icon: "lock"},
-			{ID: "hexconvert", Key: "hexconvert", Name: "进制转换", Path: "/tools/hexconvert", Icon: "swap"},
-			{ID: "imageBase64", Key: "imageBase64", Name: "图片base64", Path: "/tools/imageBase64", Icon: "icon-img"},
+			{ID: "docker", Key: "docker", Name: "Docker管理", Path: "/tools/docker", Icon: "icon-docker", Single: true, Width: 1360, Height: 860},
+			{ID: "browser", Key: "browser", Name: "浏览器", Path: "/tools/browser", Icon: "icon-liulanqi1", Single: true, Fullscreen: true},
+			{ID: "speedtest", Key: "speedtest", Name: "网速测速", Path: "/tools/speedtest", Icon: "icon-cesu", Single: true, Width: 1080, Height: 720},
+			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "icon-terminal", Single: true, Width: 1200, Height: 800},
+			{ID: "disk", Key: "disk", Name: "磁盘管理", Path: "/tools/disk", Icon: "icon-yingpan", Single: true, Width: 1360, Height: 860},
+			{ID: "ftp", Key: "ftp", Name: "文件传输", Path: "/tools/ftp", Icon: "icon-ftp", Single: true, Width: 1360, Height: 860},
+			{ID: "redis", Key: "redis", Name: "Redis管理", Path: "/tools/redis", Icon: "icon-icon-redis", Single: true, Width: 1360, Height: 860},
+			{ID: "mysql", Key: "mysql", Name: "MySQL管理", Path: "/tools/mysql", Icon: "icon-MySQL", Single: true, Width: 1360, Height: 860},
+			{ID: "php", Key: "php", Name: "PHP管理", Path: "/tools/php", Icon: "icon-php", Single: true, Width: 1360, Height: 860},
+			{ID: "nginx", Key: "nginx", Name: "Nginx管理", Path: "/tools/nginx", Icon: "icon-ngnix", Single: true, Width: 1360, Height: 860},
+			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1360, Height: 860},
 			{ID: "sniffer", Key: "sniffer", Name: "抓包工具", Path: "/tools/sniffer", Icon: "bug", Single: true, Fullscreen: true, Quick: true},
-			{ID: "websocket", Key: "websocket", Name: "WebSocket调试", Path: "/tools/websocket", Icon: "icon-wangluo1", Fullscreen: true},
-			{ID: "speedtest", Key: "speedtest", Name: "网速测速", Path: "/tools/speedtest", Icon: "icon-wangluo1", Single: true, Width: 1080, Height: 720},
-			{ID: "usbserial", Key: "usbserial", Name: "USB调试", Path: "/tools/usbserial", Icon: "icon-usb1"},
-			{ID: "redis", Key: "redis", Name: "Redis管理", Path: "/tools/redis", Icon: "icon-icon-redis", Single: true, Fullscreen: true},
-			{ID: "mysql", Key: "mysql", Name: "MySQL管理", Path: "/tools/mysql", Icon: "icon-MySQL", Single: true, Fullscreen: true},
-			{ID: "php", Key: "php", Name: "PHP管理", Path: "/tools/php", Icon: "icon-php", Single: true, Width: 1200, Height: 800},
-			{ID: "nginx", Key: "nginx", Name: "Nginx管理", Path: "/tools/nginx", Icon: "icon-ngnix", Single: true, Width: 1200, Height: 800},
-			{ID: "docker", Key: "docker", Name: "Docker管理", Path: "/tools/docker", Icon: "computer", Single: true, Width: 1200, Height: 800},
-			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "code", Single: true, Fullscreen: true, Quick: true},
-			{ID: "ftp", Key: "ftp", Name: "文件传输", Path: "/tools/ftp", Icon: "folder", Single: true, Fullscreen: true, Quick: true},
-			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1200, Height: 800},
-			{ID: "browser", Key: "browser", Name: "浏览器", Path: "/tools/browser", Icon: "computer", Single: true, Fullscreen: true},
-			{ID: "disk", Key: "disk", Name: "磁盘管理", Path: "/tools/disk", Icon: "folder", Single: true, Width: 1360, Height: 860},
+			{ID: "websocket", Key: "websocket", Name: "WebSocket调试", Path: "/tools/websocket", Icon: "icon-wangluo1", Single: true, Fullscreen: true, Width: 1360, Height: 860},
+			{ID: "timestamp", Key: "timestamp", Name: "时间戳转换", Path: "/tools/timestamp", Icon: "icon-riqishijianzhuanhuanmiaoshu"},
+			{ID: "usbserial", Key: "usbserial", Name: "USB调试", Path: "/tools/usbserial", Icon: "icon-usb1", Single: true, Width: 1360, Height: 860},
+			{ID: "video", Key: "video", Name: "视频录制", Path: "/tools/video", Icon: "video-camera", Single: true, Fullscreen: true, Quick: true, Home: homeOff()},
+			{ID: "screenshot", Key: "screenshot", Name: "截图", Event: "screenshot", Icon: "icon-jietu", Shortcut: "Ctrl+Alt+A", Quick: true},
+			{ID: "colorpicker", Key: "colorpicker", Name: "颜色取色器", Path: "/tools/colorpicker", Icon: "icon-quseqi", Single: true, DisableFullscreen: true, Width: 480, Height: 560, Quick: true},
+			{ID: "encdec", Key: "encdec", Name: "文字加密解密", Path: "/tools/encdec", Icon: "lock", Home: homeOff()},
+			{ID: "strrandom", Key: "strrandom", Name: "随机字符串生成", Path: "/tools/strrandom", Icon: "icon-zifuchuan", Home: homeOff()},
+			{ID: "qrcode", Key: "qrcode", Name: "二维码生成", Path: "/tools/qrcode", Icon: "icon-erweima3", Home: homeOff()},
+			{ID: "imageBase64", Key: "imageBase64", Name: "图片base64", Path: "/tools/imageBase64", Icon: "icon-img", Home: homeOff()},
+			{ID: "hexconvert", Key: "hexconvert", Name: "进制转换", Path: "/tools/hexconvert", Icon: "swap", Home: homeOff()},
 		},
 	}
+}
+
+// homeOff 把默认工具标成“不在主页快捷操作区直接展示”：
+// Home 是指针型，nil 被当成“未设置 = 展示”，要表达关闭只能显式给个 false。
+func homeOff() *bool {
+	f := false
+	return &f
 }
 
 // ApplogConfig 把配置里的 LogConfig 转成 applog 自己的配置类型，使日志包不反向依赖应用层。
@@ -403,6 +416,9 @@ var legacyToolIcons = map[string]string{
 
 // normalizeConfig 补齐缺省值（级别非法回退 info；工具 ID 缺失用 Key 兜底；旧图标修正；AppName 空回退 "Tools"；工具设置表非空）。
 func normalizeConfig(cfg *AppConfig) {
+	if cfg.Order == nil {
+		cfg.Order = map[string][]string{}
+	}
 	if cfg.ToolSettings == nil {
 		cfg.ToolSettings = map[string]ToolSettings{}
 	}
@@ -435,16 +451,17 @@ func normalizeConfig(cfg *AppConfig) {
 		}
 	}
 	// 补齐存量配置中缺失的新增默认工具（仅限下面列出的，尊重用户手动移除的其他工具）
+	// 图标与 DefaultConfig 的基线保持一致，别让补录出来的工具长回旧样子
 	for _, extra := range []struct{ id, key, name, path, icon string }{
 		{"php", "php", "PHP管理", "/tools/php", "icon-php"},
 		{"nginx", "nginx", "Nginx管理", "/tools/nginx", "icon-ngnix"},
-		{"docker", "docker", "Docker管理", "/tools/docker", "computer"},
-		{"term", "term", "终端连接", "/tools/term", "code"},
-		{"ftp", "ftp", "文件传输", "/tools/ftp", "folder"},
+		{"docker", "docker", "Docker管理", "/tools/docker", "icon-docker"},
+		{"term", "term", "终端连接", "/tools/term", "icon-terminal"},
+		{"ftp", "ftp", "文件传输", "/tools/ftp", "icon-ftp"},
 		{"npm", "npm", "Npm管理", "/tools/npm", "icon-npm"},
-		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-wangluo1"},
-		{"browser", "browser", "浏览器", "/tools/browser", "computer"},
-		{"disk", "disk", "磁盘管理", "/tools/disk", "folder"},
+		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-cesu"},
+		{"browser", "browser", "浏览器", "/tools/browser", "icon-liulanqi1"},
+		{"disk", "disk", "磁盘管理", "/tools/disk", "icon-yingpan"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -518,6 +535,9 @@ func LoadAppConfig() AppConfig {
 				}
 				if loaded.ToolSettings != nil {
 					cfg.ToolSettings = loaded.ToolSettings
+				}
+				if loaded.Order != nil {
+					cfg.Order = loaded.Order
 				}
 			}
 		}

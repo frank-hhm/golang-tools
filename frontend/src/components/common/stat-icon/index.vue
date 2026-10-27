@@ -107,6 +107,37 @@
       <path class="si-line" d="M7 17.6h10.2a3.6 3.6 0 0 0 .3-7.2 5.4 5.4 0 0 0-10.4-.4A3.4 3.4 0 0 0 7 17.6z" />
       <path class="si-arrow" d="M12 14.6V9.6M10.2 11.4 12 9.6l1.8 1.8" />
     </template>
+
+    <!-- Nginx 运行状态：机架服务器（两层机身 + 状态灯 + 通风栅） -->
+    <template v-else-if="name === 'server'">
+      <rect class="si-line" x="4.4" y="4.6" width="15.2" height="6" rx="1.6" />
+      <rect class="si-line" x="4.4" y="13.4" width="15.2" height="6" rx="1.6" />
+      <circle class="si-node" cx="8" cy="7.6" r="1.1" />
+      <circle class="si-node" cx="8" cy="16.4" r="1.1" />
+      <path class="si-line si-dim" d="M12.4 7.6h4.4M12.4 16.4h4.4" />
+    </template>
+
+    <!-- Nginx 请求速率：仪表盘（半弧刻度 + 往复摆动的指针） -->
+    <template v-else-if="name === 'gauge'">
+      <path class="si-line" d="M4.2 16.6a8 8 0 1 1 15.6 0" />
+      <path class="si-line si-dim" d="M4.2 16.6h2M17.8 16.6h-2M12 6.6v2" />
+      <path class="si-needle" d="M12 16.6 15.8 10.4" />
+      <circle class="si-node" cx="12" cy="16.6" r="1.2" />
+    </template>
+
+    <!-- Nginx HTTP 端口：插头（两脚 + 插头体 + 下方线缆） -->
+    <template v-else-if="name === 'plug'">
+      <path class="si-line" d="M9 3.4v4.2M15 3.4v4.2" />
+      <path class="si-line" d="M6.4 7.6h11.2v3a5.6 5.6 0 0 1-11.2 0z" />
+      <path class="si-line" d="M12 16.2v4.4" />
+    </template>
+
+    <!-- Nginx 版本：标签（带孔的价格牌轮廓） -->
+    <template v-else-if="name === 'tag'">
+      <path class="si-line"
+        d="M4.4 11.2V5.4a1 1 0 0 1 1-1h5.8l7.4 7.4a1.4 1.4 0 0 1 0 2l-4.8 4.8a1.4 1.4 0 0 1-2 0z" />
+      <circle class="si-node" cx="8.3" cy="8.3" r="1.3" />
+    </template>
   </svg>
 </template>
 
@@ -307,6 +338,25 @@ const cssVars = computed<Record<string, string>>(() => ({
 
   50% {
     transform: translateY(-0.8px);
+  }
+}
+
+/* 仪表盘指针：绕轴心小幅往复摆动，像实时转速表 */
+.si-needle {
+  animation: si-sway 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: right bottom;
+}
+
+@keyframes si-sway {
+
+  0%,
+  100% {
+    transform: rotate(-16deg);
+  }
+
+  50% {
+    transform: rotate(20deg);
   }
 }
 

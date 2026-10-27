@@ -1038,6 +1038,12 @@ type logStream struct {
 	done    chan struct{}
 	body    io.Closer
 	closeOn sync.Once
+	// cum 累计追加行数（含被环形挤掉的）；cleared 为「清空」时的 cum，
+	// ContainerLogRing 据此跳过旧行，实现刷新后仍为空的非破坏式视图截止
+	cum     int
+	cleared int
+	// since 为「清空」时刻：重开弹窗重新跟随时只取该时刻之后的日志，避免旧历史回填
+	since time.Time
 }
 
 // kill 主动结束跟随：关流使阻塞中的读立即返回
@@ -1052,6 +1058,9 @@ func (s *logStream) kill() {
 var (
 	logMu    sync.Mutex
 	logProcs = map[string]*logStream{}
+	// logsSince 记下每个容器最近一次「清空」的时刻：重开弹窗重新跟随时以它作 since，
+	// 使 Docker daemon 只回放清空之后的日志，实现刷新/重开都不回填旧行的真实清空
+	logsSince = map[string]time.Time{}
 )
 
 // GetContainerLogs 读容器日志尾部 n 行（历史，含已停止容器）。
@@ -1111,6 +1120,9 @@ func StreamContainerLogs(id string) error {
 		return nil
 	}
 	s := &logStream{stop: make(chan struct{}), done: make(chan struct{})}
+	if t, ok := logsSince[id]; ok && !t.IsZero() {
+		s.since = t // 之前清空过：本次跟随只取清空时刻之后的日志
+	}
 	logProcs[id] = s
 	logMu.Unlock()
 
@@ -1119,6 +1131,9 @@ func StreamContainerLogs(id string) error {
 	q.Set("stderr", "1")
 	q.Set("follow", "1")
 	q.Set("tail", "200")
+	if !s.since.IsZero() {
+		q.Set("since", strconv.FormatInt(s.since.Unix(), 10))
+	}
 	resp, err := streamRequest(http.MethodGet, "/containers/"+id+"/logs", q, true)
 	if err != nil {
 		logMu.Lock()
@@ -1167,7 +1182,8 @@ func StopContainerLogs(id string) {
 	}
 }
 
-// ContainerLogRing 读当前环形缓冲（面板初次打开时取历史）
+// ContainerLogRing 读当前环形缓冲（面板初次打开/刷新时取历史）：
+// 只返回「最近一次清空之后」新追加的行（无清空则返回尾部 n 行）。
 func ContainerLogRing(id string, n int) []string {
 	logMu.Lock()
 	s := logProcs[id]
@@ -1177,12 +1193,51 @@ func ContainerLogRing(id string, n int) []string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if n <= 0 || n > len(s.lines) {
-		n = len(s.lines)
+	skip := s.cum - s.cleared // 清空之后再产出的行才展示：跳过前 skip 行（含被环形挤掉的）
+	if skip < 0 {
+		skip = 0
+	}
+	if skip > len(s.lines) {
+		skip = len(s.lines)
+	}
+	avail := s.lines[skip:]
+	if n <= 0 || n > len(avail) {
+		n = len(avail)
 	}
 	out := make([]string, n)
-	copy(out, s.lines[len(s.lines)-n:])
+	copy(out, avail[len(avail)-n:])
 	return out
+}
+
+// ClearContainerLogs 真实清空某容器的日志视图：记下清空时刻（since），
+// 若正在跟随则停掉旧的、从 since 重新拉起，使清空后只回显新写入的行；
+// 重开弹窗时 StreamContainerLogs 也会读这个 since，不再把旧历史拉回。
+// （Docker daemon 侧的 json.log 在 Windows 上位于 VM 内、无法本地截断，故用 since 过滤实现等效清空）
+func ClearContainerLogs(id string) {
+	if id == "" {
+		return
+	}
+	now := time.Now()
+	logMu.Lock()
+	logsSince[id] = now
+	following := logProcs[id] != nil
+	logMu.Unlock()
+	if following {
+		StopContainerLogs(id)
+		_ = StreamContainerLogs(id) // 读 logsSince[id]，以 since 重新跟随
+		return
+	}
+	// 没在跟随：只记 since，下次跟随时生效；顺手清掉可能残留的环形截止
+	logMu.Lock()
+	s := logProcs[id]
+	logMu.Unlock()
+	if s != nil {
+		s.mu.Lock()
+		s.lines = nil
+		s.cum = 0
+		s.cleared = 0
+		s.mu.Unlock()
+	}
 }
 
 func pumpLogs(id string, s *logStream, resp *http.Response, tty bool) {
@@ -1259,6 +1314,7 @@ func appendLog(id string, s *logStream, line string) {
 	}
 	ts := time.Now().Format("15:04:05.000")
 	s.mu.Lock()
+	s.cum++
 	s.lines = append(s.lines, ts+"  "+line)
 	if len(s.lines) > logRingMax {
 		s.lines = s.lines[len(s.lines)-logRingMax:]

@@ -9,13 +9,13 @@
     
     --base-size-small: 12px;
 
-    --base-size-default: 14px;
+    --base-size-default: 12px;
 
-    --base-size-large: 18px;
+    --base-size-large: 14px;
 
-    --base-size-large-x: 20px;
+    --base-size-large-x:16px;
 
-    --base-size-large-xx: 32px;
+    --base-size-large-xx: 20px;
 
     --base-radius-default: 6px;
 
@@ -159,4 +159,55 @@ html {
 
 .text-black {
     color: rgba(var(--color-black));
+}
+
+/* 拖拽排序通用反馈（主页各区 + 各服务实例列表复用）：
+   被拖项半透明，落点项描边提示“松手插到这里”，可拖项统一抓取光标 */
+.reorder-dragging {
+    opacity: 0.4;
+}
+
+.reorder-over {
+    outline: 2px dashed rgb(var(--primary-6));
+    outline-offset: -2px;
+}
+
+[draggable="true"] {
+    cursor: grab;
+}
+
+[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+/* 连接弹窗底栏：左下角“测试连接”+结果提示，右侧取消/保存；
+   Redis/MySQL/终端/远程传输四个新增连接弹窗共用 */
+.conn-test-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.conn-test-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.conn-test-msg {
+    font-size: var(--base-size-small);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 320px;
+}
+
+.conn-test-msg.is-ok {
+    color: rgb(var(--green-6));
+}
+
+.conn-test-msg.is-err {
+    color: rgb(var(--red-6));
 }

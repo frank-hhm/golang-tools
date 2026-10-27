@@ -1,6 +1,9 @@
 <template>
   <!-- 单侧文件栏：本地与远端共用同一套骨架，靠 side 决定调哪套绑定 -->
-  <div class="file-pane">
+  <!-- data-file-drop-target 标记为原生拖放区，data-pane 供 Go 回调时区分落到了本地还是远程栏 -->
+  <div class="file-pane" ref="paneEl" :class="{ 'is-drop': dragOver }"
+    :data-file-drop-target="side" :data-pane="side"
+    @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <div class="pane-head">
       <div class="pane-title">
         <span class="pane-label">{{ title }}</span>
@@ -48,7 +51,7 @@
         <template #columns>
           <a-table-column title="名称">
             <template #cell="{ record }">
-              <div class="name-cell">
+              <div class="name-cell" draggable="true" @dragstart="onRowDragStart(record, $event)" @dragend="onRowDragEnd">
                 <span class="name-icon" :class="{ dir: record.isDir }">
                   <component :is="'icon-' + iconOf(record)" />
                 </span>
@@ -126,9 +129,15 @@ const emit = defineEmits<{
   (e: 'preview', entry: FtpEntry): void;
   (e: 'path-change', path: string): void;
   (e: 'transferred'): void;
+  (e: 'drop-entry', entry: FtpEntry, sourceSide: 'local' | 'remote'): void;
 }>();
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+
+const paneEl = ref<HTMLElement | null>(null);
+const dragOver = ref(false);
+/** 本次拖拽的来源栏与条目：同文档内跨栏拖放用模块变量传递（比 dataTransfer 读路径更稳） */
+let dragPayload: { side: 'local' | 'remote'; entry: FtpEntry } | null = null;
 
 const listing = ref<FtpListing | null>(null);
 const loading = ref(false);
@@ -236,12 +245,77 @@ async function uploadOne(entry: FtpEntry) {
   await startUpload([entry.path], dir);
 }
 
-async function download(entry: FtpEntry) {
+/** 原生拖放落下本地文件：直接上传到目标远端目录（与「上传」按钮同一落点） */
+async function handleDrop(files: string[]) {
+  if (!files?.length) return;
+  const dir = await targetUploadDir();
+  await startUpload(files, dir);
+}
+
+/** 供父组件跨栏拖放时调用：把指定本地路径上传到本栏目标目录 */
+function uploadPaths(files: string[]) {
+  return handleDrop(files);
+}
+
+/* ==================== 栏内拖拽 → 跨栏传输 ==================== */
+
+/** 拖起某一行：记录来源栏与条目；只有拖到「另一栏」才算跨栏传输 */
+function onRowDragStart(entry: FtpEntry, ev: DragEvent) {
+  dragPayload = { side: props.side, entry };
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = 'copy';
+    // 同文档内以模块变量为准，setData 仅作兜底（读不到完整本地路径，不做依赖）
+    ev.dataTransfer.setData('text/plain', entry.path);
+  }
+}
+
+function onRowDragEnd() {
+  dragPayload = null;
+  dragOver.value = false;
+}
+
+/** 本栏是否为合法落点：有拖拽负载且来自另一栏 */
+function isForeignDrag(ev: DragEvent): boolean {
+  return !!dragPayload && dragPayload.side !== props.side;
+}
+
+function onDragEnter(ev: DragEvent) {
+  if (isForeignDrag(ev)) dragOver.value = true;
+}
+
+function onDragOver(ev: DragEvent) {
+  if (!isForeignDrag(ev)) return;
+  ev.preventDefault();
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+  dragOver.value = true;
+}
+
+function onDragLeave(ev: DragEvent) {
+  // 只有真正离开整个栏（relatedTarget 不在栏内）才取消高亮，避免子元素间抖动
+  const next = ev.relatedTarget as Node | null;
+  if (paneEl.value && next && paneEl.value.contains(next)) return;
+  dragOver.value = false;
+}
+
+function onDrop(ev: DragEvent) {
+  if (!isForeignDrag(ev)) return;
+  ev.preventDefault();
+  const payload = dragPayload;
+  dragOver.value = false;
+  dragPayload = null;
+  // 带上真正的来源栏（拖起那侧），父组件据此判定上传/下载方向，避免用落点栏侧误判
+  if (payload) emit('drop-entry', payload.entry, payload.side);
+}
+
+async function download(entry: FtpEntry | string) {
+  // 兼容两种入参：行内下载按钮传 FtpEntry，跨栏拖拽传远程路径字符串
+  const remotePath = typeof entry === 'string' ? entry : entry?.path;
+  if (!remotePath) return;
   try {
     let dir = props.downloadDir;
     if (!dir) dir = await GoTools.FtpChooseLocalFolder('选择下载到');
     if (!dir) return;
-    const list = await GoTools.FtpDownload(props.sessionId, [entry.path], dir);
+    const list = await GoTools.FtpDownload(props.sessionId, [remotePath], dir);
     if (list?.length) {
       Message.info({ content: `已加入下载队列（${list.length} 项）`, position: 'top', duration: 2000 });
       emit('transferred');
@@ -342,7 +416,7 @@ onMounted(() => {
   void load(cached);
 });
 
-defineExpose({ refresh: () => load(curPath.value) });
+defineExpose({ refresh: () => load(curPath.value), handleDrop, download, uploadPaths });
 </script>
 
 <style scoped>
@@ -351,6 +425,20 @@ defineExpose({ refresh: () => load(curPath.value) });
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* 原生拖放悬停时 Wails 运行时给拖放目标加的类：高亮提示“松手即上传” */
+.file-pane.file-drop-target-active {
+  outline: 2px dashed rgb(var(--primary-6));
+  outline-offset: -2px;
+  background: var(--color-primary-light-1);
+}
+
+/* 跨栏拖拽：把另一栏拖到本栏上方时高亮，提示“松手即传到对侧” */
+.file-pane.is-drop {
+  outline: 2px dashed rgb(var(--primary-6));
+  outline-offset: -2px;
+  background: var(--color-primary-light-1);
 }
 
 .pane-head {
@@ -435,6 +523,15 @@ defineExpose({ refresh: () => load(curPath.value) });
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* 行可拖拽跨栏传输：拖起时光标为抓取手 */
+.name-cell {
+  cursor: grab;
+}
+
+.name-cell:active {
+  cursor: grabbing;
 }
 
 .name-text.dir {

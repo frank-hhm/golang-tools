@@ -257,6 +257,20 @@ func Open(cfg ConnConfig) error {
 	return nil
 }
 
+// Test 连通性测试：按表单参数临时建连并 Ping（不登记到连接表），返回握手耗时毫秒。
+func Test(cfg ConnConfig) (int64, error) {
+	start := time.Now()
+	db, err := sql.Open("mysql", dsnOf(cfg, cfg.Database))
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	if err := db.Ping(); err != nil {
+		return 0, fmt.Errorf("连接失败: %w", err)
+	}
+	return time.Since(start).Milliseconds(), nil
+}
+
 // Close 关闭并移除连接。
 func Close(id string) error {
 	mu.Lock()

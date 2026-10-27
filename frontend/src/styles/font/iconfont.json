@@ -6,6 +6,90 @@
   "description": "",
   "glyphs": [
     {
+      "icon_id": "3370349",
+      "name": "作业_FTP作业",
+      "font_class": "zuoye_FTPzuoye",
+      "unicode": "e60f",
+      "unicode_decimal": 58895
+    },
+    {
+      "icon_id": "11743314",
+      "name": "SFTP",
+      "font_class": "SFTP",
+      "unicode": "e68d",
+      "unicode_decimal": 59021
+    },
+    {
+      "icon_id": "41065665",
+      "name": "ftp",
+      "font_class": "ftp",
+      "unicode": "e7c2",
+      "unicode_decimal": 59330
+    },
+    {
+      "icon_id": "859468",
+      "name": "终端",
+      "font_class": "terminal",
+      "unicode": "e625",
+      "unicode_decimal": 58917
+    },
+    {
+      "icon_id": "43162524",
+      "name": "terminal",
+      "font_class": "zhongduanguanli-zhongduanzu-zhongduanzuliebiao",
+      "unicode": "e690",
+      "unicode_decimal": 59024
+    },
+    {
+      "icon_id": "43712222",
+      "name": "终端",
+      "font_class": "zhongduan",
+      "unicode": "e7f4",
+      "unicode_decimal": 59380
+    },
+    {
+      "icon_id": "18170198",
+      "name": "转速表,仪表盘,测速,速度",
+      "font_class": "dashboard",
+      "unicode": "e984",
+      "unicode_decimal": 59780
+    },
+    {
+      "icon_id": "44468701",
+      "name": "测速",
+      "font_class": "cesu",
+      "unicode": "e608",
+      "unicode_decimal": 58888
+    },
+    {
+      "icon_id": "8058909",
+      "name": "浏览器",
+      "font_class": "liulanqi",
+      "unicode": "edec",
+      "unicode_decimal": 60908
+    },
+    {
+      "icon_id": "10487558",
+      "name": "浏览器",
+      "font_class": "liulanqi1",
+      "unicode": "e698",
+      "unicode_decimal": 59032
+    },
+    {
+      "icon_id": "15378300",
+      "name": "docker",
+      "font_class": "docker",
+      "unicode": "eb7d",
+      "unicode_decimal": 60285
+    },
+    {
+      "icon_id": "36077755",
+      "name": "IE浏览器",
+      "font_class": "IEliulanqi",
+      "unicode": "e676",
+      "unicode_decimal": 58998
+    },
+    {
       "icon_id": "545044",
       "name": "usb",
       "font_class": "usb1",

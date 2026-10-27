@@ -80,33 +80,9 @@ func OpenSSH(hostID string, cols, rows int) (SessionInfo, error) {
 
 	cols, rows = clampSize(cols, rows)
 
-	cfg := &ssh.ClientConfig{
-		User: h.User,
-		// 个人自用工具：不维护 known_hosts，首次连接不做指纹确认
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         12 * time.Second,
-	}
-	if h.Auth == AuthKey {
-		raw, rerr := os.ReadFile(h.KeyPath)
-		if rerr != nil {
-			return SessionInfo{}, fmt.Errorf("读取私钥失败: %v", rerr)
-		}
-		signer, perr := ssh.ParsePrivateKey(raw)
-		if perr != nil {
-			return SessionInfo{}, fmt.Errorf("私钥解析失败（带口令的私钥暂不支持）: %v", perr)
-		}
-		cfg.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
-	} else {
-		cfg.Auth = []ssh.AuthMethod{ssh.Password(pass), ssh.KeyboardInteractive(
-			func(name, instruction string, questions []string, echos []bool) ([]string, error) {
-				// 部分服务端把密码校验走 keyboard-interactive，答案统一填密码
-				answers := make([]string, len(questions))
-				for i := range answers {
-					answers[i] = pass
-				}
-				return answers, nil
-			}),
-		}
+	cfg, cerr := clientConfig(h, pass)
+	if cerr != nil {
+		return SessionInfo{}, cerr
 	}
 
 	addr := net.JoinHostPort(h.Address, strconv.Itoa(h.Port))
@@ -165,6 +141,68 @@ func OpenSSH(hostID string, cols, rows int) (SessionInfo, error) {
 	}()
 
 	return s.info, nil
+}
+
+// clientConfig 按记录与明文密码组装 ssh.ClientConfig；私钥问题在这里就报出来，不拖到拨号后
+func clientConfig(h Host, pass string) (*ssh.ClientConfig, error) {
+	cfg := &ssh.ClientConfig{
+		User: h.User,
+		// 个人自用工具：不维护 known_hosts，首次连接不做指纹确认
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         12 * time.Second,
+	}
+	if h.Auth == AuthKey {
+		raw, rerr := os.ReadFile(h.KeyPath)
+		if rerr != nil {
+			return nil, fmt.Errorf("读取私钥失败: %v", rerr)
+		}
+		signer, perr := ssh.ParsePrivateKey(raw)
+		if perr != nil {
+			return nil, fmt.Errorf("私钥解析失败（带口令的私钥暂不支持）: %v", perr)
+		}
+		cfg.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
+	} else {
+		cfg.Auth = []ssh.AuthMethod{ssh.Password(pass), ssh.KeyboardInteractive(
+			func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				// 部分服务端把密码校验走 keyboard-interactive，答案统一填密码
+				answers := make([]string, len(questions))
+				for i := range answers {
+					answers[i] = pass
+				}
+				return answers, nil
+			}),
+		}
+	}
+	return cfg, nil
+}
+
+// Test 连通性测试：按表单参数完成 SSH 认证握手后立刻断开，不建 shell 会话；返回握手耗时毫秒。
+// 编辑已有记录时密码留空则沿用已保存的密码（与 credential 同一套语义）。
+func Test(h Host) (int64, error) {
+	pass := h.Password
+	if pass == "" && h.ID != "" {
+		if _, saved, err := credential(h.ID); err == nil {
+			pass = saved
+		}
+	}
+	if h.Auth == AuthKey && h.KeyPath == "" {
+		return 0, fmt.Errorf("请先选择私钥文件")
+	}
+	if h.Auth != AuthKey && pass == "" {
+		return 0, fmt.Errorf("请输入密码（或选择密钥验证）")
+	}
+	cfg, cerr := clientConfig(h, pass)
+	if cerr != nil {
+		return 0, cerr
+	}
+	start := time.Now()
+	addr := net.JoinHostPort(h.Address, strconv.Itoa(h.Port))
+	cli, derr := ssh.Dial("tcp", addr, cfg)
+	if derr != nil {
+		return 0, fmt.Errorf("SSH 连接失败: %v", derr)
+	}
+	_ = cli.Close()
+	return time.Since(start).Milliseconds(), nil
 }
 
 // exitReason 把 ssh.Wait 的错误翻成一句能给用户看的话

@@ -1,18 +1,34 @@
 <template>
     <!-- 环境体检：只负责把体检结果摊开，重新体检 / 装 WSL2 都交回页面执行 -->
-    <a-modal :visible="visible" title="环境体检与诊断" :width="760" :footer="false"
+    <a-modal :visible="visible" title="环境体检与诊断" :width="760"
         @cancel="emit('update:visible', false)" @update:visible="(v: boolean) => emit('update:visible', v)">
+        <!-- 操作按钮收进弹窗底部右侧（Arco footer 默认右对齐），正文只留体检信息与提示 -->
+        <template #footer>
+            <a-space :size="8">
+                <a-button size="small" :loading="envLoading" @click="emit('refresh')">
+                    <template #icon><icon-refresh /></template>重新体检
+                </a-button>
+                <a-button v-if="!env.wslInstalled" size="small" type="primary" :loading="setupBusy === 'wsl'"
+                    :disabled="!!setupBusy" @click="emit('enable-wsl')">
+                    <template #icon><icon-common /></template>启用 WSL2
+                </a-button>
+                <a-button v-else size="small" :loading="setupBusy === 'wslupd'" :disabled="!!setupBusy"
+                    @click="emit('update-wsl')">
+                    <template #icon><icon-common /></template>更新 WSL2
+                </a-button>
+            </a-space>
+        </template>
         <div class="env-grid">
             <div class="env-item">
-                <span>Docker Desktop</span>
-                <b class="com-state" :class="env.dockerInstalled ? 'is-on' : 'is-off'">
+                <div>Docker Desktop</div>
+                <div class="com-state" :class="env.dockerInstalled ? 'is-on' : 'is-off'">
                     <com-badge :status="env.dockerInstalled ? 'success' : 'danger'" />
                     {{ env.dockerInstalled ? ('已安装 ' + (env.dockerVersion || '-')) : '未安装' }}
-                </b>
+                </div>
             </div>
             <div class="env-item">
-                <span>WSL2</span>
-                <b>
+                <div>WSL2</div>
+                <div>
                     <!-- 悬停看原文与发行版清单：没发行版并不等于 WSL2 不可用 -->
                     <a-tooltip position="bottom" :content-style="{ maxWidth: '440px' }">
                         <template #content>
@@ -22,61 +38,55 @@
                                 <div class="lt-line">docker-desktop 发行版：{{ dockerDistroText }}</div>
                             </div>
                         </template>
-                        <span class="com-state" :class="env.wslInstalled ? 'is-on' : 'is-warn'">
+                        <div class="com-state" :class="env.wslInstalled ? 'is-on' : 'is-warn'">
                             <com-badge :status="env.wslInstalled ? 'success' : 'warning'" />
                             {{ env.wslInstalled ? '已就绪' : '未就绪' }}
-                        </span>
+                        </div>
                     </a-tooltip>
-                </b>
+                </div>
             </div>
             <div class="env-item">
-                <span>引擎实际后端</span>
-                <b class="com-state" :class="curBackend === 'hyperv' ? 'is-warn' : 'is-on'">
+                <div>引擎实际后端</div>
+                <div class="com-state" :class="curBackend === 'hyperv' ? 'is-warn' : 'is-on'">
                     <com-badge :status="curBackend === 'hyperv' ? 'warning' : 'success'" />
                     {{ env.backend?.label || '未知' }}
-                </b>
+                </div>
             </div>
             <div class="env-item">
-                <span>Hyper-V 角色</span>
-                <b class="com-state" :class="hypervTag.cls">
+                <div>Hyper-V 角色</div>
+                <div class="com-state" :class="hypervTag.cls">
                     <com-badge :status="hypervTag.status" />{{ hypervTag.text }}
-                </b>
+                </div>
             </div>
             <div class="env-item">
-                <span>命名管道</span>
-                <b class="com-state" :class="env.pipeExists ? 'is-on' : 'is-dim'">
+                <div>命名管道</div>
+                <div class="com-state" :class="env.pipeExists ? 'is-on' : 'is-dim'">
                     <com-badge :status="env.pipeExists ? 'success' : 'normal'" />
                     {{ env.pipeExists ? '已监听' : '不存在' }}
-                </b>
+                </div>
             </div>
             <div class="env-item">
-                <span>离线安装包</span>
-                <b class="com-state" :class="env.installerFile ? 'is-on' : 'is-dim'">
+                <div>离线安装包</div>
+                <div class="com-state" :class="env.installerFile ? 'is-on' : 'is-dim'">
                     <com-badge :status="env.installerFile ? 'success' : 'normal'" />
                     {{ env.installerFile ? fmtBytes(env.installerSize) : '无' }}
-                </b>
+                </div>
             </div>
         </div>
         <a-tooltip v-if="env.wslStatus" :content="env.wslStatus">
             <div class="env-raw mono">{{ env.wslStatus }}</div>
         </a-tooltip>
-        <div class="guide">
-            <div v-for="(g, i) in envNotes" :key="'n' + i" class="guide-line">{{ g }}</div>
-        </div>
-        <div v-if="setupNote" class="setup-note">{{ setupNote }}</div>
-        <a-space :size="8" class="setup-row">
-            <a-button size="small" :loading="envLoading" @click="emit('refresh')">
-                <template #icon><icon-refresh /></template>重新体检
-            </a-button>
-            <a-button v-if="!env.wslInstalled" size="small" :loading="setupBusy === 'wsl'" :disabled="!!setupBusy"
-                @click="emit('enable-wsl')">
-                <template #icon><icon-common /></template>启用 WSL2
-            </a-button>
-            <a-button v-else size="small" :loading="setupBusy === 'wslupd'" :disabled="!!setupBusy"
-                @click="emit('update-wsl')">
-                <template #icon><icon-common /></template>更新 WSL2
-            </a-button>
-        </a-space>
+        <!-- 提示改用 a-alert：体检结论收进一条 info 提示，操作反馈单独一条 warning -->
+        <a-alert v-if="envNotes.length" class="env-alert" type="warning" :show-icon="true">
+            <div class="alert-lines">
+                <div v-for="(g, i) in envNotes" :key="'n' + i" class="alert-line">{{ g }}</div>
+            </div>
+        </a-alert>
+        <a-alert v-if="setupNote" class="env-alert" type="warning" :show-icon="true">
+            <div class="alert-lines">
+                <div class="alert-line">{{ setupNote }}</div>
+            </div>
+        </a-alert>
     </a-modal>
 </template>
 
@@ -138,38 +148,21 @@ const emit = defineEmits<{
     text-overflow: ellipsis;
 }
 
-.guide {
+.env-alert {
     margin-top: var(--base-radius-default);
+    align-items: flex-start;
 }
 
-.guide-line {
-    font-size: var(--base-size-small);
-    color: var(--color-text-3);
-    line-height: 1.8;
-    padding-left: 12px;
-    position: relative;
-}
-
-.guide-line::before {
-    content: "·";
-    position: absolute;
-    left: 2px;
-    color: var(--color-text-4);
-}
-
-.setup-row {
+.alert-lines {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: var(--base-radius-default) 0;
+    flex-direction: column;
+    gap: 2px;
 }
 
-.setup-note {
+.alert-line {
     font-size: var(--base-size-small);
-    color: var(--color-text-2);
-    word-break: break-all;
-    white-space: pre-wrap;
+    line-height: 1.7;
+    word-break: break-word;
 }
 
 /* 悬停提示的多行正文（弹层虽 teleport 到 body，仍带本组件的 scoped 属性） */

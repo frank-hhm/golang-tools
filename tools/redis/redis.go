@@ -137,6 +137,17 @@ func Open(cfg ConnConfig) error {
 	if err != nil {
 		return err
 	}
+	// 连接一旦因超时/断流被判废弃（如实例被停），立即关闭并踢出连接池：
+	// 否则前端页签还挂着这个 id，之后每次命令都在死 socket 上收发，把
+	// wsasend/wsarecv 系统错误一遍遍打进运行时终端
+	c.onBad = func() {
+		mu.Lock()
+		if cur, ok := conns[cfg.ID]; ok && cur == c {
+			delete(conns, cfg.ID)
+		}
+		mu.Unlock()
+		_ = c.Close()
+	}
 	mu.Lock()
 	if old, ok := conns[cfg.ID]; ok {
 		old.Close()
@@ -144,6 +155,17 @@ func Open(cfg ConnConfig) error {
 	conns[cfg.ID] = c
 	mu.Unlock()
 	return nil
+}
+
+// Test 连通性测试：按表单参数建连（含 AUTH/SELECT）后立刻断开，不登记到连接表；返回握手耗时毫秒。
+func Test(cfg ConnConfig) (int64, error) {
+	start := time.Now()
+	c, err := dial(addrOf(cfg), cfg.Password, cfg.DB, 6*time.Second)
+	if err != nil {
+		return 0, err
+	}
+	_ = c.Close()
+	return time.Since(start).Milliseconds(), nil
 }
 
 // Close 关闭并移除指定连接。
@@ -155,6 +177,20 @@ func Close(id string) error {
 		delete(conns, id)
 	}
 	return nil
+}
+
+// CloseAddr 关闭并移除所有指向指定地址的已登记连接。
+// 本地实例被停止后，它的 socket 必然被内核复位：活着也是死连接，
+// 留着就是让前端每次操作都在死 socket 上碰一次系统错误刷屏运行时终端。
+func CloseAddr(addr string) {
+	mu.Lock()
+	defer mu.Unlock()
+	for id, c := range conns {
+		if c.nc != nil && c.nc.RemoteAddr().String() == addr {
+			_ = c.Close()
+			delete(conns, id)
+		}
+	}
 }
 
 // getConn 取得已打开连接。
@@ -513,6 +549,18 @@ func StartMonitor(cfg ConnConfig) error {
 	mu.Unlock()
 
 	go func() {
+		// 服务端断开（实例被停、崩溃）时读回复会出错退出：必须把监控登记清掉，
+		// 否则 monitorConn 挂着一个死 socket，下次 StartMonitor 误判「已在监控」直接返回，
+		// 前端再也起不来监控
+		defer func() {
+			mu.Lock()
+			if monitorConn == c {
+				monitorConn = nil
+				monitorStop = nil
+			}
+			mu.Unlock()
+			_ = c.Close()
+		}()
 		for {
 			select {
 			case <-stop:

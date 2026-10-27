@@ -64,9 +64,12 @@ const THEME_TOKENS = {
     minuteColor: "--color-text-3",
     secondColor: "--primary-6",
 } as const;
-/** 按明暗模式差异化的 token（仅浅色/暗黑各用不同变量时在此登记） */
+/** 按明暗模式差异化的 token（仅浅色/暗黑各用不同变量时在此登记）：
+ *  暗黑下 text-3 只有 0.5 白、primary 蓝在暗盘上对比不足，分针提亮一档、秒针直接用白 */
 const DARK_TOKEN_OVERRIDES: Partial<Record<ColorKey, string>> = {
     ringColor: "--primary-6",
+    minuteColor: "--color-text-2",
+    secondColor: "--color-text-1",
 };
 type ColorKey = keyof typeof THEME_TOKENS;
 /** 变量读取失败时的兜底（浅色 Arco 默认值） */
@@ -83,11 +86,18 @@ const FALLBACK: Record<ColorKey, string> = {
  *  字体跟随 body 的 font-family（style.css 的 Nunito + 系统回退），canvas 不会继承 CSS 字体需显式读取 */
 let palette: Record<ColorKey, string> | null = null;
 let fontFamily = "sans-serif";
+/** 当前是否暗黑模式（resolvePalette 时刷新）：水印淡度等按此差异化 */
+let darkMode = false;
+/** 水印文字透明度：暗黑下近白水痕更扎眼，统一压到 6 成 */
+function wmAlpha(base: number): number {
+    return darkMode ? base * 0.6 : base;
+}
 function resolvePalette(): Record<ColorKey, string> {
     if (palette) return palette;
     const cs = getComputedStyle(document.body);
     fontFamily = cs.fontFamily || "sans-serif";
     const dark = document.body.getAttribute("arco-theme") === "dark";
+    darkMode = dark;
     const p = {} as Record<ColorKey, string>;
     for (const k of Object.keys(THEME_TOKENS) as ColorKey[]) {
         if (props[k]) {
@@ -184,7 +194,7 @@ function draw() {
         ctx.font = `bold ${52 * rem}px ${fontFamily}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = withAlpha(pal.numColor, 0.08);
+        ctx.fillStyle = withAlpha(pal.numColor, wmAlpha(0.08));
         ctx.fillText(String(now.getFullYear()), 0, 2 * rem);
     }
     ctx.restore();
@@ -210,15 +220,15 @@ function draw() {
     if (props.showInfo) {
         // 上方：星期（纯文字，与年份水印同色同淡度，加粗补偿可读性）
         ctx.font = `bold ${13 * rem}px ${fontFamily}`;
-        ctx.fillStyle = withAlpha(pal.numColor, 0.1);
+        ctx.fillStyle = withAlpha(pal.numColor, wmAlpha(0.1));
         ctx.fillText(WEEKDAYS[now.getDay()], 0, -faceR * 0.58);
         // 星期下方：M月D日
         ctx.font = `bold ${13 * rem}px ${fontFamily}`;
-        ctx.fillStyle = withAlpha(pal.numColor, 0.08);
+        ctx.fillStyle = withAlpha(pal.numColor, wmAlpha(0.08));
         ctx.fillText(`${now.getMonth() + 1}月${now.getDate()}日`, 0, -faceR * 0.38);
-        // 下方：HH:mm:ss:百分秒（毫秒级跳动，保持加粗与原淡度）
+        // 下方：HH:mm:ss:百分秒（毫秒级跳动，是持续跑动的有用信息，暗黑下反而略提亮保证可读）
         ctx.font = `bold ${13 * rem}px ${fontFamily}`;
-        ctx.fillStyle = withAlpha(pal.numColor, 0.35);
+        ctx.fillStyle = withAlpha(pal.numColor, darkMode ? 0.45 : 0.35);
         ctx.fillText(`${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}:${pad2(Math.floor(ms / 10))}`, 0, faceR * 0.46);
     }
 
@@ -242,11 +252,12 @@ function draw() {
     ctx.restore();
 }
 
-/** 画一根圆头指针：angle 为 12 点方向起顺时针弧度 */
+/** 画一根圆头指针：angle 为 12 点方向起顺时针弧度；针身本就沿 -y（12 点）绘制，
+ *  canvas 正旋转即顺时针，直接 rotate(angle)，再减 π/2 会把全部针逆时针偏 90° */
 function drawHand(ctx: CanvasRenderingContext2D, angle: number, width: number, len: number, color: string, tail = 8) {
     ctx.save();
     ctx.beginPath();
-    ctx.rotate(angle - Math.PI / 2);
+    ctx.rotate(angle);
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
     ctx.lineCap = "round";

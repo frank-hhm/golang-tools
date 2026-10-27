@@ -12,29 +12,20 @@
                 </template>
                 <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
                 <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="PHP" />
-                <a-list :bordered="false" size="small">
-                    <a-list-item v-for="inst in instances" :key="inst.id"
-                        :class="{ 'inst-active': selectedId === inst.id }" @click="selectInst(inst.id)">
-                        <a-space>
+                <div class="inst-list">
+                    <common-item-card v-for="inst in orderedInstances" :key="inst.id" :active="selectedId === inst.id"
+                        @click="selectInst(inst.id)" @dblclick="dblInst(inst)" v-bind="phpReo.handlers(inst.id)"
+                        :class="{ 'reorder-dragging': phpReo.isDragging(inst.id), 'reorder-over': phpReo.isOver(inst.id) }">
+                        <template #status>
                             <com-badge :status="states[inst.id]?.running ? 'success' : 'normal'"
                                 :animated="!!states[inst.id]?.running" />
-                            <a-tooltip :content="inst.name + ':' + inst.port">
-                                <span class="conn-name">{{ inst.name }}</span>
+                        </template>
+                        <template #title>
+                            <a-tooltip class="inst-name-tip" :content="inst.name + ':' + inst.port">
+                                <span class="inst-name">{{ inst.name }}</span>
                             </a-tooltip>
-                            <a-tooltip v-if="inst.mode === 'docker'"
-                                :content="imgMissing(inst.image)
-                                    ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
-                                    : `镜像 ${inst.image}：这就是该实例的 PHP 版本`">
-                                <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'" size="small">Docker
-                                    {{ imgTag(inst.image) }}</a-tag>
-                            </a-tooltip>
-                            <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
-                            <a-tag v-if="inst.mode !== 'docker' && inst.runMode === 'cgi'" color="green" size="small">FastCGI</a-tag>
-                            <a-tooltip v-if="inst.remark" :content="inst.remark">
-                                <a-tag color="gray" size="small">Nginx 站点</a-tag>
-                            </a-tooltip>
-                        </a-space>
-                        <template #actions>
+                        </template>
+                        <template #extra>
                             <a-dropdown trigger="hover" @select="(v: any) => onInstAction(v, inst)">
                                 <icon-more class="conn-more" @click.stop />
                                 <template #content>
@@ -48,11 +39,23 @@
                                 </template>
                             </a-dropdown>
                         </template>
-                    </a-list-item>
-                    <a-list-item v-if="instances.length === 0">
-                        <div class="conn-empty">暂无实例，点击右上"新建实例"</div>
-                    </a-list-item>
-                </a-list>
+                        <div class="inst-tags">
+                            <a-tooltip v-if="inst.mode === 'docker'"
+                                :content="imgMissing(inst.image)
+                                    ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                                    : `镜像 ${inst.image}：这就是该实例的 PHP 版本`">
+                                <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'" size="small">Docker
+                                    {{ imgTag(inst.image) }}</a-tag>
+                            </a-tooltip>
+                            <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
+                            <a-tag v-if="inst.mode !== 'docker' && inst.runMode === 'cgi'" color="green" size="small">FastCGI</a-tag>
+                            <a-tooltip v-if="inst.remark" :content="inst.remark">
+                                <a-tag color="gray" size="small">Nginx 站点</a-tag>
+                            </a-tooltip>
+                        </div>
+                    </common-item-card>
+                    <div v-if="instances.length === 0" class="conn-empty">暂无实例，点击右上"新建实例"</div>
+                </div>
             </a-card>
         </a-col>
 
@@ -90,64 +93,25 @@
                             {{ startBusy ? '重启中' : '重启' }}</a-button>
                     </a-space>
                 </template>
-                <div class="detail-grid">
-                    <div class="ls-item"><span>PHP 版本</span><b>{{ selState?.version || selCfg?.version || '-' }}</b>
-                    </div>
-                    <div class="ls-item"><span>运行模式</span>
-                        <b>{{ isDockerSel ? 'Docker 容器' : '本地 php -S' }}</b>
-                    </div>
-                    <div class="ls-item"><span>运行状态</span>
-                        <b class="com-state" :class="selState?.running ? 'ok' : 'no'">
-                            <com-badge :status="selState?.running ? 'success' : 'normal'"
-                                :animated="!!selState?.running" />
-                            {{ selState?.running ? '运行中' : '已停止' }}
-                        </b>
-                    </div>
-                    <div class="ls-item" v-if="isDockerSel"><span>容器</span>
-                        <!-- 容器名带实例后缀很长，单元格会省略号收尾，悬停拿完整名 -->
-                        <a-tooltip :content="selState?.container || '-'">
-                            <b class="ellipsis">{{ selState?.container || '-' }}{{ selState?.containerState ? '（' + selState.containerState + '）' : '' }}</b>
-                        </a-tooltip>
-                    </div>
-                    <div class="ls-item" v-else><span>PID</span><b>{{ selState?.pid || '-' }}</b></div>
-                    <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(selState?.uptimeSeconds) }}</b></div>
-                    <div class="ls-item">
-                        <span>站点目录<a-tooltip content="Docker 模式为宿主目录，会挂载进容器 /var/www/html">
-                                <icon-question-circle class="ls-label-tip" />
-                            </a-tooltip></span>
-                        <a-tooltip :content="selState?.docRoot || '-'">
-                            <b class="ellipsis">{{ selState?.docRoot || '-' }}</b>
-                        </a-tooltip>
-                    </div>
-                    <div class="ls-item">
-                        <span>php.ini<a-tooltip
-                                :content="isDockerSel ? '挂载进容器 conf.d 的覆盖配置' : '实例启动时 -c 指向的 php.ini'">
-                                <icon-question-circle class="ls-label-tip" />
-                            </a-tooltip></span>
-                        <a-tooltip :content="selState?.configPath || '-'">
-                            <b class="ellipsis">{{ selState?.configPath || '-' }}</b>
-                        </a-tooltip>
-                    </div>
-                    <div class="ls-item">
-                        <span>已加载扩展</span>
-                        <a-tooltip v-if="isDockerSel" content="容器内的扩展由镜像提供，本面板的扩展管理只作用于本机 PHP">
-                            <b>不适用（容器内）</b>
-                        </a-tooltip>
-                        <b v-else>{{ selState?.extensionsLoaded ?? '-' }}</b>
-                    </div>
-                    <div class="ls-item"><span>禁用函数</span>
-                        <a-tooltip :content="selState?.disableFunctions || '（无）'">
-                            <b class="ellipsis">{{ selState?.disableFunctions || '（无）' }}</b>
-                        </a-tooltip>
-                    </div>
-                </div>
-                <div v-if="pullNote" class="pull-tip"><icon-loading spin />{{ pullNote }}</div>
-                <div class="log-head">
-                    <span>访问/错误日志（实时）</span>
-                    <a-space :size="6">
-                        <a-button size="small" :disabled="!selState?.running"
-                            @click="openSite(selCfg?.port ?? 0)">
+                <div class="ov-body">
+                    <!-- 关键指标：版式对齐 nginx / 磁盘总览（彩色圆角图标 + 标签/数值同排 + 下方明细） -->
+                    <a-row :gutter="[12, 12]" class="stat-row">
+                        <a-col v-for="c in statCards" :key="c.key" :xs="24" :sm="12" :md="8">
+                            <common-stat-card :icon="c.icon" :tone="c.tone" :label="c.title" :value="c.value"
+                                :detail="c.sub" :tip="c.tip" :ready="c.ready" />
+                        </a-col>
+                    </a-row>
+
+                    <!-- 镜像拉取进度：容器首次启动可能几分钟，把后台动作显式说出来 -->
+                    <div v-if="pullNote" class="pull-tip"><icon-loading spin />{{ pullNote }}</div>
+
+                    <!-- 快捷操作：日志改到弹窗里看，面板只留高频入口 -->
+                    <div class="quick-bar">
+                        <a-button size="small" :disabled="!selState?.running" @click="openSite(selCfg?.port ?? 0)">
                             <template #icon><icon-launch /></template>打开站点
+                        </a-button>
+                        <a-button size="small" @click="openLogModal">
+                            <template #icon><icon-face-folder-open /></template>查看日志
                         </a-button>
                         <a-button size="small" @click="openIni(selectedId)">
                             <template #icon><icon-settings /></template>php.ini
@@ -166,18 +130,35 @@
                         <a-button size="small" @click="openDisFn(selectedId)">
                             <template #icon><icon-stop /></template>禁用函数
                         </a-button>
-                        <a-button size="small" @click="logLines = []">
-                            <template #icon><icon-delete /></template>清空
-                        </a-button>
-                    </a-space>
-                </div>
-                <div ref="logBoxRef" class="ls-log">
-                    <div v-for="(l, i) in logLines" :key="i" class="ls-line">{{ l }}</div>
-                    <div v-if="logLines.length === 0" class="conn-empty">暂无日志</div>
+                    </div>
+
+                    <!-- 详细信息：通用信息行组件（标签 | 值 | 操作），路径类可一键打开对应目录 -->
+                    <div class="info-section">
+                        <div class="info-title">实例信息</div>
+                        <div class="info-list">
+                            <common-info-row grey v-if="isDockerSel" label="容器"
+                                :tip="'容器状态：' + (selState?.containerState || '-')"
+                                :value="selState?.container || '-'" />
+                            <common-info-row grey v-else label="PID" :value="String(selState?.pid || '-')" />
+                            <common-info-row grey label="站点目录" tip="Docker 模式为宿主目录，会挂载进容器 /var/www/html"
+                                :value="selState?.docRoot || '-'" action-text="打开" @action="openPath(selState?.docRoot)" />
+                            <common-info-row grey label="php.ini"
+                                :tip="isDockerSel ? '挂载进容器 conf.d 的覆盖配置' : '实例启动时 -c 指向的 php.ini'"
+                                :value="selState?.configPath || '-'" action-text="打开" @action="openPath(selState?.configPath)" />
+                            <common-info-row grey v-if="!isDockerSel" label="已加载扩展"
+                                :value="String(selState?.extensionsLoaded ?? '-')" />
+                            <common-info-row grey label="禁用函数" :tip="selState?.disableFunctions || '（无）'"
+                                :value="selState?.disableFunctions || '（无）'" />
+                        </div>
+                    </div>
                 </div>
             </a-card>
         </a-col>
     </a-row>
+
+    <!-- 访问/错误日志（实时）：点「查看日志」弹出，打开才轮询（轮询由子组件自管） -->
+    <LogModal v-model="logVisible" :instance-id="selectedId" :instance-name="selCfg?.name || ''"
+        :port="selCfg?.port || 0" :running="!!selState?.running" :is-docker="isDockerSel" />
 
     <!-- 新建/编辑实例 -->
     <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="560"
@@ -614,7 +595,9 @@ import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { remoteVerText, useSysPkg } from "@/utils/caps";
+import { useReorder, applyOrder, loadOrder } from "@/utils/reorder";
 import { restoreInstalls } from "@/store/modules/tasks";
+import LogModal from "./components/LogModal.vue";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -632,22 +615,71 @@ function imgTag(image: string): string {
 
 /* ============================ 状态 ============================ */
 const instances = ref<InstConfig[]>([]);
+/* 拖拽排序：实例列表顺序存入用户配置 php:list（与主页分开，随导出搬运） */
+const phpOrder = ref<string[]>([]);
+const phpReo = useReorder("php:list", {
+    getVisible: () => instances.value.map((i) => i.id),
+    onReordered: (nv) => { phpOrder.value = nv; void GoTools?.SetListOrder?.("php:list", nv); },
+});
+const orderedInstances = computed(() => applyOrder(instances.value, phpOrder.value, (i) => i.id));
 const states = reactive<Record<string, any>>({});
 const selectedId = ref("");
-const logLines = ref<string[]>([]);
-const logBoxRef = ref<HTMLElement | null>(null);
+/** 日志弹窗可见性：轮询与内容都在 LogModal 内，父只开关 */
+const logVisible = ref(false);
 const installLogRef = ref<HTMLElement | null>(null);
-let logTimer: any = null;
 let srvTimer: any = null;
 const route = useRoute();
 const { openToolWindow } = useToolWindow();
 let offInstall: any = null;
 let offSelInst: any = null;
 let offPull: any = null;
+let offOpenPanel: any = null;
 
 const selCfg = computed(() => instances.value.find((i) => i.id === selectedId.value) || null);
 const selState = computed(() => (selectedId.value ? states[selectedId.value] : null));
 const isDockerSel = computed(() => selCfg.value?.mode === "docker");
+
+/** 右侧指标卡：版式对齐 nginx，把运行态/时长/端口/站点/扩展/版本收成一排卡片 */
+const statCards = computed(() => {
+    const st = selState.value, c = selCfg.value;
+    if (!c) return [] as any[];
+    const running = !!st?.running;
+    const docker = c.mode === "docker";
+    return [
+        {
+            key: "state", title: "运行状态",
+            value: running ? "运行中" : "已停止",
+            sub: docker ? (st?.container || "容器") : (st?.pid ? "PID " + st.pid : "未启动"),
+            icon: "server", tone: running ? "green" : "gray", ready: running,
+            tip: running ? "端口已监听，进程在跑" : "实例当前没有对外服务",
+        },
+        {
+            key: "uptime", title: "运行时长", value: fmtUptimeS(st?.uptimeSeconds),
+            sub: running ? "自本次启动累计" : "实例未运行", icon: "uptime", tone: "blue", ready: running,
+            tip: "进程存活时长；重启后归零",
+        },
+        {
+            key: "port", title: "监听端口", value: c.port ? ":" + c.port : "—",
+            sub: "127.0.0.1 仅本机", icon: "plug", tone: "purple", ready: !!c.port,
+            tip: "实例只监听 127.0.0.1，不对外暴露",
+        },
+        {
+            key: "docroot", title: "站点目录", value: st?.docRoot ? "已配置" : "—",
+            sub: st?.docRoot || "未启动或无站点目录", icon: "container", tone: "cyan", ready: !!st?.docRoot,
+            tip: st?.docRoot || "启动后可查看站点目录",
+        },
+        {
+            key: "ext", title: "已加载扩展", value: docker ? "—" : (st?.extensionsLoaded ?? "—"),
+            sub: docker ? "容器内不计" : "php -m 统计", icon: "gauge", tone: "orange", ready: !docker && running,
+            tip: docker ? "容器内扩展由镜像提供，本面板扩展管理只作用于本机 PHP" : "本机 PHP 已加载的扩展数",
+        },
+        {
+            key: "ver", title: docker ? "镜像" : "PHP 版本", value: docker ? imgTag(st?.image || c.image || "") : (st?.version || c.version || "—"),
+            sub: docker ? "容器镜像 tag" : "本机插件版本", icon: docker ? "image" : "tag", tone: "red", ready: docker ? !!(st?.image || c.image) : !!(st?.version || c.version),
+            tip: docker ? "Docker 实例的版本由镜像 tag 决定" : "本机安装的 PHP 版本",
+        },
+    ];
+});
 
 /* Docker 模式表单：镜像候选只列本机已安装的 php 系镜像（不猜预置 tag），列表为空就引导去安装 */
 /* 名字不能回退成 dockerImages：script setup 下 kebab 标签 docker-images 会优先拿同名 setup 变量当组件，整个 Docker 区会渲染成空白 */
@@ -845,7 +877,6 @@ async function refreshStates(silent = false) {
             try {
                 states[inst.id] = await GoTools.PhpSrvStatus(inst.id);
                 ok++;
-                if (selectedId.value === inst.id && !logTimer) startLogPolling();
             } catch (e) { /* 单个实例失败不影响其它实例 */ }
         }));
     } finally {
@@ -855,46 +886,15 @@ async function refreshStates(silent = false) {
 }
 function selectInst(id: string) {
     selectedId.value = id;
-    logLines.value = [];
-    lastLogFetch = 0;
-    startLogPolling();
     refreshStates();
+    // 点行只做选中/看详情，不自动启动；启动走双击行或明确的「启动」按钮（doStartId）
+}
+/** 双击行：未启动实例直接拉起（与「启动」按钮同一条路）；已启动只选中 */
+function dblInst(inst: InstConfig) {
+    if (!states[inst.id]?.running) doStartId(inst.id, inst.name);
 }
 
-/* ============================ 日志轮询 ============================ */
-let logInflight = false;
-/** 日志接口连续失败后的静默期 */
-let logQuietUntil = 0;
-let lastLogFetch = 0;
-
-async function pollLogs() {
-    if (!selectedId.value || logInflight) return;
-    if (startBusy.value) return; // 建容器期间不去戳日志接口
-    const now = Date.now();
-    if (now < logQuietUntil) return;
-    // Docker 实例没在跑时日志不再增长：降到 10 秒一次，只为捎带最后几行
-    if (isDockerSel.value && !selState.value?.running && now - lastLogFetch < 10000) return;
-    logInflight = true;
-    try {
-        const lines = (await GoTools.PhpSrvLogs(selectedId.value, 300)) || [];
-        logQuietUntil = 0;
-        if (lines.join("\n") !== logLines.value.join("\n")) {
-            logLines.value = lines;
-            nextTick(() => { if (logBoxRef.value) logBoxRef.value.scrollTop = logBoxRef.value.scrollHeight; });
-        }
-    } catch (e) {
-        // 引擎离线/日志读不到：退避 15 秒，不要每 2 秒往终端刷一条错误
-        logQuietUntil = Date.now() + 15000;
-    } finally {
-        lastLogFetch = Date.now();
-        logInflight = false;
-    }
-}
-function startLogPolling() {
-    if (logTimer) clearInterval(logTimer);
-    pollLogs();
-    logTimer = setInterval(pollLogs, 2000);
-}
+/* 日志轮询已下沉到 LogModal：打开弹窗才拉、关闭即停 */
 
 /* ============================ 实例操作 ============================ */
 const startBusy = ref(false);
@@ -938,6 +938,16 @@ async function doRestart() {
 }
 function openSite(port: number) {
     window.open(`http://127.0.0.1:${port}/`, "_blank");
+}
+/** 打开日志弹窗（轮询由子组件按可见性自管） */
+function openLogModal() {
+    logVisible.value = true;
+}
+/** 用系统默认程序打开文件或所在目录；属桌面能力，失败给提示 */
+async function openPath(p?: string) {
+    if (!p) { Message.warning("路径为空，无法打开"); return; }
+    try { await GoTools.DiskOpenFile(p); }
+    catch (e: any) { Message.error("打开失败：" + String(e?.message || e)); }
 }
 async function onInstAction(v: string, inst: InstConfig) {
     if (v === "start") {
@@ -1310,11 +1320,14 @@ function onPullEvent(raw: any) {
 /* ============================ 生命周期 ============================ */
 onMounted(async () => {
     await loadInstances();
+    phpOrder.value = await loadOrder("php:list");
     // 镜像清单不进表单，只用来标记「实例引用的镜像本机已没有」
     probeDockerImages();
     // 主页点击服务实例进入（?inst=）：选中该实例展示详情
     const wantId = String(route.query.inst ?? "");
     if (wantId && instances.value.some((i) => i.id === wantId)) selectInst(wantId);
+    // 下载抽屉点「装版本/扩展」进入（?open=versions）：冷启动直接弹版本管理
+    if (String(route.query.open ?? "") === "versions") openVersionsModal();
     loadLocalVersions();
     // 离开页面时安装还在跑：从任务台账把进度表与日志补回来
     // （扩展安装进度挂在远程扩展行上，那个靠全局任务浮标看，这里只补版本安装）
@@ -1325,6 +1338,11 @@ onMounted(async () => {
         const p = ev?.data ?? ev;
         if (p?.type !== "php" || !p?.id) return;
         if (instances.value.some((i) => i.id === String(p.id))) selectInst(String(p.id));
+    });
+    // 单例窗口已开着时，抽屉再点装任务 → 通过事件弹出版本管理
+    offOpenPanel = Events.On("tool:open-panel", (ev: any) => {
+        const p = ev?.data ?? ev;
+        if (p?.type === "php" && p?.panel === "versions") openVersionsModal();
     });
     offPull = Events.On("docker:pull", onPullEvent);
     offInstall = Events.On("php:install", (ev: any) => {
@@ -1369,11 +1387,11 @@ onMounted(async () => {
 onUnmounted(() => {
     if (offInstall) offInstall();
     if (offSelInst) offSelInst();
+    if (offOpenPanel) offOpenPanel();
     if (offExtInstall) offExtInstall();
     if (offPull) offPull();
     if (extPollTimer) clearTimeout(extPollTimer);
     if (srvTimer) clearInterval(srvTimer);
-    if (logTimer) clearInterval(logTimer);
 });
 </script>
 
@@ -1426,11 +1444,33 @@ onUnmounted(() => {
     gap: 6px;
 }
 
-.conn-name {
-    max-width: 140px;
+/* 左侧列表卡片：外壳（边框/圆角/选中竖条/hover）由 common-item-card 提供，这里只留内容样式 */
+.inst-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: calc(var(--base-padding) / 2);
+}
+
+.inst-name-tip {
+    flex: 1;
+    min-width: 0;
+}
+
+.inst-name {
+    display: block;
+    font-weight: 600;
+    color: var(--color-text-1);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.inst-tags {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
 }
 
 .conn-more {
@@ -1444,97 +1484,43 @@ onUnmounted(() => {
     padding: 6px 0;
 }
 
-.inst-active {
-    background: var(--color-primary-light-1);
-    cursor: pointer;
-}
-
-:deep(.arco-list-item) {
-    cursor: pointer;
-}
-
-.detail-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 6px 16px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--color-border-2);
-}
-
-.ls-item {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    gap: 8px;
-}
-
-.ls-item span {
-    color: var(--color-text-3);
-    flex-shrink: 0;
-}
-
-.ls-item b {
-    font-weight: 500;
-    text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ls-item b.ok {
-    color: rgb(var(--green-6));
-}
-
-.ls-item b.no {
-    color: var(--color-text-3);
-}
-
-/* 这个 b 原本为省略号设了 overflow:hidden，会把圆点光晕切掉一圈 */
-.ls-item b.com-state {
-    overflow: visible;
-    justify-content: flex-end;
-}
-
-/* 字段说明：图标 + a-tooltip，不用原生 title */
-.ls-label-tip {
-    margin-left: 4px;
-    font-size: 12px;
-    color: var(--color-text-3);
-    vertical-align: -1px;
-    cursor: help;
-}
-
-.log-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 14px 4px;
-    font-size: 12px;
-    color: var(--color-text-3);
-}
-
-.ls-log {
+/* 右侧指标卡：与 nginx / 磁盘总览同一套（彩色圆角图标 + 标签/数值同排 + 下方明细） */
+.ov-body {
     flex: 1;
-    min-height: 160px;
-    overflow: auto;
-    background: var(--color-fill-2);
-    margin: 0 14px 12px;
-    padding: 8px;
-    border-radius: 4px;
-    font-family: Consolas, Menlo, monospace;
-    font-size: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.ls-log.small {
-    max-height: 140px;
-    min-height: 60px;
+.stat-row {
     margin: 0;
 }
 
-.ls-line {
-    white-space: pre-wrap;
-    word-break: break-all;
-    line-height: 1.6;
+.quick-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* 实例信息：长文本省略 + tooltip，单列信息行 */
+.info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.info-title {
+    font-size: var(--base-size-default);
+    font-weight: 600;
+    color: var(--color-text-1);
+}
+
+.info-list {
+    display: flex;
+    flex-direction: column;
 }
 
 .ver-block .ver-title {

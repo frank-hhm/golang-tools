@@ -636,6 +636,13 @@ export function DockerSrvChooseSaveFile(title: string, defaultName: string): $Ca
 }
 
 /**
+ * DockerSrvClearLogs 清空容器日志：记下清空时刻以 since 重拉跟随，刷新/重开不再回填旧行
+ */
+export function DockerSrvClearLogs(id: string): $CancellablePromise<void> {
+    return $Call.ByID(451876334, id);
+}
+
+/**
  * DockerSrvComposeAction 对编排项目批量操作：start | stop | restart | down
  */
 export function DockerSrvComposeAction(project: string, action: string): $CancellablePromise<string> {
@@ -1253,6 +1260,13 @@ export function FtpServerStop(): $CancellablePromise<ftp$0.ServerStatus> {
 }
 
 /**
+ * FtpTestConnection 按表单参数测试 SFTP 连通性（只握手不开子系统），返回握手耗时毫秒
+ */
+export function FtpTestConnection(c: ftp$0.Connection): $CancellablePromise<number> {
+    return $Call.ByID(949787391, c);
+}
+
+/**
  * FtpUpload 上传本地文件/目录到远端目录
  */
 export function FtpUpload(sessionID: string, localPaths: string[] | null, remoteDir: string): $CancellablePromise<ftp$0.Transfer[] | null> {
@@ -1553,6 +1567,13 @@ export function MySQLSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * MySQLSrvClearLogs 真实清空实例日志（截断 mysql.err；容器模式无法本地截断退化为清屏）
+ */
+export function MySQLSrvClearLogs(id: string): $CancellablePromise<void> {
+    return $Call.ByID(670780366, id);
+}
+
+/**
  * MySQLSrvDefaultImage Docker 模式默认镜像
  */
 export function MySQLSrvDefaultImage(): $CancellablePromise<string> {
@@ -1676,6 +1697,13 @@ export function MySQLTableData(id: string, database: string, table: string, filt
  */
 export function MySQLTableSchema(id: string, database: string, table: string): $CancellablePromise<mysql$0.TableSchema> {
     return $Call.ByID(3632139622, id, database, table);
+}
+
+/**
+ * MySQLTest 按表单参数测试 MySQL 连通性（不登记到连接表），返回握手耗时毫秒
+ */
+export function MySQLTest(cfg: mysql$0.ConnConfig): $CancellablePromise<number> {
+    return $Call.ByID(3567587783, cfg);
 }
 
 /**
@@ -2319,6 +2347,13 @@ export function PhpSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * PhpSrvClearLogs 真实清空实例日志（截断日志文件 + 清环形；容器模式退化为清环形）
+ */
+export function PhpSrvClearLogs(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3593556380, id);
+}
+
+/**
  * PhpSrvCommonlyDisabled 返回常见建议禁用函数列表（供前端快捷添加）
  */
 export function PhpSrvCommonlyDisabled(): $CancellablePromise<string[] | null> {
@@ -2672,6 +2707,13 @@ export function RedisSrvChooseDir(): $CancellablePromise<string> {
 }
 
 /**
+ * RedisSrvClearLogs 真实清空实例日志（截断 server.log + 清环形；容器模式退化为清环形）
+ */
+export function RedisSrvClearLogs(id: string): $CancellablePromise<void> {
+    return $Call.ByID(4209830343, id);
+}
+
+/**
  * RedisSrvDefaultImage Docker 模式默认镜像
  */
 export function RedisSrvDefaultImage(): $CancellablePromise<string> {
@@ -2812,6 +2854,13 @@ export function RedisStopMonitor(): $CancellablePromise<void> {
 }
 
 /**
+ * RedisTest 按表单参数测试 Redis 连通性（含密码/DB 验证），返回握手耗时毫秒
+ */
+export function RedisTest(cfg: redis$0.ConnConfig): $CancellablePromise<number> {
+    return $Call.ByID(2425371758, cfg);
+}
+
+/**
  * SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
  * Go 侧写入配置目录 ball_icon.png 并通知球线程重载；渲染时只取遮罩形状，颜色跟随主题文字色（text-1）。
  * 图标值本身（icon-xxx / Arco 名）随 ball.icon 由 SaveConfig 持久化，供设置页回显。
@@ -2865,6 +2914,15 @@ export function SetDefaultLogo(b: string | null): $CancellablePromise<void> {
 }
 
 /**
+ * SetListOrder 保存某个“面”的拖拽自定义顺序到用户配置（随导出/导入一起搬运）。
+ * key 为面标识（如 home:stats / home:services / home:tools / php:list），ids 为该面内条目 ID 的有序列表。
+ * 走 config.Update 读改写并落盘，只动 Order 段，不触发 SaveConfig 那一整套副作用（日志器/热键/球等）。
+ */
+export function SetListOrder(key: string, ids: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2928230559, key, ids);
+}
+
+/**
  * SetMainWindow 注入主窗口句柄，供托盘“打开主界面”及关闭到托盘使用
  */
 export function SetMainWindow(w: application$0.Window): $CancellablePromise<void> {
@@ -2886,6 +2944,15 @@ export function SetNativeNotify(v: boolean): $CancellablePromise<void> {
  */
 export function SetSerialControlBits(rts: boolean, dtr: boolean): $CancellablePromise<void> {
     return $Call.ByID(4275661150, rts, dtr);
+}
+
+/**
+ * SetToolOrder 按给定 ID 顺序重排配置里的工具列表并落盘。
+ * 主页「快捷操作」的拖动与设置页「工具」表共用这一份顺序（tools 数组顺序就是显示顺序），
+ * 任一侧排完都广播 config:saved，让主页/侧栏/设置页一起跟上；未列出的工具保持原相对顺序排在末尾。
+ */
+export function SetToolOrder(ids: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2158094021, ids);
 }
 
 /**
@@ -3054,6 +3121,13 @@ export function TermResize(sessionID: string, cols: number, rows: number): $Canc
  */
 export function TermSaveHost(h: term$0.Host): $CancellablePromise<term$0.Host[] | null> {
     return $Call.ByID(1237442486, h);
+}
+
+/**
+ * TermTestSSH 按表单参数测试 SSH 连通性（只握手不建会话），返回握手耗时毫秒
+ */
+export function TermTestSSH(h: term$0.Host): $CancellablePromise<number> {
+    return $Call.ByID(3341519325, h);
 }
 
 /**

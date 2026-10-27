@@ -1,10 +1,10 @@
 <template>
-  <!-- 两栏骨架与 PHP 管理页同款：左卡片「连接记录」，右卡片「当前终端」 -->
+  <!-- 两栏骨架与 PHP 管理页同款：左卡片「我的连接」，右卡片「当前终端」 -->
   <a-row class="term-page" :gutter="6">
-    <!-- 左：连接记录（单击选中，双击进终端） -->
+    <!-- 左：我的连接（单击选中，双击进终端） -->
     <a-col :span="7" class="side-col">
       <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
-        <template #title>连接记录</template>
+        <template #title>我的连接</template>
         <template #extra>
           <div class="srv-head-actions">
             <a-input-search v-model="keyword" size="small" placeholder="搜索 IP/备注" allow-clear
@@ -346,8 +346,10 @@ onMounted(loadHosts);
 }
 
 .conn-empty {
+  width: 100%;
+  text-align: center;
   color: var(--color-text-3);
-  font-size: 12px;
+  font-size: var(--base-size-small);
   padding: 6px 0;
 }
 

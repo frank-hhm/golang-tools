@@ -113,6 +113,60 @@ func Tail(path string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// LinesAfter 读取 path 中「字节偏移 from 之后」内容的最后 n 行。
+// 用于日志弹窗的「清空」：清空只记下一个截止偏移（清空那一刻的文件大小），
+// 之后只展示该偏移之后新写入的日志，既不删磁盘历史、也不会被下一次轮询回填。
+// from <= 0 等价于 Lines（从头算尾部 n 行）；文件被轮转/截断变短到 from 以下时返回空。
+func LinesAfter(path string, from int64, n int) ([]string, error) {
+	if from <= 0 {
+		return Lines(path, n)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() || fi.Size() <= from {
+		return nil, nil // 截止偏移之后还没有新内容（或文件被截断）
+	}
+	if _, err := f.Seek(from, io.SeekStart); err != nil {
+		return nil, err
+	}
+	var (
+		collected []byte
+		buf       = make([]byte, chunkStep)
+	)
+	for {
+		rd, rerr := f.Read(buf)
+		if rd > 0 {
+			collected = append(collected, buf[:rd]...)
+		}
+		if rerr != nil {
+			break // EOF 或读错：按已读到的内容收口
+		}
+	}
+	lines := strings.Split(strings.TrimRight(string(collected), "\r\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		l = strings.TrimRight(l, "\r")
+		if l == "" {
+			continue
+		}
+		out = append(out, l)
+	}
+	if n > 0 && len(out) > n {
+		out = out[len(out)-n:]
+	}
+	return out, nil
+}
+
 // Scan 从 offset 起逐行读取新增内容，处理完即丢弃（不把一段日志整体驻留内存）。
 // 返回读到的新偏移：调用方存下来即可做增量统计；文件变短（轮转/截断）时
 // 自动从 0 重来。单轮最多处理 maxScanBytes，剩下的留给下一轮。

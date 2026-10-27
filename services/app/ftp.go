@@ -42,6 +42,11 @@ func (a *App) FtpOpenSession(connID string) (ftp.SessionInfo, error) {
 	return ftp.OpenSession(connID)
 }
 
+// FtpTestConnection 按表单参数测试 SFTP 连通性（只握手不开子系统），返回握手耗时毫秒
+func (a *App) FtpTestConnection(c ftp.Connection) (int64, error) {
+	return ftp.Test(c)
+}
+
 // FtpCloseSession 主动关闭会话
 func (a *App) FtpCloseSession(sessionID string) error {
 	return ftp.CloseSession(sessionID)

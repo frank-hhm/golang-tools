@@ -55,6 +55,11 @@ func (a *App) TermOpenSSH(hostID string, cols, rows int) (term.SessionInfo, erro
 	return term.OpenSSH(hostID, cols, rows)
 }
 
+// TermTestSSH 按表单参数测试 SSH 连通性（只握手不建会话），返回握手耗时毫秒
+func (a *App) TermTestSSH(h term.Host) (int64, error) {
+	return term.Test(h)
+}
+
 // TermOpenDocker 在容器内打开一条交互终端（复用同一套会话/事件通道）
 func (a *App) TermOpenDocker(containerID, title string, cols, rows int) (term.SessionInfo, error) {
 	return term.OpenDocker(containerID, title, cols, rows)

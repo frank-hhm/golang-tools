@@ -1,50 +1,74 @@
 ﻿<template>
   <a-row class="mysql-page" :gutter="6">
     <a-col :span="5" class="side-col">
-      <!-- 左侧：连接 + 本地服务 + 对象树（对齐 Redis：a-card + #title/#extra + a-list + a-badge） -->
-      <a-row class="left-panel" :gutter="6">
-        <a-col class="side-cols" :span="24">
-          <a-card class="side-card card-head-tool" size="small" :body-style="{
-            padding: 0
-          }">
-            <template #title>连接</template>
-            <template #extra>
-              <a-button size="small" @click="openAddModal()">新增连接</a-button>
+      <!-- 合并「外部连接」与「本地实例」为一个列表：点连接进库树工作区，点实例进右侧总览，用 a-tag 区分来源 -->
+      <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
+        <template #title>连接</template>
+        <template #extra>
+          <div class="srv-head-actions">
+            <a-button size="small" @click="openAddModal()">新增连接</a-button>
+            <a-button size="small" @click="lspRef?.openInstModal()">新建实例</a-button>
+            <a-button size="small" @click="lspRef?.openVersionsModal()">版本管理</a-button>
+          </div>
+        </template>
+        <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
+        <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="MySQL" />
+        <div class="inst-list">
+          <common-item-card v-for="it in mysqlList" :key="it.key" :active="itemActive(it)"
+                      @click="clickMysqlItem(it)" @dblclick="dblMysqlItem(it)"
+                      v-bind="mysqlReo.handlers(it.key)"
+                      :class="{ 'reorder-dragging': mysqlReo.isDragging(it.key), 'reorder-over': mysqlReo.isOver(it.key) }">
+            <template #status>
+              <com-badge :status="it.live ? 'success' : 'normal'" :animated="it.live" />
             </template>
-            <a-list :bordered="false" size="small">
-              <!-- 行样式对齐 PHP 实例列表：badge + 名称 + 端口 tag + ···（操作全收菜单），整行可点、选中高亮 -->
-              <a-list-item v-for="c in savedConns" :key="c.id" :class="{ active: c.id === st.activeConnId }"
-                @click="openConnection(c)">
-                <a-space>
-                  <com-badge :status="isOpen(c.id) ? 'success' : 'normal'" :animated="isOpen(c.id)" />
-                  <a-tooltip :content="c.host + ':' + c.port">
-                    <div class="conn-name">{{ c.name || (c.host + ':' + c.port) }}</div>
-                  </a-tooltip>
-                  <a-tag v-if="c.name" size="small" color="gray">{{ c.port }}</a-tag>
-                </a-space>
-                <template #actions>
-                  <a-dropdown trigger="hover" @select="(v: any) => onConnAction(v, c)">
-                    <icon-more class="conn-more" @click.stop />
-                    <template #content>
-                      <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
-                      <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                      <a-doption value="del"><icon-delete /> 删除</a-doption>
-                    </template>
-                  </a-dropdown>
+            <template #title>
+              <a-tooltip class="inst-name-tip" :content="it.name + ' · ' + it.sub">
+                <span class="inst-name">{{ it.name }}</span>
+              </a-tooltip>
+            </template>
+            <template #extra>
+              <a-dropdown trigger="hover" @select="(v: any) => onItemMenu(v, it)">
+                <icon-more class="conn-more" @click.stop />
+                <template #content>
+                  <template v-if="it.kind === 'instance'">
+                    <a-doption v-if="!it.live" value="start"><icon-play-arrow /> 启动</a-doption>
+                    <a-doption v-else value="stop"><icon-pause /> 停止</a-doption>
+                    <a-doption value="logs"><icon-list /> 日志/状态</a-doption>
+                    <a-doption value="connect"><icon-link /> 连接</a-doption>
+                    <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                  </template>
+                  <template v-else>
+                    <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
+                    <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                  </template>
+                  <!-- 删除收进下拉：下拉项内嵌不了气泡确认，改走确认框 -->
+                  <a-doption value="del" status="danger"><icon-delete /> 删除</a-doption>
                 </template>
-              </a-list-item>
-              <a-list-item v-if="savedConns.length === 0">
-                <div class="conn-empty">暂无连接，点击右上「新增连接」</div>
-              </a-list-item>
-            </a-list>
-          </a-card>
-        </a-col>
-
-        <a-col class="side-cols mt6" :span="24">
-          <!-- 本地服务（mysqld 进程管理）独立组件 -->
-          <LocalServicePanel :selected-srv-id="srvCfg?.id || ''" @select="openSrvOverview" @connect="onSrvConnect" />
-        </a-col>
-      </a-row>
+              </a-dropdown>
+            </template>
+            <div class="inst-tags">
+              <!-- 来源标识：实例 / 外部链接 -->
+              <a-tag v-if="it.kind === 'instance'" color="green" size="small">实例</a-tag>
+              <a-tag v-else color="gray" size="small">外部链接</a-tag>
+              <!-- 实例：版本/镜像身份；外部：地址 -->
+              <template v-if="it.kind === 'instance'">
+                <a-tooltip v-if="it.inst.mode === 'docker'"
+                  :content="imgMissing(it.inst.image)
+                    ? `镜像 ${it.inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                    : `镜像 ${it.inst.image}：这就是该实例的 MySQL 版本`">
+                  <a-tag :color="imgMissing(it.inst.image) ? 'orange' : 'purple'" size="small">Docker
+                    {{ imgTagOf(it.inst.image) }}</a-tag>
+                </a-tooltip>
+                <a-tag v-else color="arcoblue" size="small">v{{ it.inst.version }}</a-tag>
+              </template>
+              <span v-else class="conn-sub">{{ it.sub }}</span>
+            </div>
+          </common-item-card>
+          <div v-if="mysqlList.length === 0" class="conn-empty">暂无连接或实例</div>
+        </div>
+      </a-card>
+      <!-- 实例逻辑与弹窗仍由子组件持有（弹窗规范）；列表渲染已上提到上面的合并卡 -->
+      <LocalServicePanel ref="lspRef" @sync="onLspSync" @select="openSrvOverview" @connect="onSrvConnect" />
     </a-col>
     <a-col :span="19" class="main-col">
       <!-- 实例总览（对齐 PHP 主区域）：点左栏实例进来，状态栅格 + 实时错误日志 -->
@@ -75,41 +99,37 @@
               <template #icon><icon-link /></template>连接此实例</a-button>
           </a-space>
         </template>
-        <div class="srv-grid">
-          <div class="ls-item"><span>MySQL 版本</span><b>{{ srvState?.version || srvCfg.version || '-' }}</b></div>
-          <div class="ls-item"><span>运行模式</span><b>{{ srvCfg.mode === 'docker' ? 'Docker 容器' : '本地 mysqld' }}</b></div>
-          <div class="ls-item"><span>运行状态</span>
-            <b class="com-state" :class="srvState?.running ? 'ok' : 'no'">
-              <com-badge :status="srvState?.running ? 'success' : 'normal'" :animated="!!srvState?.running" />
-              {{ srvState?.running ? '运行中' : '已停止' }}
-            </b>
+        <div class="ov-body">
+          <!-- 关键指标：版式对齐 nginx（彩色圆角图标 + 标签/数值同排 + 下方明细） -->
+          <a-row :gutter="[12, 12]" class="stat-row">
+            <a-col v-for="c in srvStatCards" :key="c.key" :xs="24" :sm="12" :md="8">
+              <common-stat-card :icon="c.icon" :tone="c.tone" :label="c.title" :value="c.value"
+                :detail="c.sub" :tip="c.tip" :ready="c.ready" />
+            </a-col>
+          </a-row>
+
+          <!-- 快捷操作：错误日志改到弹窗里看，面板只留高频入口 -->
+          <div class="quick-bar">
+            <a-button size="small" type="primary" :disabled="!srvState?.running" @click="srvConnect">
+              <template #icon><icon-link /></template>连接此实例
+            </a-button>
+            <a-button size="small" @click="openSrvLog">
+              <template #icon><icon-face-folder-open /></template>查看日志
+            </a-button>
           </div>
-          <div class="ls-item" v-if="srvCfg.mode === 'docker'"><span>容器</span>
-            <a-tooltip :content="srvState?.container || '-'">
-              <b class="ellipsis">{{ srvState?.container || '-' }}{{ srvState?.containerState ? '（' + srvState.containerState + '）' : '' }}</b>
-            </a-tooltip>
+
+          <!-- 详细信息：通用信息行（标签 | 值 | 操作），数据目录可一键打开 -->
+          <div class="info-section">
+            <div class="info-title">实例信息</div>
+            <div class="info-list">
+              <common-info-row grey v-if="srvCfg.mode === 'docker'" label="容器"
+                :tip="'容器状态：' + (srvState?.containerState || '-')" :value="srvState?.container || '-'" />
+              <common-info-row grey v-else label="PID" :value="String(srvState?.pid || '-')" />
+              <common-info-row grey label="数据目录" :value="srvState?.dataDir || '-'" action-text="打开"
+                @action="openPath(srvState?.dataDir)" />
+              <common-info-row grey label="运行模式" :value="srvCfg.mode === 'docker' ? 'Docker 容器' : '本地 mysqld'" />
+            </div>
           </div>
-          <div class="ls-item" v-else><span>PID</span><b>{{ srvState?.pid || '-' }}</b></div>
-          <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(srvState?.uptimeSeconds) }}</b></div>
-          <div class="ls-item"><span>端口</span><b>{{ srvCfg.port }}</b></div>
-          <div class="ls-item">
-            <span>数据目录</span>
-            <a-tooltip :content="srvState?.dataDir || '-'"><b class="ellipsis">{{ srvState?.dataDir || '-' }}</b></a-tooltip>
-          </div>
-          <div class="ls-item"><span>线程连接</span><b>{{ srvState?.threadsConnected ?? '-' }}</b></div>
-          <div class="ls-item"><span>线程活跃</span><b>{{ srvState?.threadsRunning ?? '-' }}</b></div>
-          <div class="ls-item"><span>最大连接</span><b>{{ srvState?.maxConnections ?? '-' }}</b></div>
-        </div>
-        <div class="srv-log-head">
-          <span>错误日志（mysql.err，实时）</span>
-          <a-space :size="6">
-            <a-button size="small" @click="clearSrvLog">
-              <template #icon><icon-delete /></template>清空</a-button>
-          </a-space>
-        </div>
-        <div ref="srvLogBoxRef" class="srv-log">
-          <div v-for="(l, i) in srvLogLines" :key="i" class="srv-line">{{ l }}</div>
-          <div v-if="srvLogLines.length === 0" class="conn-empty">暂无日志</div>
         </div>
       </a-card>
       <a-row v-else :gutter="6" class="main-row">
@@ -422,6 +442,19 @@
           </a-radio-group>
         </a-form-item>
       </a-form>
+      <template #footer>
+        <div class="conn-test-footer">
+          <div class="conn-test-left">
+            <a-button size="small" :loading="connTesting" @click="doTestConnection">测试连接</a-button>
+            <span v-if="connTestResult" :class="['conn-test-msg', connTestStatus === 'ok' ? 'is-ok' : 'is-err']">{{
+              connTestResult }}</span>
+          </div>
+          <a-space>
+            <a-button @click="st.connModal = false">取消</a-button>
+            <a-button type="primary" @click="saveConnection">保存</a-button>
+          </a-space>
+        </div>
+      </template>
     </a-modal>
 
     <!-- 新增行 -->
@@ -594,6 +627,10 @@
         <a-menu-item key="refresh">刷新</a-menu-item>
       </template>
     </a-menu>
+
+    <!-- 错误日志（实时）：点「查看日志」弹出，打开才轮询（轮询由子组件自管） -->
+    <LogModal v-model="srvLogVisible" :instance-id="srvCfg?.id || ''" :instance-name="srvCfg?.name || ''"
+      :port="srvCfg?.port || 0" :running="!!srvState?.running" :is-docker="srvCfg?.mode === 'docker'" />
   </a-row>
 </template>
 
@@ -601,7 +638,9 @@
 import { computed, getCurrentInstance, h, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Message, Modal } from "@arco-design/web-vue";
 import LocalServicePanel from "./LocalServicePanel.vue";
+import LogModal from "./components/LogModal.vue";
 import { sysNotify } from "@/utils/notify";
+import { useReorder, applyOrder, loadOrder } from "@/utils/reorder";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const CACHE_KEY = "mysql_connections_cache";
@@ -615,6 +654,18 @@ function toReadCols(columns: string[]) {
 }
 
 interface ConnConfig { id: string; name: string; host: string; port: number; user: string; password: string; database: string }
+
+/** 与子组件 LocalServicePanel 同构：合并列表渲染需要用到实例字段 */
+interface SrvInstanceConfig {
+  id: string; name: string; version: string; port: number;
+  rootPassword: string; maxConnections: number;
+  mode: string; image: string; containerName: string
+}
+
+/** 左栏统一列表项：外部连接与本地实例合并成一个列表 */
+type MysqlListItem =
+  | { kind: "instance"; key: string; name: string; sub: string; live: boolean; inst: SrvInstanceConfig }
+  | { kind: "external"; key: string; name: string; sub: string; live: boolean; conn: ConnConfig };
 
 /** 双击单元格的编辑态：按列类型选择控件 */
 interface CellEdit {
@@ -885,11 +936,13 @@ async function persistConnections() {
 function openAddModal() {
   st.connEditing = false;
   Object.assign(connForm, { id: "", name: "", host: "127.0.0.1", port: 3306, user: "root", password: "", database: "" });
+  resetConnTest();
   st.connModal = true;
 }
 function openEditModal(c: ConnConfig) {
   st.connEditing = true;
   Object.assign(connForm, { ...c });
+  resetConnTest();
   st.connModal = true;
 }
 async function saveConnection() {
@@ -907,21 +960,36 @@ async function saveConnection() {
   st.connModal = false;
   Message.success("已保存到" + (st.saveTarget === "file" ? "文件" : "缓存"));
 }
+/* 测试连接：按当前表单参数临时建连 Ping 后立刻断开，结果就地提示；用临时 id 避免碰到同名已登记连接 */
+const connTesting = ref(false);
+const connTestResult = ref("");
+const connTestStatus = ref<"ok" | "err" | "">("");
+function resetConnTest() {
+  connTesting.value = false;
+  connTestResult.value = "";
+  connTestStatus.value = "";
+}
+async function doTestConnection() {
+  if (!connForm.host) { Message.warning("请先填写主机"); return; }
+  connTesting.value = true;
+  connTestResult.value = "";
+  connTestStatus.value = "";
+  try {
+    const ms = await GoTools.MySQLTest({ ...connForm, id: "conn-test" });
+    connTestStatus.value = "ok";
+    connTestResult.value = `连接成功（${ms} ms）`;
+  } catch (e: any) {
+    connTestStatus.value = "err";
+    connTestResult.value = "连接失败：" + String(e?.message || e);
+  } finally {
+    connTesting.value = false;
+  }
+}
 function onConnAction(v: string, c: ConnConfig) {
   if (v === "open") openConnection(c);
   else if (v === "edit") openEditModal(c);
-  else if (v === "del") {
-    // 行内不再常驻红色删除按钮（对齐 PHP 实例列表），确认走弹窗
-    Modal.confirm({
-      title: "删除连接",
-      content: `确定删除连接「${c.name || (c.host + ":" + c.port)}」？已打开的会话会一起关闭。`,
-      okText: "删除",
-      cancelText: "取消",
-      onOk: () => removeConn(c),
-    });
-  }
 }
-/** 删除连接（确认由 onConnAction 的弹窗承担） */
+/** 删除连接（确认由合并卡行内气泡承担） */
 async function removeConn(c: ConnConfig) {
   try {
     if (isOpen(c.id)) {
@@ -965,14 +1033,55 @@ function onSrvConnect(cfg: ConnConfig) {
 /* ===== 实例总览（对齐 PHP 主区域）：点左栏实例 → 右侧状态栅格 + 实时错误日志 ===== */
 const srvCfg = ref<any>(null);
 const srvState = ref<any>(null);
-const srvLogLines = ref<string[]>([]);
-const srvLogBoxRef = ref<HTMLElement | null>(null);
+/** 错误日志弹窗可见性：轮询与内容都在 LogModal 内，父只开关 */
+const srvLogVisible = ref(false);
 const srvStartBusy = ref(false);
 const srvStopBusy = ref(false);
 let srvStateTimer: any = null;
-let srvLogTimer: any = null;
-let srvLogInflight = false;
-let srvLogQuietUntil = 0;
+
+/** 实例总览指标卡：版式对齐 nginx，把运行态/时长/连接/活跃/端口/版本收成一排卡片 */
+const srvStatCards = computed(() => {
+  const s: any = srvState.value, c: any = srvCfg.value;
+  if (!c) return [] as any[];
+  const running = !!s?.running;
+  const docker = c.mode === "docker";
+  return [
+    {
+      key: "state", title: "运行状态",
+      value: running ? "运行中" : "已停止",
+      sub: docker ? (s?.container || "容器") : (s?.pid ? "PID " + s.pid : "未启动"),
+      icon: "server", tone: running ? "green" : "gray", ready: running,
+      tip: running ? "端口已监听，mysqld 在跑" : "实例当前没有对外服务",
+    },
+    {
+      key: "uptime", title: "运行时长", value: fmtUptimeS(s?.uptimeSeconds),
+      sub: running ? "自本次启动累计" : "实例未运行", icon: "uptime", tone: "blue", ready: running,
+      tip: "进程存活时长；重启后归零",
+    },
+    {
+      key: "conn", title: "线程连接", value: s?.threadsConnected ?? "—",
+      sub: "当前活动连接线程", icon: "net", tone: "cyan", ready: running,
+      tip: "Threads_connected：当前连到服务器的客户端数",
+    },
+    {
+      key: "active", title: "线程活跃", value: s?.threadsRunning ?? "—",
+      sub: "正在执行语句", icon: "gauge", tone: "orange", ready: running,
+      tip: "Threads_running：正在执行语句的线程数，突增说明有慢查询/锁等待",
+    },
+    {
+      key: "port", title: "端口", value: c.port ? ":" + c.port : "—",
+      sub: s?.maxConnections ? "最大连接 " + s.maxConnections : "127.0.0.1 仅本机", icon: "plug", tone: "purple", ready: !!c.port,
+      tip: "实例监听端口（仅本机）",
+    },
+    {
+      key: "ver", title: docker ? "镜像" : "MySQL 版本",
+      value: docker ? imgTagOf(s?.image || c.image || "") : (s?.version || c.version || "—"),
+      sub: docker ? "容器镜像 tag" : "本机安装版本", icon: docker ? "image" : "tag", tone: "red",
+      ready: docker ? !!(s?.image || c.image) : !!(s?.version || c.version),
+      tip: docker ? "Docker 实例的版本由镜像 tag 决定" : "本机安装的 MySQL 版本",
+    },
+  ];
+});
 
 /** Docker 镜像 tag（mysql:8.4 → 8.4），与本地服务面板标签一致 */
 function imgTagOf(img: string) {
@@ -989,10 +1098,6 @@ function fmtUptimeS(sec?: number) {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-function scrollSrvLog() {
-  nextTick(() => { if (srvLogBoxRef.value) srvLogBoxRef.value.scrollTop = srvLogBoxRef.value.scrollHeight; });
-}
-
 async function refreshSrvState() {
   const cfg = srvCfg.value;
   if (!cfg) return;
@@ -1001,49 +1106,111 @@ async function refreshSrvState() {
 
 function stopSrvTimers() {
   if (srvStateTimer) { clearInterval(srvStateTimer); srvStateTimer = null; }
-  if (srvLogTimer) { clearInterval(srvLogTimer); srvLogTimer = null; }
 }
 
-/** 打开实例总览：状态 3s 一轮、日志 2s 一轮（单飞 + 失败退避，与本地服务面板同节奏） */
+/** 打开实例总览：状态 3s 一轮；错误日志改到弹窗里，打开才轮询（由 LogModal 自管） */
 async function openSrvOverview(inst: any) {
   if (!inst?.id) return;
   srvCfg.value = { ...inst };
   srvState.value = null;
-  srvLogLines.value = [];
-  srvLogQuietUntil = 0;
   stopSrvTimers();
   await refreshSrvState();
-  try {
-    srvLogLines.value = (await GoTools.MySQLSrvLogs(inst.id, 300)) || [];
-    scrollSrvLog();
-  } catch (e) { /* 日志读不到不影响状态栏 */ }
   srvStateTimer = setInterval(refreshSrvState, 3000);
-  srvLogTimer = setInterval(async () => {
-    const cfg = srvCfg.value;
-    if (!cfg || srvLogInflight || Date.now() < srvLogQuietUntil) return;
-    srvLogInflight = true;
-    try {
-      srvLogLines.value = (await GoTools.MySQLSrvLogs(cfg.id, 300)) || [];
-      scrollSrvLog();
-    } catch (e) {
-      srvLogQuietUntil = Date.now() + 15000;
-    } finally {
-      srvLogInflight = false;
-    }
-  }, 2000);
 }
 
 /** 退出总览（打开连接时调用），右栏回到连接工作区 */
 function leaveSrvOverview() {
   srvCfg.value = null;
   srvState.value = null;
+  srvLogVisible.value = false;
   stopSrvTimers();
 }
 
-/** 清空只是前端视图；短时抑制轮询，否则 2s 后旧日志又被拉回来 */
-function clearSrvLog() {
-  srvLogLines.value = [];
-  srvLogQuietUntil = Date.now() + 60000;
+/* ===== 左栏合并列表：实例数据由子组件 sync 事件上抛，操作回调经 lspRef 下发 ===== */
+const lspRef = ref<any>(null);
+const instList = ref<SrvInstanceConfig[]>([]);
+const instStates = reactive<Record<string, any>>({});
+const dockerImageList = ref<string[]>([]);
+const dockerInstCount = computed(() => instList.value.filter((i) => i.mode === "docker").length);
+
+function onLspSync(p: any) {
+  instList.value = (p?.instances || []).map((i: any) => ({ ...i }));
+  for (const k of Object.keys(instStates)) delete instStates[k];
+  Object.assign(instStates, p?.states || {});
+  dockerImageList.value = p?.dockerImages || [];
+}
+
+/** 镜像清单非空且不含它 → 本机还没拉；启动时会自动拉 */
+function imgMissing(image: string): boolean {
+  return !!image && dockerImageList.value.length > 0 && !dockerImageList.value.includes(image);
+}
+
+const mysqlRawList = computed<MysqlListItem[]>(() => {
+  const insts: MysqlListItem[] = instList.value.map((inst) => ({
+    kind: "instance", key: "inst-" + inst.id, name: inst.name,
+    sub: `127.0.0.1:${inst.port}`, live: !!instStates[inst.id]?.running, inst,
+  }));
+  // 历史上“连接实例”会把实例注入成 "srv-" 前缀的连接；合并后由实例行代表，过滤掉避免重复
+  const conns: MysqlListItem[] = savedConns.value
+    .filter((c) => !c.id.startsWith("srv-"))
+    .map((c) => ({
+      kind: "external", key: "conn-" + c.id, name: c.name || `${c.host}:${c.port}`,
+      sub: `${c.host}:${c.port}`, live: isOpen(c.id), conn: c,
+    }));
+  return [...insts, ...conns];
+});
+/* 拖拽排序：左栏列表（实例+外部连接）顺序存入用户配置 mysql:list（与主页分开，随导出搬运） */
+const mysqlOrder = ref<string[]>([]);
+const mysqlReo = useReorder("mysql:list", {
+  getVisible: () => mysqlRawList.value.map((i) => i.key),
+  onReordered: (nv) => { mysqlOrder.value = nv; void GoTools?.SetListOrder?.("mysql:list", nv); },
+});
+const mysqlList = computed(() => applyOrder(mysqlRawList.value, mysqlOrder.value, (i) => i.key));
+
+/** 当前右侧展示的是哪一行：实例看 srvCfg，连接看 activeConnId */
+function itemActive(it: MysqlListItem): boolean {
+  return it.kind === "instance" ? srvCfg.value?.id === it.inst.id : st.activeConnId === it.conn.id;
+}
+
+/** 点行：实例进右侧总览，连接进库树工作区（都不启动实例） */
+function clickMysqlItem(it: MysqlListItem) {
+  if (it.kind === "instance") openSrvOverview(it.inst);
+  else openConnection(it.conn);
+}
+
+/** 双击行：未启动实例直接拉起（交给 LocalServicePanel 的启动处理）；已启动/外部连接与单击一致 */
+function dblMysqlItem(it: MysqlListItem) {
+  if (it.kind === "instance" && !it.live) lspRef.value?.onSrvAction("start", it.inst);
+}
+
+/** 删除确认文案：按来源区分实例 / 连接 */
+function delTip(it: MysqlListItem): string {
+  return it.kind === "instance"
+    ? `确定删除实例「${it.inst.name}」？运行中会先停止；数据目录保留。`
+    : `确定删除连接「${it.name}」？已打开的会话会一起关闭。`;
+}
+
+/** 统一列表下拉菜单入口：删除走确认框，其余分派给实例 / 连接 */
+function onItemMenu(v: string, it: MysqlListItem) {
+  if (v === "del") {
+    Modal.warning({
+      title: it.kind === "instance" ? "删除实例" : "删除连接",
+      content: delTip(it),
+      okText: "删除",
+      cancelText: "取消",
+      hideCancel: false,
+      onOk: () => onDeleteItem(it),
+    });
+    return;
+  }
+  if (it.kind === "instance") lspRef.value?.onSrvAction(v, it.inst);
+  else onConnAction(v, it.conn);
+}
+
+/** 确认后真正执行删除：实例交给子组件，连接本地处理 */
+function onDeleteItem(it: MysqlListItem) {
+  if (it.kind === "instance") lspRef.value?.removeInstance(it.inst);
+  else removeConn(it.conn);
 }
 
 async function srvDoStart() {
@@ -1090,6 +1257,18 @@ function srvConnect() {
     id: "srv-" + cfg.id, name: `${cfg.name}(${cfg.mode === "docker" ? "容器" : "本地"})`,
     host: "127.0.0.1", port: cfg.port, user: "root", password: cfg.rootPassword, database: "",
   } as any);
+}
+
+/** 打开错误日志弹窗（轮询由子组件按可见性自管） */
+function openSrvLog() {
+  srvLogVisible.value = true;
+}
+
+/** 用系统默认程序打开文件或所在目录；属桌面能力，失败给提示 */
+async function openPath(p?: string) {
+  if (!p) { Message.warning("路径为空，无法打开"); return; }
+  try { await GoTools.DiskOpenFile(p); }
+  catch (e: any) { Message.error("打开失败：" + String(e?.message || e)); }
 }
 
 function resetActive() {
@@ -2235,6 +2414,7 @@ function copyText(t: string) {
 onMounted(async () => {
   document.addEventListener("keydown", onCtxKeydown);
   await loadConnections();
+  mysqlOrder.value = await loadOrder("mysql:list");
 });
 
 onUnmounted(() => {
@@ -2348,6 +2528,52 @@ onUnmounted(() => {
   color: var(--color-text-3);
 }
 
+.conn-sub {
+  font-size: var(--base-size-small);
+  color: var(--color-text-3);
+}
+
+.srv-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.srv-docker-off {
+  margin: 6px 8px 0;
+}
+
+/* 合并后的左栏列表：行由 common-item-card 提供外壳，这里只留内容样式 */
+.inst-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: calc(var(--base-padding) / 2);
+}
+
+.inst-name-tip {
+  flex: 1;
+  min-width: 0;
+}
+
+.inst-name {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inst-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .main-panel {
   width: 100%;
   height: 100%;
@@ -2374,83 +2600,40 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.srv-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 6px 16px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--color-border-2);
+/* 实例总览右侧主体：纵向堆叠指标卡 / 快捷条 / 信息行，超高时整块滚动 */
+.ov-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.ls-item {
+.stat-row {
+  margin: 0;
+}
+
+.quick-bar {
   display: flex;
-  justify-content: space-between;
-  font-size: 12px;
   gap: 8px;
-  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.ls-item > span {
-  color: var(--color-text-3);
-  flex-shrink: 0;
-}
-
-.ls-item b {
-  font-weight: 500;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ls-item b.ok {
-  color: rgb(var(--green-6));
-}
-
-.ls-item b.no {
-  color: var(--color-text-3);
-}
-
-/* b 为省略号设了 overflow:hidden，会把状态圆点光晕切掉一圈 */
-.ls-item b.com-state {
-  overflow: visible;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.srv-log-head {
+/* 实例信息：长文本省略 + tooltip，单列信息行 */
+.info-section {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 14px 4px;
-  font-size: 12px;
-  color: var(--color-text-3);
+  flex-direction: column;
+  gap: 8px;
 }
 
-.srv-log {
-  flex: 1;
-  min-height: 160px;
-  overflow: auto;
-  background: var(--color-fill-2);
-  margin: 0 14px 12px;
-  padding: 8px;
-  border-radius: 4px;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 12px;
+.info-title {
+  font-size: var(--base-size-default);
+  font-weight: 600;
+  color: var(--color-text-1);
 }
 
-.srv-line {
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.6;
+.info-list {
+  display: flex;
+  flex-direction: column;
 }
 
 .empty-state {

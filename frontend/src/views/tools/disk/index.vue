@@ -82,9 +82,11 @@
                     </template>
                 </a-dropdown>
 
-                <a-button size="small" :disabled="!selectedPaths.length" @click="renameSelected">
-                    <template #icon><icon-edit /></template>重命名
-                </a-button>
+                <a-tooltip :content="searchHits ? '搜索结果跨目录，批量改名请回到目录浏览' : '单选直接改名；多选按规则（前缀/后缀 + 自增/随机）批量改名'">
+                    <a-button size="small" :disabled="!selectedPaths.length || !!searchHits" @click="renameSelected">
+                        <template #icon><icon-edit /></template>重命名
+                    </a-button>
+                </a-tooltip>
                 <a-button size="small" :disabled="!selectedPaths.length" @click="copySelected(false)">
                     <template #icon><icon-copy /></template>复制
                 </a-button>
@@ -275,6 +277,11 @@
             <div class="modal-hint">不能为空，不能包含 \ / : * ? " &lt; &gt; |，也不能以空格或点结尾</div>
         </a-modal>
 
+        <!-- ==================== 批量重命名（多选） ==================== -->
+        <common-batch-rename-modal v-model:visible="batchRenVisible" :entries="batchRenEntries"
+            :dir="current" :existing-names="(listing.entries || []).map((e: any) => e.name)"
+            @done="onBatchRenDone" />
+
         <!-- ==================== 属性 ==================== -->
         <a-modal v-model:visible="propVisible" :title="`属性：${prop.name || ''}`" :footer="false" width="640px">
             <a-descriptions :column="1" size="small" bordered :label-style="{ width: '110px' }">
@@ -334,6 +341,7 @@
 import { computed, getCurrentInstance, onMounted, reactive, ref, watch } from "vue";
 import { Message, Modal } from "@arco-design/web-vue";
 import DiskOverview from "./components/DiskOverview.vue";
+import CommonBatchRenameModal from "./components/BatchRenameModal.vue";
 import { baseName, driveRootOf, extIcon, fmtSize } from "./helpers";
 
 /**
@@ -393,6 +401,10 @@ const nameInput = ref("");
 const renameTarget = ref<any>(null);
 const nameTitle = computed(() => ({ dir: "新建文件夹", file: "新建文件", rename: "重命名" })[nameMode.value]);
 const nameOk = computed(() => (nameMode.value === "rename" ? "保存" : "创建"));
+
+/* 批量重命名（多选） */
+const batchRenVisible = ref(false);
+const batchRenEntries = ref<any[]>([]);
 
 /* 属性 */
 const propVisible = ref(false);
@@ -560,11 +572,24 @@ function openNameModal(mode: "dir" | "file" | "rename", target?: any) {
 }
 
 function renameSelected() {
+    // 多选（≥2）：走规则化批量改名；单选：保留原来的直接改名
+    if (selectedPaths.value.length >= 2) {
+        const set = new Set(selectedPaths.value);
+        batchRenEntries.value = sourceRows.value.filter((r) => set.has(r.path));
+        batchRenVisible.value = true;
+        return;
+    }
     if (!singleSel.value) {
-        Message.warning("请先选中一个项目");
+        Message.warning("请先选中要重命名的项目");
         return;
     }
     openNameModal("rename", singleSel.value);
+}
+
+/** 批量改名完成：清选中并刷新（改名后原路径已失效） */
+async function onBatchRenDone() {
+    selectedKeys.value = [];
+    await reload();
 }
 
 /** 返回 false 时不关弹窗，错误信息留在 Message 里，用户可以改个名字再试 */

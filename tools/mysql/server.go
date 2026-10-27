@@ -1383,6 +1383,30 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	return st, nil
 }
 
+// mysqlErrPath 实例的 log-error 文件路径（mysql.err）
+func mysqlErrPath(id string) (string, error) {
+	instDir, err := defaultInstanceDataDir(id)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(instDir, "mysql.err"), nil
+}
+
+// 非破坏式「清空」截止：清空只把 mysql.err 当前大小记为字节偏移，
+// 之后 Logs 只返回该偏移之后新写入的日志，不删磁盘历史，也不会被下一次轮询回填。
+var (
+	mysqlCutMu  sync.Mutex
+	mysqlCutoff = map[string]int64{}
+)
+
+// mysqlSize 取文件当前大小（不存在/出错返回 0）
+func mysqlSize(path string) int64 {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.Size()
+	}
+	return 0
+}
+
 // Logs 返回实例日志尾部 n 行（本地模式读 mysql.err，容器模式读容器输出）
 func Logs(id string, n int) ([]string, error) {
 	if n <= 0 || n > 2000 {
@@ -1391,12 +1415,36 @@ func Logs(id string, n int) ([]string, error) {
 	if cfg, err := findInstanceConfig(id); err == nil && isDockerMode(cfg) {
 		return dockerLogs(cfg, n)
 	}
-	instDir, err := defaultInstanceDataDir(id)
+	path, err := mysqlErrPath(id)
 	if err != nil {
 		return nil, err
 	}
+	mysqlCutMu.Lock()
+	from := mysqlCutoff[id]
+	mysqlCutMu.Unlock()
 	// mysql.err 可以长到几百 MB，取尾巴不该整本入堆
-	return logtail.Lines(filepath.Join(instDir, "mysql.err"), n)
+	if from > 0 {
+		return logtail.LinesAfter(path, from, n)
+	}
+	return logtail.Lines(path, n)
+}
+
+// ClearLogs 真实清空指定实例的日志（破坏式：截断 mysql.err、释放磁盘占用）。
+// mysqld 以 append 模式写 log-error，外部截断后它从 0 续写，不留空洞；截止偏移归零。
+// 容器模式日志源在 Docker daemon，本地无法截断，退化为 no-op（前端清屏）。
+func ClearLogs(id string) error {
+	if cfg, err := findInstanceConfig(id); err == nil && isDockerMode(cfg) {
+		return nil
+	}
+	path, err := mysqlErrPath(id)
+	if err != nil {
+		return err
+	}
+	_ = os.Truncate(path, 0)
+	mysqlCutMu.Lock()
+	mysqlCutoff[id] = 0
+	mysqlCutMu.Unlock()
+	return nil
 }
 
 // SuggestPort 探测一个可用端口（从 from 起递增，默认基准 3306）：

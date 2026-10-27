@@ -1,54 +1,6 @@
 <template>
   <div class="local-service">
-    <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
-      <template #title>本地服务</template>
-      <template #extra>
-        <div class="srv-head-actions">
-          <a-button size="small" @click="openInstModal()">新建实例</a-button>
-          <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
-        </div>
-      </template>
-      <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
-      <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="MySQL" />
-      <a-list :bordered="false" size="small">
-        <!-- 行样式对齐 PHP 实例列表：badge + 名称 + 版本 tag + ···；点行→右侧实例总览 -->
-        <a-list-item v-for="inst in srvInstances" :key="inst.id"
-          :class="{ active: selectedSrvId === inst.id }" @click="selectInstance(inst)">
-          <a-space>
-            <com-badge :status="srvStates[inst.id]?.running ? 'success' : 'normal'"
-              :animated="!!srvStates[inst.id]?.running" />
-            <a-tooltip :content="inst.name + ':' + inst.port">
-              <span class="conn-name">{{ inst.name }}</span>
-            </a-tooltip>
-            <a-tooltip v-if="inst.mode === 'docker'"
-              :content="imgMissing(inst.image)
-                ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
-                : `镜像 ${inst.image}：这就是该实例的 MySQL 版本`">
-              <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'">Docker {{ imgTag(inst.image) }}</a-tag>
-            </a-tooltip>
-            <a-tag v-else color="arcoblue">v{{ inst.version }}</a-tag>
-          </a-space>
-          <template #actions>
-            <a-space :size="2">
-              <a-dropdown trigger="hover" @select="(v: any) => onSrvAction(v, inst)">
-                <icon-more class="conn-more" @click.stop />
-                <template #content>
-                  <a-doption v-if="!srvStates[inst.id]?.running" value="start"><icon-play-arrow /> 启动</a-doption>
-                  <a-doption v-else value="stop"><icon-pause /> 停止</a-doption>
-                  <a-doption value="logs"><icon-list /> 日志/状态</a-doption>
-                  <a-doption value="connect"><icon-link /> 连接</a-doption>
-                  <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                  <a-doption value="del"><icon-delete /> 删除</a-doption>
-                </template>
-              </a-dropdown>
-            </a-space>
-          </template>
-        </a-list-item>
-        <a-list-item v-if="srvInstances.length === 0">
-          <a-empty class="srv-empty" description="暂无实例，点 + 新建" />
-        </a-list-item>
-      </a-list>
-    </a-card>
+    <!-- 实例列表渲染已上提到父页 index.vue 的合并卡；本组件只留实例逻辑与两个模态框（弹窗规范） -->
 
     <!-- 版本管理（对齐 Redis：a-space vertical fill + 三张 a-card，标题带图标、操作移 #extra、空态用 a-empty） -->
     <!-- 宽度 820：Docker 镜像表带上「使用实例」列后 680 会横向溢出 -->
@@ -248,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
@@ -279,7 +231,11 @@ function imgTag(image: string): string {
 
 /** 父页面当前选中的实例：行高亮用 */
 defineProps<{ selectedSrvId?: string }>();
-const emit = defineEmits<{ (e: "connect", cfg: SrvConnConfig): void; (e: "select", inst: SrvInstanceConfig): void }>();
+const emit = defineEmits<{
+  (e: "connect", cfg: SrvConnConfig): void;
+  (e: "select", inst: SrvInstanceConfig): void;
+  (e: "sync", payload: { instances: SrvInstanceConfig[]; states: Record<string, any>; dockerImages: string[] }): void;
+}>();
 
 /** 系统包模式（Linux）：版本来自发行版仓库，没有绿色版 zip 那套离线安装 */
 const sysPkg = useSysPkg();
@@ -378,6 +334,7 @@ const installedSet = computed(() => new Set<string>(localVersions.value.map((v: 
 let offInstall: any = null;
 const route = useRoute();
 let offSelInst: any = null;
+let offOpenPanel: any = null;
 let srvTimer: any = null;
 
 function pushInstallLog(txt: string) {
@@ -394,8 +351,9 @@ function srcLabel(s: string): string {
 
 function stageText(p: any): string {
   if (!p) return "";
-  if (p.stage === "downloading") return `下载中 ${p.percent || 0}%`;
-  if (p.stage === "extracting") return `解压中 ${p.percent || 0}%`;
+  // 百分比由行内 a-progress 自带文本显示，这里只报阶段，别再重复带一次数字
+  if (p.stage === "downloading") return "下载中";
+  if (p.stage === "extracting") return "解压中";
   if (p.stage === "done") return "完成";
   return "失败";
 }
@@ -581,19 +539,10 @@ async function onSrvAction(v: string, inst: SrvInstanceConfig) {
     connectInstance(inst);
   } else if (v === "edit") {
     openInstModal(inst);
-  } else if (v === "del") {
-    // 行内不再常驻红色删除按钮（对齐 PHP 实例列表），确认走弹窗
-    Modal.confirm({
-      title: "删除实例",
-      content: `确定删除实例「${inst.name}」？运行中会先停止；数据目录保留。`,
-      okText: "删除",
-      cancelText: "取消",
-      onOk: () => removeInstance(inst),
-    });
   }
 }
 
-/** 删除实例（确认由 onSrvAction 的弹窗承担） */
+/** 删除实例（确认由父页合并卡的行内气泡承担） */
 async function removeInstance(inst: SrvInstanceConfig) {
   try {
     await GoTools.MySQLSrvRemoveInstance(inst.id);
@@ -608,15 +557,31 @@ function selectInstance(inst: SrvInstanceConfig) {
   emit("select", { ...inst });
 }
 
-/** 实例连接交给父页面打开（需要合并已保存连接） */
+/** 实例连接交给父页面打开（需合并已保存连接）；未启动时只提示、不自动启动，启动走明确的启动按钮 */
 function connectInstance(inst: SrvInstanceConfig | null) {
   if (!inst) return;
-  if (!srvStates[inst.id]?.running) { Message.warning("请先启动实例"); return; }
+  if (!srvStates[inst.id]?.running) {
+    Message.warning("请先启动实例");
+    return;
+  }
   emit("connect", {
     id: "srv-" + inst.id, name: `${inst.name}(${inst.mode === "docker" ? "容器" : "本地"})`,
     host: "127.0.0.1", port: inst.port, user: "root", password: inst.rootPassword, database: "",
   });
 }
+
+/** 把实例列表/状态/镜像清单同步给父页，供其渲染合并后的左栏列表 */
+function emitSync() {
+  emit("sync", {
+    instances: srvInstances.value.map((i) => ({ ...i })),
+    states: JSON.parse(JSON.stringify(srvStates)),
+    dockerImages: [...dockerImageList.value],
+  });
+}
+watch([srvInstances, srvStates, dockerImageList], emitSync, { deep: true });
+
+// 父页直接调用：行内下拉操作、气泡确认后的真正删除、头部“新建实例/版本管理”
+defineExpose({ onSrvAction, removeInstance, openInstModal, openVersionsModal });
 
 onMounted(async () => {
   await loadSrvInstances();
@@ -629,6 +594,8 @@ onMounted(async () => {
     const target = srvInstances.value.find((i) => i.id === wantId);
     if (target) selectInstance(target);
   }
+  // 下载抽屉点「装版本」进入（?open=versions）：冷启动直接弹版本管理
+  if (String(route.query.open ?? "") === "versions") openVersionsModal();
   loadLocalVersions();
   // 离开页面时安装还在跑：从任务台账把进度表与日志补回来，免得回来看到可点的“安装”
   restoreInstalls("mysql", "install", installProgress, pushInstallLog);
@@ -639,6 +606,11 @@ onMounted(async () => {
     if (p?.type !== "mysql" || !p?.id) return;
     const target = srvInstances.value.find((i) => i.id === String(p.id));
     if (target) selectInstance(target);
+  });
+  // 单例窗口已开着时，抽屉再点装任务 → 通过事件弹出版本管理
+  offOpenPanel = Events.On("tool:open-panel", (ev: any) => {
+    const p = ev?.data ?? ev;
+    if (p?.type === "mysql" && p?.panel === "versions") openVersionsModal();
   });
   offInstall = Events.On("mysql:install", (ev: any) => {
     const p = ev?.data ?? ev;
@@ -667,15 +639,15 @@ onUnmounted(() => {
   if (srvTimer) clearInterval(srvTimer);
   if (offInstall) offInstall();
   if (offSelInst) offSelInst();
+  if (offOpenPanel) offOpenPanel();
 });
 </script>
 
 <style scoped>
 .local-service {
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  /* 只剩两个 fixed 定位的模态框：不占父列 flex 空间 */
+  height: 0;
+  overflow: visible;
 }
 
 /* 实例行（对齐 PHP）：整行可点、选中高亮、hover 背景 */

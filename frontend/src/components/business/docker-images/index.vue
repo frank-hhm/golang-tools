@@ -5,18 +5,19 @@
          引擎没起时两页签都不可用，这里给足原因和「打开 Docker 面板」入口，不做静默兜底 -->
     <a-card class="card-head-tool dv-card" size="small" :body-style="{ padding: '8px 10px' }">
         <template #title>
-            <span class="dv-title"><icon-storage /> Docker {{ pane === 'image' ? '镜像' : '容器' }}</span>
-            <a-tooltip
-                :content="`${toolLabel} 的 Docker 实例版本由镜像 tag 决定（如 ${repo}:8.3）；被实例引用的镜像不可删除`">
-                <icon-question-circle class="dv-help" />
-            </a-tooltip>
-            <a-tag v-if="rows.length" size="small" color="arcoblue">{{ rows.length }} 个镜像</a-tag>
-            <a-tag v-if="usedCount" size="small" color="green">{{ usedCount }} 个实例在用</a-tag>
-            <a-tag v-if="runningCount" size="small" color="cyan">{{ runningCount }} 个容器在跑</a-tag>
+            <a-space :size="4">
+                <span class="dv-title"><icon-storage /> Docker {{ pane === 'image' ? '镜像' : '容器' }}</span>
+                <a-tooltip :content="`${toolLabel} 的 Docker 实例版本由镜像 tag 决定（如 ${repo}:8.3）；被实例引用的镜像不可删除`">
+                    <icon-question-circle class="dv-help" />
+                </a-tooltip>
+                <a-tag v-if="rows.length" size="small" color="arcoblue">{{ rows.length }} 个镜像</a-tag>
+                <a-tag v-if="usedCount" size="small" color="green">{{ usedCount }} 个实例在用</a-tag>
+                <a-tag v-if="runningCount" size="small" color="cyan">{{ runningCount }} 个容器在跑</a-tag>
+            </a-space>
         </template>
         <template #extra>
             <a-space :size="6">
-                <a-radio-group v-model="pane" size="mini" type="button">
+                <a-radio-group v-model="pane" size="small" type="button">
                     <a-radio value="image">镜像</a-radio>
                     <a-radio value="container">容器{{ containers.length ? ` ${containers.length}` : '' }}</a-radio>
                 </a-radio-group>
@@ -56,15 +57,19 @@
         <div v-show="pane === 'image'">
             <!-- 拉取：可直接输 tag，也可点下面的常用 tag —— 没装过的点一下直接拉 -->
             <div class="dv-pull">
-                <a-input v-model="pullRef" size="small" class="dv-pull-input" allow-clear
-                    :disabled="!!pulling || !!engineErr" :placeholder="`镜像名，如 ${repo}:8.3`" @press-enter="pull">
-                    <template #prefix><icon-download /></template>
-                </a-input>
-                <a-button size="small" type="primary" :loading="!!pulling" :disabled="!pullRef.trim() || !!engineErr"
-                    @click="pull">拉取</a-button>
+                <div class="dv-pull-main">
+                    <a-input v-model="pullRef" size="small" class="dv-pull-input" allow-clear
+                        :disabled="!!pulling || !!engineErr" :placeholder="`镜像名，如 ${repo}:8.3`" @press-enter="pull">
+                        <template #prefix><icon-download /></template>
+                    </a-input>
+                    <a-button size="small" type="primary" :loading="!!pulling" :disabled="!pullRef.trim() || !!engineErr"
+                        @click="pull">拉取</a-button>
+                </div>
                 <div class="dv-presets">
+                    <span class="dv-presets-label">常用</span>
                     <a-tooltip v-for="p in presets" :key="p" :content="presetTip(p)">
-                        <a-tag size="small" class="dv-preset" :class="[installedSet.has(p) ? 'has' : 'miss', { on: pullRef === p }]"
+                        <a-tag size="small" class="dv-preset"
+                            :class="[installedSet.has(p) ? 'has' : 'miss', { on: pullRef === p }]"
                             @click="pickPreset(p)">
                             <icon-check-circle v-if="installedSet.has(p)" class="dv-preset-i" />
                             <icon-download v-else class="dv-preset-i" />{{ p }}
@@ -72,7 +77,7 @@
                     </a-tooltip>
                 </div>
             </div>
-            <div v-if="pullNote" class="dv-note" :class="{ err: pullErr }">
+            <div v-if="pullNote" class="dv-note" :class="{ err: pullErr, busy: pulling }">
                 <a-progress v-if="pulling" :percent="pullPct / 100" size="mini" :show-text="false" class="dv-bar" />
                 <span class="dv-note-text">{{ pullNote }}</span>
             </div>
@@ -90,8 +95,7 @@
             </div>
 
             <a-table :data="rows" :loading="loading" size="small" :pagination="false" row-key="image"
-                :scroll="{ x: '100%', y: 210 }" :bordered="false"
-                :columns="[
+                :scroll="{ x: '100%', y: 210 }" :bordered="false" :columns="[
                     { title: '镜像（tag）', dataIndex: 'image', minWidth: 200, slotName: 'img' },
                     { title: '大小', dataIndex: 'size', width: 90, slotName: 'size' },
                     { title: '拉取于', dataIndex: 'created', width: 100 },
@@ -112,8 +116,7 @@
                                 <a-tag size="small" :color="u.running ? 'green' : 'gray'" class="dv-use"
                                     @click="emit('use', u.id)">{{ u.name }}</a-tag>
                             </a-tooltip>
-                            <a-tooltip v-if="!u.running && u.container"
-                                content="容器还在，直接启动即可，不用去 Docker 面板">
+                            <a-tooltip v-if="!u.running && u.container" content="容器还在，直接启动即可，不用去 Docker 面板">
                                 <a-button size="mini" type="outline" status="success"
                                     :loading="opOf(u.container) === 'start'" :disabled="locked(u.container)"
                                     @click="actContainer('start', u.container)">
@@ -133,8 +136,8 @@
                         <a-button size="small" @click="emit('create', record.image)">
                             <template #icon><icon-plus /></template>新建实例
                         </a-button>
-                        <a-popconfirm :content="`删除镜像「${record.image}」？本机磁盘上的这一份会被移除，需要时可重新拉取。`"
-                            type="warning" position="lt" :disabled="!!record.usedBy.length || removing === record.image"
+                        <a-popconfirm :content="`删除镜像「${record.image}」？本机磁盘上的这一份会被移除，需要时可重新拉取。`" type="warning"
+                            position="lt" :disabled="!!record.usedBy.length || removing === record.image"
                             @ok="removeImage(record)">
                             <a-tooltip
                                 :content="record.usedBy.length ? `被 ${record.usedBy.map((u) => u.name).join('、')} 使用中，先改实例镜像再删` : ''">
@@ -154,8 +157,7 @@
         <!-- ============ 容器页签 ============ -->
         <div v-show="pane === 'container'">
             <a-table :data="containers" :loading="cLoading" size="small" :pagination="false" row-key="id"
-                :scroll="{ x: 900, y: 210 }" :bordered="false"
-                :columns="[
+                :scroll="{ x: 900, y: 210 }" :bordered="false" :columns="[
                     { title: '容器', dataIndex: 'name', minWidth: 210, slotName: 'cname' },
                     { title: '镜像（版本）', dataIndex: 'image', width: 160, slotName: 'cimg' },
                     { title: '状态', dataIndex: 'status', width: 130, slotName: 'cstate' },
@@ -202,7 +204,8 @@
                 <template #cops="{ record }">
                     <a-space :size="2">
                         <a-button v-if="record.state !== 'running'" size="small" status="success"
-                            :loading="opOf(record) === 'start'" :disabled="locked(record)" @click="actContainer('start', record)">
+                            :loading="opOf(record) === 'start'" :disabled="locked(record)"
+                            @click="actContainer('start', record)">
                             <template #icon><icon-play-arrow /></template>{{ opOf(record) === 'start' ? '启动中' : '启动' }}
                         </a-button>
                         <a-popconfirm v-else :content="`停止容器「${record.name}」？正在处理的请求会中断。`" type="warning" position="lt"
@@ -214,7 +217,8 @@
                         <a-popconfirm :content="`重启容器「${record.name}」？会先停再起，期间不可访问。`" type="warning" position="lt"
                             :disabled="locked(record)" @ok="actContainer('restart', record)">
                             <a-button size="small" :loading="opOf(record) === 'restart'" :disabled="locked(record)">
-                                <template #icon><icon-refresh /></template>{{ opOf(record) === 'restart' ? '重启中' : '重启' }}
+                                <template #icon><icon-refresh /></template>{{ opOf(record) === 'restart' ? '重启中' : '重启'
+                                }}
                             </a-button>
                         </a-popconfirm>
                         <a-popconfirm :content="`删除容器「${record.name}」？运行中会强制删除，实例配置与数据目录保留。`" type="warning"
@@ -232,7 +236,8 @@
             </a-table>
             <div class="dv-hint">
                 这里只列本工具（{{ containerTool }}）创建的容器；启停会同步实例状态，改镜像/端口仍要去实例编辑。
-                <a-link size="small" @click="openDockerPanel">打开 Docker 面板<template #icon><icon-right /></template></a-link>
+                <a-button size="small" @click="openDockerPanel">打开 Docker 面板<template
+                        #icon><icon-right /></template></a-button>
                 可看全部容器、日志与资源占用。
             </div>
         </div>
@@ -586,54 +591,95 @@ onUnmounted(() => {
 
 .dv-pull {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+/* 拉取动作行：输入框 + 按钮成组，不再和常用 tag 挤在同一条 flex-wrap 里错位换行 */
+.dv-pull-main {
+    display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 6px;
 }
 
 .dv-pull-input {
-    width: 240px;
+    width: 260px;
+    max-width: 100%;
 }
 
 .dv-presets {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     flex-wrap: wrap;
     min-width: 0;
 }
 
+.dv-presets-label {
+    flex: none;
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+}
+
+/* 常用 tag 胶囊：浅底圆角，hover 提一档，选中实心主色、已装绿底，一眼分清待拉/已装 */
 .dv-preset {
     cursor: pointer;
+    border-radius: 999px;
+    padding: 0 10px;
+    background: var(--color-fill-1);
+    border-color: transparent;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dv-preset:hover {
+    background: var(--color-fill-2);
 }
 
 .dv-preset.on {
+    background: rgb(var(--primary-6));
     border-color: rgb(var(--primary-6));
-    color: rgb(var(--primary-6));
+    color: #fff;
 }
 
 /* 已装 = 绿、待拉 = 常规：一眼看出哪些常用版本还得下载 */
 .dv-preset.has {
     color: rgb(var(--success-6));
-    border-color: rgb(var(--success-6));
+    background: var(--color-success-light-1);
+    border-color: transparent;
+}
+
+.dv-preset.has.on {
+    color: #fff;
+    background: rgb(var(--primary-6));
 }
 
 .dv-preset-i {
-    margin-right: 2px;
+    margin-right: 4px;
     font-size: 12px;
+    vertical-align: -2px;
 }
 
+/* 拉取进度/结果条：常态浅底，拉取中主色底、失败危险色底，让状态一眼可辨 */
 .dv-note {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
     font-size: var(--base-size-small);
     color: var(--color-text-2);
 }
 
+.dv-note.busy {
+    background: var(--color-primary-light-1);
+    color: rgb(var(--primary-7));
+}
+
 .dv-note.err {
+    background: var(--color-danger-light-1);
     color: rgb(var(--danger-6));
 }
 

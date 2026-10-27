@@ -16,6 +16,12 @@ export interface AppConfig {
      * 工具级设置，键为工具 Key（如 mysql）
      */
     "toolSettings": { [_ in string]?: ToolSettings } | null;
+
+    /**
+     * Order 各列表的拖拽自定义顺序：键为“面”标识（如 home:stats / home:services / home:tools / php:list），
+     * 值为该面内条目 ID 的有序列表。主页与各服务列表各用独立键，互不共用。随整份配置导出/导入。
+     */
+    "order": { [_ in string]?: string[] | null } | null;
 }
 
 /**
@@ -295,6 +301,12 @@ export interface ToolConfig {
      * 是否出现在浮动球快捷菜单
      */
     "quick": boolean;
+
+    /**
+     * Home 是否在主页“快捷操作”区直接展示；用指针以区分“未设置”与“显式关闭”。
+     * nil（旧配置/默认项）视为主页展示，前端按 home !== false 处理；关闭后仍可在主页“更多”弹窗里找到。
+     */
+    "home"?: boolean | null;
 }
 
 /**

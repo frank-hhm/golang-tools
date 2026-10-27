@@ -774,11 +774,18 @@ func ensureConf(cfg *InstanceConfig, prefix, confPath string) error {
 	fmt.Fprintf(&b, "        listen       %d;\n", cfg.Port)
 	fmt.Fprintf(&b, "        server_name  %s;\n", serverNameOf(cfg.Domain))
 	fmt.Fprintf(&b, "        root         \"%s\";\n", filepath.ToSlash(docRoot))
-	b.WriteString("        index  index.html index.php index.htm;\n")
 	// PHP 后端：未关联到端口（后端还没建/启动）时退回静态，避免写出 127.0.0.1:0
 	phpMode := cfg.PhpMode
 	if (phpMode == PhpModeFastCGI || phpMode == PhpModeProxy) && cfg.PhpPort <= 0 {
 		phpMode = PhpModeStatic
+	}
+	// 目录首页优先级：PHP 应用（ThinkPHP/Laravel 等）常自带 public/index.html 占位页，
+	// 必须让 index.php 优先，否则访问 / 会命中静态占位页（如"站点已暂停"）而非框架入口；
+	// 纯静态站仍按 index.html 优先。
+	if phpMode == PhpModeFastCGI || phpMode == PhpModeProxy {
+		b.WriteString("        index  index.php index.html index.htm;\n")
+	} else {
+		b.WriteString("        index  index.html index.php index.htm;\n")
 	}
 	switch phpMode {
 	case PhpModeProxy:

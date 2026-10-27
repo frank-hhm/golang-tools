@@ -51,6 +51,18 @@
         <a-input v-model="form.note" placeholder="如：测试服务器" allow-clear />
       </a-form-item>
     </a-form>
+    <template #footer>
+      <div class="conn-test-footer">
+        <div class="conn-test-left">
+          <a-button size="small" :loading="testing" @click="doTest">测试连接</a-button>
+          <span v-if="testResult" :class="['conn-test-msg', testStatus === 'ok' ? 'is-ok' : 'is-err']">{{ testResult }}</span>
+        </div>
+        <a-space>
+          <a-button @click="close">取消</a-button>
+          <a-button type="primary" :loading="busy" @click="onOk">保存并连接</a-button>
+        </a-space>
+      </div>
+    </template>
   </a-modal>
 </template>
 
@@ -94,6 +106,7 @@ watch(
     if (!v) return;
     Object.assign(form, emptyForm(), props.connection ? { ...props.connection, password: '' } : {});
     busy.value = false;
+    resetTest();
   },
   { immediate: true },
 );
@@ -142,6 +155,41 @@ async function onBeforeOk(): Promise<boolean> {
 
 function close() {
   emit('update:visible', false);
+}
+
+/* 底栏“测试连接”：只完成 SSH 认证握手不开 sftp 子系统；编辑时密码留空由后端沿用已存密码 */
+const testing = ref(false);
+const testResult = ref('');
+const testStatus = ref<'ok' | 'err' | ''>('');
+function resetTest() {
+  testing.value = false;
+  testResult.value = '';
+  testStatus.value = '';
+}
+async function doTest() {
+  const err = validate();
+  if (err) {
+    Message.error({ content: err, position: 'top', duration: 2000 });
+    return;
+  }
+  testing.value = true;
+  testResult.value = '';
+  testStatus.value = '';
+  try {
+    const ms = await GoTools.FtpTestConnection({ ...form });
+    testStatus.value = 'ok';
+    testResult.value = `连接成功（${ms} ms）`;
+  } catch (e: any) {
+    testStatus.value = 'err';
+    testResult.value = '连接失败：' + String(e?.message || e);
+  } finally {
+    testing.value = false;
+  }
+}
+
+/** 自定义底栏的“保存并连接”：走原 onBeforeOk 逻辑，成功后关窗 */
+async function onOk() {
+  if (await onBeforeOk()) emit('update:visible', false);
 }
 </script>
 

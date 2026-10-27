@@ -116,6 +116,8 @@ function submit(): boolean {
 }
 
 .cname {
+    display: inline-block;
+    vertical-align: bottom;
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;

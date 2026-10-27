@@ -21,6 +21,10 @@ type Conn struct {
 	mu  sync.Mutex    // 序列化同一连接上的命令读写，避免并发使用 bufio 破坏 RESP 流
 	bad bool          // 连接上的 RESP 流已经对不齐（超时/半截断/超限），不能再复用
 	to  time.Duration // 本连接的命令截止，0 用 cmdTimeout（状态探活需要更短）
+
+	// onBad 连接被标废弃时的回调（Open 登记的连接用它把自己从连接池踢出去）：
+	// 死连接留着，每次绑定调用都会再撞一次 TCP 层系统错误刷屏运行时终端
+	onBad func()
 }
 
 const (
@@ -107,11 +111,14 @@ func (c *Conn) Command(args ...string) (any, error) {
 	return v, err
 }
 
-// finish 命令收尾：把致命错误标成废弃，否则清掉刚刚设的截止（MONITOR 等
-// 长期读取不能继承这个窗口）。标废弃后不在此处 Close：调用方自己会 Close 或换连接。
+// finish 命令收尾：把致命错误标成废弃并触发回调让连接池剔除，否则清掉刚刚设的
+// 截止（MONITOR 等长期读取不能继承这个窗口）。
 func (c *Conn) finish(err error) {
 	if fatalReplyErr(err) {
 		c.bad = true
+		if c.onBad != nil {
+			c.onBad()
+		}
 		return
 	}
 	_ = c.nc.SetDeadline(time.Time{})

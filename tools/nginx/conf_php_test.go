@@ -42,6 +42,10 @@ func TestEnsureConfPhpStatic(t *testing.T) {
 	if strings.Contains(got, "fastcgi_pass") || strings.Contains(got, "proxy_pass") {
 		t.Errorf("纯静态不应出现 PHP 后端指令，实得:\n%s", got)
 	}
+	// 纯静态首页优先 index.html
+	if !strings.Contains(got, "index  index.html index.php index.htm;") {
+		t.Errorf("纯静态应 index.html 优先，实得:\n%s", got)
+	}
 }
 
 // TestEnsureConfPhpFastCGI fastcgi 模式：写 fastcgi_pass 指向关联端口。
@@ -56,6 +60,10 @@ func TestEnsureConfPhpFastCGI(t *testing.T) {
 	if strings.Contains(got, "proxy_pass") {
 		t.Errorf("fastcgi 模式不应出现 proxy_pass，实得:\n%s", got)
 	}
+	// PHP 站首页必须 index.php 优先，避开 ThinkPHP/Laravel 自带的 index.html 占位页
+	if !strings.Contains(got, "index  index.php index.html index.htm;") {
+		t.Errorf("fastcgi 应 index.php 优先，实得:\n%s", got)
+	}
 }
 
 // TestEnsureConfPhpProxy proxy 模式：proxy_pass 到 php -S 后端。
@@ -69,6 +77,9 @@ func TestEnsureConfPhpProxy(t *testing.T) {
 	}
 	if strings.Contains(got, "fastcgi_pass") {
 		t.Errorf("proxy 模式不应出现 fastcgi_pass，实得:\n%s", got)
+	}
+	if !strings.Contains(got, "index  index.php index.html index.htm;") {
+		t.Errorf("proxy 应 index.php 优先，实得:\n%s", got)
 	}
 }
 

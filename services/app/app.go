@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -423,8 +424,27 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 		}
 		opts.Name = name
 	}
+	// 文件传输页需要原生拖放上传：开启 WebView2 文件拖放。
+	// 落下的文件真实路径由 Wails 回调到 Go，再按目标栏（本地/远程）转给前端触发上传。
+	isFtp := strings.Contains(path, "/tools/ftp")
+	if isFtp {
+		opts.EnableFileDrop = true
+	}
 	applog.Infof("window", "新建窗口: %s (%s) single=%v fullscreen=%v %dx%d", path, title, single, fullscreen, width, height)
-	a.app.Window.NewWithOptions(opts)
+	w := a.app.Window.NewWithOptions(opts)
+	if isFtp {
+		w.OnWindowEvent(events.Common.WindowFilesDropped, func(ev *application.WindowEvent) {
+			files := ev.Context().DroppedFiles()
+			if len(files) == 0 {
+				return
+			}
+			pane := ""
+			if d := ev.Context().DropTargetDetails(); d != nil {
+				pane = d.Attributes["data-pane"]
+			}
+			w.EmitEvent("ftp:files-dropped", map[string]any{"pane": pane, "files": files})
+		})
+	}
 	return nil
 }
 
@@ -645,6 +665,11 @@ func (a *App) RedisOpen(cfg redis.ConnConfig) error {
 	return redis.Open(cfg)
 }
 
+// RedisTest 按表单参数测试 Redis 连通性（含密码/DB 验证），返回握手耗时毫秒
+func (a *App) RedisTest(cfg redis.ConnConfig) (int64, error) {
+	return redis.Test(cfg)
+}
+
 // RedisClose 关闭指定 Redis 连接
 func (a *App) RedisClose(id string) error {
 	return redis.Close(id)
@@ -774,6 +799,9 @@ func (a *App) RedisSrvStatus(id string) (redis.InstanceStatus, error) {
 // RedisSrvLogs 返回实例最近 n 行日志
 func (a *App) RedisSrvLogs(id string, lines int) ([]string, error) { return redis.Logs(id, lines) }
 
+// RedisSrvClearLogs 真实清空实例日志（截断 server.log + 清环形；容器模式退化为清环形）
+func (a *App) RedisSrvClearLogs(id string) error { return redis.ClearLogs(id) }
+
 // RedisSrvSuggestPort 从 from 起探测可用端口
 func (a *App) RedisSrvSuggestPort(from int) int { return redis.SuggestPort(from) }
 
@@ -858,6 +886,9 @@ func (a *App) MySQLSrvStatus(id string) (mysql.InstanceStatus, error) {
 
 // MySQLSrvLogs 返回实例 mysql.err 尾部 n 行
 func (a *App) MySQLSrvLogs(id string, lines int) ([]string, error) { return mysql.Logs(id, lines) }
+
+// MySQLSrvClearLogs 真实清空实例日志（截断 mysql.err；容器模式无法本地截断退化为清屏）
+func (a *App) MySQLSrvClearLogs(id string) error { return mysql.ClearLogs(id) }
 
 // MySQLSrvSuggestPort 从 from 起探测可用端口
 func (a *App) MySQLSrvSuggestPort(from int) int { return mysql.SuggestPort(from) }
@@ -1129,6 +1160,9 @@ func (a *App) DockerSrvLogsBuffered(id string, lines int) []string {
 	return docker.ContainerLogRing(id, lines)
 }
 
+// DockerSrvClearLogs 清空容器日志：记下清空时刻以 since 重拉跟随，刷新/重开不再回填旧行
+func (a *App) DockerSrvClearLogs(id string) { docker.ClearContainerLogs(id) }
+
 /* ======================== Docker Desktop 安装向导 ======================== */
 
 // DockerSrvLicenseNotes 安装前需如实告知的要点（前端展示在感叹号悬停提示里）
@@ -1255,6 +1289,9 @@ func (a *App) PhpSrvStatus(id string) (php.InstanceStatus, error) { return php.G
 
 // PhpSrvLogs 返回实例最近 n 行日志
 func (a *App) PhpSrvLogs(id string, lines int) ([]string, error) { return php.Logs(id, lines) }
+
+// PhpSrvClearLogs 真实清空实例日志（截断日志文件 + 清环形；容器模式退化为清环形）
+func (a *App) PhpSrvClearLogs(id string) error { return php.ClearLogs(id) }
 
 // PhpSrvSuggestPort 从 from 起探测可用端口（跳过其它实例已登记与系统已监听的）
 func (a *App) PhpSrvSuggestPort(from int) int { return php.SuggestPort(from) }
@@ -1760,6 +1797,9 @@ func (a *App) AppDataDir(sub string) (string, error) {
 
 // MySQLOpen 建立并登记一个 MySQL 连接
 func (a *App) MySQLOpen(cfg mysql.ConnConfig) error { return mysql.Open(cfg) }
+
+// MySQLTest 按表单参数测试 MySQL 连通性（不登记到连接表），返回握手耗时毫秒
+func (a *App) MySQLTest(cfg mysql.ConnConfig) (int64, error) { return mysql.Test(cfg) }
 
 // MySQLClose 关闭指定连接
 func (a *App) MySQLClose(id string) error { return mysql.Close(id) }
@@ -2371,6 +2411,10 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	if len(cfg.ToolSettings) == 0 {
 		cfg.ToolSettings = config.CurrentConfig().ToolSettings
 	}
+	// 各列表拖拽顺序由各页面单独保存（SetListOrder），设置页 payload 不含 order 段，沿用当前值避免被清空。
+	if len(cfg.Order) == 0 {
+		cfg.Order = config.CurrentConfig().Order
+	}
 	// 浏览器空间有自己的保存入口（设置页的浏览器面板 / 浏览器页齿轮抽屉），
 	// 其他设置页保存时 payload 里没有 spaces，沿用当前值避免把空间与代理冲成默认。
 	if len(cfg.Browser.Spaces) == 0 {
@@ -2407,6 +2451,87 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 		a.app.Event.Emit("config:saved", path)
 	}
 	return logDir, nil
+}
+
+// SetListOrder 保存某个“面”的拖拽自定义顺序到用户配置（随导出/导入一起搬运）。
+// key 为面标识（如 home:stats / home:services / home:tools / php:list），ids 为该面内条目 ID 的有序列表。
+// 走 config.Update 读改写并落盘，只动 Order 段，不触发 SaveConfig 那一整套副作用（日志器/热键/球等）。
+func (a *App) SetListOrder(key string, ids []string) error {
+	k := strings.TrimSpace(key)
+	if k == "" {
+		return fmt.Errorf("order key 不能为空")
+	}
+	_, err := config.Update(func(cfg *config.AppConfig) {
+		if cfg.Order == nil {
+			cfg.Order = map[string][]string{}
+		}
+		if len(ids) == 0 {
+			delete(cfg.Order, k)
+			return
+		}
+		cp := make([]string, len(ids))
+		copy(cp, ids)
+		cfg.Order[k] = cp
+	})
+	return err
+}
+
+// SetToolOrder 按给定 ID 顺序重排配置里的工具列表并落盘。
+// 主页「快捷操作」的拖动与设置页「工具」表共用这一份顺序（tools 数组顺序就是显示顺序），
+// 任一侧排完都广播 config:saved，让主页/侧栏/设置页一起跟上；未列出的工具保持原相对顺序排在末尾。
+func (a *App) SetToolOrder(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	rank := make(map[string]int, len(ids))
+	for i, id := range ids {
+		if k := strings.TrimSpace(id); k != "" {
+			if _, dup := rank[k]; !dup {
+				rank[k] = i // 同一 ID 重复出现时以首次为准
+			}
+		}
+	}
+	keyOf := func(t config.ToolConfig) string {
+		for _, k := range []string{t.ID, t.Key, t.Path} {
+			if strings.TrimSpace(k) != "" {
+				return k
+			}
+		}
+		return ""
+	}
+	pos := func(t config.ToolConfig) int {
+		if r, ok := rank[keyOf(t)]; ok {
+			return r
+		}
+		return len(ids) // 没排到的落末尾，配合稳定排序保住原有相对顺序
+	}
+	// 顺序本来就是这样（如两个窗口互相回声、旧数据迁移已并过）就直接返回：
+	// 既不多写一次盘，也不会因广播把发起方自己刚排好的视图刷回去
+	cur := config.CurrentConfig()
+	changed := false
+	for i := 1; i < len(cur.Tools); i++ {
+		if pos(cur.Tools[i-1]) > pos(cur.Tools[i]) {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return nil
+	}
+	path, err := config.Update(func(cfg *config.AppConfig) {
+		// 先拷一份再排：CurrentConfig 交出的切片与其他读者共用底层数组，原地 sort 会改到别人眼里的数据
+		ordered := make([]config.ToolConfig, len(cfg.Tools))
+		copy(ordered, cfg.Tools)
+		sort.SliceStable(ordered, func(i, j int) bool { return pos(ordered[i]) < pos(ordered[j]) })
+		cfg.Tools = ordered
+	})
+	if err != nil {
+		return err
+	}
+	if a.app != nil {
+		a.app.Event.Emit("config:saved", path)
+	}
+	return nil
 }
 
 // ChooseLogDir 弹出原生目录选择框，返回所选目录（取消返回空串）。

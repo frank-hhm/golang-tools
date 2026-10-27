@@ -3,7 +3,10 @@
   <a-row class="ftp-page" :gutter="6">
     <a-col :span="7" class="side-col">
       <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
-        <template #title>远程连接</template>
+        <template #title>
+          <span class="side-title">远程连接</span>
+          <span class="side-count">{{ connections.length }}</span>
+        </template>
         <template #extra>
           <div class="srv-head-actions">
             <a-input-search v-model="keyword" size="small" placeholder="搜索名称/主机" allow-clear style="width: 124px" />
@@ -13,20 +16,22 @@
           </div>
         </template>
 
-        <a-list :bordered="false" size="small">
-          <a-list-item v-for="c in filtered" :key="c.id"
-            :class="{ 'inst-active': activeConnId === c.id }"
+        <!-- 卡片式选择列表：与 nginx 左侧同一套 common-item-card（选中短竖条 + hover 投影），单击选中、双击连接 -->
+        <div class="inst-list">
+          <common-item-card v-for="c in filtered" :key="c.id"
+            :active="activeConnId === c.id"
             @click="activeConnId = c.id" @dblclick="connect(c)">
-            <a-space>
+            <template #status>
               <com-badge :status="isConnected(c.id) ? 'success' : 'normal'" :animated="isConnected(c.id)" />
-              <a-tooltip :content="`${c.name} ${c.user}@${c.host}:${c.port}`">
-                <span class="conn-name">{{ c.name }}</span>
+            </template>
+            <template #title>
+              <a-tooltip class="inst-name-tip" :content="`${c.name} ${c.user}@${c.host}:${c.port}`">
+                <span class="inst-name">{{ c.name }}</span>
               </a-tooltip>
-              <a-tag size="small" color="arcoblue">{{ c.host }}</a-tag>
-            </a-space>
-            <template #actions>
+            </template>
+            <template #extra>
               <a-dropdown trigger="hover" @select="(v: any) => onAction(v, c)">
-                <icon-more class="conn-more" @click.stop />
+                <icon-more class="inst-more" @click.stop />
                 <template #content>
                   <a-doption value="open"><icon-folder /> 打开文件管理</a-doption>
                   <a-doption value="edit"><icon-edit /> 编辑</a-doption>
@@ -34,11 +39,14 @@
                 </template>
               </a-dropdown>
             </template>
-          </a-list-item>
-          <a-list-item v-if="!filtered.length">
-            <div class="conn-empty">{{ loading ? '读取中…' : connections.length ? '没有匹配的记录' : '暂无记录，点右上「添加」新建' }}</div>
-          </a-list-item>
-        </a-list>
+            <div class="inst-line2">
+              <span class="inst-port">{{ c.user }}@{{ c.host }}:{{ c.port }}</span>
+            </div>
+          </common-item-card>
+          <div v-if="!filtered.length" class="inst-empty">
+            {{ loading ? '读取中…' : connections.length ? '没有匹配的记录' : '暂无记录，点右上「添加」新建' }}
+          </div>
+        </div>
       </a-card>
     </a-col>
 
@@ -74,12 +82,13 @@
         <div class="work-body">
           <div class="pane-cell">
             <file-pane ref="localPane" side="local" title="本地" :session-id="session.id" :upload-dir="remotePath"
-              @path-change="() => {}" />
+              @path-change="() => {}" @drop-entry="(e: FtpEntry, s: 'local' | 'remote') => onDropEntry(s, e)" />
           </div>
           <div class="pane-split" />
           <div class="pane-cell">
             <file-pane ref="remotePane" side="remote" title="远程" :session-id="session.id" :start-path="session.home"
-              @preview="onPreview" @path-change="(p: string) => (remotePath = p)" />
+              @preview="onPreview" @path-change="(p: string) => (remotePath = p)"
+              @drop-entry="(e: FtpEntry, s: 'local' | 'remote') => onDropEntry(s, e)" />
           </div>
         </div>
 
@@ -236,6 +245,21 @@ function onPreview(entry: FtpEntry) {
   previewVisible.value = true;
 }
 
+/* ==================== 跨栏拖拽传输 ==================== */
+
+/** 把一栏拖起的文件放到另一栏：
+ *  - 从本地拖起、落到远程栏 → 上传到远程当前目录
+ *  - 从远程拖起、落到本地栏 → 下载到本地目录 */
+function onDropEntry(sourceSide: 'local' | 'remote', entry: FtpEntry) {
+  if (!session.value) {
+    Message.warning({ content: '请先连接服务器再拖拽传输', position: 'top', duration: 3000 });
+    return;
+  }
+  // sourceSide = 拖起来源栏：本地拖起→上传到远程当前目录；远程拖起→下载到本地
+  if (sourceSide === 'local') void remotePane.value?.uploadPaths?.([entry.path]);
+  else void localPane.value?.download?.(entry.path);
+}
+
 /* ==================== 传输队列 ==================== */
 
 const transfers = ref<FtpTransfer[]>([]);
@@ -284,6 +308,7 @@ function clearFinished() {
 
 let offTransfer: (() => void) | null = null;
 let offSession: (() => void) | null = null;
+let offDrop: (() => void) | null = null;
 
 onMounted(async () => {
   await loadConnections();
@@ -300,11 +325,24 @@ onMounted(async () => {
     remotePath.value = '';
     Message.warning({ content: ev.reason || '连接已断开', position: 'top', duration: 4000 });
   });
+  // 原生拖放上传：Go 把落下的真实路径 + 目标栏（pane）转回来，按栏路由到对应 FilePane
+  offDrop = Events.On('ftp:files-dropped', (raw: any) => {
+    const p = raw?.data ?? raw;
+    const files: string[] = p?.files || [];
+    if (!files.length) return;
+    if (!session.value) {
+      Message.warning({ content: '请先连接服务器再拖放上传', position: 'top', duration: 3000 });
+      return;
+    }
+    const target = p?.pane === 'local' ? localPane.value : remotePane.value;
+    void target?.handleDrop?.(files);
+  });
 });
 
 onBeforeUnmount(() => {
   offTransfer?.();
   offSession?.();
+  offDrop?.();
   if (refreshTimer) window.clearTimeout(refreshTimer);
   void closeSession();
 });
@@ -355,30 +393,72 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
-.conn-name {
-  max-width: 118px;
+/* 左侧连接列表：卡片式条目，选中态用左侧短竖条 + 按需投影（外壳由 common-item-card 提供） */
+.side-title {
+  font-size: var(--base-size-default);
+  font-weight: 600;
+}
+
+.side-count {
+  margin-left: calc(var(--base-margin) / 2);
+  padding: 0 calc(var(--base-padding) / 2);
+  border-radius: var(--base-radius-default);
+  background: var(--color-fill-2);
+  color: var(--color-text-3);
+  font-size: var(--base-size-small);
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+.inst-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: calc(var(--base-padding) / 2);
+}
+
+.inst-name-tip {
+  flex: 1;
+  min-width: 0;
+}
+
+.inst-name {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.conn-more {
+.inst-more {
   cursor: pointer;
+  color: var(--color-text-3);
+  flex: none;
+}
+
+.inst-more:hover {
+  color: rgb(var(--primary-6));
+}
+
+.inst-line2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inst-port {
+  font-family: Consolas, Menlo, monospace;
+  font-size: var(--base-size-small);
   color: var(--color-text-3);
 }
 
-.conn-empty {
+.inst-empty {
   color: var(--color-text-3);
-  font-size: 12px;
-  padding: 6px 0;
-}
-
-.inst-active {
-  background: var(--color-primary-light-1);
-}
-
-:deep(.arco-list-item) {
-  cursor: pointer;
+  font-size: var(--base-size-small);
+  text-align: center;
+  padding: 20px 0;
 }
 
 /* 双栏占满卡片正文，传输队列固定在底部 */

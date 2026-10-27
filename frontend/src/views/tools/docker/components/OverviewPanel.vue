@@ -16,22 +16,8 @@
 
             <a-row :gutter="[12, 12]">
                 <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
-                    <div class="stat-card" :class="{ 'is-off': !c.ready }">
-                        <div class="stat-circle" :class="'tone-' + c.tone">
-                            <!-- 自绘 SVG 图标：形状随指标语义变，动画语言与首页指标卡一致 -->
-                            <common-stat-icon :name="c.icon" :value="c.p" :size="24" />
-                        </div>
-                        <div class="stat-info">
-                            <div class="stat-head">
-                                <span class="stat-label">{{ c.title }}</span>
-                                <span class="stat-big">{{ c.value }}</span>
-                            </div>
-                            <!-- 未实现的项：说明为什么是空的，别让人以为数据丢了 -->
-                            <a-tooltip :content="c.tip" :disabled="!c.tip">
-                                <div class="stat-detail">{{ c.sub }}</div>
-                            </a-tooltip>
-                        </div>
-                    </div>
+                    <common-stat-card :icon="c.icon" :icon-value="c.p" :tone="c.tone" :label="c.title" :value="c.value"
+                        :detail="c.sub" :tip="c.tip" :ready="c.ready" />
                 </a-col>
             </a-row>
         </a-card>
@@ -337,101 +323,6 @@ function fmtTime(unixSec: number): string {
     white-space: nowrap;
     display: inline-block;
     vertical-align: middle;
-}
-
-/* 资源卡：与首页 stat-card 同一套（彩色圆角图标 + 标签/数值同排 + 下方明细） */
-.stat-card {
-    display: flex;
-    align-items: center;
-    gap: var(--base-padding);
-    height: 100%;
-    padding: var(--base-padding);
-    border: 1px solid var(--color-border-1);
-    border-radius: var(--base-radius-default);
-    transition: box-shadow 0.2s;
-}
-
-.stat-card:hover {
-    box-shadow: var(--shadow-2-bottom);
-}
-
-/* 后端还没实现的项：灰掉并虚线收边，一眼看出是占位不是真的 0 */
-.stat-card.is-off {
-    opacity: 0.62;
-    border-style: dashed;
-}
-
-.stat-circle {
-    width: 44px;
-    height: 44px;
-    border-radius: var(--base-radius-default);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.tone-blue {
-    background: rgba(var(--arcoblue-6), 0.08);
-    color: rgb(var(--arcoblue-6));
-}
-
-.tone-cyan {
-    background: rgba(var(--cyan-6), 0.08);
-    color: rgb(var(--cyan-6));
-}
-
-.tone-purple {
-    background: rgba(var(--purple-6), 0.08);
-    color: rgb(var(--purple-6));
-}
-
-.tone-orange {
-    background: rgba(var(--orange-6), 0.08);
-    color: rgb(var(--orange-6));
-}
-
-.tone-green {
-    background: rgba(var(--green-6), 0.08);
-    color: rgb(var(--green-6));
-}
-
-.stat-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.stat-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.stat-label {
-    font-size: var(--base-size-small);
-    color: var(--color-text-3);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.stat-big {
-    font-weight: bold;
-    font-size: var(--base-size-default);
-    line-height: 1.2;
-    color: var(--color-text-1);
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-}
-
-.stat-detail {
-    font-size: var(--base-size-small);
-    color: var(--color-text-4);
-    margin-top: calc(var(--base-margin) / 2);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .ov-select {

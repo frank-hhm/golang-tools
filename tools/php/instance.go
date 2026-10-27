@@ -239,6 +239,10 @@ type ring struct {
 	buf   []string
 	cap   int
 	start time.Time
+	// cum 累计写入行数（含被环形挤掉的）；cleared 为「清空」时的 cum，
+	// 配合 LinesAfter 实现非破坏式视图截止（只展示清空之后新写入的行）
+	cum     int
+	cleared int
 }
 
 func newRing(cap int) *ring { return &ring{cap: cap, start: time.Now()} }
@@ -249,6 +253,7 @@ func (r *ring) Write(p []byte) (int, error) {
 		r.mu.Lock()
 		for _, line := range strings.Split(text, "\n") {
 			r.buf = append(r.buf, line)
+			r.cum++
 		}
 		if over := len(r.buf) - r.cap; over > 0 {
 			r.buf = append(r.buf[:0], r.buf[over:]...)
@@ -270,6 +275,38 @@ func (r *ring) Lines(n int) []string {
 	out := make([]string, n)
 	copy(out, r.buf[len(r.buf)-n:])
 	return out
+}
+
+// LinesAfter 返回「最近一次清空之后」新写入行的末尾 n 行（无则 nil）。
+func (r *ring) LinesAfter(n int) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	skip := r.cum - r.cleared
+	if skip < 0 {
+		skip = 0
+	}
+	if skip > len(r.buf) {
+		skip = len(r.buf)
+	}
+	avail := r.buf[skip:]
+	if len(avail) == 0 {
+		return nil
+	}
+	if n <= 0 || n > len(avail) {
+		n = len(avail)
+	}
+	out := make([]string, n)
+	copy(out, avail[len(avail)-n:])
+	return out
+}
+
+// Clear 真实清空环形缓冲：丢弃已缓存行并归零计数（配合截断日志文件实现破坏式清空）。
+func (r *ring) Clear() {
+	r.mu.Lock()
+	r.buf = nil
+	r.cum = 0
+	r.cleared = 0
+	r.mu.Unlock()
 }
 
 type srvRunning struct {
@@ -565,6 +602,20 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	return st, nil
 }
 
+// phpCutoff 非破坏式「清空」截止：清空把日志文件当前大小记为字节偏移，
+// 之后 Logs 只返回该偏移之后新写入的行，不删磁盘历史，也不会被下一次轮询回填。
+var (
+	phpCutMu  sync.Mutex
+	phpCutoff = map[string]int64{}
+)
+
+func phpFileSize(path string) int64 {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.Size()
+	}
+	return 0
+}
+
 // Logs 返回实例日志尾部 n 行（Docker 取容器输出；本地优先文件，回退内存缓冲）
 func Logs(id string, n int) ([]string, error) {
 	if n <= 0 || n > 2000 {
@@ -576,6 +627,21 @@ func Logs(id string, n int) ([]string, error) {
 	logPath, err := instanceLogPath(id)
 	if err != nil {
 		return nil, err
+	}
+	phpCutMu.Lock()
+	from := phpCutoff[id]
+	phpCutMu.Unlock()
+	if from > 0 {
+		// 已清空：只看截止偏移之后的新内容（文件与内存环形都算）
+		if lines, err := logtail.LinesAfter(logPath, from, n); err != nil {
+			return nil, err
+		} else if len(lines) > 0 {
+			return lines, nil
+		}
+		if p := trackedSrv(id); p != nil {
+			return p.mem.LinesAfter(n), nil
+		}
+		return nil, nil
 	}
 	if lines := tailLines(logPath, n); len(lines) > 0 {
 		return lines, nil
@@ -590,6 +656,32 @@ func Logs(id string, n int) ([]string, error) {
 		return p.mem.Lines(n), nil
 	}
 	return nil, nil
+}
+
+// ClearLogs 真实清空指定实例的日志（破坏式：截断日志文件 + 清空内存环形，
+// 释放磁盘占用；旧行不再回填）。容器模式日志源在 daemon，本地无法截断，退化为清环形。
+func ClearLogs(id string) error {
+	if cfg, err := findInstance(id); err == nil && isDockerMode(cfg) {
+		if p := trackedSrv(id); p != nil {
+			p.mem.Clear()
+		}
+		return nil
+	}
+	if logPath, err := instanceLogPath(id); err == nil {
+		_ = os.Truncate(logPath, 0)
+		phpCutMu.Lock()
+		phpCutoff[id] = 0
+		phpCutMu.Unlock()
+	}
+	if p := trackedSrv(id); p != nil {
+		// 进程存活时也截断自己持有的日志句柄（O_APPEND 打开，截断安全）
+		if p.logFile != nil {
+			_ = p.logFile.Truncate(0)
+			_, _ = p.logFile.Seek(0, io.SeekStart)
+		}
+		p.mem.Clear()
+	}
+	return nil
 }
 
 // PortTaken 报告端口是否可用于（新）实例：被其它工具的实例登记过，或已被进程监听。

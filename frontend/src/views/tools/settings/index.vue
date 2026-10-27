@@ -265,13 +265,21 @@
                                     </a-button>
                                 </a-space>
                             </template>
-                            <div class="tools-table-wrap" ref="toolsTableRef">
+                            <div class="tools-table-wrap" ref="toolsTableRef" @dragover="onToolsWrapDragOver"
+                                @dragleave="onToolsWrapDragLeave" @drop="onToolsWrapDrop">
                                 <a-table :data="tools" :pagination="false" size="small" row-key="id" :column-resizable="true"
                                     :scroll="tableScroll">
                                     <template #columns>
-                                        <a-table-column title="排序" :width="88">
+                                        <a-table-column title="排序" :width="112">
                                             <template #cell="{ rowIndex }">
                                                 <a-space :size="2">
+                                                    <!-- 拖拽把手：按住它在目标行上松手即可换位；上下钮保留做微调 -->
+                                                    <a-tooltip content="按住拖动排序">
+                                                        <span class="row-drag-handle" draggable="true"
+                                                            @dragstart="toolDragStart(rowIndex, $event)" @dragend="toolDragEnd">
+                                                            <icon-drag-dot-vertical />
+                                                        </span>
+                                                    </a-tooltip>
                                                     <a-button size="small" :disabled="rowIndex === 0" @click="move(rowIndex, -1)">
                                                         <icon-up />
                                                     </a-button>
@@ -294,6 +302,12 @@
                                                         <span class="icon-text">{{ iconLabel(record.icon) }}</span>
                                                     </a-tooltip>
                                                 </span>
+                                                <span v-else class="off">—</span>
+                                            </template>
+                                        </a-table-column>
+                                        <a-table-column title="主页" :width="60">
+                                            <template #cell="{ record }">
+                                                <icon-check-circle v-if="record.home !== false" class="on" />
                                                 <span v-else class="off">—</span>
                                             </template>
                                         </a-table-column>
@@ -498,6 +512,10 @@
                     </a-input>
                     <div class="hint">支持 Arco 图标名（如 camera）与图标库 icon-xxx（如 icon-lianjie），点击右侧“图标”选择。</div>
                 </a-form-item>
+                <a-form-item field="home" label="主页展示">
+                    <a-switch v-model="editForm.home" type="round" />
+                    <div class="hint">开启后在主页“快捷操作”区直接展示；关闭后仍可在该区“更多”弹窗里找到。</div>
+                </a-form-item>
                 <a-row :gutter="12">
                     <a-col :span="6">
                         <a-form-item field="quick" label="浮动球快捷">
@@ -547,6 +565,7 @@
 
 <script setup lang="ts">
 import { computed, createVNode, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref, render as renderVNode, watch } from "vue";
+import { Events } from "@wailsio/runtime";
 import { Message } from "@arco-design/web-vue";
 import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
 import iconData from "@/components/common/select-icon-modal/icon.json";
@@ -613,7 +632,7 @@ const BUILTINS: BuiltinDef[] = [
 
 interface ToolRow {
     id: string; key: string; name: string; path: string; event: string; icon: string;
-    single: boolean; fullscreen: boolean; disableFullscreen: boolean; width: number; height: number; shortcut: string; quick: boolean;
+    single: boolean; fullscreen: boolean; disableFullscreen: boolean; width: number; height: number; shortcut: string; quick: boolean; home: boolean;
 }
 
 /** 完整配置（保存时整体回传） */
@@ -997,6 +1016,7 @@ function normTool(t: any): ToolRow {
         height: t.height || 0,
         shortcut: t.shortcut || "",
         quick: !!t.quick,
+        home: t.home !== false,
     };
 }
 
@@ -1030,7 +1050,7 @@ const editForm = reactive<ToolRow>(normTool({}));
 
 function openAdd() {
     editIndex.value = -1;
-    Object.assign(editForm, normTool({ id: "", key: "", name: "", path: "", event: "", icon: "", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false }));
+    Object.assign(editForm, normTool({ id: "", key: "", name: "", path: "", event: "", icon: "", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: true }));
     editVisible.value = true;
 }
 
@@ -1096,9 +1116,88 @@ function move(i: number, dir: number) {
     scheduleSave(0);
 }
 
+/* ---------------- 工具表拖拽排序：「排序」列把手起拖，落点整行（表体由 a-table 渲染，事件在包裹容器上代理） ---------------- */
+const dragFromIdx = ref(-1);
+let dragOverTr: HTMLElement | null = null;
+let dragSrcTr: HTMLElement | null = null;
+
+function toolDragStart(i: number, e: DragEvent) {
+    dragFromIdx.value = i;
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", String(i)); } catch { /* 某些环境 setData 受限，忽略 */ }
+    }
+    // 被拖行半透明，和主页/实例列表的 reorder-dragging 反馈一致
+    dragSrcTr = trOf(e.target);
+    dragSrcTr?.classList.add("dragging-row");
+}
+function toolDragEnd() {
+    dragFromIdx.value = -1;
+    markOver(null);
+    dragSrcTr?.classList.remove("dragging-row");
+    dragSrcTr = null;
+}
+/** 事件落在哪一行：a-table 的 tr 在其 tbody 里的序号即数据下标（fixed 列的副本表体同序渲染，可直接用） */
+function trOf(t: EventTarget | null): HTMLElement | null {
+    return (t as HTMLElement | null)?.closest?.(".arco-table-tr") ?? null;
+}
+function rowIdxOfTr(tr: HTMLElement | null): number {
+    // 只认表体行：表头 tr 也叫 .arco-table-tr，落在 thead 里不参与排序
+    if (!tr || tr.parentElement?.tagName !== "TBODY") return -1;
+    return Array.prototype.indexOf.call(tr.parentElement.children, tr);
+}
+function markOver(tr: HTMLElement | null) {
+    if (dragOverTr === tr) return;
+    dragOverTr?.classList.remove("drag-over-row");
+    dragOverTr = tr;
+    dragOverTr?.classList.add("drag-over-row");
+}
+function onToolsWrapDragOver(e: DragEvent) {
+    if (dragFromIdx.value < 0) return;
+    e.preventDefault(); // 不声明可落点，drop 不会触发
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const tr = trOf(e.target);
+    const i = rowIdxOfTr(tr);
+    markOver(tr && i >= 0 && i !== dragFromIdx.value ? tr : null);
+}
+function onToolsWrapDragLeave(e: DragEvent) {
+    // 拖出表格区域才清高亮；在行间移动时 relatedTarget 仍在容器内
+    if (dragOverTr && e.relatedTarget instanceof Node && toolsTableRef.value?.contains(e.relatedTarget)) return;
+    markOver(null);
+}
+function onToolsWrapDrop(e: DragEvent) {
+    const from = dragFromIdx.value;
+    if (from < 0) return;
+    e.preventDefault();
+    const to = rowIdxOfTr(trOf(e.target));
+    markOver(null);
+    dragFromIdx.value = -1;
+    dragSrcTr?.classList.remove("dragging-row");
+    dragSrcTr = null;
+    if (to < 0 || from === to) return;
+    const arr = tools.value;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    scheduleSave(0);
+}
+
 function resetTools() {
     tools.value = DEFAULT_TOOLS.map(normTool);
     scheduleSave(0);
+}
+
+/**
+ * 跟随外部对工具列表的改动：主页「快捷操作」拖动会把新顺序直接写回配置里的 tools，
+ * 本页不刷新就会和主页对不上。只同步工具表，不动其它表单（避免覆盖正在编辑的字段）；
+ * 自己保存后的回声两边内容一致，比对后直接跳过。
+ */
+async function syncToolsFromConfig() {
+    try {
+        const cfg = await GoTools?.GetConfig();
+        const next = (cfg?.tools || []).map(normTool);
+        if (JSON.stringify(next) === JSON.stringify(tools.value.map(normTool))) return;
+        tools.value = next;
+    } catch { /* 读取失败保持现状 */ }
 }
 
 /* ---------------- 日志操作 ---------------- */
@@ -1158,29 +1257,33 @@ async function openLogDir() {
     }
 }
 
-/** 默认工具列表：“恢复默认列表”还原到这份基线，与后端 DefaultConfig 一致。
- * 这是当前保存配置的快照（自定义图标/开关已烘入），不再从 BUILTINS 派生，避免默认基线漂移。
+/** 默认工具列表：“恢复默认列表”还原到这份基线，与后端 config.DefaultConfig 的 Tools 逐项一致（含顺序）。
+ * 这是当前保存配置（config.json）的快照（自定义图标/尺寸/开关/主页展示已烘入），不再从 BUILTINS 派生，避免默认基线漂移。
  * 不含 settings（设置仍可从浮动球/标题栏入口进入）。 */
 const DEFAULT_TOOLS: ToolRow[] = [
-    { id: "screenshot", key: "screenshot", name: "截图", path: "", event: "screenshot", icon: "icon-jietu", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "Ctrl+Alt+A", quick: true },
-    { id: "colorpicker", key: "colorpicker", name: "颜色取色器", path: "/tools/colorpicker", event: "", icon: "icon-quseqi", single: true, fullscreen: false, disableFullscreen: false, width: 480, height: 560, shortcut: "", quick: true },
-    { id: "video", key: "video", name: "视频录制", path: "/tools/video", event: "", icon: "video-camera", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: true },
-    { id: "qrcode", key: "qrcode", name: "二维码生成", path: "/tools/qrcode", event: "", icon: "icon-erweima3", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "timestamp", key: "timestamp", name: "时间戳转换", path: "/tools/timestamp", event: "", icon: "icon-riqishijianzhuanhuanmiaoshu", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "strrandom", key: "strrandom", name: "随机字符串生成", path: "/tools/strrandom", event: "", icon: "icon-zifuchuan", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "encdec", key: "encdec", name: "文字加密解密", path: "/tools/encdec", event: "", icon: "lock", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "hexconvert", key: "hexconvert", name: "进制转换", path: "/tools/hexconvert", event: "", icon: "swap", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "imageBase64", key: "imageBase64", name: "图片base64", path: "/tools/imageBase64", event: "", icon: "icon-img", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "sniffer", key: "sniffer", name: "抓包工具", path: "/tools/sniffer", event: "", icon: "bug", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: true },
-    { id: "websocket", key: "websocket", name: "WebSocket调试", path: "/tools/websocket", event: "", icon: "icon-wangluo1", single: false, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "usbserial", key: "usbserial", name: "USB调试", path: "/tools/usbserial", event: "", icon: "icon-usb1", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "redis", key: "redis", name: "Redis管理", path: "/tools/redis", event: "", icon: "icon-icon-redis", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "mysql", key: "mysql", name: "MySQL管理", path: "/tools/mysql", event: "", icon: "icon-MySQL", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false },
-    { id: "php", key: "php", name: "PHP管理", path: "/tools/php", event: "", icon: "icon-php", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
-    { id: "nginx", key: "nginx", name: "Nginx管理", path: "/tools/nginx", event: "", icon: "icon-ngnix", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
-    { id: "docker", key: "docker", name: "Docker管理", path: "/tools/docker", event: "", icon: "computer", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
-    { id: "npm", key: "npm", name: "Npm管理", path: "/tools/npm", event: "", icon: "icon-npm", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false },
-    { id: "speedtest", key: "speedtest", name: "网速测速", path: "/tools/speedtest", event: "", icon: "icon-wangluo1", single: true, fullscreen: false, disableFullscreen: false, width: 1080, height: 720, shortcut: "", quick: false },
+    { id: "docker", key: "docker", name: "Docker管理", path: "/tools/docker", event: "", icon: "icon-docker", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "browser", key: "browser", name: "浏览器", path: "/tools/browser", event: "", icon: "icon-liulanqi1", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: true },
+    { id: "speedtest", key: "speedtest", name: "网速测速", path: "/tools/speedtest", event: "", icon: "icon-cesu", single: true, fullscreen: false, disableFullscreen: false, width: 1080, height: 720, shortcut: "", quick: false, home: true },
+    { id: "term", key: "term", name: "终端连接", path: "/tools/term", event: "", icon: "icon-terminal", single: true, fullscreen: false, disableFullscreen: false, width: 1200, height: 800, shortcut: "", quick: false, home: true },
+    { id: "disk", key: "disk", name: "磁盘管理", path: "/tools/disk", event: "", icon: "icon-yingpan", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "ftp", key: "ftp", name: "文件传输", path: "/tools/ftp", event: "", icon: "icon-ftp", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "redis", key: "redis", name: "Redis管理", path: "/tools/redis", event: "", icon: "icon-icon-redis", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "mysql", key: "mysql", name: "MySQL管理", path: "/tools/mysql", event: "", icon: "icon-MySQL", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "php", key: "php", name: "PHP管理", path: "/tools/php", event: "", icon: "icon-php", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "nginx", key: "nginx", name: "Nginx管理", path: "/tools/nginx", event: "", icon: "icon-ngnix", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "npm", key: "npm", name: "Npm管理", path: "/tools/npm", event: "", icon: "icon-npm", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "sniffer", key: "sniffer", name: "抓包工具", path: "/tools/sniffer", event: "", icon: "bug", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: true, home: true },
+    { id: "websocket", key: "websocket", name: "WebSocket调试", path: "/tools/websocket", event: "", icon: "icon-wangluo1", single: true, fullscreen: true, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "timestamp", key: "timestamp", name: "时间戳转换", path: "/tools/timestamp", event: "", icon: "icon-riqishijianzhuanhuanmiaoshu", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: true },
+    { id: "usbserial", key: "usbserial", name: "USB调试", path: "/tools/usbserial", event: "", icon: "icon-usb1", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
+    { id: "video", key: "video", name: "视频录制", path: "/tools/video", event: "", icon: "video-camera", single: true, fullscreen: true, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: true, home: false },
+    { id: "screenshot", key: "screenshot", name: "截图", path: "", event: "screenshot", icon: "icon-jietu", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "Ctrl+Alt+A", quick: true, home: true },
+    { id: "colorpicker", key: "colorpicker", name: "颜色取色器", path: "/tools/colorpicker", event: "", icon: "icon-quseqi", single: true, fullscreen: false, disableFullscreen: true, width: 480, height: 560, shortcut: "", quick: true, home: true },
+    { id: "encdec", key: "encdec", name: "文字加密解密", path: "/tools/encdec", event: "", icon: "lock", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
+    { id: "strrandom", key: "strrandom", name: "随机字符串生成", path: "/tools/strrandom", event: "", icon: "icon-zifuchuan", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
+    { id: "qrcode", key: "qrcode", name: "二维码生成", path: "/tools/qrcode", event: "", icon: "icon-erweima3", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
+    { id: "imageBase64", key: "imageBase64", name: "图片base64", path: "/tools/imageBase64", event: "", icon: "icon-img", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
+    { id: "hexconvert", key: "hexconvert", name: "进制转换", path: "/tools/hexconvert", event: "", icon: "swap", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
 ];
 
 /* ---------------- 表格高度自适应（继承窗口高度，表体内部滚动） ---------------- */
@@ -1265,8 +1368,15 @@ function onShortcutKeydown(e: KeyboardEvent) {
     recording.value = false;
 }
 
+let offConfigSaved: (() => void) | null = null;
+
 onMounted(() => {
     load();
+    // 主页拖动快捷操作后同步工具表顺序（config:saved 由后端在配置落盘后广播）
+    try {
+        const ret = Events.On("config:saved", () => { void syncToolsFromConfig(); });
+        if (typeof ret === "function") offConfigSaved = ret as () => void;
+    } catch { /* 非 Wails 环境没有事件总线 */ }
     window.addEventListener("resize", onWinResize);
     if (typeof ResizeObserver !== "undefined") {
         ro = new ResizeObserver(() => calcTableScroll());
@@ -1275,6 +1385,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    if (offConfigSaved) offConfigSaved();
+    offConfigSaved = null;
     window.removeEventListener("resize", onWinResize);
     ro?.disconnect();
     ro = null;
@@ -1531,6 +1643,32 @@ onBeforeUnmount(() => {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+}
+
+/* 拖拽把手：常显淡灰，hover 提亮；按住起拖 */
+.row-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-text-3);
+    cursor: grab;
+}
+
+.row-drag-handle:hover {
+    color: rgb(var(--primary-6));
+}
+
+.row-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* 拖拽反馈：落点行虚线描边（同全局 .reorder-over），被拖行半透明；tr 由 a-table 渲染，需 :deep 穿透 */
+.tools-table-wrap :deep(.arco-table-tr.drag-over-row) {
+    outline: 2px dashed rgb(var(--primary-6));
+    outline-offset: -2px;
+}
+
+.tools-table-wrap :deep(.arco-table-tr.dragging-row) {
+    opacity: 0.4;
 }
 
 .on {

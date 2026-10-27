@@ -198,7 +198,7 @@
 
     <!-- ==================== 容器日志 ==================== -->
     <container-log-modal v-model:visible="logVisible" v-model:follow="logFollow" :title="logTitle" :running="logRunning"
-      :lines="logLines" @refresh="loadLogs" @clear="logLines = []" @toggle="toggleFollow" @close="closeLogModal" />
+      :lines="logLines" @refresh="loadLogs" @clear="clearLogs" @toggle="toggleFollow" @close="closeLogModal" />
 
     <!-- ==================== 容器实时监控 ==================== -->
     <container-monitor-modal v-if="monVisible" v-model:visible="monVisible" :id="monInst?.id || ''" :name="monInst?.name || ''" />
@@ -1736,6 +1736,16 @@ function stopFollow() {
 async function toggleFollow() {
   if (logFollow.value) { await loadLogs(); if (logFollow.value) startFollow(); }
   else stopFollow();
+}
+
+/** 清空（气泡二次确认后调用）：清空已渲染行 + 丢弃待刷缓冲与定时器，并叫后端记下清空时刻（since）
+ *  重拉跟随：之后刷新/重开弹窗都只回显清空之后的新日志，不再回填旧行 */
+function clearLogs() {
+  logLines.value = [];
+  logPending = [];
+  if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
+  const c = logInst.value;
+  if (c) { try { void GoTools.DockerSrvClearLogs(c.id); Message.success("已清空容器日志"); } catch (e) { /* ignore */ } }
 }
 
 function closeLogModal() {

@@ -18,23 +18,25 @@
 
     <div v-show="!collapsed" class="tq-body">
       <div v-for="t in transfers" :key="t.id" class="tq-row">
-        <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
-        <a-tooltip :content="t.dir === 'up' ? `${t.local} → ${t.remote}` : `${t.remote} → ${t.local}`">
-          <span class="tq-name">{{ t.name }}</span>
-        </a-tooltip>
-        <a-progress class="tq-bar" size="mini" :percent="percent(t)" :status="progressStatus(t)" :show-text="false" />
-        <span class="tq-num">{{ percentText(t) }}</span>
-        <span class="tq-num">{{ t.state === 'running' ? fmtSpeed(t.speed) : stateText(t.state) }}</span>
-        <a-tooltip v-if="t.err" :content="t.err">
-          <span class="tq-err">{{ t.err }}</span>
-        </a-tooltip>
-        <span v-else class="tq-err" />
-        <a-space :size="2" class="tq-actions">
-          <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" type="text" status="danger"
-            @click="emit('cancel', t.id)">取消</a-button>
-          <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" type="text"
-            @click="emit('retry', t.id)">重试</a-button>
-        </a-space>
+        <div class="tq-line">
+          <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
+          <a-tooltip :content="t.dir === 'up' ? `${t.local} → ${t.remote}` : `${t.remote} → ${t.local}`">
+            <span class="tq-name">{{ t.name }}</span>
+          </a-tooltip>
+          <a-tooltip v-if="t.err" :content="t.err">
+            <span class="tq-err"><icon-exclamation-circle-fill /> {{ t.err }}</span>
+          </a-tooltip>
+          <span class="tq-flex" />
+          <span class="tq-num">{{ percentText(t) }}</span>
+          <span class="tq-state" :class="'s-' + t.state">{{ t.state === 'running' ? fmtSpeed(t.speed) : stateText(t.state) }}</span>
+          <a-space :size="2" class="tq-actions">
+            <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" type="text" status="danger"
+              @click="emit('cancel', t.id)">取消</a-button>
+            <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" type="text"
+              @click="emit('retry', t.id)">重试</a-button>
+          </a-space>
+        </div>
+        <a-progress class="tq-bar" :percent="percent(t) / 100" size="small" :show-text="false" :status="progressStatus(t)" />
       </div>
     </div>
   </div>
@@ -134,10 +136,7 @@ function fmtSpeed(n: number): string {
 }
 
 .tq-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--color-border-1);
   font-size: 12px;
 }
@@ -146,29 +145,58 @@ function fmtSpeed(n: number): string {
   border-bottom: none;
 }
 
+/* 第一行：标签 + 名称 + 错误 + 弹性占位 + 字节数 + 状态 + 操作 */
+.tq-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tq-name {
-  flex: 0 1 220px;
+  flex: 0 1 260px;
   min-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-text-1);
 }
 
+.tq-flex {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 第二行：整宽进度条 */
 .tq-bar {
-  flex: 1;
-  min-width: 80px;
-  margin: 0;
+  margin-top: 5px;
 }
 
 .tq-num {
   flex: none;
-  width: 108px;
   color: var(--color-text-3);
   text-align: right;
 }
 
+.tq-state {
+  flex: none;
+  width: 64px;
+  text-align: right;
+  color: var(--color-text-3);
+}
+
+.tq-state.s-done {
+  color: rgb(var(--success-6));
+}
+
+.tq-state.s-failed {
+  color: rgb(var(--danger-6));
+}
+
 .tq-err {
-  flex: 0 1 180px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 1 200px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

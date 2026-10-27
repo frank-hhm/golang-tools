@@ -12,9 +12,10 @@
     </div>
 
     <div class="ftp-body">
-      <!-- 客户端常驻：切到服务端时不能把已建立的 SFTP 会话卸载掉 -->
-      <client-panel v-show="mode === 'client'" />
-      <server-panel v-if="serverVisited" v-show="mode === 'server'" />
+      <!-- 客户端常驻：切到服务端时不能把已建立的 SFTP 会话卸载掉，故用 class 隐藏（display:none !important）
+           而非 v-show：客户端根元素是 a-row，v-show 的内联 display 在部分情况下会被 .arco-row 的 display:flex 压住 -->
+      <client-panel class="ftp-panel" :class="{ 'ftp-hidden': mode !== 'client' }" />
+      <server-panel v-if="serverVisited" class="ftp-panel" :class="{ 'ftp-hidden': mode !== 'server' }" />
     </div>
   </div>
 </template>
@@ -57,5 +58,18 @@ watch(mode, (v) => {
 .ftp-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 当前显示的面板占满剩余高度 */
+.ftp-body .ftp-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 隐藏非活动面板：!important 确保压过 a-row(.arco-row) 的 display:flex */
+.ftp-body .ftp-panel.ftp-hidden {
+  display: none !important;
 }
 </style>

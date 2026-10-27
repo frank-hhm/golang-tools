@@ -21,19 +21,10 @@
               <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
                    栅格用 a-row/a-col，横纵间距由 gutter 提供 -->
               <a-row :gutter="[12, 12]" class="stat-cards">
-                <a-col v-for="c in statCards" :key="c.label" :span="8">
-                  <div class="stat-card">
-                    <div class="stat-circle" :class="c.circle">
-                      <common-stat-icon :name="c.icon" :value="c.p" :size="26" />
-                    </div>
-                    <div class="stat-info">
-                      <div class="stat-head">
-                        <div class="stat-label">{{ c.label }}</div>
-                        <div class="stat-big">{{ c.big }}<span v-if="c.unit" class="stat-unit">{{ c.unit }}</span></div>
-                      </div>
-                      <div class="stat-detail">{{ c.detail }}</div>
-                    </div>
-                  </div>
+                <a-col v-for="c in orderedStatCards" :key="c.key" :span="8"
+                  v-bind="statsReo.handlers(c.key)" :class="{ 'reorder-dragging': statsReo.isDragging(c.key), 'reorder-over': statsReo.isOver(c.key) }">
+                  <common-stat-card :icon="c.icon" :icon-value="c.p" :icon-size="26" :tone="c.tone"
+                    :label="c.label" :value="c.big" :unit="c.unit" :detail="c.detail" />
                 </a-col>
               </a-row>
             </a-card>
@@ -56,8 +47,10 @@
                 </a-radio-group>
               </template>
               <div class="svc-cards" v-if="filteredServices.length">
-                <div v-for="(s, i) in filteredServices" :key="i" class="svc-card" @click="openServiceDetail(s)"
-                                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
+                <div v-for="s in orderedServices" :key="s.id" class="svc-card" @click="openServiceDetail(s)"
+                                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])"
+                                  v-bind="servicesReo.handlers(s.id)"
+                                  :class="{ 'reorder-dragging': servicesReo.isDragging(s.id), 'reorder-over': servicesReo.isOver(s.id) }">
                   <div class="svc-card-top">
                     <div class="svc-logo" :class="'logo-' + s.type">
                       <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />
@@ -106,12 +99,19 @@
             <span>快捷操作</span>
           </template>
           <template #extra>
+            <!-- 更多入口收进卡片右侧插槽：与「欢迎回来」刷新按钮同一套方块图标钮 -->
+            <a-tooltip content="全部工具">
+              <a-button size="small" @click="moreVisible = true">
+                <template #icon><icon-apps /></template>
+              </a-button>
+            </a-tooltip>
           </template>
           <div class="tools-grid">
-            <a-tooltip v-for="(item, index) in toolsList" :key="item.id || index"
+            <a-tooltip v-for="(item, index) in orderedTools" :key="toolKeyOf(item, index)"
               :content="item.shortcut ? item.name + ' (' + item.shortcut + ')' : item.name">
               <div class="tool-cell" @click="onToolClick(item)" @mouseenter="prefetchRoute(item.path)"
-                @pointerdown="prefetchRoute(item.path)">
+                @pointerdown="prefetchRoute(item.path)" v-bind="toolsReo.handlers(toolKeyOf(item, index))"
+                :class="{ 'reorder-dragging': toolsReo.isDragging(toolKeyOf(item, index)), 'reorder-over': toolsReo.isOver(toolKeyOf(item, index)) }">
                 <div class="tool-icon-wrap">
                   <i v-if="isIconfontIcon(item.icon)" class="icon tool-icon" :class="item.icon" />
                   <component v-else :is="iconComp(item.icon) || 'IconApps'" class="tool-icon" />
@@ -122,6 +122,21 @@
         </a-card>
       </a-col>
     </a-row>
+
+    <!-- 全部工具：无背景蒙层（mask=false），不阻断后方页面交互 -->
+    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" :mask="false" :mask-closable="false"
+      :footer="false" draggable class="tools-more-modal">
+      <div class="tools-grid tools-grid-modal">
+        <div v-for="item in orderedAllTools" :key="item.id || item.name" class="tool-cell tool-cell-named"
+          @click="onMoreToolClick(item)">
+          <div class="tool-icon-wrap">
+            <i v-if="isIconfontIcon(item.icon)" class="icon tool-icon" :class="item.icon" />
+            <component v-else :is="iconComp(item.icon) || 'IconApps'" class="tool-icon" />
+          </div>
+          <span class="tool-name">{{ item.name }}</span>
+        </div>
+      </div>
+    </a-modal>
 
   </layout-body>
 </template>
@@ -135,12 +150,14 @@ import { useToolWindow } from "./useToolWindow";
 import { arcoIconComp as iconComp, isIconfontIcon, normalizeToolIcon } from "@/utils/tool-icon";
 import { isToolAvailable } from "@/utils/caps";
 import { prefetchRoute } from "@/router/prefetch";
+import { useReorder, applyOrder, loadOrder } from "@/utils/reorder";
 
 interface ToolRow extends ToolItem {
   id?: string;
   key?: string;
   icon?: string;
   shortcut?: string;
+  home?: boolean;
 }
 
 const toolEvents = reactive(useToolEvents());
@@ -165,6 +182,7 @@ async function loadTools() {
         event: t.event || undefined, single: !!t.single, fullscreen: !!t.fullscreen,
         disableFullscreen: !!t.disableFullscreen,
         width: t.width || undefined, height: t.height || undefined, icon: normalizeToolIcon(t.icon), shortcut: t.shortcut,
+        home: t.home !== false,
       }));
     const sig = JSON.stringify(next);
     if (sig === toolsSig) return;
@@ -197,7 +215,8 @@ type StatIconName = "cpu" | "mem" | "uptime" | "go" | "disk" | "net";
 
 /** 统计卡片数据源：模板只保留一份卡片结构，新增/调整卡片只改这里 */
 interface StatCard {
-  circle: string;
+  key: string;
+  tone: string;
   label: string;
   big: string;
   unit?: string;
@@ -211,35 +230,35 @@ const statCards = computed<StatCard[]>(() => {
   const s = sysInfo.value;
   return [
     {
-      circle: "stat-circle-cpu", icon: "cpu", label: "CPU",
+      tone: "blue", icon: "cpu", label: "CPU", key: "cpu",
       big: s ? s.cpuUsage.toFixed(1) : "--", unit: "%",
       detail: s ? s.cpuCores + " 核 · " + s.cpuThreads + " 线程" : "",
       p: s?.cpuUsage,
     },
     {
-      circle: "stat-circle-mem", icon: "mem", label: "内存",
+      tone: "cyan", icon: "mem", label: "内存", key: "mem",
       big: s ? s.memPercent.toFixed(1) : "--", unit: "%",
       detail: s ? fmtBytes(s.memUsed) + " / " + fmtBytes(s.memTotal) : "",
       p: s?.memPercent,
     },
     {
-      circle: "stat-circle-up", icon: "uptime", label: "运行时间",
+      tone: "orange", icon: "uptime", label: "运行时间", key: "uptime",
       big: s ? fmtUptime(s.uptime) : "--",
       detail: s ? "开机 " + fmtBootTime(s.bootTime) : "",
     },
     {
-      circle: "stat-circle-go", icon: "go", label: "Go 运行时",
+      tone: "purple", icon: "go", label: "Go 运行时", key: "go",
       big: s ? String(s.goroutines) : "--", unit: " 协程",
       detail: s ? "堆 " + fmtBytes(s.appMemAlloc) : "",
     },
     {
-      circle: "stat-circle-disk", icon: "disk", label: "磁盘 C:",
+      tone: "green", icon: "disk", label: "磁盘 C:", key: "disk",
       big: s ? s.diskPercent.toFixed(1) : "--", unit: "%",
       detail: s ? fmtBytes(s.diskUsed) + " / " + fmtBytes(s.diskTotal) : "",
       p: s?.diskPercent,
     },
     {
-      circle: "stat-circle-net", icon: "net", label: "网络",
+      tone: "blue", icon: "net", label: "网络", key: "net",
       big: s ? fmtBytes(s.netSent + s.netRecv) : "--", unit: " 累计",
       detail: s ? "↑ " + fmtBytes(s.netSent) + "  ↓ " + fmtBytes(s.netRecv) : "",
     },
@@ -255,6 +274,73 @@ const filteredServices = computed(() => {
   if (svcFilter.value === "all") return list;
   return list.filter((s: any) => s.type === svcFilter.value);
 });
+
+/* ==================== 拖拽排序（主页三区，存入用户配置随导出搬运） ==================== */
+const statsOrder = ref<string[]>([]);
+const servicesOrder = ref<string[]>([]);
+
+/** 把可见列表按新顺序重排，返回重排后的 id（供持久化写回） */
+function reorderIds(items: any[], newVis: string[], idOf: (x: any, i: number) => string): string[] {
+  const idx = new Map(newVis.map((id, i) => [id, i] as const));
+  // 先把原始索引固定下来：兜底键（如工具无 id 时用 index）不随排序过程漂移
+  return items
+    .map((x, i) => ({ k: idOf(x, i), r: idx.get(idOf(x, i)) ?? 1e9 }))
+    .sort((a, b) => a.r - b.r)
+    .map((x) => x.k);
+}
+
+const statsReo = useReorder("home:stats", {
+  getVisible: () => statCards.value.map((c) => c.key),
+  onReordered: (nv) => { statsOrder.value = reorderIds(statCards.value, nv, (c) => c.key); },
+});
+const servicesReo = useReorder("home:services", {
+  getVisible: () => filteredServices.value.map((s: any) => String(s.id)),
+  getFull: () => (sysInfo.value?.services || []).map((s: any) => String(s.id)),
+  onReordered: (nv) => { servicesOrder.value = reorderIds(filteredServices.value, nv, (s) => String(s.id)); },
+});
+/** 主页“快捷操作”网格只展示勾选了主页展示的工具；“更多”弹窗展示全部 */
+const homeTools = computed(() => toolsList.value.filter((t) => t.home !== false));
+/** 工具项的稳定标识：与 Go 侧 SetToolOrder 的匹配规则一致（id 优先，其次 key/path） */
+function toolKeyOf(t: ToolRow, i: number | string): string {
+  return String(t.id || t.key || t.path || i);
+}
+// 快捷操作的顺序不另存一份：直接回写配置里 tools 数组的顺序，
+// 与设置页「工具」表同一个真源，一边拖动另一边跟着变
+const toolsReo = useReorder("home:tools", {
+  getVisible: () => homeTools.value.map(toolKeyOf),
+  getFull: () => toolsList.value.map(toolKeyOf),
+  save: (ids) => GoTools?.SetToolOrder(ids),
+  onReordered: (_nv, full) => { toolsList.value = applyOrder(toolsList.value, full, toolKeyOf); },
+});
+
+const orderedStatCards = computed(() => applyOrder(statCards.value, statsOrder.value, (c) => c.key));
+const orderedServices = computed(() => applyOrder(filteredServices.value, servicesOrder.value, (s: any) => String(s.id)));
+// 工具区不再走 Order 表：配置里 tools 数组的顺序就是显示顺序
+const orderedTools = homeTools;
+const orderedAllTools = toolsList;
+
+/** “更多”弹窗（无蒙层）：展示全部工具，点一个即打开并收起 */
+const moreVisible = ref(false);
+function onMoreToolClick(item: ToolRow) {
+  moreVisible.value = false;
+  onToolClick(item);
+}
+
+async function loadHomeOrders() {
+  const [st, sv] = await Promise.all([loadOrder("home:stats"), loadOrder("home:services")]);
+  statsOrder.value = st; servicesOrder.value = sv;
+}
+
+/** 旧版把快捷操作顺序单独存在 order["home:tools"]，与设置页各排一份：并进配置的工具顺序后清掉该键 */
+async function migrateToolsOrder() {
+  const legacy = await loadOrder("home:tools");
+  if (!legacy.length) return;
+  try {
+    await GoTools?.SetToolOrder(legacy);
+    await GoTools?.SetListOrder("home:tools", []);
+    await loadTools();
+  } catch { /* 迁移失败不影响使用，下次进入再试 */ }
+}
 
 const SVC_TYPE_LABELS: Record<string, string> = {
   redis: "Redis", mysql: "MySQL", php: "PHP", nginx: "Nginx", npm: "Npm", docker: "Docker",
@@ -375,6 +461,8 @@ function pollSysInfo() {
 
 onMounted(async () => {
   await loadTools();
+  void loadHomeOrders();
+  void migrateToolsOrder();
   refreshSysInfo();
   sysTimer = setInterval(pollSysInfo, 5000);
   // 从隐藏态恢复时补一次，不让卡片停在隐藏前的数据
@@ -396,105 +484,6 @@ onUnmounted(() => {
 /* 统计卡片行：横纵间距由 a-row 的 gutter 提供，这里只留与下方内容块的间距 */
 .stat-cards {
   margin-bottom: var(--base-padding);
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: var(--base-padding);
-  padding: var(--base-padding);
-  background: var(--color-bg-2);
-  border-radius: var(--base-radius-default);
-  border: 1px solid var(--color-border-1);
-  transition: box-shadow 0.2s;
-}
-
-.stat-card:hover {
-  box-shadow: var(--shadow-2-bottom);
-}
-
-.stat-circle {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--base-radius-default);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--base-size-large-x);
-  flex-shrink: 0;
-}
-
-.stat-circle-cpu {
-  background: rgba(var(--arcoblue-6), 0.05);
-  color: rgb(var(--arcoblue-6));
-}
-
-.stat-circle-mem {
-  background: rgba(var(--cyan-6), 0.05);
-  color: rgb(var(--cyan-6));
-}
-
-.stat-circle-up {
-  background: rgba(var(--orange-6), 0.05);
-  color: rgb(var(--orange-6));
-}
-
-.stat-circle-go {
-  background: rgba(var(--purple-6), 0.05);
-  color: rgb(var(--purple-6));
-}
-
-.stat-circle-disk {
-  background: rgba(var(--green-6), 0.05);
-  color: rgb(var(--green-6));
-}
-
-.stat-circle-net {
-  background: rgba(var(--arcoblue-6), 0.05);
-  color: rgb(var(--arcoblue-6));
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.stat-label {
-  font-size: var(--base-size-small);
-  color: var(--color-text-3);
-}
-
-/* 大号数值：从下方主位移到标题行右侧 */
-.stat-big {
-  font-weight: bold;
-  font-size: var(--base-size-default);
-  line-height: 1.2;
-  color: var(--color-text-1);
-  white-space: nowrap;
-}
-
-.stat-unit {
-  font-size: var(--base-size-small);
-  font-weight: 400;
-  color: var(--color-text-3);
-  margin-left: var(--base-radius-small);
-}
-
-/* 详情小字：从右上角移到下方主位 */
-.stat-detail {
-  font-size: var(--base-size-small);
-  color: var(--color-text-4);
-  margin-top: var(--base-margin);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 服务实例卡片 */
@@ -534,6 +523,8 @@ onUnmounted(() => {
 .svc-card:hover {
   box-shadow: 0 4px 16px rgba(var(--primary-6), 0.08);
 }
+
+/* 拖拽排序反馈样式（.reorder-dragging/.reorder-over/[draggable] 光标）已下沉到全局 styles/index.scss，主页与各服务列表共用 */
 
 
 .svc-card-top {
@@ -640,6 +631,12 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+/* a-row(.arco-row) 的 flex-flow 简写带 wrap：纵向排布下 wrap 会把第二块
+   “本地服务实例”换到右侧新列，与右列时钟/快捷操作重叠。用更高优先级选择器强制不换行。 */
+.home-row .left-inner {
+  flex-wrap: nowrap;
+}
+
 .left-inner :deep(.arco-col:first-child) {
   flex: 0 0 auto;
 }
@@ -732,5 +729,31 @@ onUnmounted(() => {
 .tool-icon {
   font-size: 28px;
   color: inherit;
+}
+
+/* “更多”弹窗内的网格：四列、不滚动（交给弹窗自身），格子带名称 */
+.tools-grid-modal {
+  grid-template-columns: repeat(4, 1fr);
+  overflow-y: visible;
+  flex: none;
+}
+
+.tool-cell-named {
+  gap: 6px;
+  padding: 12px 8px;
+}
+
+.tool-cell-named .tool-icon {
+  font-size: 24px;
+}
+
+.tool-name {
+  font-size: var(--base-size-small);
+  color: var(--color-text-1);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 </style>

@@ -2,102 +2,129 @@
     <a-row class="redis-page" :gutter="6">
         <!-- 左侧固定 30%（连接上50% + 本地服务下50%），右侧主区域铺满剩余空间 -->
         <a-col :span="6" class="side-col">
-            <a-row class="redis-pages">
-                <a-col class="side-cols" :span="24">
-                    <a-card class="side-card card-head-tool" size="small" :body-style="{
-                        padding: 0
-                    }">
-                        <template #title>连接</template>
-                        <template #extra>
-                            <a-button size="small" @click="openAddModal()">
-                                新增连接
-                            </a-button>
+            <!-- 合并“外部连接”与“本地实例”为一个列表：单击只看右侧总览（未启动不拉起），双击才启动，用 a-tag 区分来源 -->
+            <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
+                <template #title>连接</template>
+                <template #extra>
+                    <div class="srv-head-actions">
+                        <a-button size="small" @click="openAddModal()">新增连接</a-button>
+                        <a-button size="small" @click="openInstModal()">新建实例</a-button>
+                        <a-button size="small" @click="openVersionsModal()">版本管理</a-button>
+                    </div>
+                </template>
+                <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
+                <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="Redis" />
+                <div class="inst-list">
+                    <common-item-card v-for="it in redisList" :key="it.key" :active="itemActive(it)"
+                        @click="clickRedisItem(it)" @dblclick="dblRedisItem(it)" v-bind="redisReo.handlers(it.key)"
+                        :class="{ 'reorder-dragging': redisReo.isDragging(it.key), 'reorder-over': redisReo.isOver(it.key) }">
+                        <template #status>
+                            <com-badge :status="it.live ? 'success' : 'normal'" :animated="it.live" />
                         </template>
-                        <a-list :bordered="false" size="small">
-                            <a-list-item v-for="c in savedConns" :key="c.id" @click="openConnection(c)">
-                                <a-space>
-                                    <com-badge :status="isOpen(c.id) ? 'success' : 'normal'" :animated="isOpen(c.id)" />
-                                    <div class="conn-name">{{ c.name || (c.host + ':' + c.port) }}</div>
-                                </a-space>
-                                <template #actions>
-                                    <a-dropdown trigger="hover" @select="(v: any) => onConnAction(v, c)">
-                                        <icon-more class="conn-more" @click.stop />
-                                        <template #content>
-                                            <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
-                                            <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                                            <a-doption value="del"><icon-delete /> 删除</a-doption>
-                                        </template>
-                                    </a-dropdown>
-                                </template>
-                            </a-list-item>
-                            <a-list-item v-if="savedConns.length === 0">
-                                <div class="conn-empty">暂无连接</div>
-                            </a-list-item>
-                        </a-list>
-                    </a-card>
-                </a-col>
-                <a-col class="side-cols mt6" :span="24">
-                    <a-card class="side-card card-head-tool" size="small" :body-style="{
-                        padding: 0
-                    }">
-                        <template #title>本地服务</template>
-                        <template #extra>
-                            <div class="srv-head-actions">
-                                <a-button size="small" @click="openInstModal()">
-                                    新建实例
-                                </a-button>
-                                <a-button size="small" @click="openVersionsModal()">
-                                    版本管理
-                                </a-button>
-                            </div>
+                        <template #title>
+                            <a-tooltip class="inst-name-tip" :content="it.name + ' · ' + it.sub">
+                                <span class="inst-name">{{ it.name }}</span>
+                            </a-tooltip>
                         </template>
-                        <!-- 引擎没起时先把话说明白：否则要等点「启动」撞一条管道错误才知道是 Docker 没跑 -->
-                        <common-docker-off class="srv-docker-off" :count="dockerInstCount" tool-label="Redis" />
-                        <a-list :bordered="false" size="small">
-                            <a-list-item v-for="inst in srvInstances" :key="inst.id">
-                                <a-space>
-                                    <com-badge :status="srvStates[inst.id]?.running ? 'success' : 'normal'"
-                                        :animated="!!srvStates[inst.id]?.running" />
-                                    <a-tooltip :content="inst.name + ':' + inst.port">
-                                        <span class="conn-name">{{ inst.name }}</span>
-                                    </a-tooltip>
-                                    <!-- 容器实例不占本机版本库，用镜像 tag 标身份 -->
-                                    <a-tooltip v-if="inst.mode === 'docker'"
-                                        :content="imgMissing(inst.image)
-                                            ? `镜像 ${inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
-                                            : `镜像 ${inst.image}：这就是该实例的 Redis 版本`">
-                                        <a-tag :color="imgMissing(inst.image) ? 'orange' : 'purple'">Docker
-                                            {{ imgTag(inst.image) }}</a-tag>
-                                    </a-tooltip>
-                                    <a-tag v-else color="arcoblue">v{{ inst.version }}</a-tag>
-                                </a-space>
-                                <template #actions>
-
-                                    <a-dropdown trigger="hover" @select="(v: any) => onSrvAction(v, inst)">
-                                        <icon-more class="conn-more" @click.stop />
-                                        <template #content>
-                                            <a-doption v-if="!srvStates[inst.id]?.running"
-                                                value="start"><icon-play-arrow />
-                                                启动</a-doption>
-                                            <a-doption v-else value="stop"><icon-pause /> 停止</a-doption>
-                                            <a-doption value="logs"><icon-list /> 日志/状态</a-doption>
-                                            <a-doption value="connect"><icon-link /> 连接</a-doption>
-                                            <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                                            <a-doption value="del"><icon-delete /> 删除</a-doption>
-                                        </template>
-                                    </a-dropdown>
+                        <template #extra>
+                            <!-- 删除改走气泡确认框：紧贴行内图标，不再弹居中大框 -->
+                            <a-popconfirm :content="delTip(it)" type="warning" position="lt" @ok="onDeleteItem(it)">
+                                <icon-delete class="conn-del" @click.stop />
+                            </a-popconfirm>
+                            <a-dropdown trigger="hover"
+                                @select="(v: any) => it.kind === 'instance' ? onSrvAction(v, it.inst) : onConnAction(v, it.conn)">
+                                <icon-more class="conn-more" @click.stop />
+                                <template #content>
+                                    <template v-if="it.kind === 'instance'">
+                                        <a-doption v-if="!it.live" value="start"><icon-play-arrow /> 启动</a-doption>
+                                        <a-doption v-else value="stop"><icon-pause /> 停止</a-doption>
+                                        <a-doption value="logs"><icon-list /> 日志/状态</a-doption>
+                                        <a-doption value="connect"><icon-link /> 连接</a-doption>
+                                        <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                                    </template>
+                                    <template v-else>
+                                        <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
+                                        <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                                    </template>
                                 </template>
-                            </a-list-item>
-                            <a-list-item v-if="srvInstances.length === 0">
-                                <div class="conn-empty">暂无实例</div>
-                            </a-list-item>
-                        </a-list>
-                    </a-card>
-                </a-col>
-            </a-row>
+                            </a-dropdown>
+                        </template>
+                        <div class="inst-tags">
+                            <!-- 来源标识：实例 / 外部链接 -->
+                            <a-tag v-if="it.kind === 'instance'" color="green" size="small">实例</a-tag>
+                            <a-tag v-else color="gray" size="small">外部链接</a-tag>
+                            <!-- 实例：版本/镜像身份；外部：地址 -->
+                            <template v-if="it.kind === 'instance'">
+                                <a-tooltip v-if="it.inst.mode === 'docker'"
+                                    :content="imgMissing(it.inst.image)
+                                        ? `镜像 ${it.inst.image} 本机还没有，启动时会先自动拉取（可能几分钟）`
+                                        : `镜像 ${it.inst.image}：这就是该实例的 Redis 版本`">
+                                    <a-tag :color="imgMissing(it.inst.image) ? 'orange' : 'purple'" size="small">Docker
+                                        {{ imgTag(it.inst.image) }}</a-tag>
+                                </a-tooltip>
+                                <a-tag v-else color="arcoblue" size="small">v{{ it.inst.version }}</a-tag>
+                            </template>
+                            <span v-else class="conn-sub">{{ it.sub }}</span>
+                        </div>
+                    </common-item-card>
+                    <div v-if="redisList.length === 0" class="conn-empty">暂无连接或实例</div>
+                </div>
+            </a-card>
         </a-col>
         <a-col :span="18" class="main-col">
-            <a-card class="main-panel empty-card card-head-tool" v-if="openTabs.length === 0">
+            <!-- 本地实例总览：单击未启动实例只看这里（不自动启动）；启动走「启动」按钮或双击行，主页点卡片也落到这里 -->
+            <a-card v-if="srvOvInst" class="main-panel conn-card card-head-tool" :body-style="{ padding: 0 }">
+                <template #title>
+                    <a-space>
+                        <span class="status-addr">{{ srvOvInst.name }}(本地)</span>
+                        <a-tag size="small" color="arcoblue">v{{ srvOvState?.version || srvOvInst.version }}</a-tag>
+                        <a-tag size="small" :color="srvOvState?.running ? 'green' : 'gray'">{{
+                            srvOvState?.running ? '运行中' : '已停止' }}</a-tag>
+                        <a-tag v-if="srvOvInst.mode === 'docker'" size="small" color="purple">Docker
+                            {{ imgTag(srvOvState?.image || srvOvInst.image) }}</a-tag>
+                    </a-space>
+                </template>
+                <template #extra>
+                    <a-space>
+                        <a-button v-if="!srvOvState?.running" size="small" type="primary" :loading="ovBusy === 'start'"
+                            @click="ovStartFromOv()">
+                            <template #icon><icon-play-arrow /></template>启动
+                        </a-button>
+                        <a-button v-else size="small" type="primary" @click="connectInstance(srvOvInst)">
+                            <template #icon><icon-link /></template>打开总览
+                        </a-button>
+                        <a-button size="small" @click="openLogs(srvOvInst!)">
+                            <template #icon><icon-list /></template>日志
+                        </a-button>
+                        <a-button size="small" @click="refreshSrvStates()">
+                            <template #icon><icon-refresh /></template>刷新
+                        </a-button>
+                    </a-space>
+                </template>
+                <div class="ov-body">
+                    <a-row :gutter="[12, 12]" class="stat-row">
+                        <a-col v-for="c in srvOvCards" :key="c.key" :xs="24" :sm="12" :md="8">
+                            <common-stat-card :icon="c.icon" :tone="c.tone" :label="c.title" :value="c.value"
+                                :detail="c.sub" :tip="c.tip" :ready="c.ready" />
+                        </a-col>
+                    </a-row>
+                    <div class="info-section">
+                        <div class="info-title">实例信息</div>
+                        <div class="info-list">
+                            <common-info-row grey label="地址" :value="`127.0.0.1:${srvOvInst.port}`" />
+                            <common-info-row grey label="运行模式"
+                                :value="srvOvInst.mode === 'docker' ? 'Docker 容器' : '本地进程'" />
+                            <common-info-row grey label="数据目录" :value="srvOvInst.dataDir || '-'" />
+                            <common-info-row grey label="持久化" :value="srvOvInst.appendOnly ? 'AOF 开启' : '仅 RDB 快照'" />
+                            <common-info-row grey label="最大内存"
+                                :value="srvOvInst.maxMemoryMB ? srvOvInst.maxMemoryMB + ' MB' : '未限制'" />
+                            <common-info-row grey label="密码" :value="srvOvInst.password ? '已设置' : '无'" />
+                        </div>
+                    </div>
+                </div>
+            </a-card>
+
+            <a-card class="main-panel empty-card card-head-tool" v-else-if="openTabs.length === 0">
                 <!-- 空状态 -->
                 <a-empty description="可以从左边选择并打开连接">
                     <a-button size="small" @click="openAddModal()">
@@ -123,9 +150,10 @@
                     <!-- 子标签 -->
                     <a-radio-group v-model="st.activeSubTab" type="button" size="medium" @change="onSubTabChange">
                         <a-radio value="status"><icon-dashboard /> 状态</a-radio>
-                        <a-radio value="keys"><icon-list /> 键详情</a-radio>
-                        <a-radio value="slowlog"><icon-clock-circle /> 慢日志</a-radio>
-                        <a-radio value="monitor"><icon-scan /> 监控命令</a-radio>
+                        <!-- 实例停止时只留状态页：数据子页全部入口隐藏 -->
+                        <a-radio v-if="!instStopped" value="keys"><icon-list /> 键详情</a-radio>
+                        <a-radio v-if="!instStopped" value="slowlog"><icon-clock-circle /> 慢日志</a-radio>
+                        <a-radio v-if="!instStopped" value="monitor"><icon-scan /> 监控命令</a-radio>
                     </a-radio-group>
                 </template>
 
@@ -141,35 +169,59 @@
                             </a-space>
                         </template>
                         <template #extra>
-                            <a-button size="small" @click="loadStatus()"><template #icon><icon-refresh /></template>刷新</a-button>
+                            <a-space>
+                                <!-- 本地实例：总览右上角直接给运维按钮，省去回左栏点菜单 -->
+                                <template v-if="activeInst">
+                                    <a-button v-if="!srvStates[activeInst.id]?.running" size="small" type="primary"
+                                        :loading="ovBusy === 'start'" @click="ovToggleRun()">
+                                        <template #icon><icon-play-arrow /></template>启动
+                                    </a-button>
+                                    <a-popconfirm v-else :content="`停止实例「${activeInst.name}」？正在处理的请求会中断。`"
+                                        type="warning" position="lt" :disabled="!!ovBusy" @ok="ovToggleRun()">
+                                        <a-button size="small" status="danger" :loading="ovBusy === 'stop'">
+                                            <template #icon><icon-pause /></template>停止
+                                        </a-button>
+                                    </a-popconfirm>
+                                    <a-button size="small" :loading="ovBusy === 'restart'"
+                                        :disabled="!!ovBusy && ovBusy !== 'restart'" @click="ovRestart()">重启</a-button>
+                                    <a-button size="small" @click="openLogs(activeInst)">
+                                        <template #icon><icon-list /></template>日志
+                                    </a-button>
+                                </template>
+                                <a-button size="small" @click="loadStatus()"><template #icon><icon-refresh /></template>刷新</a-button>
+                            </a-space>
                         </template>
-                        <div class="stat-cards">
-                            <div class="stat-card">
-                                <div class="stat-circle stat-circle-up"><icon-clock-circle /></div>
-                                <div class="stat-info">
-                                    <div class="stat-label">运行时间</div>
-                                    <div class="stat-value">{{ formatUptime(st.status?.uptimeSeconds || 0) }}</div>
-                                </div>
+                        <div class="ov-body">
+                            <!-- 关键指标：版式对齐 nginx（彩色圆角图标 + 标签/数值同排 + 下方明细） -->
+                            <a-row :gutter="[12, 12]" class="stat-row">
+                                <a-col v-for="c in redisStatCards" :key="c.key" :xs="24" :sm="12" :md="8">
+                                    <common-stat-card :icon="c.icon" :tone="c.tone" :label="c.title" :value="c.value"
+                                        :detail="c.sub" :tip="c.tip" :ready="c.ready" />
+                                </a-col>
+                            </a-row>
+
+                            <!-- 快捷操作：状态页只留高频入口，跳其它子页；实例停止时一并隐藏 -->
+                            <div v-if="!instStopped" class="quick-bar">
+                                <a-button size="small" @click="goSubTab('keys')">
+                                    <template #icon><icon-list /></template>浏览键
+                                </a-button>
+                                <a-button size="small" @click="goSubTab('slowlog')">
+                                    <template #icon><icon-clock-circle /></template>慢日志
+                                </a-button>
+                                <a-button size="small" @click="goSubTab('monitor')">
+                                    <template #icon><icon-scan /></template>监控命令
+                                </a-button>
                             </div>
-                            <div class="stat-card">
-                                <div class="stat-circle stat-circle-client"><icon-user /></div>
-                                <div class="stat-info">
-                                    <div class="stat-label">已连客户端</div>
-                                    <div class="stat-value">{{ st.status?.connectedClients ?? 0 }}</div>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-circle stat-circle-key"><icon-list /></div>
-                                <div class="stat-info">
-                                    <div class="stat-label">键总数</div>
-                                    <div class="stat-value">{{ st.status?.totalKeys ?? 0 }}</div>
-                                </div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-circle stat-circle-mem"><icon-thunderbolt /></div>
-                                <div class="stat-info">
-                                    <div class="stat-label">内存使用</div>
-                                    <div class="stat-value">{{ st.status?.usedMemoryHuman || '0' }}</div>
+
+                            <!-- 连接信息：通用信息行（标签 | 值），与 nginx 站点信息同构 -->
+                            <div class="info-section">
+                                <div class="info-title">连接信息</div>
+                                <div class="info-list">
+                                    <common-info-row grey label="地址" :value="st.status?.host || activeTabName || '-'" />
+                                    <common-info-row grey label="数据库" :value="String(activeCfg?.db ?? 0)" />
+                                    <common-info-row grey label="运行模式" :value="st.status?.mode || 'standalone'" />
+                                    <common-info-row grey label="主从角色" :value="st.status?.role || 'master'" />
+                                    <common-info-row grey label="最大内存" :value="st.status?.maxMemoryHuman || '未限制'" />
                                 </div>
                             </div>
                         </div>
@@ -318,47 +370,7 @@
     </a-row>
 
     <!-- 新增/编辑连接 -->
-    <a-modal v-model:visible="st.connModal" :title="st.connEditing ? '编辑连接' : '添加新连接'" :width="460"
-        @ok="saveConnection">
-        <a-form :model="connForm" layout="vertical">
-            <a-form-item field="name" label="连接名称">
-                <a-input v-model="connForm.name" placeholder="例如 127.0.0.1" />
-            </a-form-item>
-            <a-row :gutter="12">
-                <a-col :span="16">
-                    <a-form-item field="host" label="主机">
-                        <a-input v-model="connForm.host" placeholder="127.0.0.1" />
-                    </a-form-item>
-                </a-col>
-                <a-col :span="8">
-                    <a-form-item field="port" label="端口">
-                        <a-input-number v-model="connForm.port" :min="1" :max="65535" />
-                    </a-form-item>
-                </a-col>
-            </a-row>
-            <a-row :gutter="12">
-                <a-col :span="16">
-                    <a-form-item field="password" label="密码">
-                        <a-input-password v-model="connForm.password" placeholder="无密码留空" />
-                    </a-form-item>
-                </a-col>
-                <a-col :span="8">
-                    <a-form-item field="db" label="数据库">
-                        <a-input-number v-model="connForm.db" :min="0" :max="255" />
-                    </a-form-item>
-                </a-col>
-            </a-row>
-            <a-form-item label="保存位置">
-                <a-radio-group v-model="st.saveTarget" type="button" size="medium">
-                    <a-radio value="file"><icon-save /> 文件</a-radio>
-                    <a-radio value="cache"><icon-storage /> 缓存</a-radio>
-                </a-radio-group>
-                <template #extra>
-                    <div>文件：保存到用户配置目录，跨会话持久；缓存：保存到本地 localStorage。</div>
-                </template>
-            </a-form-item>
-        </a-form>
-    </a-modal>
+    <conn-modal v-model:visible="st.connModal" :editing="st.connEditing" :conn="editConn" @save="onConnSave" />
 
     <!-- 新增键 -->
     <a-modal v-model:visible="st.addKeyModal" title="新增键 (String)" :width="460" @ok="doAddKey">
@@ -403,259 +415,34 @@
         </a-form>
     </a-modal>
 
-    <!-- 本地服务：版本管理（宽度 820：Docker 镜像表带上「使用实例」列后 680 会横向溢出） -->
-    <!-- 固定高度：三个页签内容高矮不一，不钉住的话切一下弹窗就跳一次高度 -->
-    <a-modal v-model:visible="versionsVisible" title="Redis 版本管理" :width="820" :footer="false"
-        :body-style="{ height: 'min(600px, calc(100vh - 220px))', overflowY: 'auto' }">
-        <a-space direction="vertical" fill :size="12">
-            <!-- 类型切换：本地 / 线上 / Docker 只看一类，不用在长弹窗里找 -->
-            <a-radio-group size="medium" v-model="verTab" type="button">
-                <a-radio value="local">已安装版本 {{ localVersions.length }}</a-radio>
-                <a-radio value="remote">{{ sysPkg ? '仓库可安装' : '在线可安装' }} {{ remoteVersions.length }}</a-radio>
-                <a-radio value="docker">Docker 实例 {{ dockerInstCount }}</a-radio>
-            </a-radio-group>
-            <!-- 已安装版本 -->
-            <div v-show="verTab === 'local'">
-            <a-card size="small" :body-style="{ padding: '8px 12px' }">
-                <template #title><span class="ver-sec-title"><icon-storage /> 已安装版本</span></template>
-                <div class="ver-scroll">
-                    <div v-for="v in localVersions" :key="v.version + v.source" class="ver-item">
-                        <a-tag size="small"
-                            :color="v.source === 'bundled' ? 'green' : (v.source === 'downloaded' ? 'arcoblue' : (v.source === 'system' ? 'gray' : 'orange'))">{{
-                                srcLabel(v.source) }}</a-tag>
-                        <span class="ver-name">Redis {{ v.version }}</span>
-                        <a-tooltip :content="v.path">
-                            <span class="ver-path">{{ v.path }}</span>
-                        </a-tooltip>
-                        <a-popconfirm :content="`确定删除 Redis ${v.version}？若仍有运行中的实例引用该版本会被拒绝。`"
-                            type="warning" position="lt" :disabled="v.source === 'bundled' || v.source === 'system'" @ok="removeVersion(v)">
-                            <a-button size="small" status="danger" :disabled="v.source === 'bundled' || v.source === 'system'">删除</a-button>
-                        </a-popconfirm>
-                    </div>
-                    <a-empty v-if="localVersions.length === 0" :image="false" description="尚未安装任何版本，可从下方在线安装或添加本机目录" />
-                </div>
-                <div class="ver-actions">
-                    <a-input v-model="localDirInput" size="small" placeholder="本机 redis-server 所在目录" allow-clear />
-                    <a-button size="small" @click="chooseLocalDir"><template
-                            #icon><icon-folder /></template>选目录</a-button>
-                    <a-button size="small" @click="addLocalDir">添加</a-button>
-                </div>
-                <div v-if="sysPkg" class="ver-hint">版本由发行版仓库提供：在上面选一个版本点「安装」即可（包管理器装到标准路径并注册服务）；
-                    也可把已有的 redis-server 目录加进来
-                </div>
-                <div v-else class="ver-hint">离线安装：将 redis zip 放入 <span class="mono">{{ srvServersDir }}</span> 后点「安装」即可</div>
-            </a-card>
-            </div>
+    <!-- 版本管理：拆到 components/VersionsModal.vue（本地/线上/Docker 三页签 + 安装进度与 redis:install 事件） -->
+    <versions-modal v-model:visible="versionsVisible" :srv-instances="srvInstances" :srv-states="srvStates"
+        @create-instance="onCreateFromImage" @edit-instance="onEditInstanceById" @refresh-states="refreshSrvStates" />
 
-            <!-- Docker 镜像与容器：Docker 实例的「版本」就是镜像 tag（redis:7.4-alpine） -->
-            <div v-show="verTab === 'docker'">
-                <docker-images keyword="redis" tool-label="Redis" repo="redis" :presets="redisImagePresets"
-                    :instances="srvInstances" :states="srvStates" :reload-key="verReload" @create="newInstanceFromImage"
-                    @use="editSrvById" @changed="refreshSrvStates" />
-            </div>
+    <!-- 本地服务：实例编辑：拆到 components/InstanceModal.vue（表单 + 镜像候选 + 端口探测 + 保存/切换重启） -->
+    <instance-modal v-model:visible="instVisible" :edit="editingInst" :preset-image="presetImage"
+        :srv-instances="srvInstances" :srv-states="srvStates" @saved="onInstanceSaved" />
 
-            <!-- 在线版本 -->
-            <div v-show="verTab === 'remote'">
-            <a-card size="small" :body-style="{ padding: '8px 12px' }">
-                <template #title>
-                    <span class="ver-sec-title"><icon-cloud /> {{ sysPkg ? '仓库可安装（发行版包，装到系统标准路径）' : '在线版本（GitHub redis-windows 发行版，>=7.0）' }}</span>
-                </template>
-                <template #extra>
-                    <a-button size="small" :loading="remoteLoading" @click="loadRemoteVersions">
-                        <template #icon><icon-refresh /></template>刷新
-                    </a-button>
-                </template>
-                <div class="ver-scroll">
-                    <div v-for="r in remoteVersions" :key="r.version" class="ver-item">
-                        <span class="ver-name">Redis {{ r.version }}</span>
-                        <span class="ver-path">{{ remoteVerText(r) }}</span>
-                        <a-button size="small"
-                            :disabled="!!installProgress[r.version] || installedSet.has(r.version)"
-                            @click="installVersion(r)">{{ installedSet.has(r.version) ? '已安装' : '安装' }}</a-button>
-                    </div>
-                    <a-empty v-if="remoteVersions.length === 0" :image="false"
-                        :description="remoteLoading ? '加载中…' : '点「刷新」获取版本列表'" />
-                </div>
-                <div v-for="(p, ver) in installProgress" :key="'p' + ver" class="inst-prog">
-                    <div class="inst-prog-row">
-                        <span class="ver-name">{{ ver }}</span>
-                        <a-progress :percent="(p.percent || 0) / 100" size="small"
-                            :status="p.stage === 'error' ? 'danger' : 'normal'" style="flex: 1" />
-                        <span class="inst-stage">{{ stageText(p) }}</span>
-                        <a-button v-if="p.stage === 'error'" size="small" status="danger"
-                            @click="retryInstall(ver as string)">
-                            <template #icon><icon-refresh /></template>重试
-                        </a-button>
-                    </div>
-                    <div v-if="p.stage === 'error' && p.note" class="inst-err">
-                        <a-tooltip :content="p.note" position="tl">
-                            <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
-                        </a-tooltip>
-                    </div>
-                </div>
-            </a-card>
-
-            <!-- 安装日志 -->
-            <a-card size="small" :body-style="{ padding: '8px 12px' }">
-                <template #title><span class="ver-sec-title"><icon-history /> 安装日志</span></template>
-                <template #extra>
-                    <a-button size="small" @click="installLogs = []"><template
-                            #icon><icon-delete /></template>清空</a-button>
-                </template>
-                <div class="ver-scroll inst-log">
-                    <div v-for="(l, i) in installLogs" :key="i" class="inst-log-line">{{ l }}</div>
-                    <a-empty v-if="installLogs.length === 0" :image="false" description="暂无安装记录" />
-                </div>
-            </a-card>
-            </div>
-        </a-space>
-    </a-modal>
-
-    <!-- 本地服务：实例编辑 -->
-    <a-modal v-model:visible="instVisible" :title="instForm.id ? '编辑实例' : '新建实例'" :width="520"
-        :body-style="{ maxHeight: '72vh' }" @ok="saveInstance">
-        <!-- 引擎没起时先把原因说清楚，否则要到启动那一步才报错；吸顶不占表单位 -->
-        <common-modal-tip v-if="instForm.mode === 'docker' && dockerErr" :text="dockerErr">
-          <a-button size="small" @click="openDockerWindow">打开 Docker 面板</a-button>
-        </common-modal-tip>
-        <a-form :model="instForm" layout="vertical" class="inst-form">
-            <a-form-item field="name" label="实例名称">
-                <a-input v-model="instForm.name" placeholder="例如 local-dev" />
-            </a-form-item>
-            <a-form-item field="mode" label="运行模式">
-                <a-radio-group size="medium" v-model="instForm.mode" type="button" @change="onModeChange">
-                    <a-radio value="local"><icon-computer /> 本地</a-radio>
-                    <a-radio value="docker"><icon-experiment /> Docker</a-radio>
-                </a-radio-group>
-                <template #extra>
-                    <template v-if="instForm.mode === 'docker'">
-                        容器内跑 redis-server，数据目录挂载到 /data；首次启动会自动拉取镜像（可能几分钟）
-                    </template>
-                    <template v-else>使用本机插件目录下的 redis-server，可在「版本管理」获取</template>
-                </template>
-            </a-form-item>
-            <!-- 本地：版本单占一行；Docker：镜像 + 容器名同一行，两种模式行数一致，切模式时弹窗高度不跳 -->
-            <a-form-item v-if="instForm.mode !== 'docker'" field="version" label="Redis 版本" tooltip="需已安装，可在「版本管理」获取">
-                <a-select v-model="instForm.version" placeholder="需已安装，可在「版本管理」获取">
-                    <a-option v-for="v in localVersions" :key="v.version" :value="v.version">
-                        {{ v.version }}（{{ srcLabel(v.source) }}）
-                    </a-option>
-                </a-select>
-            </a-form-item>
-            <a-row v-else :gutter="12">
-                <a-col :span="14">
-                    <a-form-item class="img-item" field="image" label="镜像" required>
-                        <div class="img-row">
-                            <a-select v-model="instForm.image" class="img-select" placeholder="选择已安装镜像"
-                                allow-create filterable :loading="dockerImagesLoading">
-                                <!-- 自闭合的 a-option 没有文字，label 会是空串，下拉里全是空白行 —— 显式写上文字 -->
-                                <a-option v-for="im in imageOptions" :key="im" :value="im">{{ im }}</a-option>
-                                <template #empty>
-                                    <a-empty :image="false" description="无可用镜像" />
-                                </template>
-                            </a-select>
-                            <!-- 配镜像时随手打开 Docker 管理窗口（拉取 / 看进度） -->
-                            <a-tooltip content="打开 Docker 管理窗口：拉镜像、看拉取进度">
-                                <a-button size="small" class="img-open" @click="openDockerWindow">
-                                    <template #icon><icon-storage /></template>
-                                </a-button>
-                            </a-tooltip>
-                        </div>
-                        <template #help>
-                            <span v-if="dockerImagesLoading">正在读取本地镜像…</span>
-                            <span v-else-if="!imageOptions.length && !instForm.image" class="img-none">
-                                本地无可用镜像，<a-link @click="openDockerWindow">点击去安装</a-link>
-                            </span>
-                        </template>
-                    </a-form-item>
-                </a-col>
-                <a-col :span="10">
-                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-redis-实例ID">
-                        <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
-                    </a-form-item>
-                </a-col>
-            </a-row>
-            <a-row :gutter="12">
-                <a-col :span="12">
-                    <a-form-item field="port" label="端口" :error="portError"
-                        tooltip="只监听 127.0.0.1，Docker 与本地模式一样不对外暴露">
-                        <a-input-number v-model="instForm.port" :min="1" :max="65535"
-                            @change="portError = ''" @blur="checkPortTaken" />
-                    </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                    <a-form-item field="maxMemoryMB" label="最大内存 (MB)" tooltip="0 = 不限">
-                        <a-input-number v-model="instForm.maxMemoryMB" :min="0" />
-                    </a-form-item>
-                </a-col>
-            </a-row>
-            <a-form-item field="password" label="密码" tooltip="留空 = 不设置 requirepass">
-                <a-input-password v-model="instForm.password" placeholder="留空则不设置" />
-            </a-form-item>
-            <a-form-item field="appendOnly" label="持久化 AOF" tooltip="开启后每次写入追加到 appendonly.aof，重启不丢数据">
-                <a-switch v-model="instForm.appendOnly" />
-            </a-form-item>
-            <a-form-item field="dataDir" label="数据目录"
-                :tooltip="instForm.mode === 'docker' ? 'Docker 模式该目录会挂载进容器 /data，RDB/AOF 都落在这儿' : '留空 = 程序数据目录下按实例 ID 分配'">
-                <a-input v-model="instForm.dataDir" placeholder="空 = 程序数据目录下按 ID 分配" />
-            </a-form-item>
-        </a-form>
-    </a-modal>
-
-    <!-- 本地服务：日志/状态 -->
-    <a-modal v-model:visible="logsVisible" :title="logsInst ? `实例 ${logsInst.name}（:${logsInst.port}）` : '实例日志'"
-        :width="660" :footer="false">
-        <div v-if="logsStatus" class="ls-grid">
-            <div class="ls-item"><span>状态</span><b :class="{ ok: logsStatus.running }">{{ logsStatus.running ? '运行中'
-                : '已停止'
-                    }}</b></div>
-            <div class="ls-item"><span>版本</span><b>{{ logsStatus.version || '-' }}</b></div>
-            <div class="ls-item"><span>运行模式</span><b>{{ logsStatus.mode === 'docker' ? 'Docker 容器' : '本地进程'
-                    }}</b></div>
-            <!-- 容器里 redis-server 的 pid 在虚拟机 namespace，报给看只会误导，改看容器名与容器状态 -->
-            <div class="ls-item" v-if="logsStatus.mode === 'docker'">
-                <span>容器</span>
-                <a-tooltip :content="logsStatus.containerId || logsStatus.container || '-'">
-                    <b>{{ logsStatus.container || '-' }}{{ logsStatus.containerState ? `（${logsStatus.containerState}）` :
-                            '' }}</b>
-                </a-tooltip>
-            </div>
-            <div class="ls-item" v-else><span>PID</span><b>{{ logsStatus.pid || '-' }}</b></div>
-            <div class="ls-item"><span>运行时长</span><b>{{ fmtUptimeS(logsStatus.uptimeSeconds) }}</b></div>
-            <div class="ls-item"><span>已连客户端</span><b>{{ logsStatus.connectedClients ?? '-' }}</b></div>
-            <div class="ls-item"><span>键总数</span><b>{{ logsStatus.totalKeys ?? '-' }}</b></div>
-            <div class="ls-item"><span>内存使用</span><b>{{ logsStatus.usedMemoryHuman || '-' }}</b></div>
-        </div>
-        <div ref="logBoxRef" class="ls-log">
-            <div v-for="(l, i) in logsLines" :key="i" class="ls-line">{{ l }}</div>
-            <div v-if="logsLines.length === 0" class="conn-empty">暂无日志</div>
-        </div>
-        <div class="ls-actions">
-            <a-button size="small" @click="logsLines = []"><template #icon><icon-delete /></template>清空</a-button>
-            <a-button size="small" :disabled="!logsStatus?.running" @click="connectInstance(logsInst)">
-                <template #icon><icon-link /></template>连接此实例
-            </a-button>
-        </div>
-    </a-modal>
+    <!-- 本地服务：日志/状态：拆到 components/LogsModal.vue（自持日志与状态轮询） -->
+    <logs-modal v-model:visible="logsVisible" :inst="logsInst" @connect="connectInstance" />
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { Message, Modal } from "@arco-design/web-vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { Message } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
-import { useToolWindow } from "@/views/index/useToolWindow";
-import { remoteVerText, useSysPkg } from "@/utils/caps";
-import { restoreInstalls } from "@/store/modules/tasks";
+import { useReorder, applyOrder, loadOrder } from "@/utils/reorder";
+import { imgTag, formatTTL, buildRedisStatCards, buildRedisSrvStatCards, type ConnConfig, type SrvInstanceConfig, type RedisListItem } from "./helpers";
+import ConnModal from "./components/ConnModal.vue";
+import InstanceModal from "./components/InstanceModal.vue";
+import VersionsModal from "./components/VersionsModal.vue";
+import LogsModal from "./components/LogsModal.vue";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
-/** 系统包模式（Linux）：版本来自发行版仓库，没有绿色版 zip 那套离线安装 */
-const sysPkg = useSysPkg();
-
 const CACHE_KEY = "redis_connections_cache";
 
-interface ConnConfig { id: string; name: string; host: string; port: number; password: string; db: number }
 interface OpenTab { id: string; name: string; cfg: ConnConfig }
 
 /** 已保存的连接列表 */
@@ -683,18 +470,28 @@ const st = reactive({
     // 弹窗
     connModal: false,
     connEditing: false,
-    saveTarget: "file",
     addKeyModal: false,
     batchKeyModal: false,
 });
 
-const connForm = reactive<ConnConfig>({ id: "", name: "", host: "127.0.0.1", port: 6379, password: "", db: 0 });
+/** 连接弹窗的编辑目标（新增为 null） */
+const editConn = ref<ConnConfig | null>(null);
+
 const keyForm = reactive({ key: "", value: "", ttl: 0 });
 const batchForm = reactive({ keyPrefix: "key", valuePrefix: "content", start: 1, end: 100, ttl: 0 });
 const batchGenerating = ref(false);
 
 const activeTabName = computed(() => openTabs.value.find((t) => t.id === st.activeTab)?.name || "");
 const activeCfg = computed(() => openTabs.value.find((t) => t.id === st.activeTab)?.cfg);
+
+/** 状态页指标卡：构造逻辑下沉到 helpers.buildRedisStatCards，版式对齐 nginx */
+const redisStatCards = computed(() => buildRedisStatCards(st.status));
+
+/** 从状态页跳到其它子页：切子标签并触发对应数据加载 */
+function goSubTab(tab: string) {
+    st.activeSubTab = tab;
+    onSubTabChange();
+}
 
 const isOpen = (id: string) => openTabs.value.some((t) => t.id === id);
 
@@ -719,11 +516,11 @@ async function loadConnections() {
     savedConns.value = (list || []).map((c) => ({ ...c }));
 }
 
-async function persistConnections() {
+async function persistConnections(target: string) {
     const data = JSON.parse(JSON.stringify(savedConns.value));
     // 缓存始终镜像一份，避免丢失
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-    if (st.saveTarget === "file") {
+    if (target === "file") {
         try {
             await GoTools.RedisSaveConnections(data);
         } catch (e) {
@@ -734,55 +531,46 @@ async function persistConnections() {
 
 function openAddModal() {
     st.connEditing = false;
-    Object.assign(connForm, { id: "", name: "", host: "127.0.0.1", port: 6379, password: "", db: 0 });
+    editConn.value = null;
     st.connModal = true;
 }
 
 function openEditModal(c: ConnConfig) {
     st.connEditing = true;
-    Object.assign(connForm, { ...c });
+    editConn.value = { ...c };
     st.connModal = true;
 }
 
-async function saveConnection() {
-    if (!connForm.host) {
-        Message.warning("请填写主机");
-        return;
-    }
-    const item: ConnConfig = { ...connForm };
+/* 连接表单与测试连接已迁入 components/ConnModal.vue，弹窗保存时回传连接与目标位置 */
+async function onConnSave(conn: ConnConfig, saveTarget: string) {
+    const item: ConnConfig = { ...conn };
     if (!item.name) item.name = `${item.host}:${item.port}`;
-    if (st.connEditing) {
+    if (st.connEditing && item.id) {
         const i = savedConns.value.findIndex((c) => c.id === item.id);
         if (i >= 0) savedConns.value[i] = item;
+        else savedConns.value.push(item);
     } else {
         item.id = "c" + Date.now().toString(36);
         savedConns.value.push(item);
     }
-    await persistConnections();
+    await persistConnections(saveTarget);
     st.connModal = false;
-    Message.success("已保存到" + (st.saveTarget === "file" ? "文件" : "缓存"));
+    Message.success("已保存到" + (saveTarget === "file" ? "文件" : "缓存"));
 }
 
 function onConnAction(v: string, c: ConnConfig) {
     if (v === "open") openConnection(c);
     else if (v === "edit") openEditModal(c);
-    else if (v === "del") confirmDeleteConn(c);
 }
 
-function confirmDeleteConn(c: ConnConfig) {
-    Modal.warning({
-        title: "删除连接",
-        content: `确定删除连接「${c.name}」？`,
-        hideCancel: false,
-        onOk: async () => {
-            if (isOpen(c.id)) closeTab(c.id);
-            savedConns.value = savedConns.value.filter((x) => x.id !== c.id);
-            await persistConnections();
-        },
-    });
+async function doDeleteConn(c: ConnConfig) {
+    if (isOpen(c.id)) closeTab(c.id);
+    savedConns.value = savedConns.value.filter((x) => x.id !== c.id);
+    await persistConnections("file");
 }
 
 async function openConnection(c: ConnConfig) {
+    srvOvInst.value = null; // 进连接工作区就退出「实例总览」态
     if (isOpen(c.id)) {
         switchTab(c.id);
         return;
@@ -827,6 +615,14 @@ function onSubTabChange() {
 
 function loadSubTab() {
     if (!st.activeTab) return;
+    // 本地实例已停止：Go 侧那条连接随进程一起失效，再请求只会拿到「连接未打开」，
+    // 顺手把旧快照清掉，不要把停机前的数字当成实时值继续展示
+    if (instStopped.value) {
+        st.status = null;
+        st.keys = [];
+        st.slowlog = [];
+        return;
+    }
     if (st.activeSubTab === "status") loadStatus();
     else if (st.activeSubTab === "keys") reloadKeys();
     else if (st.activeSubTab === "slowlog") loadSlowlog();
@@ -962,7 +758,7 @@ const slowCols = [
     { title: "序号", dataIndex: "id", width: 80 },
     { title: "耗时(μs)", dataIndex: "duration", width: 110 },
     { title: "时间", slotName: "time", width: 170 },
-    { title: "命令", dataIndex: "command" },
+    { title: "命令", dataIndex: "command", ellipsis: true, tooltip: true },
     { title: "客户端", dataIndex: "clientAddr", width: 160 },
 ];
 const slowData = computed(() =>
@@ -998,21 +794,21 @@ async function stopMonitor() {
 
 const hashCols = [
     { title: "Field", dataIndex: "field", width: 240, ellipsis: true, tooltip: true },
-    { title: "Value", dataIndex: "value" },
+    { title: "Value", dataIndex: "value", ellipsis: true, tooltip: true },
 ];
 const hashData = computed(() => Object.entries(st.keyValue.hash || {}).map(([field, value]) => ({ field, value })));
 
 const listCols = [
     { title: "#", dataIndex: "idx", width: 70 },
-    { title: "Value", dataIndex: "value" },
+    { title: "Value", dataIndex: "value", ellipsis: true, tooltip: true },
 ];
 const listData = computed(() => (st.keyValue.list || []).map((value: string, i: number) => ({ idx: i, value })));
 
-const setCols = [{ title: "Member", dataIndex: "value" }];
+const setCols = [{ title: "Member", dataIndex: "value", ellipsis: true, tooltip: true }];
 const setData = computed(() => (st.keyValue.set || []).map((value: string) => ({ value })));
 
 const zsetCols = [
-    { title: "Member", dataIndex: "member" },
+    { title: "Member", dataIndex: "member", ellipsis: true, tooltip: true },
     { title: "Score", dataIndex: "score", width: 140 },
 ];
 const zsetData = computed(() => st.keyValue.zset || []);
@@ -1020,23 +816,6 @@ const zsetData = computed(() => st.keyValue.zset || []);
 const strLines = computed<string[]>(() => String(st.keyValue.str ?? "").split("\n"));
 
 /* ============================ 工具函数 ============================ */
-
-function formatTTL(ttl: number): string {
-    if (ttl < 0) return "持久";
-    const h = Math.floor(ttl / 3600);
-    const m = Math.floor((ttl % 3600) / 60);
-    const s = ttl % 60;
-    const p = (n: number) => n.toString().padStart(2, "0");
-    return `${p(h)}:${p(m)}:${p(s)}`;
-}
-
-function formatUptime(sec: number): string {
-    const d = Math.floor(sec / 86400);
-    const h = Math.floor((sec % 86400) / 3600);
-    if (d > 0) return `${d} 天 ${h} 小时`;
-    if (h > 0) return `${h} 小时`;
-    return `${Math.floor(sec / 60)} 分钟`;
-}
 
 function copyValue() {
     const v = st.keyValue.type === "string" ? st.keyValue.str : JSON.stringify(st.keyValue[st.keyValue.type] ?? {}, null, 2);
@@ -1049,71 +828,30 @@ function copyValue() {
     Message.success("已复制");
 }
 
-/* TTL 本地倒计时（仅展示，不改变真实值） */
-watch(
-    () => st.keyValue.ttl,
-    (v) => {
-        if (typeof v === "number" && v > 0) {
-            // 简单每秒递减，切换键时重置
-        }
-    },
-);
-
 /* ============================ 本地服务管理 ============================ */
-
-interface SrvInstanceConfig {
-    id: string; name: string; version: string; port: number;
-    password: string; appendOnly: boolean; maxMemoryMB: number; dataDir: string;
-    // mode: local | docker；容器模式不占本机版本库，靠 image 定位镜像
-    mode: string; image: string; containerName: string;
-}
-
-/** Docker 实例的版本就是镜像 tag：列表里只展示 tag（7.4-alpine），完整镜像名走 tooltip */
-function imgTag(image: string): string {
-    const s = String(image || "");
-    const i = s.indexOf(":");
-    return i >= 0 ? s.slice(i + 1) : (s || "Docker");
-}
-
-/** 版本管理里 Docker 镜像区的常用 tag：alpine 体积小，官方长期维护 */
-const redisImagePresets = ["redis:7.4-alpine", "redis:7.4", "redis:7.2-alpine", "redis:7.2", "redis:alpine", "redis:7.0-alpine"];
 
 const srvInstances = ref<SrvInstanceConfig[]>([]);
 const srvStates = reactive<Record<string, any>>({});
-const localVersions = ref<any[]>([]);
-const remoteVersions = ref<any[]>([]);
-const remoteLoading = ref(false);
-const installProgress = reactive<Record<string, any>>({});
-const installLogs = ref<string[]>([]);
 const versionsVisible = ref(false);
-/** 版本管理里 Docker 镜像区的刷新信号：弹窗不销毁，每次打开自增一次触发重拉 */
-const verReload = ref(0);
-/** 版本管理弹窗的类型切换：本地 / 线上 / Docker 只看一类 */
-const verTab = ref<"local" | "remote" | "docker">("local");
 /** 有多少实例跑在容器里（它们的版本由镜像 tag 决定，不占本机版本库） */
 const dockerInstCount = computed(() => srvInstances.value.filter((i: any) => i.mode === "docker").length);
 const instVisible = ref(false);
 const logsVisible = ref(false);
-const localDirInput = ref("");
-const srvServersDir = ref("");
+/** 日志弹窗的目标实例 */
 const logsInst = ref<SrvInstanceConfig | null>(null);
-const logsStatus = ref<any>(null);
-const logsLines = ref<string[]>([]);
-const logBoxRef = ref<HTMLElement | null>(null);
+/** 实例弹窗的编辑目标（新建为 null） */
+const editingInst = ref<SrvInstanceConfig | null>(null);
+/** 从版本管理带入的镜像：非空则新建实例直接进 Docker 模式 */
+const presetImage = ref("");
 
-const instForm = reactive<SrvInstanceConfig>({
-    id: "", name: "", version: "", port: 6379, password: "", appendOnly: false, maxMemoryMB: 0, dataDir: "",
-    mode: "local", image: "", containerName: "",
-});
-/** 端口占用提示：贴表单项底下（红字），保存前也用同一份结果拦一次 */
-const portError = ref("");
+/** 右侧「本地实例总览」的目标实例：非空时取代连接工作区；数据复用 3s 一轮的 srvStates 快照，不单开轮询 */
+const srvOvInst = ref<SrvInstanceConfig | null>(null);
+const srvOvState = computed(() => (srvOvInst.value ? srvStates[srvOvInst.value.id] || null : null));
+const srvOvCards = computed(() => (srvOvInst.value ? buildRedisSrvStatCards(srvOvState.value, srvOvInst.value) : []));
 
-/* Docker 模式表单：镜像候选只列本机已装好的 redis 系镜像（不猜预置 tag），列表为空就引导去安装 */
+/* 镜像清单只用来标记「实例引用的镜像本机还没拉」（表单/候选/引擎状态已迁入 InstanceModal） */
 /* 名字不能回退成 dockerImages：script setup 下 kebab 标签 docker-images 会优先拿同名 setup 变量当组件，整个 Docker 区会渲染成空白 */
 const dockerImageList = ref<string[]>([]);
-const dockerImagesLoading = ref(false);
-const dockerErr = ref("");
-const imageOptions = computed(() => Array.from(new Set<string>(dockerImageList.value)));
 
 /** 只刷新镜像清单（不写表单）：用来标记实例引用的镜像本机是否已拉取 */
 async function probeDockerImages() {
@@ -1125,45 +863,10 @@ function imgMissing(image: string): boolean {
     return !!image && dockerImageList.value.length > 0 && !dockerImageList.value.includes(image);
 }
 
-const installedSet = computed(() => new Set<string>(localVersions.value.map((v: any) => v.version)));
-
-let offInstall: any = null;
 const route = useRoute();
-const { openToolWindow } = useToolWindow();
 let offSelInst: any = null;
+let offOpenPanel: any = null;
 let srvTimer: any = null;
-
-function pushInstallLog(txt: string) {
-    if (!txt) return;
-    const t = new Date();
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    installLogs.value.push(`[${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}] ${txt}`);
-    if (installLogs.value.length > 200) installLogs.value.splice(0, installLogs.value.length - 200);
-}
-
-function srcLabel(s: string): string {
-    return s === "bundled" ? "内置" : s === "downloaded" ? "下载" : s === "system" ? "系统包" : "本机";
-}
-
-function stageText(p: any): string {
-    if (!p) return "";
-    if (p.stage === "downloading") return `下载中 ${p.percent || 0}%`;
-    if (p.stage === "extracting") return `解压中 ${p.percent || 0}%`;
-    if (p.stage === "done") return "完成";
-    return "失败";
-}
-
-function fmtUptimeS(sec: number): string {
-    if (!sec || sec <= 0) return "-";
-    const d = Math.floor(sec / 86400); const h2 = Math.floor((sec % 86400) / 3600);
-    const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
-    if (d > 0) return `${d}d ${h2}h ${m}m`; if (h2 > 0) return `${h2}h ${m}m`; return `${m}m ${s}s`;
-}
-
-async function loadLocalVersions() {
-    try { localVersions.value = (await GoTools.RedisSrvListVersions()) || []; }
-    catch (e) { localVersions.value = []; }
-}
 
 async function loadSrvInstances() {
     try { srvInstances.value = (await GoTools.RedisSrvListInstances()) || []; }
@@ -1175,189 +878,42 @@ async function refreshSrvStates() {
     // 并发问：实例串行 await 就是 N 次往返，Web 模式跑在远程服务器上时尤其明显
     await Promise.all(srvInstances.value.map(async (inst) => {
         try {
-            const s2 = await GoTools.RedisSrvStatus(inst.id);
-            srvStates[inst.id] = s2;
-            if (logsVisible.value && logsInst.value?.id === inst.id) logsStatus.value = s2;
+            srvStates[inst.id] = await GoTools.RedisSrvStatus(inst.id);
         } catch (e) { /* 单个实例失败不影响其它实例 */ }
     }));
 }
 
-async function openVersionsModal() {
+function openVersionsModal() {
+    // 版本弹窗自持本地/线上/Docker 三页签与安装进度，打开时的重置逻辑在 VersionsModal 内
     versionsVisible.value = true;
-    verTab.value = "local";
-    verReload.value++;
-    loadLocalVersions();
-    if (!srvServersDir.value) {
-        try { srvServersDir.value = (await GoTools.RedisSrvServersDir()) || ""; } catch (e) { /* ignore */ }
-    }
 }
 
-async function loadRemoteVersions() {
-    remoteLoading.value = true;
-    try { remoteVersions.value = (await GoTools.RedisSrvRemoteVersions()) || []; }
-    catch (e: any) { Message.error("获取远程版本失败: " + (e?.message || e)); }
-    remoteLoading.value = false;
-}
-
-async function installVersion(r: any) {
-    try {
-        pushInstallLog(`提交安装请求：Redis ${r.version}`);
-        await GoTools.RedisSrvInstall(r.version);
-        installProgress[r.version] = { stage: "downloading", percent: 0 };
-    } catch (e: any) {
-        pushInstallLog(`安装请求被拒绝：${e?.message || e}`);
-        Message.error("安装失败: " + (e?.message || e));
-    }
-}
-
-function retryInstall(ver: string) {
-    delete installProgress[ver];
-    installVersion({ version: ver });
-}
-
-async function removeVersion(v: any) {
-    try { await GoTools.RedisSrvRemoveVersion(v.version); Message.success("已删除"); loadLocalVersions(); }
-    catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
-}
-
-async function chooseLocalDir() {
-    try { const dir = await GoTools.RedisSrvChooseDir(); if (dir) localDirInput.value = dir; }
-    catch (e) { /* cancel */ }
-}
-
-async function addLocalDir() {
-    const dir = localDirInput.value.trim();
-    if (!dir) { Message.warning("请先选择或填写目录"); return; }
-    try { await GoTools.RedisSrvAddLocal(dir); Message.success("已添加本机目录"); localDirInput.value = ""; loadLocalVersions(); }
-    catch (e: any) { Message.error("添加失败: " + (e?.message || e)); }
-}
-
-async function openInstModal(inst?: SrvInstanceConfig) {
-    portError.value = "";
-    dockerErr.value = "";
-    if (inst) {
-        // 历史配置没 mode/image 字段，归一化后再进表单，避免 radio 两档都没选中
-        Object.assign(instForm, {
-            ...inst,
-            mode: inst.mode === "docker" ? "docker" : "local",
-            image: inst.image || "",
-            containerName: inst.containerName || "",
-        });
-    }
-    else {
-        // 默认端口避开其它实例已登记 / 系统已监听的
-        let port = 6379;
-        try { port = (await GoTools.RedisSrvSuggestPort(6379)) || port; } catch (e) { /* ignore */ }
-        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port, password: "", appendOnly: false, maxMemoryMB: 0, dataDir: "", mode: "local", image: "", containerName: "" });
-    }
-    if (localVersions.value.length === 0) loadLocalVersions();
-    if (instForm.mode === "docker") onModeChange("docker");
+function openInstModal(inst?: SrvInstanceConfig) {
+    // 表单/镜像候选/端口探测/保存与切换重启都迁入 InstanceModal，这里只决定编辑目标与预置镜像
+    editingInst.value = inst ? { ...inst } : null;
+    presetImage.value = "";
     instVisible.value = true;
 }
 
-/** 切换运行模式：Docker 读本机镜像候选 + 引擎状态，不干预已有输入 */
-async function onModeChange(v: any) {
-    const mode = String(v ?? instForm.mode ?? "local");
-    instForm.mode = mode;
-    if (mode !== "docker") return;
-    loadImageOptions();
-    loadDockerEngine();
+/** 实例弹窗保存/重启后：重拉实例列表与状态 */
+function onInstanceSaved() {
+    loadSrvInstances();
 }
 
-/** 版本管理里点「新建实例」：直接以该镜像开一个 Docker 实例（端口仍走可用端口探测） */
-async function newInstanceFromImage(image: string) {
+/** 版本管理里点「新建实例」：关版本窗，带镜像打开实例弹窗（Docker 模式） */
+function onCreateFromImage(image: string) {
     versionsVisible.value = false;
-    await openInstModal();
-    instForm.mode = "docker";
-    instForm.image = image;
-    await onModeChange("docker");
+    editingInst.value = null;
+    presetImage.value = image;
+    instVisible.value = true;
 }
 
-/** 版本管理里点「使用实例」：从镜像视角转去改该实例的版本（镜像） */
-async function editSrvById(id: string) {
+/** 版本管理里点「使用实例」：关版本窗，转去编辑该实例 */
+function onEditInstanceById(id: string) {
     const inst = srvInstances.value.find((i) => i.id === id);
     if (!inst) return;
     versionsVisible.value = false;
-    await openInstModal(inst);
-}
-
-async function loadImageOptions() {
-    dockerImagesLoading.value = true;
-    try { dockerImageList.value = (await GoTools.RedisSrvDockerImages()) || []; }
-    catch (e) { dockerImageList.value = []; } // 引擎不可用时当作没有镜像，走“去安装”引导
-    dockerImagesLoading.value = false;
-    // 还没选值且有候选时先填第一个，省一步点击
-    if (instForm.mode === "docker" && !instForm.image && dockerImageList.value.length) instForm.image = dockerImageList.value[0];
-}
-
-async function loadDockerEngine() {
-    try {
-        const [ok, msg] = await GoTools.RedisSrvDockerAvailable();
-        dockerErr.value = ok ? "" : (msg || "Docker 引擎不可用");
-    } catch (e: any) { dockerErr.value = e?.message || String(e); }
-}
-
-/** 打开 Docker 管理窗口（独立 webview，单例复用）：配镜像时直接过去拉，不用回主页找入口 */
-function openDockerWindow() {
-    openToolWindow("/tools/docker", "Docker管理", { single: true, width: 1200, height: 800 });
-}
-
-async function checkPortTaken() {
-    if (!instForm.port) { portError.value = ""; return; }
-    try {
-        const reason = await GoTools.RedisSrvPortTaken(instForm.port, instForm.id || "");
-        if (!reason) { portError.value = ""; return; }
-        const suggest = await GoTools.RedisSrvSuggestPort(instForm.port);
-        portError.value = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
-    } catch (e) { /* ignore */ }
-}
-
-async function saveInstance() {
-    if (!instForm.name) { Message.warning("请填写实例名称"); return; }
-    // 两种模式的必填项不一样：本地看本机版本库，容器看镜像（后端也会再校一次）
-    if (instForm.mode === "docker") {
-        if (!instForm.image) { Message.warning("Docker 模式请选择或输入镜像"); return; }
-    } else if (!instForm.version) { Message.warning("请选择 Redis 版本"); return; }
-    if (!instForm.port) { Message.warning("请填写端口"); return; }
-    // 端口占用先在本地拦一次，后端保存时还会再校验
-    try {
-        const reason = await GoTools.RedisSrvPortTaken(instForm.port, instForm.id || "");
-        if (reason) {
-            const suggest = await GoTools.RedisSrvSuggestPort(instForm.port);
-            portError.value = suggest && suggest !== instForm.port ? `${reason}，可用：${suggest}` : reason;
-            Message.warning(portError.value);
-            return;
-        }
-    } catch (e) { /* 探测失败不阻断，后端兜底 */ }
-    try {
-        // 编辑前先记下原配置：切了版本/镜像且实例在跑，容器里还是旧版本，得重启才生效
-        const old = instForm.id ? srvInstances.value.find((i) => i.id === instForm.id) : null;
-        const switched = !!old && (old.mode !== instForm.mode || old.image !== instForm.image || old.version !== instForm.version);
-        const wasRunning = !!old && !!srvStates[old.id]?.running;
-        await GoTools.RedisSrvSaveInstance({ ...instForm });
-        instVisible.value = false; Message.success("已保存"); await loadSrvInstances();
-        if (switched && wasRunning) setTimeout(() => askRestartAfterSwitch({ ...instForm }), 240);
-    } catch (e: any) { Message.error("保存失败: " + (e?.message || e)); }
-}
-
-/** 切了版本/镜像又没重启：跑着的还是旧版本，问一句要不要现在就换过去 */
-function askRestartAfterSwitch(inst: SrvInstanceConfig) {
-    const what = inst.mode === "docker" ? `镜像 ${inst.image}` : `Redis ${inst.version}`;
-    Modal.confirm({
-        title: "版本已切换",
-        content: `${what} 已写入配置，但实例「${inst.name}」还在跑旧版本；重启后才会生效（期间会短暂中断服务）。`,
-        okText: "立即重启",
-        cancelText: "稍后手动重启",
-        onOk: async () => {
-            try {
-                // Redis 没有单独的 restart，停完再起
-                await GoTools.RedisSrvStop(inst.id);
-                await GoTools.RedisSrvStart(inst.id);
-                Message.success(`实例 ${inst.name} 已重启，新版本已生效`);
-            } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
-            loadSrvInstances();
-        },
-    });
+    openInstModal(inst);
 }
 
 async function onSrvAction(v: string, inst: SrvInstanceConfig) {
@@ -1372,48 +928,180 @@ async function onSrvAction(v: string, inst: SrvInstanceConfig) {
     } else if (v === "logs") {
         openLogs(inst);
     } else if (v === "connect") {
-        connectInstance(inst);
+        focusInstance(inst);
     } else if (v === "edit") {
         openInstModal(inst);
-    } else if (v === "del") {
-        Modal.warning({
-            title: "删除实例", content: `确定删除实例「${inst.name}」？运行中会先停止；数据目录保留。`, hideCancel: false,
-            onOk: async () => {
-                try { await GoTools.RedisSrvRemoveInstance(inst.id); delete srvStates[inst.id]; await loadSrvInstances(); }
-                catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
-            },
-        });
     }
 }
 
+/** 正在启动中的实例 id：防止连点重复拉起进程 */
+const instStarting = new Set<string>();
+
+/** 连上本地实例并展开数据总览：只在确认已启动后调用，本身绝不拉起实例 */
 function connectInstance(inst: SrvInstanceConfig | null) {
     if (!inst) return;
-    if (!srvStates[inst.id]?.running) { Message.warning("请先启动实例"); return; }
     const cfg: ConnConfig = {
         id: "srv-" + inst.id, name: `${inst.name}(本地)`,
         host: "127.0.0.1", port: inst.port, password: inst.password, db: 0,
     };
-    if (!savedConns.value.some((c) => c.id === cfg.id)) {
-        savedConns.value.push(cfg); persistConnections();
-    }
+    // 不再把实例回写成一条 savedConn：合并后的左栏已用实例行代表，避免重复
     openConnection(cfg);
 }
 
-let logsTimer: any = null;
-async function openLogs(inst: SrvInstanceConfig) {
+/** 单击未启动实例：右侧展示「未启动总览」，只读状态，不做任何启动动作 */
+function openSrvOverview(inst: SrvInstanceConfig) {
+    srvOvInst.value = inst;
+}
+
+/** 主页点卡片进入 / 行菜单「连接」：先拿实时状态，运行中才连上总览，否则落在未启动总览 */
+async function focusInstance(inst: SrvInstanceConfig) {
+    await refreshSrvStates();
+    if (srvStates[inst.id]?.running) connectInstance(inst);
+    else openSrvOverview(inst);
+}
+
+/** 左栏统一列表项：外部连接与本地实例合并成一个列表（RedisListItem 类型已下沉 helpers） */
+const redisRawList = computed<RedisListItem[]>(() => {
+    const insts: RedisListItem[] = srvInstances.value.map((inst) => ({
+        kind: "instance", key: "inst-" + inst.id, name: inst.name,
+        sub: `127.0.0.1:${inst.port}`, live: !!srvStates[inst.id]?.running, inst,
+    }));
+    // 历史上 connectInstance 会把实例注入成 "srv-" 前缀的连接；合并后由实例行代表，过滤掉避免重复
+    const conns: RedisListItem[] = savedConns.value
+        .filter((c) => !c.id.startsWith("srv-"))
+        .map((c) => ({
+            kind: "external", key: "conn-" + c.id, name: c.name || `${c.host}:${c.port}`,
+            sub: `${c.host}:${c.port}`, live: isOpen(c.id), conn: c,
+        }));
+    return [...insts, ...conns];
+});
+/* 拖拽排序：左栏列表（实例+外部连接）顺序存入用户配置 redis:list（与主页分开，随导出搬运） */
+const redisOrder = ref<string[]>([]);
+const redisReo = useReorder("redis:list", {
+    getVisible: () => redisRawList.value.map((i) => i.key),
+    onReordered: (nv) => { redisOrder.value = nv; void GoTools?.SetListOrder?.("redis:list", nv); },
+});
+const redisList = computed(() => applyOrder(redisRawList.value, redisOrder.value, (i) => i.key));
+
+/** 当前右侧总览展示的是哪一行：高亮对应列表项（实例可能是连接页签或实例总览） */
+function itemActive(it: RedisListItem): boolean {
+    if (it.kind === "instance")
+        return srvOvInst.value?.id === it.inst.id || st.activeTab === "srv-" + it.inst.id;
+    return st.activeTab === it.conn.id;
+}
+
+/** 点行：运行中实例连上展开总览；未启动实例只看「未启动总览」（不启动）；外部连接连上 */
+function clickRedisItem(it: RedisListItem) {
+    if (it.kind === "instance") {
+        if (it.live) connectInstance(it.inst);
+        else openSrvOverview(it.inst);
+    } else openConnection(it.conn);
+}
+
+/** 双击行：未启动实例直接拉起并连上总览；其余与单击一致（启动动作只留在这里和明确按钮） */
+async function dblRedisItem(it: RedisListItem) {
+    if (it.kind !== "instance" || it.live) return;
+    if (instStarting.has(it.inst.id)) return; // 已在启动中，忽略重复双击
+    instStarting.add(it.inst.id);
+    Message.info(`实例「${it.inst.name}」未启动，正在启动…`);
+    try {
+        await GoTools.RedisSrvStart(it.inst.id);
+    } catch (e: any) {
+        Message.error("启动失败: " + (e?.message || e));
+        instStarting.delete(it.inst.id);
+        refreshSrvStates();
+        return;
+    }
+    instStarting.delete(it.inst.id);
+    Message.success(`实例「${it.inst.name}」已启动`);
+    await refreshSrvStates();
+    connectInstance(it.inst);
+}
+
+/** 删除气泡文案：按来源区分实例 / 连接 */
+function delTip(it: RedisListItem): string {
+    return it.kind === "instance"
+        ? `确定删除实例「${it.inst.name}」？运行中会先停止；数据目录保留。`
+        : `确定删除连接「${it.name}」？`;
+}
+
+/** 气泡确认后真正执行删除 */
+function onDeleteItem(it: RedisListItem) {
+    if (it.kind === "instance") doDeleteInst(it.inst);
+    else doDeleteConn(it.conn);
+}
+
+async function doDeleteInst(inst: SrvInstanceConfig) {
+    if (srvOvInst.value?.id === inst.id) srvOvInst.value = null; // 总览目标被删就退回连接区/空态
+    try { await GoTools.RedisSrvRemoveInstance(inst.id); delete srvStates[inst.id]; await loadSrvInstances(); }
+    catch (e: any) { Message.error("删除失败: " + (e?.message || e)); }
+}
+
+/** 当前右侧总览展示的是本地实例时返回其实体（标签页 id 以 "srv-" 前缀），外部连接返回 null */
+const activeInst = computed<SrvInstanceConfig | null>(() => {
+    if (!st.activeTab.startsWith("srv-")) return null;
+    const id = st.activeTab.slice(4);
+    return srvInstances.value.find((i) => i.id === id) || null;
+});
+
+/** 当前页签的本地实例已停止：键详情/慢日志/监控命令都拉不到数据，入口直接隐藏（外部连接无进程状态可查，不隐藏） */
+const instStopped = computed(() => !!activeInst.value && !srvStates[activeInst.value.id]?.running);
+// 实例被停（含崩溃、外部 kill）：切回状态页并停掉监控，避免留在一个入口已隐藏、
+// 又拉不到数据的空转页面上；loadSubTab 会顺带清掉旧快照
+watch(instStopped, (stopped) => {
+    if (!stopped) return;
+    if (st.monitoring) stopMonitor();
+    if (st.activeSubTab !== "status") st.activeSubTab = "status";
+    loadSubTab();
+});
+
+/** 总览运维按钮的 loading：'start' | 'stop' | 'restart' | '' */
+const ovBusy = ref("");
+
+/** 启动/停止切换（停止走气泡确认） */
+async function ovToggleRun() {
+    const inst = activeInst.value;
+    if (!inst) return;
+    const running = !!srvStates[inst.id]?.running;
+    ovBusy.value = running ? "stop" : "start";
+    try {
+        if (running) { await GoTools.RedisSrvStop(inst.id); Message.success(`实例 ${inst.name} 已停止`); }
+        else { await GoTools.RedisSrvStart(inst.id); Message.success(`实例 ${inst.name} 已启动`); }
+    } catch (e: any) { Message.error((running ? "停止" : "启动") + "失败: " + (e?.message || e)); }
+    finally { ovBusy.value = ""; refreshSrvStates(); }
+}
+
+/** 重启：Redis 无单独 restart，先停再起 */
+async function ovRestart() {
+    const inst = activeInst.value;
+    if (!inst) return;
+    ovBusy.value = "restart";
+    try {
+        await GoTools.RedisSrvStop(inst.id);
+        await GoTools.RedisSrvStart(inst.id);
+        Message.success(`实例 ${inst.name} 已重启`);
+    } catch (e: any) { Message.error("重启失败: " + (e?.message || e)); }
+    finally { ovBusy.value = ""; refreshSrvStates(); }
+}
+
+/** 总览里的「启动」：拉起后直接连上进入数据总览 */
+async function ovStartFromOv() {
+    const inst = srvOvInst.value;
+    if (!inst || ovBusy.value) return;
+    ovBusy.value = "start";
+    try {
+        await GoTools.RedisSrvStart(inst.id);
+        Message.success(`实例 ${inst.name} 已启动`);
+        await refreshSrvStates();
+        connectInstance(inst);
+    } catch (e: any) { Message.error("启动失败: " + (e?.message || e)); }
+    finally { ovBusy.value = ""; }
+}
+
+/** 打开日志/状态弹窗：日志与状态轮询已迁入 LogsModal 自持，这里只切换目标实例 */
+function openLogs(inst: SrvInstanceConfig) {
     logsInst.value = inst;
-    logsLines.value = [];
-    logsStatus.value = srvStates[inst.id] || null;
     logsVisible.value = true;
-    try { logsLines.value = (await GoTools.RedisSrvLogs(inst.id, 300)) || []; } catch (e) { /* ignore */ }
-    if (logsTimer) clearInterval(logsTimer);
-    logsTimer = setInterval(async () => {
-        if (!logsVisible.value) { clearInterval(logsTimer); logsTimer = null; return; }
-        try {
-            logsLines.value = (await GoTools.RedisSrvLogs(inst.id, 300)) || [];
-            nextTick(() => { if (logBoxRef.value) logBoxRef.value.scrollTop = logBoxRef.value.scrollHeight; });
-        } catch (e) { /* ignore */ }
-    }, 2000);
 }
 
 /* ============================ 生命周期 ============================ */
@@ -1421,46 +1109,31 @@ async function openLogs(inst: SrvInstanceConfig) {
 onMounted(async () => {
     // 两者各一次绑定往返，彼此不依赖：Web 模式跑在远程服务器上，串行 await 就是白白多等一个 RTT
     await Promise.all([loadConnections(), loadSrvInstances()]);
+    redisOrder.value = await loadOrder("redis:list");
     // 镜像清单不进表单，只用来标记「实例引用的镜像本机还没拉」
     probeDockerImages();
-    // 主页点击服务实例进入（?inst=）：直接打开该实例的日志/状态详情
+    // 主页点击服务实例进入（?inst=）：运行中连上展开总览，未启动看未启动总览（不再弹日志框）
     const wantId = String(route.query.inst ?? "");
     if (wantId) {
         const target = srvInstances.value.find((i) => i.id === wantId);
-        if (target) openLogs(target);
+        if (target) focusInstance(target);
     }
-    loadLocalVersions();
-    // 离开页面时安装还在跑：从任务台账把进度表与日志补回来，免得回来看到可点的“安装”
-    restoreInstalls("redis", "install", installProgress, pushInstallLog);
+    // 下载抽屉点「装版本」进入（?open=versions）：冷启动直接弹版本管理
+    if (String(route.query.open ?? "") === "versions") openVersionsModal();
     srvTimer = setInterval(refreshSrvStates, 3000);
     // 单例窗口已打开时，主页再次点击其他实例 → 通过事件切换
     offSelInst = Events.On("tool:select-inst", (ev: any) => {
         const p = ev?.data ?? ev;
         if (p?.type !== "redis" || !p?.id) return;
         const target = srvInstances.value.find((i) => i.id === String(p.id));
-        if (target) openLogs(target);
+        if (target) focusInstance(target);
     });
-    offInstall = Events.On("redis:install", (ev: any) => {
+    // 单例窗口已开着时，抽屉再点装任务 → 通过事件弹出版本管理
+    offOpenPanel = Events.On("tool:open-panel", (ev: any) => {
         const p = ev?.data ?? ev;
-        if (!p || !p.version) return;
-        if (p.stage === "info") {
-            pushInstallLog(p.note || "");
-        } else if (p.stage === "done") {
-            delete installProgress[p.version];
-            pushInstallLog(`安装完成 Redis ${p.version}` + (p.note ? "：" + p.note : ""));
-            Message.success(`Redis ${p.version} 安装完成`);
-            loadLocalVersions();
-        } else if (p.stage === "error") {
-            installProgress[p.version] = p;
-            pushInstallLog(`安装失败 ${p.version}：${p.note || "未知错误"}（可将 redis zip 放入插件目录后离线安装）`);
-            Modal.error({
-                title: "安装失败",
-                content: `${p.version}：${p.note || "未知错误"}。可将 redis zip 放入插件目录后重试（离线安装）。`,
-            });
-        } else {
-            installProgress[p.version] = p;
-        }
+        if (p?.type === "redis" && p?.panel === "versions") openVersionsModal();
     });
+    // redis:install 与安装进度恢复已迁入 VersionsModal（弹窗常驻挂载，其 onMounted 自行订阅）
     offMonitor = Events.On("redis:monitor", (ev: any) => {
         const line = ev?.data ?? ev;
         st.monitorLines.push(line);
@@ -1470,10 +1143,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
     if (offMonitor) offMonitor();
-    if (offInstall) offInstall();
     if (offSelInst) offSelInst();
+    if (offOpenPanel) offOpenPanel();
     if (srvTimer) clearInterval(srvTimer);
-    if (logsTimer) clearInterval(logsTimer);
     if (st.monitoring) stopMonitor();
     openTabs.value.forEach((t) => GoTools.RedisClose(t.id));
 });
@@ -1487,21 +1159,10 @@ onUnmounted(() => {
     flex-wrap: nowrap;
 }
 
-/* 左侧列（a-col，约 30% 宽）：上下两个面板各占 50% 高 */
+/* 左侧列（a-col，约 30% 宽）：合并后单张卡片铺满整列 */
 .side-col {
     height: 100%;
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-.redis-pages {
-    height: calc(100% - 6px);
-}
-
-.side-cols {
-    height: 50%;
-    width: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -1543,15 +1204,22 @@ onUnmounted(() => {
     gap: 2px;
 }
 
-.conn-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.conn-sub {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
 }
 
 .conn-more {
     color: var(--color-text-3);
+}
+
+.conn-del {
+    color: var(--color-text-3);
+    margin-right: 10px;
+}
+
+.conn-del:hover {
+    color: rgb(var(--danger-6));
 }
 
 .conn-empty {
@@ -1560,6 +1228,8 @@ onUnmounted(() => {
     font-size: var(--base-size-small);
     padding: var(--base-padding);
 }
+
+/* 连接弹窗底栏（.conn-test-footer 等）样式已下沉到全局 styles/index.scss，四个工具的测试连接弹窗共用 */
 
 /* 主区域 */
 .main-panel {
@@ -1632,75 +1302,76 @@ onUnmounted(() => {
     font-weight: 700;
 }
 
-/* 运行信息统计卡片：彩色圆形图标 + 标题 + 大数字 */
-.stat-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: var(--base-padding);
+/* 状态页右侧主体：纵向堆叠指标卡 / 快捷条 / 信息行，超高时整块滚动 */
+.status-card :deep(.arco-card-body) {
+    overflow: auto;
 }
 
-.stat-card {
+.ov-body {
+    padding: 14px;
     display: flex;
-    align-items: center;
-    gap: var(--base-padding);
-    padding: var(--base-padding);
-    background: var(--color-bg-1);
-    border: 1px solid var(--color-border-1);
-    border-radius: var(--base-radius-default);
-    transition: box-shadow 0.2s;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.stat-card:hover {
-    box-shadow: var(--shadow-2-bottom);
+.stat-row {
+    margin: 0;
 }
 
-.stat-circle {
-    width: 44px;
-    height: 44px;
-    border-radius: var(--base-radius-default);
+.quick-bar {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: var(--base-size-large-x);
-    flex-shrink: 0;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
-.stat-circle-up {
-    background: rgba(var(--orange-6), 0.12);
-    color: rgb(var(--orange-6));
+/* 连接信息：长文本省略 + tooltip，单列信息行 */
+.info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.stat-circle-client {
-    background: rgba(var(--cyan-6), 0.12);
-    color: rgb(var(--cyan-6));
+.info-title {
+    font-size: var(--base-size-default);
+    font-weight: 600;
+    color: var(--color-text-1);
 }
 
-.stat-circle-key {
-    background: rgba(var(--purple-6), 0.12);
-    color: rgb(var(--purple-6));
+.info-list {
+    display: flex;
+    flex-direction: column;
 }
 
-.stat-circle-mem {
-    background: rgba(var(--arcoblue-6), 0.12);
-    color: rgb(var(--arcoblue-6));
+/* 左侧列表卡片：外壳（边框/圆角/选中竖条/hover）由 common-item-card 提供，这里只留内容样式 */
+.inst-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: calc(var(--base-padding) / 2);
 }
 
-.stat-info {
+.inst-name-tip {
     flex: 1;
     min-width: 0;
 }
 
-.stat-label {
-    font-size: var(--base-size-small);
-    color: var(--color-text-3);
+.inst-name {
+    display: block;
+    font-weight: 600;
+    color: var(--color-text-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.stat-value {
-    font-weight: bold;
-    font-size: var(--base-size-default);
-    line-height: 1.2;
-    color: var(--color-text-1);
-    margin-top: var(--base-margin);
+.inst-tags {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
 }
 
 /* 键详情 */
@@ -1923,211 +1594,5 @@ onUnmounted(() => {
 /* ---- 本地服务面板 ---- */
 /* srv-list 复用 conn-list 的 flex 行为，无需额外限高 */
 
-/* ---- 版本管理弹窗 ---- */
-.ver-sec-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    font-size: var(--base-size-default);
-}
-
-.ver-scroll {
-    max-height: 170px;
-    overflow-y: auto;
-}
-
-.ver-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: var(--base-radius-default) var(--base-padding);
-    border-radius: var(--base-radius-default);
-    font-size: var(--base-size-small);
-}
-
-.ver-item:hover {
-    background: var(--color-fill-2);
-}
-
-.ver-name {
-    font-weight: 500;
-    min-width: 100px;
-}
-
-.ver-path {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--color-text-3);
-    font-size: var(--base-size-small);
-}
-
-.ver-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-top: var(--base-padding);
-}
-
-.ver-actions :deep(.arco-input-wrapper) {
-    flex: 1;
-}
-
-.ver-hint {
-    font-size: var(--base-size-small);
-    color: var(--color-text-3);
-    margin-top: var(--base-radius-default);
-}
-
-.mono {
-    font-family: Consolas, monospace;
-    background: var(--color-fill-2);
-    padding: var(--base-radius-small) var(--base-radius-default);
-    border-radius: var(--base-radius-small);
-}
-
-/* 安装进度 */
-.inst-prog {
-    margin-top: var(--base-padding);
-}
-
-.inst-prog-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.inst-stage {
-    font-size: var(--base-size-small);
-    color: var(--color-text-2);
-    min-width: 80px;
-}
-
-/* 安装失败提示：内容是 a-alert，这里只管间距，颜色交给 alert 的类型色 */
-.inst-err {
-    padding: var(--base-radius-default) 0 0 0;
-    word-break: break-all;
-    white-space: pre-wrap;
-}
-
-/* 安装失败原因常带着下载地址：两行截断，不把版本弹窗撑高；完整内容悬停看 */
-.inst-err :deep(.arco-alert-content) {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    white-space: pre-wrap;
-}
-
-/* 安装日志：随主题自适应的控制台风格面板 */
-.inst-log {
-    max-height: 130px;
-    background: var(--color-fill-1);
-    border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-default);
-    padding: var(--base-radius-default) var(--base-radius-large);
-}
-
-.inst-log-line {
-    font-family: Consolas, monospace;
-    font-size: var(--base-size-small);
-    color: var(--color-text-2);
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-/* 日志/状态弹窗 */
-.ls-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 8px;
-    margin-bottom: var(--base-margin);
-}
-
-.ls-item {
-    background: var(--color-fill-1);
-    border-radius: var(--base-radius-default);
-    padding: var(--base-radius-default) var(--base-radius-large);
-    font-size: var(--base-size-small);
-}
-
-.ls-item span {
-    color: var(--color-text-3);
-    display: block;
-}
-
-.ls-item b {
-    font-size: var(--base-size-small);
-}
-
-.ls-item b.ok {
-    color: rgb(var(--green-6));
-}
-
-.ls-log {
-    background: #1d2129;
-    border-radius: var(--base-radius-default);
-    padding: var(--base-padding) var(--base-radius-large);
-    max-height: 320px;
-    overflow-y: auto;
-    font-family: Consolas, monospace;
-    font-size: var(--base-size-small);
-    color: #c9cdd4;
-    line-height: 1.5;
-}
-
-.ls-line {
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-.ls-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: var(--base-radius-large);
-}
-
-/* Docker 镜像行：下拉占满剩余宽度，右侧一个方形按钮打开 Docker 管理窗口
- * Arco 的竖排表单项内容区默认按内容宽度收缩（align-items: flex-start），空下拉会被挤成一个小方块，
- * 这里显式把内容区拉成整栏宽 */
-.inst-form :deep(.img-item .arco-form-item-wrapper-col) {
-    align-items: stretch;
-}
-
-.inst-form :deep(.img-item .arco-form-item-content) {
-    width: 100%;
-}
-
-.img-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-}
-
-.img-select {
-    flex: 1;
-    min-width: 0;
-}
-
-.img-open {
-    flex: none;
-    width: 32px;
-    padding: 0;
-}
-
-/* 本地没有镜像时的提示：橙色一点，提醒可以点进去装 */
-.img-none {
-    color: rgb(var(--orange-6));
-}
-
-/* #help 里的“去安装”链接：跟提示文字同字号，不把行高撑开 */
-.img-none :deep(.arco-link) {
-    padding: 0;
-    font-size: inherit;
-    line-height: inherit;
-}
+/* 版本管理 / 安装进度 / 日志状态 / 实例表单的样式已随各自弹窗迁入 components/*.vue 的 scoped 样式 */
 </style>

@@ -4,6 +4,8 @@
         <template #title>
             <a-space>
                 <icon-computer /> Docker 引擎
+                <a-tag v-if="engine.isDesktop" >Docker Desktop</a-tag>
+                <a-tag v-if="engine.available" color="green">{{ engine.version }}</a-tag>
                 <!-- 引擎状态：圆点颜色同 a-badge（探测中/已连接/不可用），探测与在线时开启动效 -->
                 <span class="com-state" :class="{
                     'is-on': !engineLoading && engine.available,
@@ -13,8 +15,6 @@
                         :animated="engineLoading || engine.available"></com-badge>
                     {{ engineLoading ? '探测中…' : (engine.available ? '已连接' : '不可用') }}
                 </span>
-                <a-tag v-if="engine.isDesktop" >Docker Desktop</a-tag>
-                <a-tag v-if="engine.available" color="green">{{ engine.version }}</a-tag>
             </a-space>
         </template>
         <template #extra>

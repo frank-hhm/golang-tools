@@ -39,13 +39,18 @@
 
     <a-empty v-if="list.length === 0" description="暂无任务：装版本、拉镜像时这里会显示进度" />
 
-    <div v-for="t in list" :key="t.id" class="th-item" :class="'is-' + t.status">
-      <div class="th-head">
+    <common-item-card v-for="t in list" :key="t.id" class="th-item" :clickable="false"
+      :error="t.status === 'error'" pad="10px">
+      <template #status>
         <span class="th-dot" :class="'dot-' + t.status"></span>
+      </template>
+      <template #title>
         <span class="th-tool">{{ toolLabel(t.tool) }}</span>
         <span class="th-title" :title="t.title">{{ t.title }}</span>
+      </template>
+      <template #extra>
         <a-tag size="small" :color="tagColor(t)">{{ statusText(t) }}</a-tag>
-      </div>
+      </template>
 
       <a-progress v-if="t.status === 'running' || t.status === 'done'" :percent="pct(t) / 100" size="small"
         :show-text="false" :status="t.status === 'done' ? 'success' : 'normal'"
@@ -76,7 +81,7 @@
         <div v-for="(l, i) in logsOf.get(t.id)" :key="i" class="th-log-line">{{ l }}</div>
         <div v-if="!logsOf.get(t.id)?.length" class="th-log-line is-dim">暂无进度明细</div>
       </div>
-    </div>
+    </common-item-card>
 
     <!-- 有已结束任务才亮出底栏；按钮留在文档流里，抽屉会自动隐藏空白 footer -->
     <template #footer>
@@ -97,15 +102,20 @@
  *
  * 通知：桌面版由 Go 弹 Windows 系统原生通知（右下角 Toast）；面板/浏览器版走 Notification（见 store）。
  */
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { Events } from "@wailsio/runtime";
 import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
 import type { Task } from "bindings/go-tools/services/tasks/index";
 import { ensureTasks, useTasksStoreHook } from "@/store/modules/tasks";
 import { isNativeWindows } from "@/utils/caps";
+import { useToolWindow } from "@/views/index/useToolWindow";
 
 const st = useTasksStoreHook();
-const router = useRouter();
+const { openToolWindow } = useToolWindow();
+const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+/** 工具 key → 原生新窗口选项（single/尺寸…）：首次点「打开页面」时从配置懒加载一次 */
+const toolWinMeta = ref<Record<string, any>>({});
+let toolWinMetaLoaded = false;
 
 /** 相对时间需要“现在”：每秒拨一下，浮标上的“x 秒前开始”才是活的 */
 const now = ref(Date.now());
@@ -230,11 +240,54 @@ function toolLabel(tool: string): string {
   return TOOL_LABEL[tool] || tool;
 }
 
-/** 只切主窗口路由：原生模式下这是主窗口，不影响已经开着的工具窗口 */
-function goTool(t: Task) {
-  const path = `/tools/${t.tool}`;
+/**
+ * 任务种类 → 目标页需要额外弹出的面板：装版本 / 装扩展 都落到「版本管理」弹窗看进度；
+ * setup / pull / op 直接进工具主页即可（Docker 引擎向导、镜像任务中心都在页内常驻）。
+ */
+function panelOfKind(kind: string): string {
+  return kind === "install" || kind === "ext" ? "versions" : "";
+}
+
+/**
+ * 点「打开页面」：另开对应服务的工具窗口（与主页点击服务卡一致），而不是把主窗口 itself 导航走。
+ * openToolWindow 在原生模式开独立单例窗口、Web 模式自动回退成页面内路由。
+ * 装版本/扩展类任务再带 ?open=versions / 发 tool:open-panel，让目标页弹出「版本管理」。
+ */
+async function goTool(t: Task) {
   open.value = false;
-  router.push(path).catch(() => { /* 同名路由重复点击 */ });
+  const meta = await resolveToolWin(t.tool);
+  const panel = panelOfKind(t.kind);
+  const path = `/tools/${t.tool}` + (panel ? `?open=${panel}` : "");
+  openToolWindow(path, meta?.name || toolLabel(t.tool), {
+    single: meta?.single ?? true,
+    fullscreen: !!meta?.fullscreen,
+    disableFullscreen: !!meta?.disableFullscreen,
+    width: meta?.width,
+    height: meta?.height,
+  });
+  // 单例窗口已开着时，?open= 不会重新触发挂载：再发一次事件让它弹出面板（与 tool:select-inst 同理）
+  if (panel) {
+    try { Events.Emit("tool:open-panel", { type: t.tool, panel }); } catch { /* */ }
+  }
+}
+
+/** 取该工具的窗口元数据（名称/单例/尺寸）；配置只读一次，失败回空由调用方兜底 */
+async function resolveToolWin(tool: string) {
+  if (!toolWinMetaLoaded) {
+    try {
+      const cfg = await GoTools?.GetConfig();
+      const map: Record<string, any> = {};
+      for (const x of cfg?.tools || []) {
+        if (x?.key) map[x.key] = {
+          name: x.name, single: !!x.single, fullscreen: !!x.fullscreen,
+          disableFullscreen: !!x.disableFullscreen, width: x.width, height: x.height,
+        };
+      }
+      toolWinMeta.value = map;
+    } catch (e) { /* 拿不到配置就用兜底值 */ }
+    toolWinMetaLoaded = true;
+  }
+  return toolWinMeta.value[tool];
 }
 
 function since(ts: number): string {
@@ -274,8 +327,8 @@ defineExpose({ open: () => { open.value = true; } });
   max-width: 320px;
   padding: 8px 10px;
   background: var(--color-bg-2);
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--base-radius-large);
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--base-radius-default);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   user-select: none;
@@ -394,24 +447,9 @@ defineExpose({ open: () => { open.value = true; } });
   border-radius: var(--base-radius-default);
 }
 
+/* 卡片外壳（边框/圆角/背景/错误态描边）由 common-item-card 提供，这里只留条目间距 */
 .th-item {
-  padding: 10px;
   margin-bottom: 10px;
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--base-radius-default);
-  background: var(--color-bg-2);
-}
-
-.th-item.is-error {
-  border-color: rgba(var(--danger-6), 0.55);
-  background: linear-gradient(rgba(var(--danger-6), 0.05), rgba(var(--danger-6), 0.05)), var(--color-bg-2);
-}
-
-.th-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
 }
 
 /* 状态点：颜色说话，失败红点带一圈光晕，一眼扫出哪条出了问题 */
