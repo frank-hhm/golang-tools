@@ -372,6 +372,119 @@ func TestServerEndToEnd(t *testing.T) {
 	}
 }
 
+// 连接注册必须原子：服务已停止、连接数已满时都不能把握手完成的连接加回连接表
+func TestAddConnGuards(t *testing.T) {
+	useTempData(t)
+
+	_ = StopServer()
+	if _, ok := srv.addConn(Account{Username: "ghost"}, "127.0.0.1", nil); ok {
+		t.Fatal("服务停止时不应注册连接")
+	}
+
+	// 运行态用一个临时 listener 冒充，把连接表填满
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.mu.Lock()
+	srv.ln = ln
+	srv.conns = map[string]*srvConn{}
+	for i := 0; i < serverMaxConns; i++ {
+		srv.conns["full"+itoa(i)] = &srvConn{}
+	}
+	srv.mu.Unlock()
+	defer func() {
+		// 测试里填的是空壳连接（conn 为 nil），先清表再停，避免 StopServer 去 Close nil
+		srv.mu.Lock()
+		srv.conns = map[string]*srvConn{}
+		srv.mu.Unlock()
+		_ = StopServer()
+	}()
+
+	if _, ok := srv.addConn(Account{Username: "ghost"}, "127.0.0.1", nil); ok {
+		t.Fatal("连接数已满时不应注册连接")
+	}
+
+	srv.mu.Lock()
+	delete(srv.conns, "full0")
+	srv.mu.Unlock()
+	if id, ok := srv.addConn(Account{Username: "ghost"}, "127.0.0.1", nil); !ok || id == "" {
+		t.Fatal("腾出空位后应能注册连接")
+	}
+}
+
+// 账号策略在连接建立之后变更：新开的通道必须按当前策略建沙箱
+func TestAccountPolicyTakesEffectOnNewChannel(t *testing.T) {
+	useTempData(t)
+
+	_, id, err := SaveAccount(Account{Username: "alice", Password: "123456", RootDir: "alice", Enabled: true})
+	if err != nil || id == "" {
+		t.Fatalf("建账号失败: %v", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	_ = ln.Close()
+	if _, err := SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: port}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := StartServer(); err != nil {
+		t.Fatalf("启动服务端失败: %v", err)
+	}
+	defer func() { _ = StopServer() }()
+
+	cli, err := ssh.Dial("tcp", net.JoinHostPort("127.0.0.1", itoa(port)), &ssh.ClientConfig{
+		User:            "alice",
+		Auth:            []ssh.AuthMethod{ssh.Password("123456")},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("SSH 连接失败: %v", err)
+	}
+	defer cli.Close()
+
+	sc, err := sftp.NewClient(cli)
+	if err != nil {
+		t.Fatalf("SFTP 握手失败: %v", err)
+	}
+	if f, cerr := sc.Create("/ok.txt"); cerr != nil {
+		t.Fatalf("读写账号应能建文件: %v", cerr)
+	} else {
+		_ = f.Close()
+	}
+	_ = sc.Close()
+
+	// 改成只读：同一连接上新开的通道必须按只读策略建沙箱
+	if _, _, err := SaveAccount(Account{ID: id, Username: "alice", RootDir: "alice", ReadOnly: true, Enabled: true}); err != nil {
+		t.Fatalf("改只读失败: %v", err)
+	}
+	ro, err := sftp.NewClient(cli)
+	if err != nil {
+		t.Fatalf("开新通道失败: %v", err)
+	}
+	defer ro.Close()
+	if f, cerr := ro.Create("/blocked.txt"); cerr == nil {
+		_ = f.Close()
+		t.Fatal("改成只读后新通道不应能创建文件")
+	}
+	if _, serr := ro.Stat("/ok.txt"); serr != nil {
+		t.Fatalf("只读账号应能读: %v", serr)
+	}
+
+	// 禁用：连新会话都不该建起来
+	if _, _, err := SaveAccount(Account{ID: id, Username: "alice", RootDir: "alice", ReadOnly: true, Enabled: false}); err != nil {
+		t.Fatalf("禁用失败: %v", err)
+	}
+	if sc2, cerr := sftp.NewClient(cli); cerr == nil {
+		_ = sc2.Close()
+		t.Fatal("账号禁用后不应还能开新会话")
+	}
+}
+
 // itoa 端口转字符串（测试里避免多引一个包）
 func itoa(v int) string {
 	if v == 0 {

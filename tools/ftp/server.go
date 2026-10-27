@@ -63,6 +63,9 @@ type serverRuntime struct {
 
 var srv = &serverRuntime{conns: map[string]*srvConn{}}
 
+// handshaking 正在认证（握手 + bcrypt 校验）的连接数，由 serverMaxHandshaking 限流
+var handshaking atomic.Int32
+
 func init() {
 	// 已登记端口参与全工具查重：即使服务停着，别的实例也不该抢这个端口
 	portcheck.Register(func() []portcheck.Owner {
@@ -232,9 +235,29 @@ func (s *serverRuntime) acceptLoop(ln net.Listener, signer ssh.Signer) {
 
 /* ==================== 连接与认证 ==================== */
 
+// dummyPassHash 账号不存在时也跑一次 bcrypt 用的固定假哈希，首次使用时才生成。
+var dummyPassHash = sync.OnceValue(func() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte("go-tools-sftp-dummy"), bcrypt.DefaultCost)
+	if err != nil {
+		return nil // 生成失败就退化成不比对：功能优先，不影响正常登录
+	}
+	return h
+})
+
 // handleConn 一条 SSH 连接的生命周期
 func (s *serverRuntime) handleConn(nc net.Conn, signer ssh.Signer) {
 	ip := clientIP(nc.RemoteAddr())
+
+	// 认证阶段先过并发闸门：这里挡在 bcrypt 之前，超出的连接直接关掉，
+	// 避免被并发试密码打满 CPU（默认监听 0.0.0.0，局域网/公网都能碰）
+	if n := handshaking.Add(1); n > serverMaxHandshaking {
+		handshaking.Add(-1)
+		s.logf(LogWarn, "来自 %s 的连接被拒绝：认证并发已达上限 %d", ip, serverMaxHandshaking)
+		_ = nc.Close()
+		return
+	}
+	defer handshaking.Add(-1)
+
 	_ = nc.SetDeadline(time.Now().Add(30 * time.Second))
 
 	cfg := &ssh.ServerConfig{
@@ -260,32 +283,53 @@ func (s *serverRuntime) handleConn(nc net.Conn, signer ssh.Signer) {
 		return
 	}
 
-	if s.connCount() >= serverMaxConns {
-		s.logf(LogWarn, "拒绝连接 %s@%s：在线连接数已达上限 %d", conn.User(), ip, serverMaxConns)
+	id, ok := s.addConn(acc, ip, conn)
+	if !ok {
+		// 停止服务发生在握手期间：不能把这条连接再加回去，否则界面显示“已停止”
+		// 却还有人在读写（账号在下发后又被禁用的情况由 serveChannel 复查兜底）
+		s.logf(LogWarn, "拒绝连接 %s@%s：服务已停止或在线连接数已达上限 %d", conn.User(), ip, serverMaxConns)
 		return
 	}
-
-	id := s.addConn(acc, ip, conn)
 	defer s.removeConn(id)
 
 	go ssh.DiscardRequests(reqs)
+
+	// 单连接同时开的 sftp 通道数也要封顶：每个通道一个 goroutine + 一个 os.Root
+	// 句柄，不限的话一条连接就能把进程的文件句柄耗尽
+	open := make(chan struct{}, serverMaxChannelsPerConn)
 	for newCh := range chans {
 		if newCh.ChannelType() != "session" {
 			_ = newCh.Reject(ssh.UnknownChannelType, "仅支持 SFTP 会话")
 			continue
 		}
-		ch, chReqs, aerr := newCh.Accept()
-		if aerr != nil {
+		select {
+		case open <- struct{}{}:
+		default:
+			s.logf(LogWarn, "拒绝通道 %s@%s：同一连接已开 %d 个会话", conn.User(), ip, serverMaxChannelsPerConn)
+			_ = newCh.Reject(ssh.Prohibited, "同一连接打开的会话数已达上限")
 			continue
 		}
-		go s.serveChannel(ch, chReqs, acc)
+		ch, chReqs, aerr := newCh.Accept()
+		if aerr != nil {
+			<-open
+			continue
+		}
+		go func(c ssh.Channel, r <-chan *ssh.Request) {
+			defer func() { <-open }()
+			s.serveChannel(c, r, acc)
+		}(ch, chReqs)
 	}
 }
 
-// checkPassword 密码校验：账号存在 → 启用 → bcrypt 比对 → 连接数上限
+// checkPassword 密码校验：账号存在 → 启用 → bcrypt 比对
 func (s *serverRuntime) checkPassword(meta ssh.ConnMetadata, pass []byte, ip string) (*ssh.Permissions, error) {
 	rec, ok := findAccount(meta.User())
 	if !ok || rec.PassHash == "" {
+		// 账号不存在时也做一次同代价的 bcrypt 比对：只在“存在/不存在”分支上
+		// 不同会让响应时间差出一次哈希（约 50-100ms），可被拿来枚举有效用户名
+		if h := dummyPassHash(); h != nil {
+			_ = bcrypt.CompareHashAndPassword(h, pass)
+		}
 		s.logf(LogWarn, "登录失败 %s@%s：账号不存在", meta.User(), ip)
 		return nil, errors.New("用户名或密码错误")
 	}
@@ -304,6 +348,16 @@ func (s *serverRuntime) checkPassword(meta ssh.ConnMetadata, pass []byte, ip str
 // serveChannel 处理一个 session 通道：只认 subsystem=sftp
 func (s *serverRuntime) serveChannel(ch ssh.Channel, reqs <-chan *ssh.Request, acc Account) {
 	defer ch.Close()
+
+	// 每条通道都按账号“当前”配置建沙箱：连接建立之后才改的只读/根目录，
+	// 客户端重新开通道立刻按新策略生效（仍在用的老通道由保存账号时统一断连）
+	if cur, ok := accountByUsername(acc.Username); ok {
+		acc = cur
+	}
+	if !acc.Enabled {
+		s.logf(LogWarn, "拒绝会话 %s：账号已禁用", acc.Username)
+		return
+	}
 
 	cfg, root := s.currentConfig()
 	_ = cfg
@@ -350,8 +404,16 @@ func (s *serverRuntime) serveChannel(ch ssh.Channel, reqs <-chan *ssh.Request, a
 	}
 }
 
-func (s *serverRuntime) addConn(acc Account, ip string, conn *ssh.ServerConn) string {
+// addConn 注册一条在线连接；服务已停止或连接数已满时返回 false
+//
+// 运行态校验、上限判定与登记必须在同一把锁里完成：否则“停止服务”
+// 期间完成的握手会在这之后又把自己加回连接表，停止状态名不副实。
+func (s *serverRuntime) addConn(acc Account, ip string, conn *ssh.ServerConn) (string, bool) {
 	s.mu.Lock()
+	if s.ln == nil || len(s.conns) >= serverMaxConns {
+		s.mu.Unlock()
+		return "", false
+	}
 	s.seq++
 	id := fmt.Sprintf("c%d", s.seq)
 	s.conns[id] = &srvConn{conn: conn, info: ServerConn{
@@ -363,7 +425,7 @@ func (s *serverRuntime) addConn(acc Account, ip string, conn *ssh.ServerConn) st
 	}}
 	s.mu.Unlock()
 	emit(EventServer, GetServerStatus())
-	return id
+	return id, true
 }
 
 func (s *serverRuntime) removeConn(id string) {
@@ -373,12 +435,6 @@ func (s *serverRuntime) removeConn(id string) {
 	}
 	s.mu.Unlock()
 	emit(EventServer, GetServerStatus())
-}
-
-func (s *serverRuntime) connCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.conns)
 }
 
 func (s *serverRuntime) currentConfig() (ServerConfig, string) {

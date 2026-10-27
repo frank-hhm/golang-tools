@@ -33,6 +33,12 @@ const (
 	serverLogLimit = 300
 	// serverMaxConns 同时在线的连接上限，防止误暴露后被刷满文件句柄
 	serverMaxConns = 32
+	// serverMaxHandshaking 认证阶段的并发上限。bcrypt 每次约 50-100ms CPU，
+	// 而 ssh 层默认允许 6 次重试，不限并发时任何能连上端口的人都能把进程 CPU 打满
+	serverMaxHandshaking = 16
+	// serverMaxChannelsPerConn 单条 SSH 连接同时允许的 sftp 通道数
+	// （每个通道一个 goroutine + 一个 os.Root 句柄）
+	serverMaxChannelsPerConn = 8
 )
 
 // ServerConfig 服务端监听配置
