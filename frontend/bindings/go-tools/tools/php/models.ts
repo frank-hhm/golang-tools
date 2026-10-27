@@ -94,6 +94,16 @@ export interface InstanceConfig {
     "enableLogs": boolean;
 
     /**
+     * RunMode 运行方式：空/server = php -S 内置 HTTP 服务器；cgi = php-cgi FastCGI 后端（供 nginx fastcgi_pass）
+     */
+    "runMode": string;
+
+    /**
+     * Remark 来源标注：由 Nginx 网站关联创建的实例在此写明来源，供 PHP 面板展示
+     */
+    "remark": string;
+
+    /**
      * ---- Docker 模式（Mode 为空即本地模式，历史配置无需迁移）----
      * local | docker
      */
@@ -129,6 +139,16 @@ export interface InstanceStatus {
     "configPath": string;
     "extensionsLoaded": number;
     "disableFunctions": string;
+
+    /**
+     * 运行方式：server | cgi
+     */
+    "runMode": string;
+
+    /**
+     * 来源标注（Nginx 网站关联创建时非空）
+     */
+    "remark": string;
 
     /**
      * ---- Docker 模式专属（本地模式恒为空）----

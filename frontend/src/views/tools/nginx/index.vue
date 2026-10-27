@@ -124,6 +124,17 @@
                             <b class="ellipsis">{{ selState?.docRoot || '-' }}</b>
                         </a-tooltip>
                     </div>
+                    <div class="ls-item" v-if="selCfg?.domain || selState?.domain"><span>绑定域名</span>
+                        <a-tooltip :content="selState?.domain || selCfg?.domain || ''">
+                            <b class="ellipsis">{{ selState?.domain || selCfg?.domain }}</b>
+                        </a-tooltip>
+                    </div>
+                    <div class="ls-item" v-if="selCfg?.phpMode || selState?.phpMode"><span>PHP 后端</span>
+                        <a-tooltip :content="'关联 PHP 实例：' + (selCfg?.phpInstanceId || '')">
+                            <b class="ellipsis">{{ phpModeLabel(selCfg?.phpMode || selState?.phpMode) }} · {{ selCfg?.phpVersion || selState?.phpVersion }}<template
+                                    v-if="selCfg?.phpPort || selState?.phpPort"> :{{ selCfg?.phpPort || selState?.phpPort }}</template></b>
+                        </a-tooltip>
+                    </div>
                     <div class="ls-item"><span>nginx.conf</span>
                         <a-tooltip :content="selState?.configPath || '-'">
                             <b class="ellipsis">{{ selState?.configPath || '-' }}</b>
@@ -255,7 +266,50 @@
             <a-form-item field="docRoot" label="站点根目录"
                 :tooltip="instForm.mode === 'docker' ? '留空 = 程序目录 data/www/实例名；该目录会挂载到容器 /usr/share/nginx/html' : '留空 = 程序目录 data/www/实例名'">
                 <a-input-search v-model="instForm.docRoot" placeholder="如 D:\www\site" search-button
-                    button-text="选择目录" @click-btn="chooseDocRoot" />
+                    button-text="选择目录" @search="chooseDocRoot" />
+            </a-form-item>
+            <a-form-item v-if="instForm.mode !== 'docker'" label="PHP 支持"
+                tooltip="选 PHP 后会自动创建一个关联的 PHP 实例（在 PHP 面板可见，来源标注为本 Nginx 网站），启停/删除随本站点联动；改 PHP 后端后需重启实例才会重写 nginx.conf（已自定义过的 conf 不会被覆盖）">
+                <a-radio-group size="medium" v-model="phpOn" type="button">
+                    <a-radio :value="false">纯静态</a-radio>
+                    <a-radio :value="true">PHP 网站</a-radio>
+                </a-radio-group>
+            </a-form-item>
+            <a-row v-if="instForm.mode !== 'docker' && phpOn" :gutter="12">
+                <a-col :span="12">
+                    <a-form-item field="phpMode" label="接入方式">
+                        <a-select v-model="instForm.phpMode">
+                            <a-option value="fastcgi">FastCGI（php-cgi）</a-option>
+                            <a-option value="proxy">反向代理（php -S）</a-option>
+                        </a-select>
+                    </a-form-item>
+                </a-col>
+                <a-col :span="12">
+                    <a-form-item field="phpVersion" label="PHP 版本">
+                        <a-select v-model="instForm.phpVersion" placeholder="选择已安装 PHP 版本" :disabled="!phpVersions.length">
+                            <a-option v-for="v in phpVersions" :key="v.version" :value="v.version">{{ v.version }}</a-option>
+                        </a-select>
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <div v-if="instForm.mode !== 'docker' && phpOn && !phpVersions.length" class="php-warn">
+                未检测到已安装的 PHP 版本，请先到「PHP 管理」安装后再关联。
+            </div>
+            <div v-if="instForm.mode !== 'docker' && phpOn && instForm.phpPort" class="php-warn">
+                关联 PHP 后端监听端口：{{ instForm.phpPort }}（保存/重启后生效）
+            </div>
+            <a-form-item field="domain" label="绑定域名"
+                tooltip="写入 nginx.conf 的 server_name；可填多个，用空格或逗号分隔；留空则仅本机 localhost。改域名后需重启实例才会重写配置（已自定义过的 nginx.conf 不会被覆盖）">
+                <a-input v-model="instForm.domain" placeholder="如 local.test，多个用空格分隔" />
+                <template #extra>
+                    <div v-if="instForm.domain" class="hosts-hint">
+                        <span>想本机通过该域名访问，需在 hosts 里加一行：</span>
+                        <a-link copyable :content="hostsLine" class="hosts-line">{{ hostsLine }}</a-link>
+                        <a-link @click="openHosts">
+                            <template #icon><icon-edit /></template>打开 hosts 配置</a-link>
+                        <span v-if="hostsPath" class="hosts-path">{{ hostsPath }}</span>
+                    </div>
+                </template>
             </a-form-item>
             <a-form-item field="stubStatus" label="开放 /stub_status 状态页" tooltip="开启后可用工具面板读取 nginx 连接数/请求数">
                 <a-switch v-model="instForm.stubStatus" />
@@ -391,9 +445,11 @@ const GoTools = (getCurrentInstance() as any)?.appContext.config.globalPropertie
 const sysPkg = useSysPkg();
 
 interface InstConfig {
-    id: string; name: string; version: string; port: number; sslPort: number; docRoot: string; workers: number; stubStatus: boolean;
+    id: string; name: string; version: string; port: number; sslPort: number; domain: string; docRoot: string; workers: number; stubStatus: boolean;
     // mode: local | docker；容器模式不占本机版本库，靠 image 定位镜像
     mode: string; image: string; containerName: string;
+    // PHP 后端：phpMode 空=纯静态 / fastcgi=php-cgi / proxy=反向代理到 php -S；phpPort/phpInstanceId 由后端回填
+    phpMode: string; phpVersion: string; phpPort: number; phpInstanceId: string;
 }
 
 /** Docker 实例的版本就是镜像 tag：列表里只展示 tag（1.27-alpine），完整镜像名走 tooltip */
@@ -421,8 +477,32 @@ const selState = computed(() => (selectedId.value ? states[selectedId.value] : n
 const isDockerSel = computed(() => (selCfg.value?.mode || selState.value?.mode) === "docker");
 
 const instForm = reactive<InstConfig>({
-    id: "", name: "", version: "", port: 8090, sslPort: 0, docRoot: "", workers: 0, stubStatus: true,
+    id: "", name: "", version: "", port: 8090, sslPort: 0, domain: "", docRoot: "", workers: 0, stubStatus: true,
     mode: "local", image: "", containerName: "",
+    phpMode: "", phpVersion: "", phpPort: 0, phpInstanceId: "",
+});
+/** 已安装的 PHP 版本（供 Nginx 站点关联 PHP 后端） */
+const phpVersions = ref<any[]>([]);
+/** 表单里是否启用 PHP：phpMode 非空即启用；开启时默认 fastcgi，关闭清空 */
+const phpOn = computed({
+    get: () => !!instForm.phpMode,
+    set: (v: boolean) => {
+        instForm.phpMode = v ? "fastcgi" : "";
+        if (v && !instForm.phpVersion) instForm.phpVersion = phpVersions.value[0]?.version || "";
+    },
+});
+async function loadPhpVersions() {
+    try { phpVersions.value = (await GoTools.PhpSrvListVersions()) || []; }
+    catch (e) { phpVersions.value = []; }
+}
+/** PHP 后端模式展示文案 */
+function phpModeLabel(m: string): string { return m === "proxy" ? "反向代理(php -S)" : "FastCGI(php-cgi)"; }
+/** 本机 hosts 文件路径（域名绑定后就地指引用户去配置解析） */
+const hostsPath = ref("");
+/** 建议写入 hosts 的一行：hosts 支持一行映多个域名，故把表单里的域名全部跟在 127.0.0.1 后 */
+const hostsLine = computed(() => {
+    const ds = String(instForm.domain || "").split(/[\s,;]+/).map((s) => s.trim()).filter((s) => s && s !== "localhost");
+    return `127.0.0.1    ${ds.join(" ") || "example.test"}`;
 });
 /** 端口占用提示：HTTP/HTTPS 各一份，贴表单项底下（红字） */
 const portError = ref("");
@@ -634,6 +714,10 @@ async function openInstModal(inst?: InstConfig) {
     portError.value = "";
     sslPortError.value = "";
     dockerErr.value = "";
+    if (!hostsPath.value) {
+        try { hostsPath.value = (await GoTools.NginxSrvHostsPath()) || ""; } catch (e) { /* ignore */ }
+    }
+    if (!phpVersions.value.length) loadPhpVersions();
     if (inst) {
         // 历史配置没 mode/image/containerName 字段，归一化后再进表单，避免 radio 两档都没选中
         Object.assign(instForm, {
@@ -641,13 +725,17 @@ async function openInstModal(inst?: InstConfig) {
             mode: inst.mode === "docker" ? "docker" : "local",
             image: inst.image || "",
             containerName: inst.containerName || "",
+            phpMode: inst.phpMode || "",
+            phpVersion: inst.phpVersion || "",
+            phpPort: inst.phpPort || 0,
+            phpInstanceId: inst.phpInstanceId || "",
         });
     }
     else {
         // 默认端口也要能用：避开其它实例已登记 / 系统已监听的
         let port = 8090;
         try { port = (await GoTools.NginxSrvSuggestPort(8090)) || port; } catch (e) { /* ignore */ }
-        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port, sslPort: 0, docRoot: "", workers: 0, stubStatus: true, mode: "local", image: "", containerName: "" });
+        Object.assign(instForm, { id: "", name: "", version: localVersions.value[0]?.version || "", port, sslPort: 0, domain: "", docRoot: "", workers: 0, stubStatus: true, mode: "local", image: "", containerName: "", phpMode: "", phpVersion: "", phpPort: 0, phpInstanceId: "" });
     }
     if (localVersions.value.length === 0) loadLocalVersions();
     if (instForm.mode === "docker") onModeChange("docker");
@@ -729,6 +817,11 @@ async function chooseDocRoot() {
     try { const dir = await GoTools.NginxSrvChooseDir(); if (dir) instForm.docRoot = dir; }
     catch (e) { /* cancel */ }
 }
+/** 打开本机 hosts 文件：Windows 会弹 UAC 提权拉记事本（保存需管理员）；Linux 无图形环境会提示用 sudo */
+async function openHosts() {
+    try { await GoTools.NginxSrvOpenHosts(); }
+    catch (e: any) { Message.warning("打开 hosts 失败: " + (e?.message || e)); }
+}
 async function saveInstance(): Promise<boolean> {
     if (!instForm.name) { Message.warning("请填写实例名称"); return false; }
     // 两种模式的必填项不一样：本地看本机版本库，容器看镜像（后端也会再校一次）
@@ -736,6 +829,11 @@ async function saveInstance(): Promise<boolean> {
         if (!instForm.image) { Message.warning("Docker 模式请选择或输入镜像"); return false; }
     } else if (!instForm.version) { Message.warning("请选择 Nginx 版本"); return false; }
     if (!instForm.port) { Message.warning("请填写 HTTP 端口"); return false; }
+    // PHP 后端：启用时必须选一个已安装版本（Docker 模式不参与关联）
+    if (instForm.mode !== "docker" && instForm.phpMode && !instForm.phpVersion) {
+        Message.warning("PHP 后端请选择已安装的 PHP 版本");
+        return false;
+    }
     // 端口占用先在本地拦一次，后端保存时还会再校验
     try {
         const reason = await GoTools.NginxSrvPortTaken(instForm.port, instForm.id || "");
@@ -1082,6 +1180,34 @@ onUnmounted(() => {
     font-size: 12px;
     color: var(--color-text-3);
     word-break: break-all;
+}
+
+/* 绑定域名下方的 hosts 指引行：建议行等宽可复制，“打开”链接与路径同列 */
+.hosts-hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text-3);
+    margin-top: 2px;
+}
+
+.hosts-line {
+    font-family: Consolas, Menlo, monospace;
+}
+
+.hosts-path {
+    font-family: Consolas, Menlo, monospace;
+    color: var(--color-text-4);
+    word-break: break-all;
+}
+
+/* PHP 关联提示行：未装 PHP 的警示与已关联端口提示 */
+.php-warn {
+    margin: -6px 0 12px;
+    font-size: 12px;
+    color: var(--color-text-3);
 }
 
 .install-log {

@@ -17,6 +17,9 @@ import (
 // binFileName 可执行文件名（Linux 系统包的 php 不带扩展名）。
 const binFileName = "php"
 
+// cgiFileName FastCGI 后端可执行文件名（Linux 上属单独的 php-cgi 包，可能未安装）。
+const cgiFileName = "php-cgi"
+
 // systemPackaged Linux 上走系统包管理器安装。
 //
 // PHP 官方不提供 Linux 的便携二进制，扩展也是编译产物——只有发行版仓库

@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -144,7 +145,7 @@ func unregisterCancel() {
 
 /* ============================ 体检 ============================ */
 
-// locateDesktopExe 找到 Docker Desktop.exe：ProgramFiles 系列 → 常见自定义路径 → 注册表 InstallLocation
+// locateDesktopExe 找到 Docker Desktop.exe：ProgramFiles 系列 → 常见自定义路径 → 注册表 InstallLocation / DisplayIcon
 func locateDesktopExe() (string, bool) {
 	var dirs []string
 	for _, env := range []string{"ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"} {
@@ -161,10 +162,18 @@ func locateDesktopExe() (string, bool) {
 			return p, true
 		}
 	}
-	if loc := registryInstallLocation(); loc != "" {
-		p := filepath.Join(loc, "Docker Desktop.exe")
-		if fileExists(p) {
-			return p, true
+	if info, ok := findUninstallEntry(); ok {
+		var cands []string
+		if info.installLocation != "" {
+			cands = append(cands, filepath.Join(info.installLocation, "Docker Desktop.exe"))
+		}
+		if p := iconExePath(info.displayIcon); p != "" {
+			cands = append(cands, p)
+		}
+		for _, p := range cands {
+			if fileExists(p) {
+				return p, true
+			}
 		}
 	}
 	return "", false
@@ -175,28 +184,41 @@ func fileExists(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// registryInstallLocation 从卸载项里取 InstallLocation（Docker Desktop 在 HKLM 卸载表中登记）
-func registryInstallLocation() string {
-	if k, ver, ok := scanUninstall("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"); ok {
-		_ = ver
-		return k
-	}
-	if k, _, ok := scanUninstall(`SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`); ok {
-		return k
-	}
-	return ""
+// uninstallInfo 卸载表里的 Docker Desktop 登记信息
+type uninstallInfo struct {
+	installLocation string
+	displayVersion  string
+	displayIcon     string // 通常是 exe 全路径（可能带 ",0" 图标索引后缀）
 }
 
-// scanUninstall 遍历卸载表找 Docker Desktop，返回 (InstallLocation, DisplayVersion, found)
-func scanUninstall(root string) (string, string, bool) {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, root, registry.READ)
+// findUninstallEntry 在卸载表（HKLM 64/32 位 + HKCU）里找 Docker Desktop 登记
+func findUninstallEntry() (uninstallInfo, bool) {
+	for _, src := range []struct {
+		hive registry.Key
+		root string
+	}{
+		{registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`},
+		{registry.LOCAL_MACHINE, `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`},
+		{registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall`},
+	} {
+		if info, ok := scanUninstall(src.hive, src.root); ok {
+			return info, true
+		}
+	}
+	return uninstallInfo{}, false
+}
+
+// scanUninstall 遍历指定卸载表找 Docker Desktop
+func scanUninstall(hive registry.Key, root string) (uninstallInfo, bool) {
+	var info uninstallInfo
+	k, err := registry.OpenKey(hive, root, registry.READ)
 	if err != nil {
-		return "", "", false
+		return info, false
 	}
 	defer k.Close()
 	names, err := k.ReadSubKeyNames(-1)
 	if err != nil {
-		return "", "", false
+		return info, false
 	}
 	for _, n := range names {
 		sk, err := registry.OpenKey(k, n, registry.READ)
@@ -208,12 +230,56 @@ func scanUninstall(root string) (string, string, bool) {
 			sk.Close()
 			continue
 		}
-		loc, _, _ := sk.GetStringValue("InstallLocation")
-		ver, _, _ := sk.GetStringValue("DisplayVersion")
+		info.installLocation, _, _ = sk.GetStringValue("InstallLocation")
+		info.displayVersion, _, _ = sk.GetStringValue("DisplayVersion")
+		info.displayIcon, _, _ = sk.GetStringValue("DisplayIcon")
+		info.installLocation = strings.TrimSpace(info.installLocation)
+		info.displayVersion = strings.TrimSpace(info.displayVersion)
+		info.displayIcon = strings.TrimSpace(info.displayIcon)
 		sk.Close()
-		return strings.TrimSpace(loc), strings.TrimSpace(ver), true
+		return info, true
 	}
-	return "", "", false
+	return info, false
+}
+
+// iconExePath 从 DisplayIcon 里剥出 exe 路径：兼容带引号与尾部 ",<索引>" 两种写法
+func iconExePath(icon string) string {
+	if icon == "" {
+		return ""
+	}
+	if strings.HasPrefix(icon, `"`) {
+		if end := strings.Index(icon[1:], `"`); end >= 0 {
+			return icon[1 : 1+end]
+		}
+		return strings.TrimPrefix(icon, `"`)
+	}
+	if i := strings.LastIndex(icon, ","); i > 1 {
+		if _, err := strconv.Atoi(strings.TrimSpace(icon[i+1:])); err == nil {
+			return icon[:i]
+		}
+	}
+	return icon
+}
+
+// pendingReboot 系统是否有挂起的重启操作（MSI 安装器常见尾声）：
+// Session Manager 有待重命名/替换的文件，或 CBS 挂了 RebootPending 标志。
+func pendingReboot() bool {
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Session Manager`, registry.READ); err == nil {
+		names, nerr := k.ReadValueNames(-1)
+		k.Close()
+		if nerr == nil {
+			for _, n := range names {
+				if strings.EqualFold(n, "PendingFileRenameOperations") {
+					return true
+				}
+			}
+		}
+	}
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending`, registry.READ); err == nil {
+		k.Close()
+		return true
+	}
+	return false
 }
 
 // pipeListening 有没有人在监听引擎管道（不阻塞）：
@@ -261,8 +327,8 @@ func CheckEnv(dir string) (EnvCheck, error) {
 }
 
 func registryVersionOnly() (string, string) {
-	if loc, ver, ok := scanUninstall("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"); ok {
-		return loc, ver
+	if info, ok := findUninstallEntry(); ok {
+		return info.installLocation, info.displayVersion
 	}
 	return "", ""
 }
@@ -278,6 +344,38 @@ func wslBroken(s string) bool {
 		}
 	}
 	return false
+}
+
+// vmPlatformDisabledWords 命中「虚拟机平台 (Virtual Machine Platform) 未启用」的中英文措辞。
+// 这是 WSL2 后端特有的硬卡点（区别于一般的“WSL 没装”）：启用它必须重启计算机才生效，
+// Docker Desktop 自己不会替用户跑这条命令，所以值得单独识别、给出方向性指引。
+func vmPlatformDisabledWords(s string) bool {
+	l := strings.ToLower(s)
+	hasVM := strings.Contains(l, "虚拟机平台") || strings.Contains(l, "virtual machine platform")
+	hasOff := strings.Contains(l, "未启用") || strings.Contains(l, "not enabled") ||
+		strings.Contains(l, "无法启动") || strings.Contains(l, "could not") ||
+		strings.Contains(l, "未安装") || strings.Contains(l, "not installed")
+	return hasVM && hasOff
+}
+
+// vmPlatformBlocked 只读探一次 wsl，判「虚拟机平台未启用」这一具体卡点。
+// 命中时返回 (true, 证据原文)：调用方据此尽早中止无谓的引擎等待，直接提示启用+重启。
+// 注意用词稳定（是系统功能状态，不是 WSL 初始化中的瞬时报错），不会把首次建发行版误判进来。
+func vmPlatformBlocked() (bool, string) {
+	out, err := runWsl(10*time.Second, "--status")
+	probe := out
+	if err != nil {
+		probe += " " + err.Error()
+	}
+	list, errL := runWsl(12*time.Second, "-l", "-v")
+	if errL != nil && strings.TrimSpace(list) == "" {
+		list = errL.Error()
+	}
+	probe += " " + list
+	if vmPlatformDisabledWords(probe) {
+		return true, oneLine(truncate(probe, 240))
+	}
+	return false, ""
 }
 
 // wslNoDistro “组件在但一个发行版都没注册”的措辞：Docker Desktop 会自建 docker-desktop，
@@ -695,14 +793,24 @@ func InstallDocker(installerPath, input, dir string, webDownload bool) error {
 		emitSetup(SetupProgress{Stage: "error", Note: note})
 		return fmt.Errorf("%s", note)
 	}
+	// 1641 / 3010 是 MSI「成功但需重启」退出码：文件落盘推迟到重启之后。
+	// 不算失败，但也无法立刻拉起引擎，给出明确的重启指引即可。
+	if code == 1641 || code == 3010 {
+		note := fmt.Sprintf("Docker Desktop 安装成功（退出码 %d）：系统需要重启才能完成文件落盘。请重启计算机后重新进入本页面自动识别，无需重装。", code)
+		emitSetup(SetupProgress{Stage: "error", Note: note})
+		return fmt.Errorf("%s", note)
+	}
 	if code != 0 {
 		note := fmt.Sprintf("安装器退出码 %d，未确认安装成功；请查看安装器窗口或官方日志 %%LOCALAPPDATA%%\\Docker\\log\\installer.log", code)
 		emitSetup(SetupProgress{Stage: "error", Note: note})
 		return fmt.Errorf("%s", note)
 	}
-	exe, ok := locateDesktopExe()
+	// 安装器返回 0 不等于文件已就位：MSI 在进程退出后可能仍在写盘/挂起重命名
+	// （偶尔推迟到重启后完成）。轮询等待 exe 出现，最多 90 秒。
+	emitSetup(SetupProgress{Stage: "installing", Note: "安装器报告完成，正在等待程序文件落盘…"})
+	exe, ok := waitDesktopExe(90 * time.Second)
 	if !ok {
-		note := "安装器报告完成，但未找到 Docker Desktop.exe；可能需要重启计算机后重试"
+		note := desktopMissingNote()
 		emitSetup(SetupProgress{Stage: "error", Note: note})
 		return fmt.Errorf("%s", note)
 	}
@@ -713,6 +821,42 @@ func InstallDocker(installerPath, input, dir string, webDownload bool) error {
 		return err
 	}
 	return waitEngineReady()
+}
+
+// waitDesktopExe 轮询 locateDesktopExe 直到出现或超时：覆盖「安装器已退出但文件仍在写入」的窗口期
+func waitDesktopExe(timeout time.Duration) (string, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		if p, ok := locateDesktopExe(); ok {
+			return p, true
+		}
+		if !time.Now().Before(deadline) {
+			return "", false
+		}
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// desktopMissingNote 安装器报成功但找不到 exe 时，按「注册表登记 + 挂起重启」两项证据
+// 组装方向性指引：已登记且待重启时提示重启后重检（无需重装），只有全无痕迹才是真失败。
+func desktopMissingNote() string {
+	const instLog = `%LOCALAPPDATA%\Docker\log\installer.log`
+	info, registered := findUninstallEntry()
+	reboot := pendingReboot()
+	ver := info.displayVersion
+	if ver == "" {
+		ver = "版本未知"
+	}
+	switch {
+	case registered && reboot:
+		return "Docker Desktop（" + ver + "）已登记安装，但程序文件尚未落盘，且系统有待重启操作——这是 MSI 安装器常见的尾声。请重启计算机后重新进入本页面自动识别，无需重装。"
+	case registered:
+		return "Docker Desktop（" + ver + "）已在系统登记，但安装目录与注册表路径都找不到程序文件。若刚完成安装，可先重启后重检；否则请查看安装器日志 " + instLog + " 后重装。"
+	case reboot:
+		return "安装器正常退出，但系统尚未登记 Docker Desktop，且存在挂起的重启操作：请先重启计算机后重新检测；若仍未找到，再重新发起安装。"
+	default:
+		return "安装器报告完成，但常见安装目录与注册表均未发现 Docker Desktop 痕迹，安装可能被静默中止——请查看安装器日志 " + instLog + " 后重新安装。"
+	}
 }
 
 // waitEngineReady 轮询引擎直至可达、被取消或超时；超时不报错回滚，只给排查方向
@@ -734,6 +878,18 @@ func waitEngineReady() error {
 		if i%5 == 4 {
 			emitSetup(SetupProgress{Stage: "starting",
 				Note: "引擎仍未应答，首次启动需初始化 WSL 后端，请稍候…（可点「停止」中止）"})
+		}
+		// 等了几轮仍无应答，且探到「虚拟机平台未启用」：这不是“再等等就好”，而是必须
+		// 启用系统功能并重启才生效的硬卡点——尽早中止，别把整段 engineWaitTime 白等掉。
+		if i >= 3 {
+			if blocked, ev := vmPlatformBlocked(); blocked {
+				note := "检测到「虚拟机平台 (Virtual Machine Platform)」未启用：Docker Desktop 的 WSL2 后端依赖它，不启用引擎起不来。\n" +
+					"请点本面板的「启用 WSL2」（自动提权启用），或在管理员终端执行：\n" +
+					"dism /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart\n" +
+					"启用后必须【重启计算机】才会生效（只重启 Docker Desktop 不够）；重启后重新打开 Docker Desktop 即可。证据：" + ev
+				emitSetup(SetupProgress{Stage: "error", Note: note})
+				return fmt.Errorf("%s", note)
+			}
 		}
 	}
 	note := "引擎在 " + engineWaitTime.String() + " 内未就绪：若刚启用 WSL2 请先重启计算机，再手动打开 Docker Desktop 等待右下角鲸鱼变绿"

@@ -38,6 +38,9 @@ func IsUACCancelled(err error) bool {
 
 func RunElevatedWait(Elevated) (int, error) { return -1, errUnsupported }
 
+// OpenElevated 非 Windows 无 UAC 提权概念：直接报不支持。
+func OpenElevated(string, string) error { return errUnsupported }
+
 func StartDetached(string, ...string) error { return errUnsupported }
 
 func RunHidden(time.Duration, string, ...string) (string, error) { return "", errUnsupported }

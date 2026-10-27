@@ -1384,20 +1384,120 @@ func (a *App) NginxSrvChooseDir() (string, error) {
 // NginxSrvListInstances 列出全部 Nginx 实例配置
 func (a *App) NginxSrvListInstances() ([]nginx.InstanceConfig, error) { return nginx.ListInstances() }
 
-// NginxSrvSaveInstance 新增/更新实例配置（ID 为空则新建）
-func (a *App) NginxSrvSaveInstance(cfg nginx.InstanceConfig) error { return nginx.SaveInstance(cfg) }
+// NginxSrvSaveInstance 新增/更新实例配置（ID 为空则新建）。
+// 若启用 PHP 后端，同步创建/更新一个关联的 PHP 实例（全生命周期联动）；改回纯静态则删除旧关联。
+func (a *App) NginxSrvSaveInstance(cfg nginx.InstanceConfig) error {
+	// 先定 nginx ID：关联 PHP 实例 ID 由它派生，需稳定
+	if cfg.ID == "" {
+		cfg.ID = nginx.NewInstanceID()
+	}
+	old := findNginxInst(cfg.ID)
+	// Docker 模式访问不到宿主 127.0.0.1 后端，强制纯静态
+	if cfg.Mode == "docker" {
+		cfg.PhpMode, cfg.PhpVersion, cfg.PhpPort, cfg.PhpInstanceID = "", "", 0, ""
+	}
+	switch cfg.PhpMode {
+	case nginx.PhpModeFastCGI, nginx.PhpModeProxy:
+		phpID := "nginx-" + cfg.ID
+		docroot := nginx.DocRootOf(cfg)
+		_ = os.MkdirAll(docroot, 0o755)
+		runMode := php.RunModeServer
+		if cfg.PhpMode == nginx.PhpModeFastCGI {
+			runMode = php.RunModeCgi
+		}
+		// 端口：沿用已存在的关联实例，否则自动选一个可用端口
+		port := 0
+		if list, _ := php.ListInstances(); list != nil {
+			for _, p := range list {
+				if p.ID == phpID {
+					port = p.Port
+					break
+				}
+			}
+		}
+		if port == 0 {
+			port = php.SuggestPort(9000)
+		}
+		phpCfg := php.InstanceConfig{
+			ID:      phpID,
+			Name:    cfg.Name + " 后端",
+			Version: cfg.PhpVersion,
+			Port:    port,
+			NTS:     true,
+			DocRoot: docroot,
+			RunMode: runMode,
+			Remark:  "来源：Nginx 网站「" + cfg.Name + "」",
+			Mode:    "local",
+		}
+		if err := php.SaveInstance(phpCfg); err != nil {
+			return fmt.Errorf("关联 PHP 后端失败：%w", err)
+		}
+		cfg.PhpInstanceID = phpID
+		cfg.PhpPort = port
+	default:
+		// 改回纯静态：删除此前关联的 PHP 实例（若有）
+		if cfg.PhpInstanceID == "" && old != nil {
+			cfg.PhpInstanceID = old.PhpInstanceID
+		}
+		if cfg.PhpInstanceID != "" {
+			_ = php.RemoveInstance(cfg.PhpInstanceID)
+		}
+		cfg.PhpVersion, cfg.PhpPort, cfg.PhpInstanceID = "", 0, ""
+	}
+	return nginx.SaveInstance(cfg)
+}
 
-// NginxSrvRemoveInstance 删除实例配置（运行中先停止）
-func (a *App) NginxSrvRemoveInstance(id string) error { return nginx.RemoveInstance(id) }
+// NginxSrvRemoveInstance 删除实例配置（运行中先停止）；一并删除关联的 PHP 后端
+func (a *App) NginxSrvRemoveInstance(id string) error {
+	cfg := findNginxInst(id)
+	if err := nginx.RemoveInstance(id); err != nil {
+		return err
+	}
+	if cfg != nil && cfg.PhpInstanceID != "" {
+		_ = php.RemoveInstance(cfg.PhpInstanceID)
+	}
+	return nil
+}
 
-// NginxSrvStart 启动实例（-p prefix -c conf，隐藏窗口）
-func (a *App) NginxSrvStart(id string) error { return nginx.StartInstance(id) }
+// NginxSrvStart 启动实例（-p prefix -c conf，隐藏窗口）；先拉起关联的 PHP 后端
+func (a *App) NginxSrvStart(id string) error {
+	if cfg := findNginxInst(id); cfg != nil && cfg.PhpInstanceID != "" {
+		if err := php.StartInstance(cfg.PhpInstanceID); err != nil {
+			if st, e := php.GetInstanceStatus(cfg.PhpInstanceID); e != nil || !st.Running {
+				return fmt.Errorf("启动关联 PHP 后端失败：%w", err)
+			}
+		}
+	}
+	return nginx.StartInstance(id)
+}
 
-// NginxSrvStop 停止实例（nginx -s quit + 兑底 kill）
-func (a *App) NginxSrvStop(id string) error { return nginx.StopInstance(id) }
+// NginxSrvStop 停止实例（nginx -s quit + 兑底 kill）；随后停掉关联的 PHP 后端
+func (a *App) NginxSrvStop(id string) error {
+	err := nginx.StopInstance(id)
+	if cfg := findNginxInst(id); cfg != nil && cfg.PhpInstanceID != "" {
+		_ = php.StopInstance(cfg.PhpInstanceID) // 后端停不掉不阻断主流程
+	}
+	return err
+}
 
-// NginxSrvRestart 重启实例
-func (a *App) NginxSrvRestart(id string) error { return nginx.RestartInstance(id) }
+// NginxSrvRestart 重启实例；连带重启关联的 PHP 后端
+func (a *App) NginxSrvRestart(id string) error {
+	if cfg := findNginxInst(id); cfg != nil && cfg.PhpInstanceID != "" {
+		_ = php.RestartInstance(cfg.PhpInstanceID)
+	}
+	return nginx.RestartInstance(id)
+}
+
+// findNginxInst 按 ID 取实例配置（不存在返回 nil），供 app 层联动时读取关联的 PHP 实例 ID
+func findNginxInst(id string) *nginx.InstanceConfig {
+	list, _ := nginx.ListInstances()
+	for i := range list {
+		if list[i].ID == id {
+			return &list[i]
+		}
+	}
+	return nil
+}
 
 // NginxSrvReload 平滑重载配置
 func (a *App) NginxSrvReload(id string) error { return nginx.ReloadInstance(id) }
@@ -1445,6 +1545,12 @@ func (a *App) NginxSrvDefaultImage() string { return nginx.DefaultDockerImage }
 
 // NginxSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
 func (a *App) NginxSrvDockerAvailable() (bool, string) { return nginx.DockerAvailable() }
+
+// NginxSrvHostsPath 返回本机系统 hosts 文件路径（供前端展示与拼接建议行）
+func (a *App) NginxSrvHostsPath() string { return nginx.HostsPath() }
+
+// NginxSrvOpenHosts 打开本地 hosts 文件用于域名解析配置（Windows 提权拉记事本，Linux 提示 sudo）
+func (a *App) NginxSrvOpenHosts() error { return nginx.OpenHosts() }
 
 /* ============================ npm 本地服务管理 ============================ */
 

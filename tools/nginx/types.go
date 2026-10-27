@@ -76,9 +76,17 @@ type InstanceConfig struct {
 	Version    string `json:"version"`
 	Port       int    `json:"port"`       // HTTP 端口（容器模式下是宿主机发布端口）
 	SSLPort    int    `json:"sslPort"`    // >0 时生成 https 监听
+	Domain     string `json:"domain"`     // 绑定域名（写入 nginx.conf 的 server_name）；空 = 仅 localhost
 	DocRoot    string `json:"docRoot"`    // 站点根目录；空 = 实例目录下 html/
 	Workers    int    `json:"workers"`    // worker_processes；<=0 用 auto
 	StubStatus bool   `json:"stubStatus"` // 是否开放 /stub_status 状态页
+	// PhpMode PHP 后端：空/static = 纯静态；fastcgi = php-cgi FastCGI（nginx fastcgi_pass）；proxy = 反向代理到 php -S
+	PhpMode string `json:"phpMode"`
+	// PhpVersion 关联的 PHP 版本（fastcgi/proxy 时非空）
+	PhpVersion string `json:"phpVersion"`
+	// PhpPort / PhpInstanceID 由保存流程回填：关联 PHP 实例的监听端口与实例 ID（启停/删除联动用）
+	PhpPort       int    `json:"phpPort"`
+	PhpInstanceID string `json:"phpInstanceId"`
 	// Mode 运行模式：local（默认，空串同义）| docker（容器内跑 nginx，见 docker.go）
 	Mode string `json:"mode"`
 	// Image Docker 模式使用的镜像，如 nginx:alpine；本地模式为空
@@ -99,6 +107,10 @@ type InstanceStatus struct {
 	Workers        int     `json:"workers"`
 	UptimeSeconds  int64   `json:"uptimeSeconds"`
 	DocRoot        string  `json:"docRoot"`
+	Domain         string  `json:"domain"` // 绑定域名（来自实例配置）
+	PhpMode        string  `json:"phpMode"`
+	PhpVersion     string  `json:"phpVersion"`
+	PhpPort        int     `json:"phpPort"`
 	ConfigPath     string  `json:"configPath"`
 	Prefix         string  `json:"prefix"`
 	RequestsPerSec float64 `json:"requestsPerSec"` // 由 access.log 行数估算

@@ -347,7 +347,7 @@
                     <a-form-item field="docRoot" label="站点根目录"
                         :tooltip="instForm.mode === 'docker' ? '留空 = 实例目录下的 www/；该目录挂载进容器，Docker Desktop 需能访问所在磁盘（Settings → Resources → File sharing）' : '留空 = 实例目录下的 www/'">
                         <a-input-search v-model="instForm.docRoot" placeholder="如 D:\www\dist" search-button
-                            button-text="选择目录" @click-btn="chooseDocRoot" />
+                            button-text="选择目录" @search="chooseDocRoot" />
                     </a-form-item>
                 </a-col>
                 <a-col v-if="instForm.mode === 'docker'" :span="12">

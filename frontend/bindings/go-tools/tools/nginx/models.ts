@@ -34,6 +34,11 @@ export interface InstanceConfig {
     "sslPort": number;
 
     /**
+     * 绑定域名（写入 nginx.conf 的 server_name）；空 = 仅 localhost
+     */
+    "domain": string;
+
+    /**
      * 站点根目录；空 = 实例目录下 html/
      */
     "docRoot": string;
@@ -47,6 +52,22 @@ export interface InstanceConfig {
      * 是否开放 /stub_status 状态页
      */
     "stubStatus": boolean;
+
+    /**
+     * PhpMode PHP 后端：空/static = 纯静态；fastcgi = php-cgi FastCGI（nginx fastcgi_pass）；proxy = 反向代理到 php -S
+     */
+    "phpMode": string;
+
+    /**
+     * PhpVersion 关联的 PHP 版本（fastcgi/proxy 时非空）
+     */
+    "phpVersion": string;
+
+    /**
+     * PhpPort / PhpInstanceID 由保存流程回填：关联 PHP 实例的监听端口与实例 ID（启停/删除联动用）
+     */
+    "phpPort": number;
+    "phpInstanceId": string;
 
     /**
      * Mode 运行模式：local（默认，空串同义）| docker（容器内跑 nginx，见 docker.go）
@@ -82,6 +103,14 @@ export interface InstanceStatus {
     "workers": number;
     "uptimeSeconds": number;
     "docRoot": string;
+
+    /**
+     * 绑定域名（来自实例配置）
+     */
+    "domain": string;
+    "phpMode": string;
+    "phpVersion": string;
+    "phpPort": number;
     "configPath": string;
     "prefix": string;
 

@@ -444,6 +444,29 @@ func TestWslBrokenVsNoDistro(t *testing.T) {
 	}
 }
 
+// 虚拟机平台未启用是 WSL2 后端特有的硬卡点（启用需重启），必须与一般的“WSL 没装”分开识别：
+// 命中它才能尽早中止引擎等待并给出启用+重启指引。
+func TestVmPlatformDisabledWords(t *testing.T) {
+	for _, s := range []string{
+		"无法启动服务。虚拟机平台未启用。",
+		"Virtual Machine Platform is not enabled",
+		"WSL  requires the Virtual Machine Platform Windows feature; it is not enabled",
+	} {
+		if !vmPlatformDisabledWords(s) {
+			t.Errorf("应判为虚拟机平台未启用：%q", s)
+		}
+	}
+	// 只提“未安装 WSL”而不涉虚拟机平台，或正常回显，都不该误判
+	for _, s := range []string{
+		"未安装适用于 Linux 的 Windows 子系统",
+		"默认分发: docker-desktop 默认版本: 2",
+	} {
+		if vmPlatformDisabledWords(s) {
+			t.Errorf("不该被判成虚拟机平台未启用：%q", s)
+		}
+	}
+}
+
 func TestWslStateLinesAndDistroRunning(t *testing.T) {
 	out := "  NAME                   STATE           VERSION\n" +
 		"* docker-desktop         Running         2\n" +

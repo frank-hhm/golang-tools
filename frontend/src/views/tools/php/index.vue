@@ -29,6 +29,10 @@
                                     {{ imgTag(inst.image) }}</a-tag>
                             </a-tooltip>
                             <a-tag v-else color="arcoblue" size="small">v{{ inst.version }}</a-tag>
+                            <a-tag v-if="inst.mode !== 'docker' && inst.runMode === 'cgi'" color="green" size="small">FastCGI</a-tag>
+                            <a-tooltip v-if="inst.remark" :content="inst.remark">
+                                <a-tag color="gray" size="small">Nginx 站点</a-tag>
+                            </a-tooltip>
                         </a-space>
                         <template #actions>
                             <a-dropdown trigger="hover" @select="(v: any) => onInstAction(v, inst)">
@@ -65,7 +69,10 @@
                         <a-tooltip v-if="isDockerSel" :content="selCfg?.image || ''">
                             <a-tag color="purple" size="small">Docker {{ imgTag(selCfg?.image || '') }} · :{{ selCfg?.port }}</a-tag>
                         </a-tooltip>
-                        <a-tag v-else color="arcoblue" size="small">php -S :{{ selCfg?.port }}</a-tag>
+                        <a-tag v-else color="arcoblue" size="small">{{ selCfg?.runMode === 'cgi' ? 'php-cgi' : 'php -S' }} :{{ selCfg?.port }}</a-tag>
+                        <a-tooltip v-if="selCfg?.remark" :content="selCfg?.remark">
+                            <a-tag color="gray" size="small">Nginx 站点</a-tag>
+                        </a-tooltip>
                     </a-space>
                 </template>
                 <template #extra>
@@ -270,7 +277,7 @@
                     <a-form-item field="docRoot" label="站点根目录"
                         tooltip="留空则使用程序目录 data/www/实例名；Docker 模式会挂载进容器 /var/www/html">
                         <a-input-search v-model="instForm.docRoot" placeholder="留空则使用默认站点目录" search-button
-                            button-text="选择目录" @click-btn="chooseDocRoot" />
+                            button-text="选择目录" @search="chooseDocRoot" />
                     </a-form-item>
                 </a-col>
                 <a-col :span="24">
@@ -614,7 +621,7 @@ const GoTools = (getCurrentInstance() as any)?.appContext.config.globalPropertie
 /** 系统包模式（Linux）：版本与扩展都来自发行版仓库，没有 Windows 绿色版 zip/dll */
 const sysPkg = useSysPkg();
 
-interface InstConfig { id: string; name: string; version: string; port: number; nts: boolean; docRoot: string; router: string; enableLogs: boolean; mode: string; image: string; containerName: string }
+interface InstConfig { id: string; name: string; version: string; port: number; nts: boolean; docRoot: string; router: string; enableLogs: boolean; mode: string; image: string; containerName: string; runMode?: string; remark?: string }
 
 /** Docker 实例的版本就是镜像 tag：列表里只展示 tag（8.3-cli），完整镜像名走 tooltip */
 function imgTag(image: string): string {

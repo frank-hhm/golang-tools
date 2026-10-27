@@ -19,7 +19,8 @@
     </div>
   </div>
 
-  <a-drawer v-model:visible="open" :width="430" :footer="false" placement="right" :unmount-on-close="true">
+  <a-drawer v-model:visible="open" :width="430" placement="right" :unmount-on-close="true"
+    :footer="finishedCount > 0">
     <template #title>
       <div class="th-drawer-title">
         <span>安装任务</span>
@@ -40,21 +41,35 @@
 
     <div v-for="t in list" :key="t.id" class="th-item" :class="'is-' + t.status">
       <div class="th-head">
+        <span class="th-dot" :class="'dot-' + t.status"></span>
         <span class="th-tool">{{ toolLabel(t.tool) }}</span>
         <span class="th-title" :title="t.title">{{ t.title }}</span>
         <a-tag size="small" :color="tagColor(t)">{{ statusText(t) }}</a-tag>
       </div>
 
-      <a-progress :percent="pct(t) / 100" size="small" :show-text="false"
-        :status="t.status === 'error' ? 'danger' : t.status === 'done' ? 'success' : 'normal'" />
+      <a-progress v-if="t.status === 'running' || t.status === 'done'" :percent="pct(t) / 100" size="small"
+        :show-text="false" :status="t.status === 'done' ? 'success' : 'normal'"
+        :class="{ 'is-indeterminate': t.status === 'running' && pct(t) === 0 }" />
 
-      <div class="th-note" :title="t.note">{{ t.note || stageText(t.stage) || "—" }}</div>
+      <div class="th-note-wrap">
+        <div class="th-note" :class="{ 'is-err': t.status === 'error', 'is-open': openedNotes.has(t.id) }"
+          :title="t.note">{{ t.note || stageText(t.stage) || "—" }}</div>
+        <a-link v-if="(t.note || '').length > 60" class="th-note-toggle" size="mini"
+          @click="toggleNote(t.id)">{{ openedNotes.has(t.id) ? '收起' : '展开' }}</a-link>
+      </div>
 
       <div class="th-foot">
         <span class="th-time">{{ t.status === "running" ? since(t.startedAt) + " 前开始" : since(t.updatedAt) + " 前" }}</span>
-        <a-link class="th-link" @click="goTool(t)">打开页面</a-link>
-        <a-link class="th-link" @click="toggleLog(t.id)">{{ logsOf.has(t.id) ? "收起" : "日志" }}</a-link>
-        <a-link v-if="t.status !== 'running'" class="th-link" @click="st.dismiss(t.id)">移除</a-link>
+        <a-link class="th-link" @click="goTool(t)">
+          <icon-location />打开页面
+        </a-link>
+        <a-link class="th-link" @click="toggleLog(t.id)">
+          <component :is="logsOf.has(t.id) ? IconUp : IconDown" />
+          {{ logsOf.has(t.id) ? '收起日志' : '日志' }}
+        </a-link>
+        <a-link v-if="t.status !== 'running'" class="th-link th-link-del" @click="st.dismiss(t.id)">
+          <icon-delete />移除
+        </a-link>
       </div>
 
       <div v-if="logsOf.has(t.id)" class="th-logs">
@@ -63,10 +78,11 @@
       </div>
     </div>
 
-    <template v-if="finishedCount > 0">
-      <div class="th-clear">
-        <a-button size="mini" long @click="st.clearFinished()">清理已结束（{{ finishedCount }}）</a-button>
-      </div>
+    <!-- 有已结束任务才亮出底栏；按钮留在文档流里，抽屉会自动隐藏空白 footer -->
+    <template #footer>
+      <a-space fill>
+        <a-button @click="st.clearFinished()">清理已结束（{{ finishedCount }}）</a-button>
+      </a-space>
     </template>
   </a-drawer>
 </template>
@@ -83,6 +99,7 @@
  */
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
 import type { Task } from "bindings/go-tools/services/tasks/index";
 import { ensureTasks, useTasksStoreHook } from "@/store/modules/tasks";
 import { isNativeWindows } from "@/utils/caps";
@@ -111,6 +128,13 @@ onUnmounted(stopTimer);
 const open = ref(false);
 /** 展开日志的任务 id（默认全收起，避免抽屉一开就是一大坨） */
 const logsOf = reactive(new Map<string, string[]>());
+/** 展开长备注（失败原因）的任务 id：默认两行截断，全文靠这里展开 */
+const openedNotes = reactive(new Set<string>());
+
+function toggleNote(id: string) {
+  if (openedNotes.has(id)) openedNotes.delete(id);
+  else openedNotes.add(id);
+}
 
 /** 打开抽屉就算“看过了”：未读状态下浮标才是红的（不把失败永久钉在那里） */
 watch(open, (v) => { if (v) st.markSeen(); });
@@ -228,6 +252,9 @@ function toggleLog(id: string) {
   const t = st.tasks.find((x) => x.id === id);
   logsOf.set(id, (t?.logs || []).slice(-80));
 }
+
+/** 对外入口：标题栏的下载按钮经 ref 调用，与点浮标等效 */
+defineExpose({ open: () => { open.value = true; } });
 </script>
 
 <style scoped>
@@ -262,6 +289,19 @@ function toggleLog(id: string) {
 
 .th-fab.is-bad {
   border-color: rgb(var(--danger-6));
+  animation: th-fab-breathe 2.4s ease-in-out infinite;
+}
+
+/* 失败浮标轻微呼吸：只动光晕不动尺寸，提醒但不骚扰 */
+@keyframes th-fab-breathe {
+  0%,
+  100% {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  }
+
+  50% {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 0 0 4px rgba(var(--danger-6), 0.14);
+  }
 }
 
 .th-fab-bad {
@@ -363,7 +403,8 @@ function toggleLog(id: string) {
 }
 
 .th-item.is-error {
-  border-color: rgb(var(--danger-6));
+  border-color: rgba(var(--danger-6), 0.55);
+  background: linear-gradient(rgba(var(--danger-6), 0.05), rgba(var(--danger-6), 0.05)), var(--color-bg-2);
 }
 
 .th-head {
@@ -371,6 +412,61 @@ function toggleLog(id: string) {
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
+}
+
+/* 状态点：颜色说话，失败红点带一圈光晕，一眼扫出哪条出了问题 */
+.th-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-4);
+}
+
+.dot-running {
+  background: rgb(var(--primary-6));
+  animation: th-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.dot-done {
+  background: rgb(var(--success-6));
+}
+
+.dot-error {
+  background: rgb(var(--danger-6));
+  box-shadow: 0 0 0 3px rgba(var(--danger-6), 0.16);
+}
+
+.dot-canceled {
+  background: var(--color-text-4);
+}
+
+@keyframes th-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--primary-6), 0.35);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(var(--primary-6), 0);
+  }
+}
+
+/* 下载中但还没收到百分比：进度条画成无限滑动的亮带，比停在 0% 的灰条诚实 */
+.is-indeterminate :deep(.arco-progress-line-bar) {
+  position: relative;
+  width: 36% !important;
+  animation: th-slide 1.3s ease-in-out infinite;
+}
+
+@keyframes th-slide {
+  0% {
+    left: -36%;
+  }
+
+  100% {
+    left: 100%;
+  }
 }
 
 .th-tool {
@@ -392,13 +488,45 @@ function toggleLog(id: string) {
   text-overflow: ellipsis;
 }
 
-.th-note {
+.th-note-wrap {
   margin-top: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* 备注默认两行截断：失败原因再长也不把卡片撑爆，悬停看全文、展开看完整 */
+.th-note {
+  flex: 1;
+  min-width: 0;
   font-size: var(--base-size-small);
   color: var(--color-text-2);
-  white-space: nowrap;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-all;
+}
+
+.th-note.is-open {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  display: block;
+}
+
+.th-note.is-err {
+  color: var(--color-text-1);
+  padding: 4px 8px;
+  border-left: 2px solid rgb(var(--danger-6));
+  border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
+  background: rgba(var(--danger-6), 0.08);
+}
+
+.th-note-toggle {
+  flex: none;
+  font-size: 11px;
 }
 
 .th-foot {
@@ -417,6 +545,22 @@ function toggleLog(id: string) {
 
 .th-link {
   font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.th-link :deep(.arco-icon) {
+  font-size: 12px;
+}
+
+.th-link-del {
+  color: var(--color-text-3);
+}
+
+.th-link-del:hover {
+  color: rgb(var(--danger-6));
 }
 
 .th-logs {
@@ -440,7 +584,4 @@ function toggleLog(id: string) {
   color: var(--color-text-4);
 }
 
-.th-clear {
-  margin-top: 4px;
-}
 </style>

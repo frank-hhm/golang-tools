@@ -179,9 +179,11 @@ func NewCred() Cred { return platformCred() }
 // Opener：打开目录 / URL
 // ============================================================
 
-// Opener 用系统默认程序打开目录或链接（替代直接调 explorer / xdg-open）。
+// Opener 用系统默认程序打开目录、文件或链接（替代直接调 explorer / xdg-open）。
 type Opener interface {
 	Dir(path string) error
+	// File 用系统默认程序打开文件（无图形环境时返回 ErrUnsupported）。
+	File(path string) error
 	URL(url string) error
 }
 

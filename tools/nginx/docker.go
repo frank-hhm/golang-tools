@@ -156,7 +156,7 @@ func dockerConfText(cfg *InstanceConfig) string {
 	b.WriteString("    scgi_temp_path        /var/cache/nginx/scgi_temp;\n")
 	b.WriteString("    server {\n")
 	fmt.Fprintf(&b, "        listen       %d;\n", containerPortHTTP)
-	b.WriteString("        server_name  localhost;\n")
+	fmt.Fprintf(&b, "        server_name  %s;\n", serverNameOf(cfg.Domain))
 	fmt.Fprintf(&b, "        root         \"%s\";\n", containerHTMLDir)
 	b.WriteString("        index  index.html index.php index.htm;\n")
 	b.WriteString("        location / {\n            try_files $uri $uri/ /index.php?$query_string;\n        }\n")
@@ -180,7 +180,7 @@ func dockerConfText(cfg *InstanceConfig) string {
 		// 证书按本地模式的约定放在实例 conf 目录里，随挂载出现在容器内
 		b.WriteString("    server {\n")
 		fmt.Fprintf(&b, "        listen       %d ssl;\n", containerPortHTTPS)
-		b.WriteString("        server_name  localhost;\n")
+		fmt.Fprintf(&b, "        server_name  %s;\n", serverNameOf(cfg.Domain))
 		b.WriteString("        ssl_certificate      " + containerConfDir + "/server.crt;\n")
 		b.WriteString("        ssl_certificate_key  " + containerConfDir + "/server.key;\n")
 		fmt.Fprintf(&b, "        root         \"%s\";\n", containerHTMLDir)

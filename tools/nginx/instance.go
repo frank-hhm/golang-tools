@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -141,6 +142,24 @@ func SaveInstance(cfg InstanceConfig) error {
 			return fmt.Errorf("站点根目录不存在：%s", cfg.DocRoot)
 		}
 	}
+	// 绑定域名：归一化为空格分隔的多值（写入 server_name），非法域名直接拒绝
+	dom, derr := normalizeDomains(cfg.Domain)
+	if derr != nil {
+		return derr
+	}
+	cfg.Domain = dom
+	// PHP 后端归一：Docker 模式访问不到宿主 127.0.0.1 后端，强制纯静态；非法模式退回静态
+	if useDocker {
+		cfg.PhpMode, cfg.PhpVersion = PhpModeStatic, ""
+	}
+	switch cfg.PhpMode {
+	case PhpModeFastCGI, PhpModeProxy:
+		if strings.TrimSpace(cfg.PhpVersion) == "" {
+			return fmt.Errorf("PHP 后端需选择 PHP 版本")
+		}
+	default:
+		cfg.PhpMode, cfg.PhpVersion = PhpModeStatic, ""
+	}
 	list, err := loadInstances()
 	if err != nil {
 		return err
@@ -266,6 +285,46 @@ func sanitizeDirName(s string) string {
 	return s
 }
 
+// serverNameRe 单个域名（含泛域名 *.a.b）的宽松主机名校验：
+// 只允许字母、数字、连字符、下划线与点，不以连字符起止；首段可是 *。
+var serverNameRe = regexp.MustCompile(`^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9_\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9_\-]*[a-zA-Z0-9])?)*$`)
+
+// normalizeDomains 归一用户输入的绑定域名：
+// 按逗号/分号/空白拆分，转小写、去重、丢弃保留字（localhost / 127.0.0.1 / ::1），
+// 逐项做主机名校验；非法项报错。返回以空格连接的串（nginx server_name 接受空格分隔多值）。
+func normalizeDomains(s string) (string, error) {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	seen := map[string]bool{}
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		d := strings.ToLower(strings.TrimSpace(f))
+		if d == "" || d == "localhost" || d == "127.0.0.1" || d == "::1" {
+			continue
+		}
+		if !serverNameRe.MatchString(d) {
+			return "", fmt.Errorf("域名不合法: %s", f)
+		}
+		if seen[d] {
+			continue
+		}
+		seen[d] = true
+		out = append(out, d)
+	}
+	return strings.Join(out, " "), nil
+}
+
+// serverNameOf 生成 nginx.conf 的 server_name 值：
+// 绑定了域名就带上域名并保留 localhost 兑底（直接按 127.0.0.1/localhost 访问也命中本 server）；
+// 未绑定则维持原有的 localhost。
+func serverNameOf(domain string) string {
+	if domain = strings.TrimSpace(domain); domain != "" {
+		return domain + " localhost"
+	}
+	return "localhost"
+}
+
 // defaultDocRoot 默认站点目录：<数据目录>/www/<实例名>，与 PHP 包保持一致（基础目录设置页可改）
 func defaultDocRoot(id, name string) string {
 	base := filepath.Join(appdirs.DataBase(), "www")
@@ -277,6 +336,24 @@ func defaultDocRoot(id, name string) string {
 		dir = "site"
 	}
 	return filepath.Join(base, dir)
+}
+
+// PHP 后端模式取值（写入 InstanceConfig.PhpMode）
+const (
+	PhpModeStatic  = ""        // 纯静态
+	PhpModeFastCGI = "fastcgi" // php-cgi FastCGI（nginx fastcgi_pass）
+	PhpModeProxy   = "proxy"   // 反向代理到 php -S（nginx proxy_pass）
+)
+
+// NewInstanceID 生成一个实例 ID：供 app 层在关联 PHP 实例前先定下 ID（PHP 实例 ID 由它派生）
+func NewInstanceID() string { return fmt.Sprintf("inst-%d", time.Now().UnixNano()) }
+
+// DocRootOf 导出版：返回实例生效的站点根目录（显式配置或默认 data/www/<实例名>）
+func DocRootOf(cfg InstanceConfig) string {
+	if d := strings.TrimSpace(cfg.DocRoot); d != "" {
+		return d
+	}
+	return defaultDocRoot(cfg.ID, cfg.Name)
 }
 
 // nginxConfSrcDir 返回 conf 子目录绝对路径（mime.types / fastcgi_params 等内置文件所在地）
@@ -543,6 +620,10 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	st.Prefix = prefix
 	st.ConfigPath = filepath.Join(prefix, "conf", "nginx.conf")
 	st.DocRoot = cfg.DocRoot
+	st.Domain = cfg.Domain
+	st.PhpMode = cfg.PhpMode
+	st.PhpVersion = cfg.PhpVersion
+	st.PhpPort = cfg.PhpPort
 	if st.DocRoot == "" {
 		st.DocRoot = defaultDocRoot(cfg.ID, cfg.Name)
 	}
@@ -691,15 +772,28 @@ func ensureConf(cfg *InstanceConfig, prefix, confPath string) error {
 	}
 	b.WriteString("    server {\n")
 	fmt.Fprintf(&b, "        listen       %d;\n", cfg.Port)
-	b.WriteString("        server_name  localhost;\n")
+	fmt.Fprintf(&b, "        server_name  %s;\n", serverNameOf(cfg.Domain))
 	fmt.Fprintf(&b, "        root         \"%s\";\n", filepath.ToSlash(docRoot))
 	b.WriteString("        index  index.html index.php index.htm;\n")
-	b.WriteString("        location / {\n            try_files $uri $uri/ /index.php?$query_string;\n        }\n")
-	b.WriteString("        location ~ \\.php$ {\n")
-	b.WriteString("            fastcgi_pass   127.0.0.1:9000;\n")
-	b.WriteString("            fastcgi_index  index.php;\n")
-	b.WriteString("            fastcgi_param  SCRIPT_FILENAME $document_root$fastcgi_script_name;\n")
-	fmt.Fprintf(&b, "            include        \"%s\";\n        }\n", fastcgiPath)
+	// PHP 后端：未关联到端口（后端还没建/启动）时退回静态，避免写出 127.0.0.1:0
+	phpMode := cfg.PhpMode
+	if (phpMode == PhpModeFastCGI || phpMode == PhpModeProxy) && cfg.PhpPort <= 0 {
+		phpMode = PhpModeStatic
+	}
+	switch phpMode {
+	case PhpModeProxy:
+		b.WriteString("        location / {\n            try_files $uri $uri/ /index.php?$query_string;\n        }\n")
+		fmt.Fprintf(&b, "        location ~ \\.php$ {\n            proxy_pass       http://127.0.0.1:%d;\n            proxy_set_header Host              $host;\n            proxy_set_header X-Real-IP         $remote_addr;\n        }\n", cfg.PhpPort)
+	case PhpModeFastCGI:
+		b.WriteString("        location / {\n            try_files $uri $uri/ /index.php?$query_string;\n        }\n")
+		b.WriteString("        location ~ \\.php$ {\n")
+		fmt.Fprintf(&b, "            fastcgi_pass   127.0.0.1:%d;\n", cfg.PhpPort)
+		b.WriteString("            fastcgi_index  index.php;\n")
+		b.WriteString("            fastcgi_param  SCRIPT_FILENAME $document_root$fastcgi_script_name;\n")
+		fmt.Fprintf(&b, "            include        \"%s\";\n        }\n", fastcgiPath)
+	default: // 纯静态
+		b.WriteString("        location / {\n            try_files $uri $uri/ =404;\n        }\n")
+	}
 	if cfg.StubStatus {
 		b.WriteString("        location = /stub_status {\n            stub_status;\n            access_log off;\n        }\n")
 	}
@@ -709,7 +803,7 @@ func ensureConf(cfg *InstanceConfig, prefix, confPath string) error {
 	if cfg.SSLPort > 0 {
 		b.WriteString("    server {\n")
 		fmt.Fprintf(&b, "        listen       %d ssl;\n", cfg.SSLPort)
-		b.WriteString("        server_name  localhost;\n")
+		fmt.Fprintf(&b, "        server_name  %s;\n", serverNameOf(cfg.Domain))
 		b.WriteString("        ssl_certificate      server.crt;\n")
 		b.WriteString("        ssl_certificate_key  server.key;\n")
 		fmt.Fprintf(&b, "        root         \"%s\";\n", filepath.ToSlash(docRoot))

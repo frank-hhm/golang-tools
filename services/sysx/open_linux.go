@@ -17,6 +17,10 @@ func platformOpen() Opener { return linuxOpener{} }
 // Dir 在文件管理器中打开目录。
 func (linuxOpener) Dir(path string) error { return xdgOpen(path) }
 
+// File 用系统默认程序打开文件（无图形环境时 xdgOpen 会报 ErrUnsupported）。
+// 注：/etc/hosts 归 root 所有，图形编辑器默认也没写权限，提权交用户自行处理。
+func (linuxOpener) File(path string) error { return xdgOpen(path) }
+
 // URL 用默认浏览器打开链接。
 func (linuxOpener) URL(u string) error { return xdgOpen(u) }
 

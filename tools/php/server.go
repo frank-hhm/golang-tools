@@ -74,6 +74,12 @@ type RemoteVersion struct {
 	Release string `json:"release"` // 所属产品线，如 8.3
 }
 
+// RunMode PHP 实例运行方式取值（空按 RunModeServer 处理，兼容旧数据）
+const (
+	RunModeServer = "server" // php -S 内置 HTTP 服务器
+	RunModeCgi    = "cgi"    // php-cgi FastCGI 后端（供 nginx fastcgi_pass）
+)
+
 // InstanceConfig 本地 PHP 实例配置
 type InstanceConfig struct {
 	ID         string `json:"id"`
@@ -84,6 +90,10 @@ type InstanceConfig struct {
 	DocRoot    string `json:"docRoot"`    // 站点根目录；空 = 实例目录下 www/
 	Router     string `json:"router"`     // 路由脚本（如 index.php），空 = 不使用
 	EnableLogs bool   `json:"enableLogs"` // 是否写 access.log（php -S -v）
+	// RunMode 运行方式：空/server = php -S 内置 HTTP 服务器；cgi = php-cgi FastCGI 后端（供 nginx fastcgi_pass）
+	RunMode string `json:"runMode"`
+	// Remark 来源标注：由 Nginx 网站关联创建的实例在此写明来源，供 PHP 面板展示
+	Remark string `json:"remark"`
 
 	// ---- Docker 模式（Mode 为空即本地模式，历史配置无需迁移）----
 	Mode          string `json:"mode"`          // local | docker
@@ -104,6 +114,8 @@ type InstanceStatus struct {
 	ConfigPath       string `json:"configPath"` // php.ini 路径
 	ExtensionsLoaded int    `json:"extensionsLoaded"`
 	DisableFunctions string `json:"disableFunctions"`
+	RunMode          string `json:"runMode"` // 运行方式：server | cgi
+	Remark           string `json:"remark"`  // 来源标注（Nginx 网站关联创建时非空）
 
 	// ---- Docker 模式专属（本地模式恒为空）----
 	Mode           string `json:"mode"`           // local | docker
@@ -1148,4 +1160,26 @@ func phpExe(version string, nts bool) string {
 		}
 	}
 	return ""
+}
+
+// phpCgiExe 按版本 + 构型定位 php-cgi（FastCGI 后端）：
+// 先取 php.exe 同目录下的 cgiFileName（Windows 绿色版两者同级）；
+// 再退到 PATH（Linux 系统包常把 php-cgi 装在同一 bin 目录）。
+// 找不到返回空串，由调用方给出明确错误（Linux 提示安装 php-cgi 包）。
+func phpCgiExe(version string, nts bool) string {
+	if php := phpExe(version, nts); php != "" {
+		if cgi := filepath.Join(filepath.Dir(php), cgiFileName); fileExists(cgi) {
+			return cgi
+		}
+	}
+	if cgi := sysx.Which(cgiFileName); cgi != "" {
+		return cgi
+	}
+	return ""
+}
+
+// fileExists 普通文件存在（非目录）
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }

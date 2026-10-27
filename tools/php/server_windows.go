@@ -14,6 +14,9 @@ import (
 // binFileName 可执行文件名（Windows 绿色版带 .exe）。
 const binFileName = "php.exe"
 
+// cgiFileName FastCGI 后端可执行文件名（官方 Windows 包与 php.exe 同级）。
+const cgiFileName = "php-cgi.exe"
+
 // systemPackaged Windows 上走自带的绿色版 zip。
 const systemPackaged = false
 

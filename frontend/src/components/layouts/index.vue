@@ -9,6 +9,14 @@
                 <img v-if="appLogo" :src="appLogo" class="tb-logo" alt="" />
             </template>
             <common-theme-switch />
+            <!-- 下载任务入口：常驻标题栏，有任务时才亮徽标（进行中数 / 未读结果数）；
+                 左下角浮标只在有任务时出现，这里是不依赖浮标的固定落点 -->
+            <a-badge :count="hubBadgeCount" :max-count="99"
+                :class="{ 'tb-hub-idle': !hubActive }">
+                <a-tooltip :content="hubRunning ? `下载任务：${hubRunning} 个进行中` : '下载任务'">
+                    <a-button size="small" @click="openTaskHub"><icon-download /></a-button>
+                </a-tooltip>
+            </a-badge>
             <a-tooltip content="设置">
                 <a-button size="small" @click="openSettings"><icon-settings /></a-button>
             </a-tooltip>
@@ -23,7 +31,7 @@
             <router-view />
         </div>
         <!-- 安装/下载任务浮标：任务在 Go 侧独立跑，这里保证离开页面也能看到进度 -->
-        <task-hub />
+        <task-hub ref="taskHubRef" />
     </div>
 </template>
 <script setup lang="ts">
@@ -32,6 +40,7 @@ import { useRoute } from "vue-router";
 import { Events, Window } from "@wailsio/runtime";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { useCaps } from "@/utils/caps";
+import { useTasksStoreHook } from "@/store/modules/tasks";
 import { routeLoading } from "@/router/permission";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 import SideNav from "@/components/layouts/SideNav.vue";
@@ -66,6 +75,17 @@ function openSettings() {
     openToolWindow("/tools/settings", "设置", { single: true });
 }
 const close = () => Window.Close();
+
+/* 标题栏下载入口：徽标数据直接读全局任务台账，点开即打开任务抽屉（抽屉内部会标已读） */
+const tasksStore = useTasksStoreHook();
+const taskHubRef = ref<InstanceType<typeof TaskHub> | null>(null);
+const hubRunning = computed(() => tasksStore.runningCount);
+const hubActive = computed(() => hubRunning.value > 0 || tasksStore.unseenCount > 0);
+const hubBadgeCount = computed(() => hubRunning.value || tasksStore.unseenCount);
+
+function openTaskHub() {
+    (taskHubRef.value as any)?.open?.();
+}
 
 async function loadTitle() {
     try {
@@ -147,5 +167,11 @@ onUnmounted(() => { off?.(); });
     padding: var(--base-padding);
     background: var(--color-bg-1);
     overflow-y: scroll;
+}
+
+/* 无任务时徽标不亮但按钮常驻：入口位置固定，不随任务有无跳动 */
+.tb-hub-idle :deep(.arco-badge-number),
+.tb-hub-idle :deep(.arco-badge-dot) {
+    display: none;
 }
 </style>

@@ -24,6 +24,15 @@ func (windowsOpener) Dir(path string) error {
 	return startDetached("explorer.exe", abs)
 }
 
+// File 用记事本打开文件（系统 hosts 等受保护文件保存仍需提权，由调用方处理）。
+func (windowsOpener) File(path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	return startDetached("notepad.exe", abs)
+}
+
 // URL 用默认浏览器打开链接。
 func (windowsOpener) URL(u string) error {
 	return startDetached("rundll32.exe", "url.dll,FileProtocolHandler", u)

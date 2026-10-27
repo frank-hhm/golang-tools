@@ -337,12 +337,24 @@ func StartInstance(id string) error {
 	if isDockerMode(cfg) {
 		return dockerStart(cfg)
 	}
-	exe := phpExe(cfg.Version, cfg.NTS)
-	if exe == "" {
-		exe = phpExe(cfg.Version, !cfg.NTS)
-	}
-	if exe == "" {
-		return fmt.Errorf("版本 %s 不可用，请先安装", cfg.Version)
+	cgi := cfg.RunMode == RunModeCgi
+	var exe string
+	if cgi {
+		exe = phpCgiExe(cfg.Version, cfg.NTS)
+		if exe == "" {
+			exe = phpCgiExe(cfg.Version, !cfg.NTS)
+		}
+		if exe == "" {
+			return fmt.Errorf("未找到 %s：FastCGI 模式需要 php-cgi 后端，Windows 用官方绿色包自带，Linux 请安装 php-cgi 包", cgiFileName)
+		}
+	} else {
+		exe = phpExe(cfg.Version, cfg.NTS)
+		if exe == "" {
+			exe = phpExe(cfg.Version, !cfg.NTS)
+		}
+		if exe == "" {
+			return fmt.Errorf("版本 %s 不可用，请先安装", cfg.Version)
+		}
 	}
 	phpDir := filepath.Dir(exe)
 
@@ -375,14 +387,7 @@ func StartInstance(id string) error {
 		return err
 	}
 
-	args := []string{"-S", fmt.Sprintf("127.0.0.1:%d", cfg.Port), "-t", docRoot, "-c", iniPath}
-	if cfg.Router != "" {
-		router := cfg.Router
-		if !filepath.IsAbs(router) {
-			router = filepath.Join(docRoot, router)
-		}
-		args = append(args, router)
-	}
+	args := phpStartArgs(cgi, cfg.Port, docRoot, iniPath, cfg.Router)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = instDir
 	cmd.SysProcAttr = hideWindowAttr()
@@ -477,7 +482,11 @@ func StopInstance(id string) error {
 		// 端口仍被占用：尝试结束本程序之前拉起的同名孤儿进程（按二进制名，会一并影响
 		// 其他同名进程，故仅在用户主动点「停止」时执行）。名字用平台常量：Linux 系统包的
 		// 进程名是 php，写成 php.exe 在那边永远匹配不到，孤儿进程会一直占着端口。
-		if pids := pidsByName(binFileName); len(pids) > 0 {
+		killName := binFileName
+		if cfg.RunMode == RunModeCgi {
+			killName = cgiFileName
+		}
+		if pids := pidsByName(killName); len(pids) > 0 {
 			for _, pid := range pids {
 				_ = killTree(pid)
 			}
@@ -509,6 +518,11 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 	}
 	st.Name, st.Version, st.Port = cfg.Name, cfg.Version, cfg.Port
 	st.DocRoot = cfg.DocRoot
+	st.RunMode = cfg.RunMode
+	if st.RunMode == "" {
+		st.RunMode = RunModeServer
+	}
+	st.Remark = cfg.Remark
 	if st.DocRoot == "" {
 		st.DocRoot = defaultDocRoot(id, cfg.Name)
 	}
@@ -616,6 +630,22 @@ func pidsByName(name string) []int {
 }
 
 /* ============================ 小工具 ============================ */
+
+// phpStartArgs 组装 php 启动参数：cgi=true 走 php-cgi -b（TCP FastCGI，docroot 由 nginx 传入），
+// 否则 php -S 内置 HTTP 服务器（-t 指 docroot，可选路由脚本）。
+func phpStartArgs(cgi bool, port int, docRoot, iniPath, router string) []string {
+	if cgi {
+		return []string{"-b", fmt.Sprintf("127.0.0.1:%d", port), "-c", iniPath}
+	}
+	args := []string{"-S", fmt.Sprintf("127.0.0.1:%d", port), "-t", docRoot, "-c", iniPath}
+	if router != "" {
+		if !filepath.IsAbs(router) {
+			router = filepath.Join(docRoot, router)
+		}
+		args = append(args, router)
+	}
+	return args
+}
 
 func tailLines(path string, n int) []string {
 	// 只取末尾几行却把整个日志读进内存，是面板轮询里最大的瞬时分配源

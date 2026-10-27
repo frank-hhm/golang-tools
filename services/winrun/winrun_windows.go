@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 	"unsafe"
@@ -165,6 +166,44 @@ func StartDetached(exe string, args ...string) error {
 	}
 	// 不等结束：交付给系统回收，避免僵尸进程
 	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// OpenElevated 以管理员权限（runas）启动一个程序并立即返回，不等待其结束。
+// 用于“提权打开记事本编辑 hosts”这类交给用户、不能阻塞调用方的场景。
+// 与 RunElevatedWait 的区别：不带 SEE_MASK_NOCLOSEPROCESS，ShellExecuteExW 在启动
+// 后立即返回；用户在 UAC 弹窗点「否」仍会同步拿到 ERROR_CANCELLED，因此能区分“已打开”与“被拒”。
+func OpenElevated(file, params string) error {
+	verb, err := windows.UTF16PtrFromString("runas")
+	if err != nil {
+		return err
+	}
+	fp, err := windows.UTF16PtrFromString(file)
+	if err != nil {
+		return err
+	}
+	pp, err := windows.UTF16PtrFromString(params)
+	if err != nil {
+		return err
+	}
+	sei := shellexecinfo{}
+	sei.cbSize = uint32(unsafe.Sizeof(sei))
+	sei.verb = verb
+	sei.file = fp
+	sei.parameters = pp
+	sei.showCmd = windows.SW_SHOWNORMAL
+	r1, _, e1 := procShellExecuteExW.Call(uintptr(unsafe.Pointer(&sei)))
+	if r1 == 0 {
+		if errno, ok := e1.(syscall.Errno); ok {
+			if int(errno) == errUACCancelled {
+				return &UACCancelledError{}
+			}
+			if errno != 0 {
+				return fmt.Errorf("提权启动 %s 失败: %w", filepath.Base(file), errno)
+			}
+		}
+		return fmt.Errorf("提权启动 %s 失败", filepath.Base(file))
+	}
 	return nil
 }
 

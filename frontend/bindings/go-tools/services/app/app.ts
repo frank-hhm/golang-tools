@@ -1742,6 +1742,13 @@ export function NginxSrvGetConfigText(id: string): $CancellablePromise<string> {
 }
 
 /**
+ * NginxSrvHostsPath 返回本机系统 hosts 文件路径（供前端展示与拼接建议行）
+ */
+export function NginxSrvHostsPath(): $CancellablePromise<string> {
+    return $Call.ByID(4184036558);
+}
+
+/**
  * NginxSrvInstall 异步安装 Nginx 版本，进度经 nginx:install 事件推送
  */
 export function NginxSrvInstall(version: string): $CancellablePromise<void> {
@@ -1767,6 +1774,13 @@ export function NginxSrvListVersions(): $CancellablePromise<nginx$0.ServerVersio
  */
 export function NginxSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
     return $Call.ByID(3382912385, id, lines);
+}
+
+/**
+ * NginxSrvOpenHosts 打开本地 hosts 文件用于域名解析配置（Windows 提权拉记事本，Linux 提示 sudo）
+ */
+export function NginxSrvOpenHosts(): $CancellablePromise<void> {
+    return $Call.ByID(1162372965);
 }
 
 /**
@@ -1799,7 +1813,7 @@ export function NginxSrvRemoteVersions(): $CancellablePromise<nginx$0.RemoteVers
 }
 
 /**
- * NginxSrvRemoveInstance 删除实例配置（运行中先停止）
+ * NginxSrvRemoveInstance 删除实例配置（运行中先停止）；一并删除关联的 PHP 后端
  */
 export function NginxSrvRemoveInstance(id: string): $CancellablePromise<void> {
     return $Call.ByID(3827999841, id);
@@ -1813,7 +1827,7 @@ export function NginxSrvRemoveVersion(version: string): $CancellablePromise<void
 }
 
 /**
- * NginxSrvRestart 重启实例
+ * NginxSrvRestart 重启实例；连带重启关联的 PHP 后端
  */
 export function NginxSrvRestart(id: string): $CancellablePromise<void> {
     return $Call.ByID(4190216069, id);
@@ -1827,14 +1841,15 @@ export function NginxSrvSaveConfigText(id: string, text: string): $CancellablePr
 }
 
 /**
- * NginxSrvSaveInstance 新增/更新实例配置（ID 为空则新建）
+ * NginxSrvSaveInstance 新增/更新实例配置（ID 为空则新建）。
+ * 若启用 PHP 后端，同步创建/更新一个关联的 PHP 实例（全生命周期联动）；改回纯静态则删除旧关联。
  */
 export function NginxSrvSaveInstance(cfg: nginx$0.InstanceConfig): $CancellablePromise<void> {
     return $Call.ByID(901581996, cfg);
 }
 
 /**
- * NginxSrvStart 启动实例（-p prefix -c conf，隐藏窗口）
+ * NginxSrvStart 启动实例（-p prefix -c conf，隐藏窗口）；先拉起关联的 PHP 后端
  */
 export function NginxSrvStart(id: string): $CancellablePromise<void> {
     return $Call.ByID(1302543514, id);
@@ -1848,7 +1863,7 @@ export function NginxSrvStatus(id: string): $CancellablePromise<nginx$0.Instance
 }
 
 /**
- * NginxSrvStop 停止实例（nginx -s quit + 兑底 kill）
+ * NginxSrvStop 停止实例（nginx -s quit + 兑底 kill）；随后停掉关联的 PHP 后端
  */
 export function NginxSrvStop(id: string): $CancellablePromise<void> {
     return $Call.ByID(802531066, id);
