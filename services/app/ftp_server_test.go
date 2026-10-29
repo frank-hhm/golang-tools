@@ -6,7 +6,7 @@ package app
 import (
 	"testing"
 
-	"go-tools/tools/ftp"
+	"Tools/tools/ftp"
 )
 
 func TestStaleUsernames(t *testing.T) {

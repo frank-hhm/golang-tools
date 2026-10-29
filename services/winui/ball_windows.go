@@ -16,7 +16,7 @@ import (
 	"time"
 	"unsafe"
 
-	"go-tools/services/applog"
+	"Tools/services/applog"
 
 	"golang.org/x/sys/windows"
 )
@@ -553,7 +553,7 @@ func ballThread() {
 	hwnd, _, _ := ballCreate.Call(
 		uintptr(ballWS_EX_LAYERED|ballWS_EX_TOPMOST|ballWS_EX_TOOLWIN),
 		uintptr(unsafe.Pointer(ballClassName)),
-		uintptr(unsafe.Pointer(ballUtf16("go-tools 浮动球"))),
+		uintptr(unsafe.Pointer(ballUtf16("Tools 浮动球"))),
 		uintptr(ballWS_POPUP),
 		uintptr(left), uintptr(top), uintptr(ballSizePx), uintptr(ballSizePx),
 		0, 0, hInst, 0,
@@ -978,7 +978,7 @@ func ballShowMenu(ballHwnd uintptr) {
 	hwnd, _, _ := ballCreate.Call(
 		uintptr(ballWS_EX_TOPMOST|ballWS_EX_TOOLWIN|ballWS_EX_NOACTIVATE|ballWS_EX_LAYERED),
 		uintptr(unsafe.Pointer(ballMenuClassName)),
-		uintptr(unsafe.Pointer(ballUtf16("go-tools 菜单"))),
+		uintptr(unsafe.Pointer(ballUtf16("Tools 菜单"))),
 		uintptr(ballWS_POPUP),
 		uintptr(menuX-margin), uintptr(menuY-margin), uintptr(winW), uintptr(winH),
 		0, 0, hInst, 0)

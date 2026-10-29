@@ -137,7 +137,7 @@ func NewProc() Proc {
 type Version struct {
 	Name      string `json:"name"`      // 目录名即版本号
 	Dir       string `json:"dir"`       // 绝对路径
-	Installed bool   `json:"installed"` // 有 .go-tools-installed 标记 = 在线/离线安装版（可删）；否则为发布内置版
+	Installed bool   `json:"installed"` // 有 .Tools-installed 标记 = 在线/离线安装版（可删）；否则为发布内置版
 }
 
 // Pkg 负责 "<plugins>/<service>/<version>" 这套目录约定：

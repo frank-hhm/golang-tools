@@ -115,7 +115,7 @@ export interface InstanceConfig {
     "image": string;
 
     /**
-     * 留空则 go-tools-mysql-<id>
+     * 留空则 Tools-mysql-<id>
      */
     "containerName": string;
 }

@@ -58,7 +58,7 @@ type NpmEntry struct {
 	Version    string   `json:"version"`    // 目录对应的 Node 版本，读不到为空
 	Dir        string   `json:"dir"`        // 入口目录
 	Exe        string   `json:"exe"`        // 跑它用的 node
-	Registered bool     `json:"registered"` // 是否已在 go-tools 登记
+	Registered bool     `json:"registered"` // 是否已在 Tools 登记
 	PathIdx    int      `json:"pathIdx"`    // 在生效 PATH 中的下标，-1 = 不在
 	Shim       string   `json:"shim"`       // 该目录下的 npm 转发壳
 	HasNode    bool     `json:"hasNode"`    // 目录里是否有 node 本体
@@ -383,7 +383,7 @@ func InspectNpmChain() (*NpmChain, error) {
 		byDir[k] = e
 	}
 
-	// 1) go-tools 已登记的 Node（含工具自己下的，这类通常不在 PATH 里）
+	// 1) Tools 已登记的 Node（含工具自己下的，这类通常不在 PATH 里）
 	vers, _ := ListVersions()
 	for _, v := range vers {
 		dir := filepath.Dir(v.Path)
@@ -451,7 +451,7 @@ func InspectNpmChain() (*NpmChain, error) {
 		}
 		c.Shadowed = append(c.Shadowed, fmt.Sprintf("PATH[%d] %s → npm %s", e.PathIdx, e.Shim, orNone(e.Effective)))
 	}
-	c.PathNote = "PATH 顺序取自 go-tools 进程启动时的环境；之后改过系统/用户 PATH 的，请新开一个终端再对照。"
+	c.PathNote = "PATH 顺序取自 Tools 进程启动时的环境；之后改过系统/用户 PATH 的，请新开一个终端再对照。"
 	c.Hints = chainHints(c)
 	return c, nil
 }

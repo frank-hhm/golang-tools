@@ -311,7 +311,7 @@ import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from
 import { Message } from "@arco-design/web-vue";
 import type { TableData } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
-import type { Flow } from "bindings/go-tools/tools/sniffer/models";
+import type { Flow } from "bindings/Tools/tools/sniffer/models";
 import { useSetting } from "@/hooks/useSetting";
 import { getStorage, setStorage } from "@/utils";
 import CacheKey from "@/constants/cache-key";

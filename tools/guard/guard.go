@@ -1,7 +1,7 @@
 package guard
 
 // 进程守护引擎：登记本地程序（名称/路径/参数/工作目录），负责拉起、监控、
-// 意外退出后按「退避 + 连续快速失败上限」自动重启；go-tools 退出时一并结束子进程。
+// 意外退出后按「退避 + 连续快速失败上限」自动重启；Tools 退出时一并结束子进程。
 //
 // 只管理「本工具启动的子进程」（能拿到退出事件才能重启），不接管外部已运行进程。
 // 列表与守护参数持久化在 <数据目录>/guard/guard.json（仿 ftp 服务端存储）。
@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/applog"
-	"go-tools/services/config"
+	"Tools/appdirs"
+	"Tools/services/applog"
+	"Tools/services/config"
 )
 
 // minUptimeSec 进程稳定运行阈值：跑够此时长再退出视为「正常结束」，清零连续快速失败计数。

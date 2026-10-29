@@ -2,7 +2,7 @@
 // 账号密码登录、会话 Cookie、安全入口路径、监听地址与端口。
 //
 // 三个设计约束：
-//  1. 配置独立存放在 <用户配置目录>/go-tools/panel.json，不并入 AppConfig——
+//  1. 配置独立存放在 <用户配置目录>/Tools/panel.json，不并入 AppConfig——
 //     密码哈希不能随 GetConfig 这类绑定方法下发给前端。
 //  2. 认证必须做在 HTTP 层而不是前端路由：前端资源与 /wails/runtime 上的
 //     四百多个绑定方法（能装包、能起进程、能开 shell）是同一批入口，
@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/services/config"
+	"Tools/services/config"
 
 	"golang.org/x/crypto/bcrypt"
 )

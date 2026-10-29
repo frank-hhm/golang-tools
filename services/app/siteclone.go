@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/services/applog"
-	"go-tools/tools/siteclone"
+	"Tools/services/applog"
+	"Tools/tools/siteclone"
 )
 
 // 仿站同一时刻只允许一个任务：cancel 存在包级，起 goroutine 跑 siteclone.Run，

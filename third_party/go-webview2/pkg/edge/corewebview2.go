@@ -663,7 +663,7 @@ func (i *ICoreWebView2) OpenDevToolsWindow() error {
 }
 
 // ============================================================
-// 导航与状态（go-tools 扩展）
+// 导航与状态（Tools 扩展）
 //
 // 下面这批方法在 ICoreWebView2 的 vtable 里本来就存在，上游 go-webview2
 // 只是没有导出成 Go 方法。这里按同样的调用约定补上，方便在宿主里做

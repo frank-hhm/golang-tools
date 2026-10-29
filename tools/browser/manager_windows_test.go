@@ -125,7 +125,7 @@ func TestSpaceEmbedAndNavigate(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	hwnd := createTestWindow(t, "go-tools browser probe space")
+	hwnd := createTestWindow(t, "Tools browser probe space")
 	defer procDestroyWindow.Call(hwnd)
 
 	m := NewManager()
@@ -214,7 +214,7 @@ func pumpFor(d time.Duration) {
 // 清理时尽力而为，删不掉就留给系统临时目录回收。
 func tempProfileDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "go-tools-browser-test-*")
+	dir, err := os.MkdirTemp("", "Tools-browser-test-*")
 	if err != nil {
 		t.Fatalf("建临时 profile 目录失败: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestSpaceEvalDevToolsAndMultiSpace(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	hwnd := createTestWindow(t, "go-tools browser probe eval")
+	hwnd := createTestWindow(t, "Tools browser probe eval")
 	defer procDestroyWindow.Call(hwnd)
 
 	m := NewManager()
@@ -281,7 +281,7 @@ func TestSpaceEvalDevToolsAndMultiSpace(t *testing.T) {
 	waitTitle(t, events, "EVAL-A", 40*time.Second)
 
 	// 脚本执行：让脚本主动走我们自己注入的 title 上报通道，把执行结果带回来
-	if err := m.Eval("a", `window.chrome.webview.postMessage("go-tools:title:EVAL-OK:" + (1 + 1))`); err != nil {
+	if err := m.Eval("a", `window.chrome.webview.postMessage("Tools:title:EVAL-OK:" + (1 + 1))`); err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
 	waitTitle(t, events, "EVAL-OK:2", 20*time.Second)

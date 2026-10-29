@@ -28,7 +28,7 @@ var (
 	logsBase    string
 )
 
-// DefaultRoot 三类目录的默认基准：可执行文件所在目录；取不到时退回用户配置目录 go-tools
+// DefaultRoot 三类目录的默认基准：可执行文件所在目录；取不到时退回用户配置目录 Tools
 func DefaultRoot() string {
 	if exe, err := os.Executable(); err == nil {
 		return filepath.Dir(exe)
@@ -41,7 +41,7 @@ func DefaultRoot() string {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "go-tools")
+	return filepath.Join(base, "Tools")
 }
 
 // Set 应用基础目录配置（空值=默认 <应用目录>/xxx），并确保三个根目录存在。

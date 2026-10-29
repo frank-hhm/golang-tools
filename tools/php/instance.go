@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/tools/logtail"
-	"go-tools/tools/portcheck"
-	"go-tools/tools/srvstate"
+	"Tools/appdirs"
+	"Tools/tools/logtail"
+	"Tools/tools/portcheck"
+	"Tools/tools/srvstate"
 )
 
 func init() {

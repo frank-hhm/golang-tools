@@ -187,7 +187,7 @@ func ensureIni(cfg *InstanceConfig, phpDir, iniPath string) error {
 }
 
 func minimalIni() string {
-	return `; go-tools 生成的最小 php.ini（官方 php.ini-development 缺失时的兜底）
+	return `; Tools 生成的最小 php.ini（官方 php.ini-development 缺失时的兜底）
 [PHP]
 engine = On
 short_open_tag = Off
@@ -313,8 +313,8 @@ date.timezone = Asia/Shanghai
 
 [zlib]
 
-; Windows 动态扩展请在「扩展管理」中开关，go-tools 会在下方追加 extension= 行
-; ---- go-tools extensions ----
+; Windows 动态扩展请在「扩展管理」中开关，Tools 会在下方追加 extension= 行
+; ---- Tools extensions ----
 `
 }
 
@@ -527,7 +527,7 @@ func SetCommon(id string, f CommonFields) error {
 
 /* ============================ 扩展管理 ============================ */
 
-const extMarker = "; ---- go-tools extensions ----"
+const extMarker = "; ---- Tools extensions ----"
 
 // Extensions 返回候选扩展列表（ext 目录 dll + 已加载 + 启用状态 + 无法开关的内置项）
 func Extensions(id string) ([]ExtensionInfo, error) {

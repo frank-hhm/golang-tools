@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go-tools/services/sysx"
+	"Tools/services/sysx"
 )
 
 // extPkgName 扩展对应的发行版包名：Debian 与 RHEL 系的惯例都是 php-<ext>。

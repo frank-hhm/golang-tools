@@ -188,7 +188,7 @@ func TestDialEndpointClassifiesMissingPipeAsDead(t *testing.T) {
 		t.Fatal("先把一个端点钉住，再看拨别的管道会不会被判端点错")
 	}
 
-	c, err := dialEndpoint(context.Background(), endpoint{network: "pipe", addr: `\\.\pipe\go-tools-no-such-pipe`, desc: "npipe://gone"})
+	c, err := dialEndpoint(context.Background(), endpoint{network: "pipe", addr: `\\.\pipe\Tools-no-such-pipe`, desc: "npipe://gone"})
 	if err == nil {
 		c.Close()
 		t.Skip("本机意外存在这个管道")

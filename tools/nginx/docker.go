@@ -5,15 +5,15 @@ package nginx
 //
 // 与本地模式的对应关系：
 //   - 服务器：容器里跑同一条 nginx，配置仍是实例目录下的 conf/nginx.conf，
-//     整个 conf 目录挂到 /go-tools/conf，用 `-c /go-tools/conf/nginx.conf` 指过去；
+//     整个 conf 目录挂到 /Tools/conf，用 `-c /Tools/conf/nginx.conf` 指过去；
 //     面板里改配置 → 保存 → 「重载」，容器模式下重载 = 重启容器（见下）
-//   - 站点：docRoot 挂到 /usr/share/nginx/html，实例目录的 html/ 挂到 /go-tools/html
+//   - 站点：docRoot 挂到 /usr/share/nginx/html，实例目录的 html/ 挂到 /Tools/html
 //     （50x 兜底页），与本地模式的 root 一一对应
 //   - 日志：<实例目录>/logs 挂到容器 /var/log/nginx，access.log/error.log 直接落宿主机，
 //     因此 Logs / errTail / estimateRps 这些按文件工作的逻辑无需分叉
 //   - 端口：容器内固定监听 80（以及 443），发布到 127.0.0.1:<cfg.Port> 与 <cfg.SSLPort>，
 //     所以改端口不动配置文件，配置里的 listen 永远是容器端口
-//   - 归属：容器打标签 go-tools=nginx / go-tools.instance=<id>，应用重启后凭标签找回
+//   - 归属：容器打标签 Tools=nginx / Tools.instance=<id>，应用重启后凭标签找回
 //
 // 与本地模式的差异（如实告知，不做静默兜底）：
 //   - tools/docker 没有 exec 接口，进不了容器，因此 `nginx -t` 与 `nginx -s reload` 都不可用：
@@ -37,8 +37,8 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/tools/docker"
-	"go-tools/tools/srvstate"
+	"Tools/tools/docker"
+	"Tools/tools/srvstate"
 )
 
 const (
@@ -50,9 +50,9 @@ const (
 	containerPortHTTP  = 80
 	containerPortHTTPS = 443
 	// 容器内挂载点
-	containerConfDir  = "/go-tools/conf"
+	containerConfDir  = "/Tools/conf"
 	containerHTMLDir  = "/usr/share/nginx/html"
-	containerFallback = "/go-tools/html"
+	containerFallback = "/Tools/html"
 	// DefaultDockerImage 表单默认镜像：官方 alpine 版自带 mime.types 与 /var/log/nginx 目录约定
 	DefaultDockerImage = "nginx:alpine"
 	// dockerConfName 容器专用配置模板落地的文件名（就是实例的 nginx.conf，与本地同名同位置）
@@ -69,7 +69,7 @@ func containerNameOf(cfg *InstanceConfig) string {
 	if n := strings.TrimSpace(cfg.ContainerName); n != "" {
 		return n
 	}
-	return "go-tools-nginx-" + cfg.ID
+	return "Tools-nginx-" + cfg.ID
 }
 
 // dockerDocRoot 站点根目录（宿主绝对路径，确保存在）：与本地模式同一套默认值，
@@ -91,7 +91,7 @@ func dockerDocRoot(cfg *InstanceConfig) (string, error) {
 
 // dockerBinds 挂载表：配置目录、日志目录、站点根、50x 兜底页目录。
 // 挂的是 <实例目录>/conf 本身（不是实例目录），因此宿主机 nginx.conf 直接就是
-// 容器里的 /go-tools/conf/nginx.conf，证书与面板里编辑的文件是同一个
+// 容器里的 /Tools/conf/nginx.conf，证书与面板里编辑的文件是同一个
 func dockerBinds(prefix, docRoot string) []string {
 	confDir := filepath.Join(prefix, "conf")
 	return []string{
@@ -191,11 +191,11 @@ func dockerConfText(cfg *InstanceConfig) string {
 	return b.String()
 }
 
-const confMarkerDocker = "# go-tools 为 Docker 实例生成的 nginx.conf（listen 用容器端口，改端口请改实例配置）"
+const confMarkerDocker = "# Tools 为 Docker 实例生成的 nginx.conf（listen 用容器端口，改端口请改实例配置）"
 
 // dockerGenMarker 记录「上次由工具生成的那份配置」的哈希，与 nginx.conf 同目录。
 // 只用来区分「还是工具生成的」与「已被用户接管」：前者可以跟随实例参数刷新，后者不再覆盖
-func dockerGenMarker(confPath string) string { return confPath + ".go-tools-generated" }
+func dockerGenMarker(confPath string) string { return confPath + ".Tools-generated" }
 
 func textHash(s string) string {
 	sum := sha256.Sum256([]byte(s))

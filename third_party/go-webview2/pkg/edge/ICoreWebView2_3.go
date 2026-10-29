@@ -74,7 +74,7 @@ func (e *Chromium) GetICoreWebView2_3() *ICoreWebView2_3 {
 }
 
 // ============================================================
-// 挂起 / 恢复（go-tools 扩展）
+// 挂起 / 恢复（Tools 扩展）
 //
 // 非活动标签长时间不用时调用 TrySuspend，WebView2 会把渲染进程降下来
 // 释放大部分内存；用户切回来时 Resume，页面状态不丢。

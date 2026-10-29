@@ -12,9 +12,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go-tools/services/applog"
-	"go-tools/tools/disk"
-	"go-tools/tools/ftp"
+	"Tools/services/applog"
+	"Tools/tools/disk"
+	"Tools/tools/ftp"
 )
 
 /* ==================== 服务端状态与开关 ==================== */

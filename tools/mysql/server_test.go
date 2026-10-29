@@ -151,7 +151,7 @@ func TestAppendErrNote(t *testing.T) {
 	if !strings.Contains(s, "原有日志") {
 		t.Fatalf("追加不应覆盖原内容: %q", s)
 	}
-	if !strings.Contains(s, "[go-tools] 数据目录已备份到 X") || !strings.Contains(s, "[go-tools] 第二条") {
+	if !strings.Contains(s, "[Tools] 数据目录已备份到 X") || !strings.Contains(s, "[Tools] 第二条") {
 		t.Fatalf("说明未正确追加: %q", s)
 	}
 }

@@ -59,7 +59,7 @@
                     </a-form-item>
                 </a-col>
                 <a-col :span="10">
-                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-redis-实例ID">
+                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 Tools-redis-实例ID">
                         <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
                     </a-form-item>
                 </a-col>

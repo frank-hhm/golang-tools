@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"go-tools/services/sysx"
+	"Tools/services/sysx"
 )
 
 // binFileName 可执行文件名（Linux 系统包里的 mysqld 不带扩展名）。

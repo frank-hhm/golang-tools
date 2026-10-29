@@ -10,7 +10,7 @@ package php
 //   - 站点：cfg.DocRoot 绑定挂载到 /var/www/html，改文件即时生效，无需重建容器
 //   - 配置：实例目录下 php-docker.ini 挂到 /usr/local/etc/php/conf.d/，
 //     以「追加覆盖」生效（Linux 语义，与插件目录里那份 Windows php.ini 互不相干）
-//   - 归属：容器打标签 go-tools=php / go-tools.instance=<id>，应用重启后凭标签找回
+//   - 归属：容器打标签 Tools=php / Tools.instance=<id>，应用重启后凭标签找回
 //   - 日志：php -S 的访问与错误输出都在容器 stdout/stderr，走 docker logs
 //
 // 与本地模式的差异（如实告知，不做静默兜底）：
@@ -32,8 +32,8 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/tools/docker"
-	"go-tools/tools/srvstate"
+	"Tools/tools/docker"
+	"Tools/tools/srvstate"
 )
 
 const (
@@ -46,7 +46,7 @@ const (
 	// containerDocRootPath 容器内站点根
 	containerDocRootPath = "/var/www/html"
 	// containerIniPath 容器内追加配置（官方镜像会加载 conf.d/*.ini）
-	containerIniPath = "/usr/local/etc/php/conf.d/zz-go-tools.ini"
+	containerIniPath = "/usr/local/etc/php/conf.d/zz-Tools.ini"
 	// DefaultDockerImage 表单默认镜像：-cli 变体与本地 php -S 语义最接近
 	DefaultDockerImage = "php:8.3-cli"
 )
@@ -66,7 +66,7 @@ func containerNameOf(cfg *InstanceConfig) string {
 	if n := strings.TrimSpace(cfg.ContainerName); n != "" {
 		return n
 	}
-	return "go-tools-php-" + cfg.ID
+	return "Tools-php-" + cfg.ID
 }
 
 // dockerDocRoot 站点根（宿主机绝对路径，确保存在）
@@ -110,7 +110,7 @@ func ensureDockerIni(cfg *InstanceConfig) (string, error) {
 }
 
 func dockerIniTemplate() string {
-	return `; go-tools 为 Docker 实例生成的覆盖配置
+	return `; Tools 为 Docker 实例生成的覆盖配置
 ; 挂载进容器：` + containerIniPath + `
 ; 这里只写需要覆盖镜像默认值的指令，未列出的项沿用镜像内 php.ini-production
 ; 注意：extension= 指向的是容器内的扩展，本面板的「扩展管理」管不到这里

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
+	"Tools/appdirs"
 )
 
 // ============================================================

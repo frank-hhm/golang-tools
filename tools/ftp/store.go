@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/tools/secret"
+	"Tools/appdirs"
+	"Tools/tools/secret"
 )
 
 // connRecord 落盘形态：密码换成密文

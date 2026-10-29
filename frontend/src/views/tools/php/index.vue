@@ -239,7 +239,7 @@
                         </a-form-item>
                     </a-col>
                     <a-col :span="8">
-                        <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-php-实例ID">
+                        <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 Tools-php-实例ID">
                             <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
                         </a-form-item>
                     </a-col>
@@ -419,7 +419,7 @@
     <!-- php.ini 文本编辑 -->
     <a-modal v-model:visible="iniVisible" :title="`php.ini - ${cfgNameOf(iniInstId)}`" :width="760" :footer="false">
         <a-alert v-if="isDockerOf(iniInstId)" type="info" style="margin-bottom: 8px">
-            Docker 实例：这一份是挂载进容器 /usr/local/etc/php/conf.d/zz-go-tools.ini 的覆盖配置，只写需要覆盖镜像默认值的指令；
+            Docker 实例：这一份是挂载进容器 /usr/local/etc/php/conf.d/zz-Tools.ini 的覆盖配置，只写需要覆盖镜像默认值的指令；
             重启实例后生效，extension= 指向的是镜像内的扩展，与本面板「扩展管理」无关。
         </a-alert>
         <a-textarea v-model="iniText" :auto-size="{ minRows: 16, maxRows: 24 }" spellcheck="false" />

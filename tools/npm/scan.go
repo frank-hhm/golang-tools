@@ -5,11 +5,11 @@ package npm
 //
 // 「本机」渠道原本只能靠用户手填 node.exe 所在目录登记，而多数人
 // 并不知道自己那份 Node 装在哪（MSI 自定义目录、nvm/fnm/volta 的
-// 版本仓库、绿色包），结果版本管理里只看得到 go-tools 自己下载的版本。
+// 版本仓库、绿色包），结果版本管理里只看得到 Tools 自己下载的版本。
 //
 // 这里按 PATH 全量目录 → 注册表 → 各家版本管理器的已知布局穷举候选，
 // 归一化真实路径去重后批量登记进 npm-locals.json，等价于「点了很多次
-// 添加」，不改动 go-tools 自管（bundled / downloaded）的那份目录。
+// 添加」，不改动 Tools 自管（bundled / downloaded）的那份目录。
 // ============================================================
 
 import (
@@ -25,7 +25,7 @@ import (
 func ScanLocalNodes() ([]ServerVersion, error) {
 	locals := loadLocals()
 
-	// 已登记的本机项 + 已在版本列表中的项（含 go-tools 自管版本）先入表，避免重复
+	// 已登记的本机项 + 已在版本列表中的项（含 Tools 自管版本）先入表，避免重复
 	known := make(map[string]bool, len(locals)*2)
 	for _, l := range locals {
 		known[pathKey(l.Path)] = true
@@ -36,7 +36,7 @@ func ScanLocalNodes() ([]ServerVersion, error) {
 		}
 	}
 
-	// go-tools 插件目录下的版本走 bundled / downloaded 渠道，不当本机重复登记
+	// Tools 插件目录下的版本走 bundled / downloaded 渠道，不当本机重复登记
 	root, _ := pluginsRoot()
 
 	var added []ServerVersion

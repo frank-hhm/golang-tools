@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go-tools/services/applog"
-	"go-tools/tools/disk"
+	"Tools/services/applog"
+	"Tools/tools/disk"
 )
 
 /*

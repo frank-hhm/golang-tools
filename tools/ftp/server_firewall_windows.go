@@ -8,11 +8,11 @@ package ftp
 import (
 	"fmt"
 
-	"go-tools/services/winrun"
+	"Tools/services/winrun"
 )
 
 // firewallRuleName 规则显示名（删除时按同一个名字找）
-func firewallRuleName(port int) string { return fmt.Sprintf("go-tools SFTP %d", port) }
+func firewallRuleName(port int) string { return fmt.Sprintf("Tools SFTP %d", port) }
 
 // AllowFirewall 入站放行 TCP 端口
 func AllowFirewall(port int) error {

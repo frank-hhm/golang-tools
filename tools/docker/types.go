@@ -260,7 +260,7 @@ type Network struct {
 	Containers int               `json:"containers"` // 已接入的容器数（daemon 只统计运行中的）
 	Builtin    bool              `json:"builtin"`    // bridge/host/none：daemon 不让删，前端据此禁按钮
 	Labels     map[string]string `json:"labels"`
-	OwnerTool  string            `json:"ownerTool"` // 由本工具创建时回标（标签 go-tools）
+	OwnerTool  string            `json:"ownerTool"` // 由本工具创建时回标（标签 Tools）
 }
 
 // NetworkSpec 新建网络：只有名称必填，其余留空走 daemon 默认

@@ -57,7 +57,7 @@ func startFakeEngine(t *testing.T) {
 	})
 	mux.HandleFunc("/v1.47/containers/json", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("filters") != "" {
-			fmt.Fprintf(w, `[{"Id":"%s","Names":["/go-tools-mysql-inst-1"],"Image":"mysql:8.4","State":"exited","Status":"Exited (0) 2 hours ago","Labels":{"go-tools":"mysql","go-tools.instance":"inst-1"}}]`, exited)
+			fmt.Fprintf(w, `[{"Id":"%s","Names":["/Tools-mysql-inst-1"],"Image":"mysql:8.4","State":"exited","Status":"Exited (0) 2 hours ago","Labels":{"Tools":"mysql","Tools.instance":"inst-1"}}]`, exited)
 			return
 		}
 		fmt.Fprintf(w, `[{"Id":"%s","Names":["/web"],"Image":"nginx:alpine","ImageID":"sha256:bbbb","Command":"\"nginx -g\"","Created":1700000000,"State":"running","Status":"Up 5 minutes","Ports":[{"IP":"127.0.0.1","PrivatePort":80,"PublicPort":8080,"Type":"tcp"}],"Labels":{}}]`, cID)
@@ -241,7 +241,7 @@ func TestFindAndInspect(t *testing.T) {
 func TestCreateContainerPayload(t *testing.T) {
 	startFakeEngine(t)
 	id, err := CreateContainer(ContainerSpec{
-		Name:          "go-tools-mysql-inst-9",
+		Name:          "Tools-mysql-inst-9",
 		Image:         "mysql:8.4",
 		Env:           []string{"MYSQL_ROOT_PASSWORD=pw"},
 		Binds:         []string{"C:/data/mysql:/var/lib/mysql"},
@@ -258,10 +258,10 @@ func TestCreateContainerPayload(t *testing.T) {
 	rec.mu.Lock()
 	body, name := rec.createBody, rec.createName
 	rec.mu.Unlock()
-	if name != "go-tools-mysql-inst-9" {
+	if name != "Tools-mysql-inst-9" {
 		t.Fatalf("create 缺少 name 参数: %s", name)
 	}
-	for _, want := range []string{`"Image":"mysql:8.4"`, `"HostPort":"3307"`, `"go-tools":"mysql"`, `C:/data/mysql:/var/lib/mysql`, `"Env":["MYSQL_ROOT_PASSWORD=pw"]`, `"3306/tcp"`, `"RestartPolicy"`} {
+	for _, want := range []string{`"Image":"mysql:8.4"`, `"HostPort":"3307"`, `"Tools":"mysql"`, `C:/data/mysql:/var/lib/mysql`, `"Env":["MYSQL_ROOT_PASSWORD=pw"]`, `"3306/tcp"`, `"RestartPolicy"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("create 请求体缺少 %s\n实际: %s", want, body)
 		}

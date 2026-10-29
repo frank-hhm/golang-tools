@@ -1,26 +1,26 @@
 package app
 
 import (
+	"Tools/appdirs"
+	"Tools/services/applog"
+	"Tools/services/config"
+	"Tools/services/sysx"
+	"Tools/services/winui"
+	"Tools/tools/docker"
+	"Tools/tools/mysql"
+	"Tools/tools/nginx"
+	"Tools/tools/npm"
+	"Tools/tools/ocr"
+	"Tools/tools/php"
+	"Tools/tools/portcheck"
+	"Tools/tools/redis"
+	"Tools/tools/sniffer"
+	"Tools/tools/term"
+	"Tools/tools/usbserial"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
-	"go-tools/appdirs"
-	"go-tools/services/applog"
-	"go-tools/services/config"
-	"go-tools/services/sysx"
-	"go-tools/services/winui"
-	"go-tools/tools/docker"
-	"go-tools/tools/mysql"
-	"go-tools/tools/nginx"
-	"go-tools/tools/npm"
-	"go-tools/tools/ocr"
-	"go-tools/tools/php"
-	"go-tools/tools/portcheck"
-	"go-tools/tools/redis"
-	"go-tools/tools/sniffer"
-	"go-tools/tools/term"
-	"go-tools/tools/usbserial"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -193,6 +193,15 @@ func (a *App) ChooseAppLogo() (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// effectiveAppName 返回用于展示的应用名：配置里非空则用之，空或未配置回退默认 "Tools"。
+// 供窗口标题、系统通知卡片标题等「可被用户配置覆盖的显示位」统一取用，避免各处各写各的兜底。
+func effectiveAppName() string {
+	if name := strings.TrimSpace(config.CurrentConfig().General.AppName); name != "" {
+		return name
+	}
+	return "Tools"
 }
 
 // ApplyAppName 将当前配置的应用名应用到主窗口标题和托盘提示
@@ -394,7 +403,7 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 		path = "/" + path
 	}
 	if title == "" {
-		title = "go-tools"
+		title = effectiveAppName()
 	}
 	startState := application.WindowStateNormal
 	if fullscreen {

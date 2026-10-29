@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/applog"
+	"Tools/appdirs"
+	"Tools/services/applog"
 )
 
 // installedMarker 安装版标记文件名。
 //
 // 与各工具包既有约定保持完全一致（tools/nginx|mysql|redis|php|npm 都在用）：
 // 目录里有这个文件 = 在线/离线安装版（允许删除）；没有 = 发布内置版（不允许删除）。
-const installedMarker = ".go-tools-installed"
+const installedMarker = ".Tools-installed"
 
 // pkg 基于 appdirs 布局的包管理器。
 type pkg struct {

@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/applog"
-	"go-tools/services/config"
-	"go-tools/tools/browser"
+	"Tools/appdirs"
+	"Tools/services/applog"
+	"Tools/services/config"
+	"Tools/tools/browser"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )

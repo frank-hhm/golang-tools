@@ -250,7 +250,7 @@
                                 <common-info-row grey v-if="!isDockerSel" label="node.exe"
                                     :value="selState?.nodePath || '-'" action-text="打开" @action="openPath(selState?.nodePath)" />
                                 <common-info-row grey v-else label="容器内挂载"
-                                    value="站点 → /usr/share/nginx/html · 配置 → /go-tools/conf/nginx.conf · 日志 → /var/log/nginx" />
+                                    value="站点 → /usr/share/nginx/html · 配置 → /Tools/conf/nginx.conf · 日志 → /var/log/nginx" />
                                 <common-info-row grey v-if="!isDockerSel" label="registry" :value="selState?.registry || '-'" />
                                 <common-info-row grey label="运行模式" :value="selState?.mode === 'docker' ? 'Docker 容器' : '本地进程（内置 Go 服务器）'" />
                                 <common-info-row grey label="站点行为"

@@ -29,7 +29,7 @@ func Backup(id, database string, tables []string) (string, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString("-- go-tools MySQL 备份\n")
+	b.WriteString("-- Tools MySQL 备份\n")
 	b.WriteString(fmt.Sprintf("-- 数据库: %s\n", database))
 	b.WriteString(fmt.Sprintf("-- 生成时间: %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
 	b.WriteString("SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n")

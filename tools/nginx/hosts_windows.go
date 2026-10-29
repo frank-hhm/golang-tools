@@ -2,7 +2,7 @@
 
 package nginx
 
-import "go-tools/services/winrun"
+import "Tools/services/winrun"
 
 // hostsPath Windows 系统 hosts 文件位置。
 const hostsPath = `C:\Windows\System32\drivers\etc\hosts`

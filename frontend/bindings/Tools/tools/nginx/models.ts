@@ -80,7 +80,7 @@ export interface InstanceConfig {
     "image": string;
 
     /**
-     * ContainerName 自定义容器名；留空按实例 ID 生成 go-tools-nginx-<id>
+     * ContainerName 自定义容器名；留空按实例 ID 生成 Tools-nginx-<id>
      */
     "containerName": string;
 }

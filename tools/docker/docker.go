@@ -13,7 +13,7 @@ package docker
 // 由 docker_other.go 补同签名桩。
 //
 // 约定：由本工具创建的容器统一打标签
-//   go-tools=<工具名>  go-tools.instance=<实例ID>
+//   Tools=<工具名>  Tools.instance=<实例ID>
 // 便于在 MySQL 面板中回标归属、并在重启后找回容器。
 // ============================================================
 
@@ -33,13 +33,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-tools/services/applog"
+	"Tools/services/applog"
 )
 
 // 容器归属标签
 const (
-	LabelTool     = "go-tools"
-	LabelInstance = "go-tools.instance"
+	LabelTool     = "Tools"
+	LabelInstance = "Tools.instance"
 )
 
 const logRingMax = 500

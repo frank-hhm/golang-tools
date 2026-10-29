@@ -1,7 +1,7 @@
 package app
 
 import (
-	"go-tools/services/sysinfo"
+	"Tools/services/sysinfo"
 )
 
 // GetSystemInfo 采集系统快照（绑定入口，实际采集在 services/sysinfo）

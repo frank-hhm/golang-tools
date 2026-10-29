@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-tools/appdirs"
-	"go-tools/tools/docker"
+	"Tools/appdirs"
+	"Tools/tools/docker"
 )
 
 // useTempData 把数据/日志目录指到临时目录，避免污染本机实例登记（用例结束复原）
@@ -64,7 +64,7 @@ func TestIsDockerMode(t *testing.T) {
 }
 
 func TestContainerNameOf(t *testing.T) {
-	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "go-tools-nginx-inst-7" {
+	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "Tools-nginx-inst-7" {
 		t.Fatalf("默认容器名错误: %s", n)
 	}
 	if n := containerNameOf(&InstanceConfig{ID: "inst-7", ContainerName: " my-site "}); n != "my-site" {
@@ -100,15 +100,15 @@ func TestDockerBindsAndArgs(t *testing.T) {
 	docRoot := filepath.FromSlash("C:/www/site")
 	binds := dockerBinds(prefix, docRoot)
 	want := []string{
-		"C:/data/nginx/nginx-instances/inst-1/conf:/go-tools/conf",
+		"C:/data/nginx/nginx-instances/inst-1/conf:/Tools/conf",
 		"C:/data/nginx/nginx-instances/inst-1/logs:/var/log/nginx",
 		"C:/www/site:/usr/share/nginx/html",
-		"C:/data/nginx/nginx-instances/inst-1/html:/go-tools/html",
+		"C:/data/nginx/nginx-instances/inst-1/html:/Tools/html",
 	}
 	if strings.Join(binds, "|") != strings.Join(want, "|") {
 		t.Fatalf("挂载表不符:\n got %v\nwant %v", binds, want)
 	}
-	// 挂的必须是 <实例目录>/conf 本身：否则宿主机 nginx.conf 会落在 /go-tools/conf/conf/nginx.conf，
+	// 挂的必须是 <实例目录>/conf 本身：否则宿主机 nginx.conf 会落在 /Tools/conf/conf/nginx.conf，
 	// 容器里 -c 指过去找不到文件（真机上出现过）
 	if binds[0] != filepath.ToSlash(filepath.Join(prefix, "conf"))+":"+containerConfDir {
 		t.Fatalf("配置目录挂载层级错误: %s", binds[0])
@@ -119,7 +119,7 @@ func TestDockerBindsAndArgs(t *testing.T) {
 		}
 	}
 	args := dockerArgsOf()
-	if strings.Join(args, " ") != "nginx -g daemon off; -c /go-tools/conf/nginx.conf" {
+	if strings.Join(args, " ") != "nginx -g daemon off; -c /Tools/conf/nginx.conf" {
 		t.Fatalf("容器内启动命令错误: %v", args)
 	}
 	// daemon off; 不能少：覆盖官方镜像的 CMD 后 nginx 默认会 daemonize，容器立刻退出
@@ -132,7 +132,7 @@ func TestDockerBindsAndArgs(t *testing.T) {
 func TestDockerSpecOf(t *testing.T) {
 	cfg := &InstanceConfig{ID: "inst-1", Name: "站点", Mode: ModeDocker, Image: "nginx:alpine", Port: 8080}
 	spec := dockerSpecOf(cfg, "/prefix", "/www")
-	if spec.Image != "nginx:alpine" || spec.Name != "go-tools-nginx-inst-1" {
+	if spec.Image != "nginx:alpine" || spec.Name != "Tools-nginx-inst-1" {
 		t.Fatalf("镜像/容器名错误: %+v", spec)
 	}
 	if spec.ContainerPort != containerPortHTTP || spec.HostPort != 8080 {
@@ -164,7 +164,7 @@ func TestDockerConfText(t *testing.T) {
 		"include       /etc/nginx/mime.types;",
 		"error_log  /var/log/nginx/error.log warn;",
 		"pid        /var/run/nginx.pid;",
-		"/go-tools/html", // 50x 兜底页挂载点
+		"/Tools/html", // 50x 兜底页挂载点
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("配置缺少 %q:\n%s", want, text)
@@ -178,7 +178,7 @@ func TestDockerConfText(t *testing.T) {
 	// 改宿主端口不应动配置文件（端口靠发布映射），因此签名之外的变更只有镜像/挂载/HTTPS
 	cfg.SSLPort = 8443
 	text = dockerConfText(cfg)
-	if !strings.Contains(text, "listen       443 ssl;") || !strings.Contains(text, "/go-tools/conf/server.crt;") {
+	if !strings.Contains(text, "listen       443 ssl;") || !strings.Contains(text, "/Tools/conf/server.crt;") {
 		t.Fatalf("HTTPS server 段生成错误:\n%s", text)
 	}
 	if strings.Contains(text, "8443") {
@@ -464,7 +464,7 @@ func TestGetStatusDockerFieldsWithoutEngine(t *testing.T) {
 	if st.Image != "nginx:1.27.4-alpine" || st.Version != "1.27.4" {
 		t.Fatalf("展示版本应来自镜像 tag: %+v", st)
 	}
-	if st.Container != "go-tools-nginx-"+id {
+	if st.Container != "Tools-nginx-"+id {
 		t.Fatalf("容器名错误: %q", st.Container)
 	}
 	prefix, err := instanceDir(id)

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-tools/appdirs"
-	"go-tools/tools/docker"
+	"Tools/appdirs"
+	"Tools/tools/docker"
 )
 
 // useTempData 把数据/日志目录指到临时目录，避免污染本机实例登记（用例结束复原）
@@ -65,7 +65,7 @@ func TestNpmIsDockerMode(t *testing.T) {
 }
 
 func TestNpmContainerNameOf(t *testing.T) {
-	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "go-tools-npm-inst-7" {
+	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "Tools-npm-inst-7" {
 		t.Fatalf("默认容器名错误: %s", n)
 	}
 	if n := containerNameOf(&InstanceConfig{ID: "inst-7", ContainerName: " docs-site "}); n != "docs-site" {
@@ -98,7 +98,7 @@ func TestNpmDockerBindsAndArgs(t *testing.T) {
 	docRoot := filepath.FromSlash("D:/www/dist")
 	binds := dockerBinds(prefix, docRoot)
 	want := []string{
-		"C:/data/npm/npm-instances/inst-1/conf:/go-tools/conf",
+		"C:/data/npm/npm-instances/inst-1/conf:/Tools/conf",
 		"C:/data/npm/npm-instances/inst-1/logs:/var/log/nginx",
 		"D:/www/dist:/usr/share/nginx/html",
 	}
@@ -115,9 +115,9 @@ func TestNpmDockerBindsAndArgs(t *testing.T) {
 			t.Errorf("挂载串里不能留反斜杠（Docker 会把 \\ 当转义）: %s", b)
 		}
 	}
-	// 挂的是 conf 目录本身：否则宿主机 nginx.conf 会落到 /go-tools/conf/conf/nginx.conf，nginx 找不到配置
+	// 挂的是 conf 目录本身：否则宿主机 nginx.conf 会落到 /Tools/conf/conf/nginx.conf，nginx 找不到配置
 	args := dockerArgsOf()
-	if strings.Join(args, " ") != `nginx -g daemon off; -c /go-tools/conf/nginx.conf` {
+	if strings.Join(args, " ") != `nginx -g daemon off; -c /Tools/conf/nginx.conf` {
 		t.Fatalf("启动参数错误: %v", args)
 	}
 }
@@ -125,7 +125,7 @@ func TestNpmDockerBindsAndArgs(t *testing.T) {
 func TestNpmDockerSpecOf(t *testing.T) {
 	cfg := &InstanceConfig{ID: "inst-1", Port: 3000, Image: " nginx:alpine ", Mode: ModeDocker}
 	spec := dockerSpecOf(cfg, filepath.FromSlash("C:/p"), filepath.FromSlash("C:/site"))
-	if spec.Name != "go-tools-npm-inst-1" || spec.Image != "nginx:alpine" {
+	if spec.Name != "Tools-npm-inst-1" || spec.Image != "nginx:alpine" {
 		t.Fatalf("容器名/镜像不对: %+v", spec)
 	}
 	if spec.ContainerPort != 80 || spec.HostPort != 3000 || spec.HostIP != "127.0.0.1" {
@@ -402,7 +402,7 @@ func TestNpmStatusDockerFieldsWithoutEngine(t *testing.T) {
 	if st.Mode != ModeDocker || st.Image != "nginx:alpine" {
 		t.Fatalf("状态里的模式/镜像不对: %+v", st)
 	}
-	if st.Container != "go-tools-npm-"+id {
+	if st.Container != "Tools-npm-"+id {
 		t.Fatalf("容器名不对: %s", st.Container)
 	}
 	// 展示版本从镜像 tag 推导；alpine 不是版本号，回退镜像名

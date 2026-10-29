@@ -5,7 +5,7 @@ package nginx
 import (
 	"fmt"
 
-	"go-tools/services/sysx"
+	"Tools/services/sysx"
 )
 
 // hostsPath Linux/其它 POSIX 系统的 hosts 文件位置。

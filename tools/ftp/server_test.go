@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"go-tools/appdirs"
+	"Tools/appdirs"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"

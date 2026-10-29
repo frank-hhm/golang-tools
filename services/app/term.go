@@ -15,7 +15,7 @@ package app
 
 import (
 	"fmt"
-	"go-tools/tools/term"
+	"Tools/tools/term"
 )
 
 // TermChooseKeyFile 弹原生文件选择框选 SSH 私钥，取消返回空串

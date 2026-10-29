@@ -207,7 +207,7 @@ export interface LogConfig {
     "level": string;
 
     /**
-     * 日志目录；空 = 默认（配置目录下 go-tools/logs）。按级别+日期自动分文件：Error20261022.log / Info20261022.log 等
+     * 日志目录；空 = 默认（配置目录下 Tools/logs）。按级别+日期自动分文件：Error20261022.log / Info20261022.log 等
      */
     "path": string;
 }

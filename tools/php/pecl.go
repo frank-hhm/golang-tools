@@ -58,7 +58,7 @@ type RemoteExtensionInfo struct {
 	Description string `json:"description"` // 用途说明
 	Installed   bool   `json:"installed"`   // ext 目录已存在 php_<name>.dll
 	Enabled     bool   `json:"enabled"`     // php.ini 已启用
-	Downloaded  bool   `json:"downloaded"`  // dll 由 go-tools 下载（可删除）
+	Downloaded  bool   `json:"downloaded"`  // dll 由 Tools 下载（可删除）
 	DLL         string `json:"dll"`         // 已存在时的文件名
 	ExtVersion  string `json:"extVersion"`  // 已存在时记录的扩展版本
 	Fetching    bool   `json:"fetching"`    // 线上索引获取中
@@ -565,7 +565,7 @@ func searchPeclOnce(ext, series, kind string) (*peclPackage, error) {
 	return &p, nil
 }
 
-// RemoveExtension 删除由 go-tools 下载的扩展 dll（内置 dll 拒绝删除），并禁用 php.ini 中的启用行
+// RemoveExtension 删除由 Tools 下载的扩展 dll（内置 dll 拒绝删除），并禁用 php.ini 中的启用行
 func RemoveExtension(id, ext string) error {
 	cfg, err := findInstance(id)
 	if err != nil {
@@ -606,8 +606,8 @@ func RemoveExtension(id, ext string) error {
 	return nil
 }
 
-// dlMarkerSuffix 记录 dll 由 go-tools 下载的标记文件后缀（内容含来源 URL）
-const dlMarkerSuffix = ".go-tools-dl"
+// dlMarkerSuffix 记录 dll 由 Tools 下载的标记文件后缀（内容含来源 URL）
+const dlMarkerSuffix = ".Tools-dl"
 
 func isDownloadedExt(dll string) bool {
 	_, err := os.Stat(dll + dlMarkerSuffix)

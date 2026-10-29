@@ -265,7 +265,7 @@ const props = defineProps<{
     states?: Record<string, any>;
     /** 外部刷新信号：版本管理弹窗每次打开自增一次，弹窗不销毁时也能刷新 */
     reloadKey?: number;
-    /** 容器按哪个工具标签过滤（docker 标签 go-tools）；npm 站点用 nginx 镜像但标签是 npm，故可与 keyword 不同 */
+    /** 容器按哪个工具标签过滤（docker 标签 Tools）；npm 站点用 nginx 镜像但标签是 npm，故可与 keyword 不同 */
     containerTool?: string;
 }>();
 
@@ -356,7 +356,7 @@ function presetTip(p: string): string {
     return `${p} 已安装，点击填入输入框（可改成同系列其它 tag 再拉）`;
 }
 
-/** 容器 → 实例：创建时打的 go-tools.instance 标签就是实例 ID */
+/** 容器 → 实例：创建时打的 Tools.instance 标签就是实例 ID */
 function instOf(c: any): any {
     if (!c?.ownerId) return null;
     return (props.instances || []).find((i) => i.id === c.ownerId) || null;
@@ -399,7 +399,7 @@ async function loadContainers() {
         const all = (await GoTools.DockerSrvListContainers(true)) || [];
         containers.value = all.filter((c: any) =>
             String(c.ownerTool || "").toLowerCase() === containerTool.value
-            || String(c.name || "").toLowerCase().startsWith(`go-tools-${containerTool.value}-`));
+            || String(c.name || "").toLowerCase().startsWith(`Tools-${containerTool.value}-`));
         engineErr.value = "";
     } catch (e: any) {
         containers.value = [];

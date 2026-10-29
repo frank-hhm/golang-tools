@@ -193,7 +193,7 @@ func (s *StaticServer) serveListing(w http.ResponseWriter, r *http.Request, dir 
 	for _, it := range files {
 		writeRow(it)
 	}
-	b.WriteString("</table><p style=\"color:#888;margin-top:16px\">served by go-tools · Node " +
+	b.WriteString("</table><p style=\"color:#888;margin-top:16px\">served by Tools · Node " +
 		html.EscapeString(nodeOfInstance(s.id)) + "</p>")
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -212,7 +212,7 @@ func (s *StaticServer) writeStatus(w http.ResponseWriter) {
 		"requests":      atomic.LoadInt64(&s.requests),
 		"bytesSent":     atomic.LoadInt64(&s.bytesSent),
 		"pid":           os.Getpid(),
-		"server":        "go-tools static",
+		"server":        "Tools static",
 		"spa":           s.opts.SPA,
 		"directory":     s.opts.Directory,
 		"timestamp":     time.Now().UnixMilli(),

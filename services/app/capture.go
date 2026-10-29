@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/services/applog"
-	"go-tools/services/config"
-	"go-tools/services/winui"
-	"go-tools/tools/screenshot"
+	"Tools/services/applog"
+	"Tools/services/config"
+	"Tools/services/winui"
+	"Tools/tools/screenshot"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )

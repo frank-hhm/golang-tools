@@ -1,8 +1,8 @@
 import { computed, ref } from "vue"
 import { defineStore } from "pinia"
 import { Events } from "@wailsio/runtime"
-import { App } from "bindings/go-tools/services/app/index"
-import type { Task } from "bindings/go-tools/services/tasks/index"
+import { App } from "bindings/Tools/services/app/index"
+import type { Task } from "bindings/Tools/services/tasks/index"
 import { isNativeWindows, loadCaps } from "@/utils/caps"
 import store from "@/store"
 

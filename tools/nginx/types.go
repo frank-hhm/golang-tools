@@ -5,10 +5,10 @@ package nginx
 // 结构复刻 tools/mysql/server.go（redis 同款范式），差异点：
 //   - 版本库：nginx.org 官方 Windows zip（nginx-<ver>.zip，解压约 2MB）
 //   - bundled    ：<exedir>/plugins/nginx/<ver>/（发布内置，无安装标记）
-//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/nginx/<ver>/ 并写 .go-tools-installed 标记
-//   - local      ：用户手动注册的本机已有目录（登记在 go-tools/nginx-locals.json）
-//   - 实例：配置持久化 go-tools/nginx-instances.json；每个实例以「实例目录为
-//     prefix」运行：go-tools/nginx-instances/<id>/{conf/nginx.conf, logs/, html/}。
+//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/nginx/<ver>/ 并写 .Tools-installed 标记
+//   - local      ：用户手动注册的本机已有目录（登记在 Tools/nginx-locals.json）
+//   - 实例：配置持久化 Tools/nginx-instances.json；每个实例以「实例目录为
+//     prefix」运行：Tools/nginx-instances/<id>/{conf/nginx.conf, logs/, html/}。
 //     首次启动按模板生成 nginx.conf（端口/站点根取实例配置），之后配置文件由用户掌控。
 //   - nginx 不支持改配置热生效以外的优雅关闭入口（无管理端口），因此：
 //     停止用 `nginx -s quit`（-p 指向实例目录），兜底按 PID 结束进程树；
@@ -33,8 +33,8 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/sysx"
+	"Tools/appdirs"
+	"Tools/services/sysx"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -91,7 +91,7 @@ type InstanceConfig struct {
 	Mode string `json:"mode"`
 	// Image Docker 模式使用的镜像，如 nginx:alpine；本地模式为空
 	Image string `json:"image"`
-	// ContainerName 自定义容器名；留空按实例 ID 生成 go-tools-nginx-<id>
+	// ContainerName 自定义容器名；留空按实例 ID 生成 Tools-nginx-<id>
 	ContainerName string `json:"containerName"`
 }
 
@@ -144,7 +144,7 @@ func pluginsRoot() (string, error) { return appdirs.Plugins("nginx") }
 func PluginsDir() (string, error) { return pluginsRoot() }
 
 // installedMarker 安装版标记（区别于发布内置版，允许删除）
-const installedMarker = ".go-tools-installed"
+const installedMarker = ".Tools-installed"
 
 func isInstalledVersion(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, installedMarker))
@@ -152,7 +152,7 @@ func isInstalledVersion(dir string) bool {
 }
 
 func markInstalled(dir string) {
-	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by go-tools\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by Tools\n"), 0o644)
 }
 
 func localsRegistryPath() (string, error) {
@@ -433,7 +433,7 @@ func RemoveVersion(version string) error {
 			if findNginx(d) == "" {
 				return fmt.Errorf("未找到版本 %s 的安装目录", version)
 			}
-			return fmt.Errorf("目录 %s 非 go-tools 安装版（内置或手工放置），不可删除", version)
+			return fmt.Errorf("目录 %s 非 Tools 安装版（内置或手工放置），不可删除", version)
 		}
 		return os.RemoveAll(d)
 	case "local":

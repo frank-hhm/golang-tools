@@ -1,6 +1,6 @@
 package app
 
-import "go-tools/services/sysx"
+import "Tools/services/sysx"
 
 // GetCapabilities 返回平台能力快照，供前端按能力渲染。
 //

@@ -6,7 +6,7 @@
  * 备份生成、实例崩溃。页面内的即时反馈（保存成功、校验失败）继续用 Arco Message，
  * 不要为了统一把每条提示都弹到系统通知里。
  */
-import { App } from "bindings/go-tools/services/app/index";
+import { App } from "bindings/Tools/services/app/index";
 import { isNativeWindows } from "./caps";
 
 /**

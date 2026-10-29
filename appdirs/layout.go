@@ -52,15 +52,15 @@ func ensureLayout() {
 }
 
 // migrateLegacy 旧版布局一次性迁移（MoveIfAbsent 幂等，迁移过即空转）：
-//   - %AppData%/go-tools 下的服务登记/实例目录（php/npm/mysql/redis 旧数据家）→ data/<服务名>/
+//   - %AppData%/Tools 下的服务登记/实例目录（php/npm/mysql/redis 旧数据家）→ data/<服务名>/
 //   - <应用目录>/data 根下的 nginx 登记与实例目录 → data/nginx/
 //   - <日志根>/*.log 散文件 → logs/app/；mysql-sql-*.log → logs/mysql/
 func migrateLegacy() {
 	dataRoot := DataBase()
 
-	// 旧数据家：用户配置目录 go-tools
+	// 旧数据家：用户配置目录 Tools
 	if base, err := os.UserConfigDir(); err == nil {
-		old := filepath.Join(base, "go-tools")
+		old := filepath.Join(base, "Tools")
 		for _, svc := range []string{"php", "nginx", "mysql", "redis", "npm"} {
 			for _, name := range []string{svc + "-locals.json", svc + "-instances.json", svc + "-instances"} {
 				_ = MoveIfAbsent(filepath.Join(old, name), filepath.Join(dataRoot, svc, name))

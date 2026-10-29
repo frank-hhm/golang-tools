@@ -5,12 +5,12 @@ import (
 	"runtime"
 	"time"
 
-	"go-tools/tools/docker"
-	"go-tools/tools/mysql"
-	"go-tools/tools/nginx"
-	"go-tools/tools/npm"
-	"go-tools/tools/php"
-	"go-tools/tools/redis"
+	"Tools/tools/docker"
+	"Tools/tools/mysql"
+	"Tools/tools/nginx"
+	"Tools/tools/npm"
+	"Tools/tools/php"
+	"Tools/tools/redis"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"

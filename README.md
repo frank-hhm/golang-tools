@@ -52,7 +52,7 @@ Take a moment to familiarize yourself with your project structure:
 ### Go 侧目录布局
 
 根目录只留「绑定面」：`*App` 的方法与它签名里出现的结构体会被 Wails 生成到
-`frontend/bindings/go-tools/`，所以这些文件必须留在 package main：
+`frontend/bindings/Tools/`，所以这些文件必须留在 package main：
 
 | 根目录文件 | 作用 |
 | --- | --- |
@@ -78,31 +78,31 @@ Take a moment to familiarize yourself with your project structure:
 
 ```bash
 # 编译（Linux / 容器，不依赖 cgo）
-CGO_ENABLED=0 go build -tags server,production -trimpath -o go-tools-server .
+CGO_ENABLED=0 go build -tags server,production -trimpath -o Tools-server .
 
 # 首次启动会自动生成配置与随机密码，并在控制台打印一次
-./go-tools-server
+./Tools-server
 ```
 
 面板配置单独存放在 `panel.json`（权限 0600，与 `config.json` 分开，避免密码哈希随
 `GetConfig` 绑定下发给前端）：
 
-- Linux：`~/.config/go-tools/panel.json`
-- Windows/macOS：`os.UserConfigDir()/go-tools/panel.json`
+- Linux：`~/.config/Tools/panel.json`
+- Windows/macOS：`os.UserConfigDir()/Tools/panel.json`
 
 常用命令（也可以在网页「设置 → 访问与安全」里改，改完即时生效、无需重启进程）：
 
 | 命令 | 说明 |
 | --- | --- |
-| `./go-tools-server show` | 查看账号、监听地址、安全入口、访问地址 |
-| `./go-tools-server passwd [密码]` | 改密码（不传则随机生成）；旧会话全部失效 |
-| `./go-tools-server user <账号>` | 改登录账号 |
-| `./go-tools-server port <端口>` | 改监听端口，进程内重新监听，无需重启 |
-| `./go-tools-server host <地址>` | 改监听地址（`0.0.0.0` / `127.0.0.1`） |
-| `./go-tools-server entry /manage-xxxx` | 设置安全入口；不设置则根地址直达登录页 |
-| `./go-tools-server on` / `off` | 打开/关闭登录保护（内网紧急排障用） |
-| `./go-tools-server menu` | 交互式菜单（等同于宝塔那种编号菜单） |
-| `./go-tools-server restart` | systemd 托管时重启服务（非 systemd 会给出提示） |
+| `./Tools-server show` | 查看账号、监听地址、安全入口、访问地址 |
+| `./Tools-server passwd [密码]` | 改密码（不传则随机生成）；旧会话全部失效 |
+| `./Tools-server user <账号>` | 改登录账号 |
+| `./Tools-server port <端口>` | 改监听端口，进程内重新监听，无需重启 |
+| `./Tools-server host <地址>` | 改监听地址（`0.0.0.0` / `127.0.0.1`） |
+| `./Tools-server entry /manage-xxxx` | 设置安全入口；不设置则根地址直达登录页 |
+| `./Tools-server on` / `off` | 打开/关闭登录保护（内网紧急排障用） |
+| `./Tools-server menu` | 交互式菜单（等同于宝塔那种编号菜单） |
+| `./Tools-server restart` | systemd 托管时重启服务（非 systemd 会给出提示） |
 
 安全入口的语义：设置后必须先访问 `http://<IP>:<端口>/manage-xxxx` 才会被引到登录页，
 直接访问根地址一律返回 404（防扫端口）。入口不改变页面内的绝对路径，所以不会打断
@@ -115,13 +115,13 @@ systemd 示例（注意 `WorkingDirectory` 决定 `plugins/`、`data/`、`logs/`
 
 ```ini
 [Unit]
-Description=go-tools panel
+Description=Tools panel
 After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/go-tools
-ExecStart=/opt/go-tools/go-tools-server
+WorkingDirectory=/opt/Tools
+ExecStart=/opt/Tools/Tools-server
 Restart=on-failure
 # 非 root 运行时无法重启服务，restart 命令会提示用 sudo/systemctl
 # User=gotools
@@ -138,7 +138,7 @@ Redis 工具页支持直接管理本机 `redis-server` 实例，版本二进制�
 
 ```
 <发布目录>/
-├── go-tools.exe
+├── Tools.exe
 ├── logs/                            # 默认日志目录（按级别+日期自动分文件）
 ├── data/
 │   ├── videos/                      # 录制视频另存默认位置
@@ -155,16 +155,16 @@ Redis 工具页支持直接管理本机 `redis-server` 实例，版本二进制�
 ```
 
 - 程序启动时自动扫描 `<exe 所在目录>/plugins/redis/<版本号>/redis-server.exe`，识别为“内置”来源（兼容旧目录 `<exe>/redis-servers/`）；内置版本不可在版本管理中删除。
-- 在线获取/离线 zip 安装的版本统一落在 `<exe>/plugins/redis/<版本号>/`（内含 `.go-tools-installed` 标记，列表显示为“下载”、可删）；无标记的同目录版本视为发布内置（显示“内置”、不可删）。旧版缓存 `%UserConfigDir%/go-tools/redis-servers/` 会在首次列出版本时自动迁移到插件目录。
-- 不要把 redis 二进制提交进代码仓库；仅在打包发布时放入。实例配置与运行数据在 `%UserConfigDir%/go-tools/` 下的 `redis-instances.json` 和 `redis-instances/<实例id>/`。
+- 在线获取/离线 zip 安装的版本统一落在 `<exe>/plugins/redis/<版本号>/`（内含 `.Tools-installed` 标记，列表显示为“下载”、可删）；无标记的同目录版本视为发布内置（显示“内置”、不可删）。旧版缓存 `%UserConfigDir%/Tools/redis-servers/` 会在首次列出版本时自动迁移到插件目录。
+- 不要把 redis 二进制提交进代码仓库；仅在打包发布时放入。实例配置与运行数据在 `%UserConfigDir%/Tools/` 下的 `redis-instances.json` 和 `redis-instances/<实例id>/`。
 - 离线安装兜底：将发行版 zip（如 `Redis-7.4.4-Windows-x64-msys2.zip`）直接放入 `<exe>/plugins/redis/`，在版本管理弹窗点对应版本的“安装”即可不经网络完成安装（弹窗内有实时安装日志）。
 
 ### MySQL 本地服务管理
 
 与 Redis 对称，支持多实例 MySQL 服务管理。官方免安装 zip（约 230MB，解压约 1.5GB）。
 
-- 插件目录 `<exe>/plugins/mysql/<版本号>/`；安装版写 `.go-tools-installed` 标记，可删；无标记=内置不可删。
-- 实例配置 `%UserConfigDir%/go-tools/mysql-instances.json`；数据/日志 `mysql-instances/<id>/`（my.ini + data/ + mysql.err）。
+- 插件目录 `<exe>/plugins/mysql/<版本号>/`；安装版写 `.Tools-installed` 标记，可删；无标记=内置不可删。
+- 实例配置 `%UserConfigDir%/Tools/mysql-instances.json`；数据/日志 `mysql-instances/<id>/`（my.ini + data/ + mysql.err）。
 - 首次启动自动 `mysqld --initialize-insecure`（root 空密码）；配置了 RootPassword 则启动后 ALTER USER 设置。
 - 离线安装：将 `mysql-<ver>-winx64.zip` 放入 `<exe>/plugins/mysql/`，点“安装”即可。
 - 依赖 VC++ 运行库（Visual C++ 2019 Redistributable）；若启动失败请检查 mysql.err 尾部是否有 “VCRUNTIME140” 提示。

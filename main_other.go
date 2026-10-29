@@ -16,6 +16,6 @@ import (
 // 本文件只保证在其它组合下 go build ./... 不会报“缺少 main 函数”，
 // 真跑起来会直接退出并提示该用哪个 tag。
 func main() {
-	fmt.Fprintln(os.Stderr, "go-tools 在非 Windows 平台需要 -tags server 构建（go build -tags server .）")
+	fmt.Fprintln(os.Stderr, "Tools 在非 Windows 平台需要 -tags server 构建（go build -tags server .）")
 	os.Exit(1)
 }

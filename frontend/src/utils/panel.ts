@@ -6,7 +6,7 @@
  * 面板配置里有密码哈希，不能放进 AppConfig 走绑定下发，所以单独开一套。
  */
 
-const CSRF_HEADERS = { "X-Requested-With": "go-tools-panel" };
+const CSRF_HEADERS = { "X-Requested-With": "Tools-panel" };
 
 /** 面板信息（对应 GET /api/panel/info） */
 export interface PanelInfo {

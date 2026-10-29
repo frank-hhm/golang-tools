@@ -9,24 +9,24 @@ import (
 	"strings"
 	"time"
 
-	appsvc "go-tools/services/app"
-	"go-tools/services/applog"
-	"go-tools/services/config"
-	"go-tools/services/tasks"
-	"go-tools/tools/docker"
-	"go-tools/tools/ftp"
-	"go-tools/tools/guard"
-	"go-tools/tools/mysql"
-	"go-tools/tools/nginx"
-	"go-tools/tools/npm"
-	"go-tools/tools/php"
-	"go-tools/tools/redis"
-	"go-tools/tools/screenshot"
-	"go-tools/tools/siteclone"
-	"go-tools/tools/sniffer"
-	"go-tools/tools/srvstate"
-	"go-tools/tools/term"
-	"go-tools/tools/usbserial"
+	appsvc "Tools/services/app"
+	"Tools/services/applog"
+	"Tools/services/config"
+	"Tools/services/tasks"
+	"Tools/tools/docker"
+	"Tools/tools/ftp"
+	"Tools/tools/guard"
+	"Tools/tools/mysql"
+	"Tools/tools/nginx"
+	"Tools/tools/npm"
+	"Tools/tools/php"
+	"Tools/tools/redis"
+	"Tools/tools/screenshot"
+	"Tools/tools/siteclone"
+	"Tools/tools/sniffer"
+	"Tools/tools/srvstate"
+	"Tools/tools/term"
+	"Tools/tools/usbserial"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -98,7 +98,7 @@ func main() {
 	// 加载全局配置（用户配置目录 config.json）并初始化可配置文件日志
 	startupCfg := config.LoadAppConfig()
 	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))
-	applog.Infof("app", "=== go-tools 启动 === 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
+	applog.Infof("app", "=== Tools 启动 === 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
 
 	// 应用 MySQL 工具级设置（SQL 执行日志开关与目录）
 	mysqlSettings := startupCfg.ToolSettings["mysql"]
@@ -113,7 +113,7 @@ func main() {
 	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
 	// 'Mac' options tailor the application when running an macOS.
 	app := application.New(application.Options{
-		Name:        "go-tools",
+		Name:        "Tools",
 		Description: "A demo of using raw HTML & CSS",
 		Services: []application.Service{
 			application.NewService(&appsvc.GreetService{}),

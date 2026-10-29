@@ -17,7 +17,7 @@ import (
 )
 
 // CACommonName 根证书通用名，用于安装/卸载时识别
-const CACommonName = "go-tools Sniffer CA"
+const CACommonName = "Tools Sniffer CA"
 
 // CA 持有自签根证书与私钥，并按域名签发叶子证书（带缓存）
 type CA struct {
@@ -36,7 +36,7 @@ func CertDir() (string, error) {
 	if err != nil {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "go-tools", "sniffer")
+	dir := filepath.Join(base, "Tools", "sniffer")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -85,7 +85,7 @@ func LoadOrGenerateCA() (*CA, error) {
 	serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: CACommonName, Organization: []string{"go-tools"}},
+		Subject:               pkix.Name{CommonName: CACommonName, Organization: []string{"Tools"}},
 		NotBefore:             time.Now().Add(-24 * time.Hour),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature | x509.KeyUsageCRLSign,
@@ -132,7 +132,7 @@ func (ca *CA) CertForHost(host string) (*tls.Certificate, error) {
 	serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: host, Organization: []string{"go-tools"}},
+		Subject:      pkix.Name{CommonName: host, Organization: []string{"Tools"}},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(825 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

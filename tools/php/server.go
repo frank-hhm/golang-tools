@@ -5,10 +5,10 @@ package php
 // 结构复刻 tools/mysql/server.go（redis 同款范式），差异点：
 //   - 版本库：windows.php.net 官方 Windows zip（nts / zts 两种构型）
 //   - bundled    ：<exedir>/plugins/php/<ver>/（发布内置，无安装标记）
-//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/php/<ver>/ 并写 .go-tools-installed 标记
-//   - local      ：用户手动注册的本机已有目录（登记在 go-tools/php-locals.json）
-//   - 实例：配置持久化 go-tools/php-instances.json；每个实例工作目录
-//     go-tools/php-instances/<id>/（php.ini + access.log + error.log + www/）。
+//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/php/<ver>/ 并写 .Tools-installed 标记
+//   - local      ：用户手动注册的本机已有目录（登记在 Tools/php-locals.json）
+//   - 实例：配置持久化 Tools/php-instances.json；每个实例工作目录
+//     Tools/php-instances/<id>/（php.ini + access.log + error.log + www/）。
 //     站点根目录由用户指定（DocRoot），留空则用实例目录下的 www/。
 //   - php.ini：首次使用从版本目录 php.ini-development 复制（没有则生成最小模板），
 //     之后完全由用户掌控（GetConfigText/SaveConfigText 逐行编辑保存）。
@@ -36,8 +36,8 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/sysx"
+	"Tools/appdirs"
+	"Tools/services/sysx"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -98,7 +98,7 @@ type InstanceConfig struct {
 	// ---- Docker 模式（Mode 为空即本地模式，历史配置无需迁移）----
 	Mode          string `json:"mode"`          // local | docker
 	Image         string `json:"image"`         // 如 php:8.3-cli
-	ContainerName string `json:"containerName"` // 留空自动生成 go-tools-php-<实例ID>
+	ContainerName string `json:"containerName"` // 留空自动生成 Tools-php-<实例ID>
 }
 
 // InstanceStatus 实例运行状态
@@ -171,7 +171,7 @@ func pluginsRoot() (string, error) { return appdirs.Plugins("php") }
 func PluginsDir() (string, error) { return pluginsRoot() }
 
 // installedMarker 安装版标记（区别于发布内置版，允许删除）
-const installedMarker = ".go-tools-installed"
+const installedMarker = ".Tools-installed"
 
 func isInstalledVersion(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, installedMarker))
@@ -179,7 +179,7 @@ func isInstalledVersion(dir string) bool {
 }
 
 func markInstalled(dir string) {
-	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by go-tools\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by Tools\n"), 0o644)
 }
 
 func localsRegistryPath() (string, error) {
@@ -456,7 +456,7 @@ func RemoveVersion(version string) error {
 				}
 				d := filepath.Join(root, s.Name())
 				if !isInstalledVersion(d) {
-					return fmt.Errorf("目录 %s 非 go-tools 安装版（内置或手工放置），不可删除", s.Name())
+					return fmt.Errorf("目录 %s 非 Tools 安装版（内置或手工放置），不可删除", s.Name())
 				}
 				if err := os.RemoveAll(d); err != nil {
 					lastErr = err

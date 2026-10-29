@@ -1,6 +1,6 @@
 import { computed, reactive } from "vue";
-import { App } from "bindings/go-tools/services/app/index";
-import type { Capabilities } from "bindings/go-tools/services/sysx/models";
+import { App } from "bindings/Tools/services/app/index";
+import type { Capabilities } from "bindings/Tools/services/sysx/models";
 
 /**
  * 平台能力：从 Go 侧读一次，前端按能力渲染，而不是按 os 字符串硬编码分支。

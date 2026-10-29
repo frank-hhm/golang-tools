@@ -3,26 +3,26 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "go-tools.exe"
+name: "Tools.exe"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A go-tools application"
+description: "A Tools application"
 vendor: "My Company"
 homepage: "https://wails.io"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/go-tools.exe"
-    dst: "/usr/local/bin/go-tools.exe"
+  - src: "./bin/Tools.exe"
+    dst: "/usr/local/bin/Tools.exe"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/go-tools.exe.png"
-  - src: "./build/linux/go-tools.exe.desktop"
-    dst: "/usr/share/applications/go-tools.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/Tools.exe.png"
+  - src: "./build/linux/Tools.exe.desktop"
+    dst: "/usr/share/applications/Tools.exe.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

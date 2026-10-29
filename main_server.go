@@ -10,9 +10,9 @@ package main
 //
 // 启动：
 //
-//	go build -tags server -o go-tools-server .
-//	./go-tools-server                 # 按 panel.json 的端口对外提供服务
-//	./go-tools-server port 9000       # 改端口（见 services/panel 的 CLI 说明）
+//	go build -tags server -o Tools-server .
+//	./Tools-server                 # 按 panel.json 的端口对外提供服务
+//	./Tools-server port 9000       # 改端口（见 services/panel 的 CLI 说明）
 //
 // 部署形态（重要）：
 //
@@ -34,22 +34,22 @@ import (
 	"runtime/debug"
 	"time"
 
-	appsvc "go-tools/services/app"
-	"go-tools/services/applog"
-	"go-tools/services/config"
-	"go-tools/services/panel"
-	"go-tools/services/tasks"
-	"go-tools/tools/docker"
-	"go-tools/tools/ftp"
-	"go-tools/tools/guard"
-	"go-tools/tools/mysql"
-	"go-tools/tools/nginx"
-	"go-tools/tools/npm"
-	"go-tools/tools/php"
-	"go-tools/tools/redis"
-	"go-tools/tools/sniffer"
-	"go-tools/tools/term"
-	"go-tools/tools/usbserial"
+	appsvc "Tools/services/app"
+	"Tools/services/applog"
+	"Tools/services/config"
+	"Tools/services/panel"
+	"Tools/services/tasks"
+	"Tools/tools/docker"
+	"Tools/tools/ftp"
+	"Tools/tools/guard"
+	"Tools/tools/mysql"
+	"Tools/tools/nginx"
+	"Tools/tools/npm"
+	"Tools/tools/php"
+	"Tools/tools/redis"
+	"Tools/tools/sniffer"
+	"Tools/tools/term"
+	"Tools/tools/usbserial"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -112,7 +112,7 @@ func main() {
 	// 配置与日志初始化与桌面版走同一套逻辑，日志目录也一致
 	startupCfg := config.LoadAppConfig()
 	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))
-	applog.Infof("app", "=== go-tools 启动（server 模式）=== 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
+	applog.Infof("app", "=== Tools 启动（server 模式）=== 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
 
 	mysqlSettings := startupCfg.ToolSettings["mysql"]
 	sqlLogDir := mysql.ConfigureSQLLog(mysqlSettings.SQLLogEnabled, mysqlSettings.SQLLogDir)
@@ -147,8 +147,8 @@ func main() {
 
 	appInstance := appsvc.NewApp()
 	app := application.New(application.Options{
-		Name:        "go-tools",
-		Description: "go-tools 服务器面板",
+		Name:        "Tools",
+		Description: "Tools 服务器面板",
 		Services: []application.Service{
 			application.NewService(&appsvc.GreetService{}),
 			application.NewService(appInstance),
@@ -206,7 +206,7 @@ func main() {
 	}
 	if err := panelSrv.Start(); err != nil {
 		// 端口被占用属于最常见的启动失败，直接报清楚，不要带着半个服务跑
-		log.Fatalf("面板服务启动失败: %v\n提示: 可用 ./go-tools-server port <其它端口> 修改后重试", err)
+		log.Fatalf("面板服务启动失败: %v\n提示: 可用 ./Tools-server port <其它端口> 修改后重试", err)
 	}
 	applog.Infof("panel", "面板监听 %s（登录=%v 安全入口=%q），访问 %s",
 		panelSet.ListenAddr(), panelSet.Enabled, panelSet.EntryPath, panelSet.AccessURL())
@@ -258,7 +258,7 @@ func printInitBanner(s panel.Settings, password string) {
 	fmt.Printf("│  密码: %s\n", password)
 	fmt.Printf("│  地址: %s\n", s.AccessURL())
 	fmt.Println("│  提示: 登录后请在「设置 - 面板与安全」里修改密码或开启安全入口")
-	fmt.Println("│        忘密码可在服务器执行: ./go-tools-server passwd")
+	fmt.Println("│        忘密码可在服务器执行: ./Tools-server passwd")
 	fmt.Println("└────────────────────────────────────────────────")
 	fmt.Print("\n")
 }
@@ -275,7 +275,7 @@ func dataURI(png []byte) string {
 // 开发构建兜底成 "(devel)"。仅用于登录页页脚与管理接口的信息展示。
 func versionString() string {
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
-		return "go-tools " + info.Main.Version
+		return "Tools " + info.Main.Version
 	}
-	return "go-tools (devel)"
+	return "Tools (devel)"
 }

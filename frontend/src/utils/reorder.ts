@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { App } from "bindings/go-tools/services/app/index";
+import { App } from "bindings/Tools/services/app/index";
 
 /**
  * 列表拖拽重排（原生 HTML5 DnD，不引第三方库）。

@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/applog"
-	"go-tools/tools/logtail"
+	"Tools/appdirs"
+	"Tools/services/applog"
+	"Tools/tools/logtail"
 )
 
 // ============================================================

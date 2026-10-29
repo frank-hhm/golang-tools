@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"go-tools/services/config"
-	"go-tools/tools/guard"
+	"Tools/services/config"
+	"Tools/tools/guard"
 )
 
 // 进程守护工具的绑定层：把 tools/guard 引擎的能力暴露给前端，状态变更经 guard:status 事件回推。

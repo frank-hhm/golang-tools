@@ -115,7 +115,7 @@ export interface InstanceConfig {
     "image": string;
 
     /**
-     * 留空自动生成 go-tools-php-<实例ID>
+     * 留空自动生成 Tools-php-<实例ID>
      */
     "containerName": string;
 }
@@ -225,7 +225,7 @@ export interface RemoteExtensionInfo {
     "enabled": boolean;
 
     /**
-     * dll 由 go-tools 下载（可删除）
+     * dll 由 Tools 下载（可删除）
      */
     "downloaded": boolean;
 

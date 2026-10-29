@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"go-tools/services/sysx"
+	"Tools/services/sysx"
 )
 
 // platformState 汇总 App 里只在 Windows 上才有意义的字段。

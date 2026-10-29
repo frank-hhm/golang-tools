@@ -29,8 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-tools/services/applog"
-	"go-tools/tools/portcheck"
+	"Tools/services/applog"
+	"Tools/tools/portcheck"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/bcrypt"
@@ -237,7 +237,7 @@ func (s *serverRuntime) acceptLoop(ln net.Listener, signer ssh.Signer) {
 
 // dummyPassHash 账号不存在时也跑一次 bcrypt 用的固定假哈希，首次使用时才生成。
 var dummyPassHash = sync.OnceValue(func() []byte {
-	h, err := bcrypt.GenerateFromPassword([]byte("go-tools-sftp-dummy"), bcrypt.DefaultCost)
+	h, err := bcrypt.GenerateFromPassword([]byte("Tools-sftp-dummy"), bcrypt.DefaultCost)
 	if err != nil {
 		return nil // 生成失败就退化成不比对：功能优先，不影响正常登录
 	}
@@ -261,7 +261,7 @@ func (s *serverRuntime) handleConn(nc net.Conn, signer ssh.Signer) {
 	_ = nc.SetDeadline(time.Now().Add(30 * time.Second))
 
 	cfg := &ssh.ServerConfig{
-		ServerVersion: "SSH-2.0-go-tools-sftp",
+		ServerVersion: "SSH-2.0-Tools-sftp",
 		PasswordCallback: func(meta ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			return s.checkPassword(meta, pass, ip)
 		},

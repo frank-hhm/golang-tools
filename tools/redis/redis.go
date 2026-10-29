@@ -638,7 +638,7 @@ func connectionsFilePath() (string, error) {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	dir := filepath.Join(base, "go-tools")
+	dir := filepath.Join(base, "Tools")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

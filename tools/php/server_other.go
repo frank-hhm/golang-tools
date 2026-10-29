@@ -11,7 +11,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/process"
 
-	"go-tools/services/sysx"
+	"Tools/services/sysx"
 )
 
 // binFileName 可执行文件名（Linux 系统包的 php 不带扩展名）。

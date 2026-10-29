@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"go-tools/tools/screenshot"
+	"Tools/tools/screenshot"
 
 	"golang.org/x/sys/windows"
 )
@@ -40,18 +40,21 @@ func workAreaDIP() (int, int, int, int) {
 		int(float64(rc.Right) / scale), int(float64(rc.Bottom) / scale)
 }
 
-// toastPSScript 通过环境变量 TOAST_TITLE / TOAST_CONTENT 发送 WinRT Toast 的
-// PowerShell 脚本（Windows 10+ 内建能力，无需任何依赖；标题+正文两行模板）
+// toastPSScript 通过环境变量 TOAST_TITLE / TOAST_CONTENT / TOAST_APP 发送 WinRT Toast 的
+// PowerShell 脚本（Windows 10+ 内建能力，无需任何依赖；标题+正文两行模板）。
+// TOAST_APP 是通知卡片上显示的应用名（由调用方按配置的应用名传入，空则回退 Tools）。
 const toastPSScript = `
 $t = $env:TOAST_TITLE
 $c = $env:TOAST_CONTENT
+$app = $env:TOAST_APP
+if ([string]::IsNullOrWhiteSpace($app)) { $app = "Tools" }
 [void][Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime]
 $tpl = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
 $txts = $tpl.SelectNodes("//text")
 $txts.Item(0).AppendChild($tpl.CreateTextNode($t)) > $null
 $txts.Item(1).AppendChild($tpl.CreateTextNode($c)) > $null
-$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("go-tools")
+$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app)
 $toast = [Windows.UI.Notifications.ToastNotification]::new($tpl)
 $notifier.Show($toast)
 `
@@ -60,15 +63,16 @@ $notifier.Show($toast)
 // （系统右下角渲染、自动消失、可进入操作中心/专注助手），异步执行不阻塞调用方。
 func (a *App) ShowSystemNotification(title string, content string) error {
 	if title == "" {
-		title = "go-tools"
+		title = effectiveAppName()
 	}
+	appName := effectiveAppName()
 	go func() {
 		// 脚本经 stdin 传入（-Command -），避免命令行引号转义问题
 		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
 			"-ExecutionPolicy", "Bypass", "-Command", "-")
 		cmd.Stdin = strings.NewReader(toastPSScript)
-		// 内容经环境变量传递，避免命令行注入/转义问题
-		cmd.Env = append(os.Environ(), "TOAST_TITLE="+title, "TOAST_CONTENT="+content)
+		// 内容经环境变量传递，避免命令行注入/转义问题；TOAST_APP 决定通知卡片上的应用名
+		cmd.Env = append(os.Environ(), "TOAST_TITLE="+title, "TOAST_CONTENT="+content, "TOAST_APP="+appName)
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 不闪现 PowerShell 控制台窗口
 		_ = cmd.Run()
 	}()

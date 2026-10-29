@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/tools/logtail"
-	"go-tools/tools/portcheck"
-	"go-tools/tools/srvstate"
+	"Tools/appdirs"
+	"Tools/tools/logtail"
+	"Tools/tools/portcheck"
+	"Tools/tools/srvstate"
 
 	"github.com/shirou/gopsutil/v3/process"
 )
@@ -729,7 +729,7 @@ func StopAll() {
 
 /* ============================ nginx.conf 生成 ============================ */
 
-const confMarker = "# go-tools 生成的 nginx.conf（改端口/站点根请编辑本文件后「重启」实例）"
+const confMarker = "# Tools 生成的 nginx.conf（改端口/站点根请编辑本文件后「重启」实例）"
 
 // ensureConf 配置文件不存在时按实例参数生成；存在则保留用户内容
 func ensureConf(cfg *InstanceConfig, prefix, confPath string) error {

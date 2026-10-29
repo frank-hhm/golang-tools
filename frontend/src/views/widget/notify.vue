@@ -3,8 +3,8 @@
     <div class="notify-card" :class="level">
       <!-- 头部：应用图标 + 名称 + ⋯ +  -->
       <div class="nc-head">
-        <span class="nc-app-ic">G</span>
-        <span class="nc-app">Tools</span>
+        <span class="nc-app-ic">{{ appInitial }}</span>
+        <span class="nc-app">{{ appName }}</span>
         <a-tooltip content="更多">
           <span class="nc-more btn-no-drag">⋯</span>
         </a-tooltip>
@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance } from "vue";
+import { computed, getCurrentInstance, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 
 const route = useRoute();
@@ -30,6 +30,19 @@ const title = computed(() => String(route.query.title ?? "通知"));
 const content = computed(() => String(route.query.content ?? ""));
 // 预留等级样式（info 默认，success/warning/error 可后续扩展）
 const level = computed(() => String(route.query.level ?? "info"));
+
+// 通知卡片头部的应用名：跟随配置的应用名称，空/未配置回退 "Tools"（与 Go 侧兜底一致）
+const appName = ref("Tools");
+const appInitial = computed(() => (appName.value.trim().charAt(0) || "T").toUpperCase());
+
+onMounted(async () => {
+  try {
+    const cfg = await GoTools?.GetConfig();
+    if (cfg?.general?.appName) appName.value = cfg.general.appName;
+  } catch {
+    /* 读不到配置就用默认名，不影响通知展示 */
+  }
+});
 
 function close() {
   try {

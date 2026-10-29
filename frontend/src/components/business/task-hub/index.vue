@@ -105,7 +105,7 @@
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Events } from "@wailsio/runtime";
 import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
-import type { Task } from "bindings/go-tools/services/tasks/index";
+import type { Task } from "bindings/Tools/services/tasks/index";
 import { ensureTasks, useTasksStoreHook } from "@/store/modules/tasks";
 import { isNativeWindows } from "@/utils/caps";
 import { useToolWindow } from "@/views/index/useToolWindow";

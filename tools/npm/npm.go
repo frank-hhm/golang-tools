@@ -3,8 +3,8 @@ package npm
 // ============================================================
 // npm 配置与全局包管理
 //
-// 关键设计：所有 npm 命令统一带 `--userconfig <go-tools/npmrc>`，
-// 因此本程序里的 registry / 镜像源改动默认只影响 go-tools 自身，
+// 关键设计：所有 npm 命令统一带 `--userconfig <Tools/npmrc>`，
+// 因此本程序里的 registry / 镜像源改动默认只影响 Tools 自身，
 // 不会静默改写用户 ~/.npmrc；「应用到用户全局配置」需用户显式点击。
 // ============================================================
 
@@ -22,8 +22,8 @@ import (
 )
 
 // defaultNpmrc 托管配置初始内容
-const defaultNpmrc = `; go-tools 托管的 npm 配置文件（所有 npm 命令统一 --userconfig 指向本文件）
-; 在这里改 registry / 代理只影响 go-tools 的「全局包管理」，
+const defaultNpmrc = `; Tools 托管的 npm 配置文件（所有 npm 命令统一 --userconfig 指向本文件）
+; 在这里改 registry / 代理只影响 Tools 的「全局包管理」，
 ; 需要生效到本机所有终端时，点「应用到用户全局 ~/.npmrc」。
 registry=https://registry.npmjs.org/
 `
@@ -224,7 +224,7 @@ func ApplyToUserNpmrc() (string, error) {
 		}
 	}
 	if len(added) > 0 {
-		out = append(out, "; ---- added by go-tools ----")
+		out = append(out, "; ---- added by Tools ----")
 		out = append(out, added...)
 	}
 	content := strings.Join(out, "\n")

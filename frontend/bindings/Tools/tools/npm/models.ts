@@ -56,7 +56,7 @@ export interface InstanceConfig {
     "image": string;
 
     /**
-     * ContainerName 容器名，留空按实例 ID 自动生成（go-tools-npm-<id>）
+     * ContainerName 容器名，留空按实例 ID 自动生成（Tools-npm-<id>）
      */
     "containerName": string;
 }
@@ -148,7 +148,7 @@ export interface NpmEntry {
     "exe": string;
 
     /**
-     * 是否已在 go-tools 登记
+     * 是否已在 Tools 登记
      */
     "registered": boolean;
 

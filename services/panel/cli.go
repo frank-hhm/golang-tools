@@ -33,7 +33,7 @@ func IsCLI(args []string) bool {
 // RunCLI 执行面板管理命令，返回进程退出码。
 //
 // 存在的意义：面板改端口/改密码之后忘掉，网页已经进不去了；
-// 服务器上只需要 `./go-tools-server passwd` 就能救回来，不必手改 JSON。
+// 服务器上只需要 `./Tools-server passwd` 就能救回来，不必手改 JSON。
 func RunCLI(args []string) int {
 	if len(args) < 2 {
 		printHelp()
@@ -75,9 +75,9 @@ func RunCLI(args []string) int {
 
 func printHelp() {
 	fmt.Print(`
-go-tools 面板管理命令
+Tools 面板管理命令
 
-  用法: go-tools-server <命令> [参数]
+  用法: Tools-server <命令> [参数]
 
     show                 查看当前面板配置（账号/密码是否已设/端口/入口）
     passwd [新密码]      修改面板密码；不带参数则随机生成一个

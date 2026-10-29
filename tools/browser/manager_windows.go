@@ -35,7 +35,7 @@ func (m *Manager) Open(opts Options) error {
 	if strings.TrimSpace(opts.DataPath) == "" {
 		// 没给 profile 目录就按 ID 分一个临时目录：绝不能落回 edge 包默认的
 		// "AppData\<exe名>"，否则所有空间会共用同一个 profile（登录态/代理全串）。
-		opts.DataPath = filepath.Join(os.TempDir(), "go-tools-browser", opts.ID)
+		opts.DataPath = filepath.Join(os.TempDir(), "Tools-browser", opts.ID)
 	}
 	if err := os.MkdirAll(opts.DataPath, 0o755); err != nil {
 		return fmt.Errorf("创建 profile 目录失败: %w", err)

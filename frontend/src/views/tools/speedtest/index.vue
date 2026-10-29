@@ -260,7 +260,7 @@ const BUILTIN_NODES = [
 ];
 
 /** localStorage 键：自定义节点持久化 */
-const LS_CUSTOM = "go-tools.speedtest.custom";
+const LS_CUSTOM = "Tools.speedtest.custom";
 
 /* ============ 指标排版（统一的正文色，浅/暗黑自动跟随） ============ */
 

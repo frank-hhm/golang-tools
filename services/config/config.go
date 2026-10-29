@@ -8,14 +8,14 @@ import (
 	"strings"
 	"sync"
 
-	"go-tools/appdirs"
-	"go-tools/services/applog"
+	"Tools/appdirs"
+	"Tools/services/applog"
 )
 
 // ============================================================
 // 全局应用配置（Go 侧 JSON 文件持久化，与 redis/mysql 连接配置同目录）
 //
-// 位置：os.UserConfigDir()/go-tools/config.json
+// 位置：os.UserConfigDir()/Tools/config.json
 // 内容：日志设置（开关/级别/路径）+ 全局目录布局（插件/数据/日志基础目录）
 //       + 可编辑工具列表（含快捷标记、全局热键等）
 // 读取方：启动与设置保存时转交给日志器（services/applog）、目录布局（appdirs）、
@@ -27,7 +27,7 @@ import (
 type LogConfig struct {
 	Enabled bool   `json:"enabled"` // 是否写文件日志
 	Level   string `json:"level"`   // debug | info | warn | error（最低记录级别）
-	Path    string `json:"path"`    // 日志目录；空 = 默认（配置目录下 go-tools/logs）。按级别+日期自动分文件：Error20261022.log / Info20261022.log 等
+	Path    string `json:"path"`    // 日志目录；空 = 默认（配置目录下 Tools/logs）。按级别+日期自动分文件：Error20261022.log / Info20261022.log 等
 }
 
 // BallConfig 桌面浮动球设置
@@ -224,11 +224,39 @@ func configFilePath() (string, error) {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	dir := filepath.Join(base, "go-tools")
+	dir := filepath.Join(base, "Tools")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, "config.json"), nil
+}
+
+// configDirMigrateOnce 保证配置目录改名迁移在进程内只尝试一次。
+var configDirMigrateOnce sync.Once
+
+// migrateConfigDir 一次性迁移：项目早期配置目录名为 go-tools，现统一为 Tools。
+// 若旧目录存在且新目录尚未创建，则整体改名过去，保住 config.json 与其下各服务数据（ball_icon/日志/面板配置等）。
+// 迁移失败则退回使用全新的 Tools 目录（相当于新装，老配置读不到）。
+func migrateConfigDir() {
+	configDirMigrateOnce.Do(func() {
+		base, err := os.UserConfigDir()
+		if err != nil {
+			return
+		}
+		oldDir := filepath.Join(base, "go-tools")
+		newDir := filepath.Join(base, "Tools")
+		if _, err := os.Stat(newDir); err == nil {
+			return // 新目录已存在：已迁移过或本就是新装
+		}
+		if _, err := os.Stat(oldDir); err != nil {
+			return // 无旧目录，无需迁移
+		}
+		if err := os.Rename(oldDir, newDir); err != nil {
+			applog.Warnf("config", "配置目录迁移失败（go-tools→Tools），将使用全新目录: %v", err)
+			return
+		}
+		applog.Infof("config", "配置目录已迁移: %s → %s", oldDir, newDir)
+	})
 }
 
 // ConfigDir 返回配置文件所在目录（不存在则创建）。
@@ -518,6 +546,8 @@ func normalizeConfig(cfg *AppConfig) {
 // 首次启动（无任何配置文件）时：自动生成全局目录布局（plugins/data/logs + 服务子目录）
 // 并立即落盘默认配置；同时应用 paths 配置（目录布局随即生效，幂等）。
 func LoadAppConfig() AppConfig {
+	// 先做配置目录改名迁移（go-tools→Tools），再读取，确保读到迁移过来的旧配置
+	migrateConfigDir()
 	cfg := DefaultConfig()
 	firstRun := false
 	// 老版本配置里没有 browser 段：规范化后补写一次，让 config.json 始终是完整的

@@ -476,7 +476,7 @@ func (sp *space) createTab(t *tab, url string) {
 		// 再走一脚脚本上报：部分页面在 NavigationCompleted 这一刻
 		// document.title 还没落定，靠页面自己回报能补上
 		if t.c != nil {
-			t.c.Eval(`window.chrome.webview.postMessage("go-tools:title:" + (document.title || ""))`)
+			t.c.Eval(`window.chrome.webview.postMessage("Tools:title:" + (document.title || ""))`)
 		}
 		sp.emitTabs()
 	}
@@ -845,10 +845,10 @@ func (sp *space) syncTabState(t *tab, wv *edge.ICoreWebView2) {
 // onPageMessage 处理页面 postMessage 回来的两类消息：快捷键与标题回报。
 func (sp *space) onPageMessage(t *tab, text string) {
 	switch {
-	case strings.HasPrefix(text, "go-tools:key:"):
-		sp.emit(Event{Kind: "shortcut", SpaceID: sp.id, TabID: t.id, Message: text[len("go-tools:key:"):]})
-	case strings.HasPrefix(text, "go-tools:title:"):
-		title := text[len("go-tools:title:"):]
+	case strings.HasPrefix(text, "Tools:key:"):
+		sp.emit(Event{Kind: "shortcut", SpaceID: sp.id, TabID: t.id, Message: text[len("Tools:key:"):]})
+	case strings.HasPrefix(text, "Tools:title:"):
+		title := text[len("Tools:title:"):]
 		t.mu.Lock()
 		t.title = title
 		t.mu.Unlock()
@@ -1092,7 +1092,7 @@ const shortcutScript = `(function(){
   if (window.__goToolsKeys) { return; }
   window.__goToolsKeys = 1;
   function post(a) {
-    try { window.chrome.webview.postMessage('go-tools:key:' + a); } catch (e) {}
+    try { window.chrome.webview.postMessage('Tools:key:' + a); } catch (e) {}
   }
   window.addEventListener('keydown', function(e){
     var k = e.key;

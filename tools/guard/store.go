@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"go-tools/appdirs"
+	"Tools/appdirs"
 )
 
 // guardFile guard.json 落盘结构：登记项列表 + 守护参数。

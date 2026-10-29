@@ -10,7 +10,7 @@ package mysql
 //     采集，前端与本地模式无差异
 //   - root 密码：官方镜像环境变量注入（留空则 MYSQL_ALLOW_EMPTY_PASSWORD=yes，
 //     与本地模式 --initialize-insecure 语义一致）
-//   - 归属：容器打标签 go-tools=mysql / go-tools.instance=<id>，应用重启后凭标签
+//   - 归属：容器打标签 Tools=mysql / Tools.instance=<id>，应用重启后凭标签
 //     找回容器（不依赖进程表）
 //   - 生命周期入口仍是 StartInstance/StopInstance/Logs，按 cfg.Mode 分叉
 //
@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/tools/docker"
-	"go-tools/tools/srvstate"
+	"Tools/tools/docker"
+	"Tools/tools/srvstate"
 )
 
 const (
@@ -66,7 +66,7 @@ func containerNameOf(cfg *InstanceConfig) string {
 	if n := strings.TrimSpace(cfg.ContainerName); n != "" {
 		return n
 	}
-	return "go-tools-mysql-" + cfg.ID
+	return "Tools-mysql-" + cfg.ID
 }
 
 // instDirOf 实例目录（只拼路径不创建，供状态展示）

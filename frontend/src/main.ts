@@ -14,8 +14,8 @@ import { initTheme, syncThemeFromConfig } from '@/utils/theme'
 import { loadCaps } from '@/utils/caps'
 import { installPanelGuard } from '@/utils/panel'
 import { bindPrefetchRouter, prefetchAllRoutes } from '@/router/prefetch'
-import * as GoToolsBindings from "bindings/go-tools/services/app/index";
-import { ScreenshotService as GoScreenshot } from "bindings/go-tools/tools/screenshot/index";
+import * as GoToolsBindings from "bindings/Tools/services/app/index";
+import { ScreenshotService as GoScreenshot } from "bindings/Tools/tools/screenshot/index";
 
 const app = createApp(App);
 

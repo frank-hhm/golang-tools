@@ -96,7 +96,7 @@ func TestMultiTabAndWindowOpen(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	hwnd := createTestWindow(t, "go-tools browser probe m2 tabs")
+	hwnd := createTestWindow(t, "Tools browser probe m2 tabs")
 	defer procDestroyWindow.Call(hwnd)
 
 	m := NewManager()
@@ -242,7 +242,7 @@ func TestIdleTabAutoSuspend(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	hwnd := createTestWindow(t, "go-tools browser probe m2 suspend")
+	hwnd := createTestWindow(t, "Tools browser probe m2 suspend")
 	defer procDestroyWindow.Call(hwnd)
 
 	m := NewManager()

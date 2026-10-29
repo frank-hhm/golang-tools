@@ -5,12 +5,12 @@ package redis
 //
 // 版本库三渠道（统一 ListVersions 聚合，版本目录名即版本号）：
 //   - bundled    ：<exedir>/plugins/redis/<ver>/（发布内置，无安装标记；兼容旧目录 <exedir>/redis-servers/）
-//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/redis/<ver>/ 并写 .go-tools-installed 标记；
-//                  旧版缓存 %UserConfigDir%/go-tools/redis-servers/ 首次扫描时自动迁移
+//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/redis/<ver>/ 并写 .Tools-installed 标记；
+//                  旧版缓存 %UserConfigDir%/Tools/redis-servers/ 首次扫描时自动迁移
 //   - local      ：用户手动注册的本机已有目录（登记在 redis-servers/locals.json）
 //
-// 实例：配置持久化在 go-tools/redis-instances.json；每个实例数据/日志在
-// go-tools/redis-instances/<id>/（含生成的 redis.conf 与 server.log）。
+// 实例：配置持久化在 Tools/redis-instances.json；每个实例数据/日志在
+// Tools/redis-instances/<id>/（含生成的 redis.conf 与 server.log）。
 // 启动用 exec 隐藏窗口拉起 redis-server，stdout/stderr 逐行进环形缓冲并
 // 通过 "redis:serverlog" 事件推给前端；停止优先 RESP "SHUTDOWN NOSAVE" 优雅
 // 退出（对孤儿进程同样有效），兜底 Kill。状态用 PING+INFO 实时探测。
@@ -37,11 +37,11 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/sysx"
-	"go-tools/tools/logtail"
-	"go-tools/tools/portcheck"
-	"go-tools/tools/srvstate"
+	"Tools/appdirs"
+	"Tools/services/sysx"
+	"Tools/tools/logtail"
+	"Tools/tools/portcheck"
+	"Tools/tools/srvstate"
 )
 
 func init() {
@@ -171,7 +171,7 @@ func legacyBundledRoot() string {
 
 // installedMarker 经“在线获取/离线 zip”安装到插件目录的版本标记文件，
 // 用于区分安装版（可删除）与发布内置版（无标记，不可删）。
-const installedMarker = ".go-tools-installed"
+const installedMarker = ".Tools-installed"
 
 func isInstalledVersion(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, installedMarker))
@@ -179,7 +179,7 @@ func isInstalledVersion(dir string) bool {
 }
 
 func markInstalled(dir string) {
-	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by go-tools\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by Tools\n"), 0o644)
 }
 
 // DownloadedRoot 导出版：返回下载缓存根目录（供前端展示离线包放置指引）
@@ -605,7 +605,7 @@ func FetchRemoteVersions() ([]RemoteVersion, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "go-tools")
+	req.Header.Set("User-Agent", "Tools")
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -882,7 +882,7 @@ func downloadFile(url, dest, version string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "go-tools")
+	req.Header.Set("User-Agent", "Tools")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -1242,7 +1242,7 @@ func StartInstance(id string) error {
 	} else if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err
 	}
-	confPath := filepath.Join(dataDir, "go-tools.conf")
+	confPath := filepath.Join(dataDir, "Tools.conf")
 	if err := os.WriteFile(confPath, []byte(buildConf(cfg, dataDir)), 0o644); err != nil {
 		return err
 	}
@@ -1302,7 +1302,7 @@ func StartInstance(id string) error {
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		if isProcessRunning(id, cfg.Port, cfg.Password) {
-			appendProcLog(p, id, fmt.Sprintf("[go-tools] 实例 %s 启动成功 (port=%d ver=%s pid=%d)", cfg.Name, cfg.Port, cfg.Version, cmd.Process.Pid))
+			appendProcLog(p, id, fmt.Sprintf("[Tools] 实例 %s 启动成功 (port=%d ver=%s pid=%d)", cfg.Name, cfg.Port, cfg.Version, cmd.Process.Pid))
 			p.MarkReady()
 			return nil
 		}
@@ -1556,7 +1556,7 @@ func PortTaken(port int, excludeID string) string {
 
 func buildConf(cfg *InstanceConfig, dataDir string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# go-tools 自动生成，请勿手改（每次启动覆盖）\n")
+	fmt.Fprintf(&b, "# Tools 自动生成，请勿手改（每次启动覆盖）\n")
 	fmt.Fprintf(&b, "port %d\n", cfg.Port)
 	fmt.Fprintf(&b, "bind 127.0.0.1\n")
 	fmt.Fprintf(&b, "daemonize no\n")

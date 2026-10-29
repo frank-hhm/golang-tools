@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-tools/appdirs"
+	"Tools/appdirs"
 )
 
 // useTempData 把数据/日志目录指到临时目录，避免污染本机实例登记（用例结束复原，不影响同包其它测试）
@@ -49,7 +49,7 @@ func TestIsDockerMode(t *testing.T) {
 }
 
 func TestContainerNameOf(t *testing.T) {
-	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "go-tools-php-inst-7" {
+	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "Tools-php-inst-7" {
 		t.Fatalf("默认容器名错误: %s", n)
 	}
 	if n := containerNameOf(&InstanceConfig{ID: "inst-7", ContainerName: " my-php "}); n != "my-php" {
@@ -126,7 +126,7 @@ func TestDockerSpecOf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spec.Name != "go-tools-php-inst-1" || spec.Image != "php:8.3-cli" {
+	if spec.Name != "Tools-php-inst-1" || spec.Image != "php:8.3-cli" {
 		t.Fatalf("基础字段错误: %+v", spec)
 	}
 	// 容器内固定 8080，宿主只发布到 127.0.0.1（与本地模式一样不对外暴露）
@@ -138,7 +138,7 @@ func TestDockerSpecOf(t *testing.T) {
 	if len(spec.Binds) != 2 || spec.Binds[0] != wantDoc || spec.Binds[1] != wantIni {
 		t.Fatalf("挂载应为站点目录 + 只读覆盖 ini, 实际: %#v", spec.Binds)
 	}
-	if spec.Labels["go-tools"] != "php" || spec.Labels["go-tools.instance"] != "inst-1" {
+	if spec.Labels["Tools"] != "php" || spec.Labels["Tools.instance"] != "inst-1" {
 		t.Fatalf("归属标签错误: %#v", spec.Labels)
 	}
 	if len(spec.Cmd) != 6 || spec.Cmd[5] != containerDocRootPath+"/router.php" {
@@ -181,7 +181,7 @@ func TestSaveInstanceModeFork(t *testing.T) {
 	if saved.Version != "" {
 		t.Fatalf("Docker 实例不应保留本机版本: %q", saved.Version)
 	}
-	if saved.ContainerName != "go-tools-php-"+saved.ID {
+	if saved.ContainerName != "Tools-php-"+saved.ID {
 		t.Fatalf("容器名默认值错误: %q", saved.ContainerName)
 	}
 

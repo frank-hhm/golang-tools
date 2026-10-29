@@ -56,7 +56,7 @@ func detectUnit() string {
 			}
 		}
 	}
-	for _, name := range []string{"go-tools-server", "go-tools", "go-tools-panel"} {
+	for _, name := range []string{"Tools-server", "Tools", "Tools-panel"} {
 		if _, err := os.Stat(filepath.Join("/etc/systemd/system", name+".service")); err == nil {
 			return name
 		}

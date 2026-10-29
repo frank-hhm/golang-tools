@@ -66,7 +66,7 @@
             </a-row>
             <a-row :gutter="12">
                 <a-col v-if="instForm.mode === 'docker'" :span="8">
-                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 go-tools-nginx-实例ID">
+                    <a-form-item field="containerName" label="容器名" tooltip="留空自动生成 Tools-nginx-实例ID">
                         <a-input v-model="instForm.containerName" placeholder="留空自动生成" />
                     </a-form-item>
                 </a-col>

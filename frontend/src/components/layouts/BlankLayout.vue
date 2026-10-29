@@ -39,7 +39,9 @@ import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
  */
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const route = useRoute();
-const title = computed(() => (route.meta?.menu_name as string) || "go-tools");
+// 无页面名时的标题栏兜底名：默认 "Tools"，onMounted 读到配置的应用名后覆盖
+const appName = ref("Tools");
+const title = computed(() => (route.meta?.menu_name as string) || appName.value);
 
 /** 标题栏图标：用该工具在功能配置里的图标（含用户自定义），配置里没有再退内置默认表 */
 const toolIcon = ref("");
@@ -52,6 +54,7 @@ async function loadIcon() {
     const key = path.split("/").filter(Boolean).pop() || "";
     try {
         const cfg = await GoTools?.GetConfig();
+        if (cfg?.general?.appName) appName.value = cfg.general.appName;
         const hit = (cfg?.tools || []).find((t: any) => t.path === path);
         toolIcon.value = normalizeToolIcon(hit?.icon) || DEFAULT_TOOL_ICONS[key] || "";
         if (!toolIcon.value) appLogo.value = (await GoTools?.GetAppLogo()) || "";

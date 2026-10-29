@@ -34,8 +34,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/winrun"
+	"Tools/appdirs"
+	"Tools/services/winrun"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"

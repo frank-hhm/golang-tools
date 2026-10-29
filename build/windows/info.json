@@ -5,11 +5,11 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "0.1.0",
-			"CompanyName": "go-tools",
-			"FileDescription": "go-tools",
-			"LegalCopyright": "© 2026 go-tools",
-			"ProductName": "go-tools",
-			"Comments": "go-tools 桌面工具箱"
+			"CompanyName": "Tools",
+			"FileDescription": "Tools",
+			"LegalCopyright": "© 2026 Tools",
+			"ProductName": "Tools",
+			"Comments": "Tools 桌面工具箱"
 		}
 	}
 }

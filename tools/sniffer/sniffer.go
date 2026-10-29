@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/tools/portcheck"
+	"Tools/tools/portcheck"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"

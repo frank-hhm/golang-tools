@@ -17,8 +17,8 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"go-tools/services/applog"
-	"go-tools/tools/screenshot"
+	"Tools/services/applog"
+	"Tools/tools/screenshot"
 )
 
 // 提取文字（OCR）：调用 Windows 自带的 Windows.Media.Ocr（WinRT）。
@@ -42,8 +42,8 @@ func Image(data string) (string, error) {
 		return "", fmt.Errorf("图片解码失败: %w", err)
 	}
 	ns := time.Now().UnixNano()
-	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("go-tools-ocr-%d.png", ns))
-	out := filepath.Join(os.TempDir(), fmt.Sprintf("go-tools-ocr-%d.txt", ns))
+	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("Tools-ocr-%d.png", ns))
+	out := filepath.Join(os.TempDir(), fmt.Sprintf("Tools-ocr-%d.txt", ns))
 	if err := os.WriteFile(tmp, raw, 0644); err != nil {
 		return "", fmt.Errorf("写入临时图片失败: %w", err)
 	}

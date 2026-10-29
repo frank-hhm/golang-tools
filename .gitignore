@@ -3,7 +3,7 @@ build/bin
 bin/
 *.exe
 *.exe~
-/go-tools
+/Tools
 # 由 wails3 generate syso 生成、构建完会被删掉，不该进版本库
 *.syso
 

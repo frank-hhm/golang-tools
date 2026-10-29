@@ -164,7 +164,7 @@ func (e *Chromium) ShuttingDown() {
 //
 // 上游实现会在这里 os.Exit(1)：一个嵌入多个网页区的宿主里，任何一次
 // PutBounds/Navigate 的瞬时失败都会把整个应用带走，代价太大。
-// 本项目（go-tools）改为交给上层回调决定如何降级。
+// 本项目（Tools）改为交给上层回调决定如何降级。
 func (e *Chromium) errorCallback(err error) {
 	if err == nil {
 		return
@@ -235,7 +235,7 @@ func (e *Chromium) Embed(hwnd uintptr) bool {
 }
 
 // ============================================================
-// 多标签支持（go-tools 扩展）
+// 多标签支持（Tools 扩展）
 //
 // 一个“空间”= 一份 environment（独立 profile + 独立代理）。该空间下的多个
 // 标签各自是一个 controller，但它们必须共用同一个 environment：
@@ -404,7 +404,7 @@ func (e *Chromium) Hide() error {
 	return e.controller.PutIsVisible(false)
 }
 
-// Back 后退一步（go-tools 扩展）。
+// Back 后退一步（Tools 扩展）。
 func (e *Chromium) Back() error {
 	if e.webview == nil || e.shuttingDown {
 		return fmt.Errorf("webview 尚未就绪")

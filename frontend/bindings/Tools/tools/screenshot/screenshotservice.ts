@@ -6,15 +6,15 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 export function CaptureDisplay(id: number): $CancellablePromise<string> {
-    return $Call.ByID(1256582795, id);
+    return $Call.ByID(1056792942, id);
 }
 
 export function CaptureFullScreen(): $CancellablePromise<string> {
-    return $Call.ByID(291107530);
+    return $Call.ByID(4038720753);
 }
 
 export function CaptureRegion(x: number, y: number, width: number, height: number): $CancellablePromise<string> {
-    return $Call.ByID(2779014323, x, y, width, height);
+    return $Call.ByID(577761156, x, y, width, height);
 }
 
 /**
@@ -27,19 +27,19 @@ export function CaptureRegion(x: number, y: number, width: number, height: numbe
  * 用户取消（ESC/右键/无有效选区）时返回空字符串。
  */
 export function CaptureSelectedRegion(format: string): $CancellablePromise<string> {
-    return $Call.ByID(2842139334, format);
+    return $Call.ByID(4001803473, format);
 }
 
 export function ComposeAnnotations(base64Image: string, canvasWidth: number, canvasHeight: number, annotations: ({ [_ in string]?: any } | null)[] | null): $CancellablePromise<string> {
-    return $Call.ByID(3904073321, base64Image, canvasWidth, canvasHeight, annotations);
+    return $Call.ByID(2002075088, base64Image, canvasWidth, canvasHeight, annotations);
 }
 
 export function CopyToClipboard(data: string): $CancellablePromise<void> {
-    return $Call.ByID(806392727, data);
+    return $Call.ByID(3524100436, data);
 }
 
 export function DisplayInfo(): $CancellablePromise<({ [_ in string]?: any } | null)[] | null> {
-    return $Call.ByID(2950096583);
+    return $Call.ByID(3768082084);
 }
 
 /**
@@ -49,9 +49,9 @@ export function DisplayInfo(): $CancellablePromise<({ [_ in string]?: any } | nu
  * 状态机冲突导致隐藏后被复原/卡死），冻结帧中可能残留本窗口画面。
  */
 export function PickColorFromScreen(): $CancellablePromise<string> {
-    return $Call.ByID(1800835909);
+    return $Call.ByID(3379399370);
 }
 
 export function SaveImage(path: string, data: string): $CancellablePromise<void> {
-    return $Call.ByID(144252787, path, data);
+    return $Call.ByID(912541860, path, data);
 }

@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/services/sysx"
+	"Tools/services/sysx"
 )
 
 const nginxDownloadPage = "https://nginx.org/en/download.html"

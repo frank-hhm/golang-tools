@@ -133,7 +133,7 @@ func newResourceEngine(t *testing.T, calls *resCalls) *httptest.Server {
 		fmt.Fprint(w, `[
 {"Name":"bridge","Id":"1111111111111111111111111111111111111111111111111111111111111111","Driver":"bridge","Scope":"local","Created":"2024-01-01T00:00:00Z","Labels":{},
  "IPAM":{"Config":[{"Subnet":"172.17.0.0/16","Gateway":"172.17.0.1"}]},"Containers":{"aaa":{"Name":"web"}}},
-{"Name":"blog-net","Id":"2222222222222222222222222222222222222222222222222222222222222222","Driver":"bridge","Scope":"local","Created":"2024-02-01T00:00:00Z","Labels":{"go-tools":"docker"},"Internal":true,
+{"Name":"blog-net","Id":"2222222222222222222222222222222222222222222222222222222222222222","Driver":"bridge","Scope":"local","Created":"2024-02-01T00:00:00Z","Labels":{"Tools":"docker"},"Internal":true,
  "IPAM":{"Config":[{"Subnet":"172.30.0.0/16","Gateway":"172.30.0.1"}]},"Containers":{}}
 ]`)
 	})

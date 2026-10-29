@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-tools/appdirs"
+	"Tools/appdirs"
 )
 
 // useTempData 把数据目录指到临时目录，避免污染本机实例登记
@@ -46,7 +46,7 @@ func TestIsDockerMode(t *testing.T) {
 }
 
 func TestContainerNameOf(t *testing.T) {
-	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "go-tools-mysql-inst-7" {
+	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "Tools-mysql-inst-7" {
 		t.Fatalf("默认容器名错误: %s", n)
 	}
 	if n := containerNameOf(&InstanceConfig{ID: "inst-7", ContainerName: "my-db"}); n != "my-db" {
@@ -64,7 +64,7 @@ func TestDockerSpecOf(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "mysql", "inst-1", "data")
 	spec := dockerSpecOf(cfg, dataDir)
 
-	if spec.Name != "go-tools-mysql-inst-1" || spec.Image != "mysql:8.4" {
+	if spec.Name != "Tools-mysql-inst-1" || spec.Image != "mysql:8.4" {
 		t.Fatalf("基础字段错误: %+v", spec)
 	}
 	if spec.ContainerPort != 3306 || spec.HostPort != 3307 || spec.HostIP != "127.0.0.1" {
@@ -77,7 +77,7 @@ func TestDockerSpecOf(t *testing.T) {
 	if spec.Env[0] != "MYSQL_ROOT_PASSWORD=secret" {
 		t.Fatalf("root 密码注入错误: %#v", spec.Env)
 	}
-	if spec.Labels["go-tools"] != "mysql" || spec.Labels["go-tools.instance"] != "inst-1" {
+	if spec.Labels["Tools"] != "mysql" || spec.Labels["Tools.instance"] != "inst-1" {
 		t.Fatalf("归属标签错误: %#v", spec.Labels)
 	}
 	if len(spec.Cmd) != 1 || spec.Cmd[0] != "--max-connections=200" {
@@ -115,7 +115,7 @@ func TestSaveInstanceModeFork(t *testing.T) {
 	if saved.Mode != ModeDocker {
 		t.Fatalf("Mode 未归一: %q", saved.Mode)
 	}
-	if saved.ContainerName != "go-tools-mysql-"+saved.ID {
+	if saved.ContainerName != "Tools-mysql-"+saved.ID {
 		t.Fatalf("容器名默认值错误: %q", saved.ContainerName)
 	}
 

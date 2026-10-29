@@ -14,7 +14,7 @@ package app
 
 import (
 	"fmt"
-	"go-tools/tools/ftp"
+	"Tools/tools/ftp"
 	"strings"
 )
 

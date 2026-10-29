@@ -7,49 +7,49 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as app$0 from "../../../../../go-tools/services/app/models.js";
+import type * as app$0 from "../../../../../Tools/services/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as tasks$0 from "../../../../../go-tools/services/tasks/models.js";
+import type * as tasks$0 from "../../../../../Tools/services/tasks/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as docker$0 from "../../../../../go-tools/tools/docker/models.js";
+import type * as docker$0 from "../../../../../Tools/tools/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as ftp$0 from "../../../../../go-tools/tools/ftp/models.js";
+import type * as ftp$0 from "../../../../../Tools/tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as guard$0 from "../../../../../go-tools/tools/guard/models.js";
+import type * as guard$0 from "../../../../../Tools/tools/guard/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as mysql$0 from "../../../../../go-tools/tools/mysql/models.js";
+import type * as mysql$0 from "../../../../../Tools/tools/mysql/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as nginx$0 from "../../../../../go-tools/tools/nginx/models.js";
+import type * as nginx$0 from "../../../../../Tools/tools/nginx/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as npm$0 from "../../../../../go-tools/tools/npm/models.js";
+import type * as npm$0 from "../../../../../Tools/tools/npm/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as php$0 from "../../../../../go-tools/tools/php/models.js";
+import type * as php$0 from "../../../../../Tools/tools/php/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as redis$0 from "../../../../../go-tools/tools/redis/models.js";
+import type * as redis$0 from "../../../../../Tools/tools/redis/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as screenshot$0 from "../../../../../go-tools/tools/screenshot/models.js";
+import type * as screenshot$0 from "../../../../../Tools/tools/screenshot/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as siteclone$0 from "../../../../../go-tools/tools/siteclone/models.js";
+import type * as siteclone$0 from "../../../../../Tools/tools/siteclone/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as sniffer$0 from "../../../../../go-tools/tools/sniffer/models.js";
+import type * as sniffer$0 from "../../../../../Tools/tools/sniffer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as term$0 from "../../../../../go-tools/tools/term/models.js";
+import type * as term$0 from "../../../../../Tools/tools/term/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as usbserial$0 from "../../../../../go-tools/tools/usbserial/models.js";
+import type * as usbserial$0 from "../../../../../Tools/tools/usbserial/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {

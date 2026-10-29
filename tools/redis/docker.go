@@ -9,9 +9,9 @@ package redis
 //     （容器内 bind 0.0.0.0 只是让 Docker 能把流量转进来，宿主机仍只绑 127.0.0.1）
 //   - 数据：cfg.DataDir（RDB/AOF/server.log 都在这儿）绑定挂载到 /data，
 //     换镜像、重建容器都不丢数据
-//   - 配置：实例数据目录下 go-tools-docker.conf 与本地那份 go-tools.conf 同等待遇
+//   - 配置：实例数据目录下 Tools-docker.conf 与本地那份 Tools.conf 同等待遇
 //     （每次启动按实例参数覆盖生成），区别只有 port/bind/dir 三项要迁就容器
-//   - 归属：容器打标签 go-tools=redis / go-tools.instance=<id>，应用重启后凭标签找回
+//   - 归属：容器打标签 Tools=redis / Tools.instance=<id>，应用重启后凭标签找回
 //   - 日志：容器 stdout 即 redis 日志（conf 里 logfile ""），走 docker logs
 //
 // 与本地模式的差异（如实告知，不做静默兜底）：
@@ -34,8 +34,8 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/tools/docker"
-	"go-tools/tools/srvstate"
+	"Tools/tools/docker"
+	"Tools/tools/srvstate"
 )
 
 const (
@@ -50,7 +50,7 @@ const (
 	// DefaultDockerImage 表单默认镜像：alpine 体积最小，7.x 与本机常用的 msys2 构建同大版本
 	DefaultDockerImage = "redis:7-alpine"
 	// dockerConfName 容器专用配置文件名：落在数据目录里，因而随挂载一起出现在 /data 下
-	dockerConfName = "go-tools-docker.conf"
+	dockerConfName = "Tools-docker.conf"
 	// dockerSpecName 上次创建容器时的规格签名文件名
 	dockerSpecName = "redis-docker.container"
 )
@@ -65,7 +65,7 @@ func containerNameOf(cfg *InstanceConfig) string {
 	if n := strings.TrimSpace(cfg.ContainerName); n != "" {
 		return n
 	}
-	return "go-tools-redis-" + cfg.ID
+	return "Tools-redis-" + cfg.ID
 }
 
 // dockerDataDir 实例数据目录（宿主绝对路径，确保存在）：与本地模式同一份目录，
@@ -93,7 +93,7 @@ func dockerDataDir(cfg *InstanceConfig) (string, error) {
 // 其余（appendonly/maxmemory/requirepass）与本地模式同一套参数，保证两种模式行为一致
 func buildDockerConf(cfg *InstanceConfig) string {
 	var b strings.Builder
-	b.WriteString("# go-tools 为 Docker 实例生成，请勿手改（每次启动覆盖）\n")
+	b.WriteString("# Tools 为 Docker 实例生成，请勿手改（每次启动覆盖）\n")
 	fmt.Fprintf(&b, "port %d\n", containerPortRedis)
 	// 容器里绑 127.0.0.1 会让发布端口连不上；对外仍由宿主机只映射到 127.0.0.1
 	b.WriteString("bind 0.0.0.0\n")

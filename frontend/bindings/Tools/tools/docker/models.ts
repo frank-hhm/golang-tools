@@ -670,7 +670,7 @@ export interface Network {
     "labels": { [_ in string]?: string } | null;
 
     /**
-     * 由本工具创建时回标（标签 go-tools）
+     * 由本工具创建时回标（标签 Tools）
      */
     "ownerTool": string;
 }

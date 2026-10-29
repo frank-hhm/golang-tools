@@ -10,12 +10,12 @@ package npm
 // 与本地模式的对应关系：
 //   - 站点：docRoot 挂到 /usr/share/nginx/html，与内置服务器读的同一个目录，
 //     本地实例切成容器后站点文件直接就能被容器读到（默认根仍是实例目录下的 www/）
-//   - 配置：工具按实例参数生成 <实例目录>/conf/nginx.conf，挂到 /go-tools/conf，
-//     用 `-c /go-tools/conf/nginx.conf` 指过去；容器里 listen 固定 80，
+//   - 配置：工具按实例参数生成 <实例目录>/conf/nginx.conf，挂到 /Tools/conf，
+//     用 `-c /Tools/conf/nginx.conf` 指过去；容器里 listen 固定 80，
 //     发布到 127.0.0.1:<cfg.Port>，所以改端口不动配置文件
 //   - 日志：access.log / error.log 直接落宿主机 <实例目录>/logs，
 //     面板按文件读，Logs 不必分叉；请求数与字节数也从这份日志统计回来
-//   - 归属：容器打标签 go-tools=npm / go-tools.instance=<id>，应用重启后凭标签找回
+//   - 归属：容器打标签 Tools=npm / Tools.instance=<id>，应用重启后凭标签找回
 //
 // 与本地模式的差异（如实告知，不做静默兜底）：
 //   - /__gonfo__ 状态探针是内置 Go 服务器实现的，容器里没有：改由 access.log 统计
@@ -43,8 +43,8 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/tools/docker"
-	"go-tools/tools/logtail"
+	"Tools/tools/docker"
+	"Tools/tools/logtail"
 )
 
 const (
@@ -55,7 +55,7 @@ const (
 	// 容器内固定监听端口：与实例端口靠端口发布对接，不写进 nginx.conf
 	containerPortHTTP = 80
 	// 容器内挂载点
-	containerConfDir = "/go-tools/conf"
+	containerConfDir = "/Tools/conf"
 	containerHTMLDir = "/usr/share/nginx/html"
 	// DefaultDockerImage 表单默认镜像：官方 alpine 版自带 mime.types 与 /var/log/nginx 约定
 	DefaultDockerImage = "nginx:alpine"
@@ -76,7 +76,7 @@ func containerNameOf(cfg *InstanceConfig) string {
 	if n := strings.TrimSpace(cfg.ContainerName); n != "" {
 		return n
 	}
-	return "go-tools-npm-" + cfg.ID
+	return "Tools-npm-" + cfg.ID
 }
 
 // dockerDocRoot 站点根目录（宿主绝对路径，确保存在）：与本地模式同一套默认值，
@@ -102,7 +102,7 @@ func dockerDocRoot(cfg *InstanceConfig) (string, error) {
 
 // dockerBinds 挂载表：配置目录、日志目录、站点根。
 // 挂的是 <实例目录>/conf 本身（不是实例目录），宿主机生成的 nginx.conf 就是容器里的
-// /go-tools/conf/nginx.conf，一个文件两处可见
+// /Tools/conf/nginx.conf，一个文件两处可见
 func dockerBinds(prefix, docRoot string) []string {
 	return []string{
 		filepath.ToSlash(filepath.Join(prefix, "conf")) + ":" + containerConfDir,
@@ -182,11 +182,11 @@ func dockerConfText(cfg *InstanceConfig) string {
 	return b.String()
 }
 
-const confMarkerDocker = "# go-tools 为 Docker 静态站点生成的 nginx.conf（listen 用容器端口，改端口请改实例配置）"
+const confMarkerDocker = "# Tools 为 Docker 静态站点生成的 nginx.conf（listen 用容器端口，改端口请改实例配置）"
 
 // dockerGenMarker 记录「上次由工具生成的那份配置」的哈希，与 nginx.conf 同目录。
 // 只用来区分「还是工具生成的」与「已被用户接管」：前者可以跟随实例参数刷新，后者不再覆盖
-func dockerGenMarker(confPath string) string { return confPath + ".go-tools-generated" }
+func dockerGenMarker(confPath string) string { return confPath + ".Tools-generated" }
 
 func textHash(s string) string {
 	sum := sha256.Sum256([]byte(s))
@@ -560,7 +560,7 @@ func dockerAccessStat(prefix string) (requests int64, bytes int64) {
 }
 
 // fillDockerStatus 补充 Docker 模式的状态字段。
-// PID 不报进程本体（那是 go-tools 自己，不是容器里的 nginx）；
+// PID 不报进程本体（那是 Tools 自己，不是容器里的 nginx）；
 // Node 相关字段在容器模式下没有意义，保持零值让面板显示占位
 func fillDockerStatus(cfg *InstanceConfig, st *InstanceStatus, prefix string) {
 	st.Mode = ModeDocker

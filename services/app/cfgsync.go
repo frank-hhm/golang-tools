@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"go-tools/services/applog"
-	"go-tools/services/config"
-	"go-tools/services/sysx"
+	"Tools/services/applog"
+	"Tools/services/config"
+	"Tools/services/sysx"
 )
 
 /*
@@ -33,7 +33,7 @@ func (a *App) ExportConfig() (string, error) {
 		return "", fmt.Errorf("应用尚未初始化")
 	}
 	path, err := a.app.Dialog.SaveFile().
-		SetFilename(fmt.Sprintf("go-tools-config-%s.json", time.Now().Format("20060102"))).
+		SetFilename(fmt.Sprintf("Tools-config-%s.json", time.Now().Format("20060102"))).
 		SetMessage("导出配置").
 		AddFilter("配置文件 (*.json)", "*.json").
 		AddFilter("所有文件 (*.*)", "*.*").

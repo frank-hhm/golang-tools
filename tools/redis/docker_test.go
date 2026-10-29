@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-tools/appdirs"
-	"go-tools/tools/docker"
+	"Tools/appdirs"
+	"Tools/tools/docker"
 )
 
 // useTempData 把数据/日志目录指到临时目录，避免污染本机实例登记（用例结束复原）
@@ -50,7 +50,7 @@ func TestIsDockerMode(t *testing.T) {
 }
 
 func TestContainerNameOf(t *testing.T) {
-	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "go-tools-redis-inst-7" {
+	if n := containerNameOf(&InstanceConfig{ID: "inst-7"}); n != "Tools-redis-inst-7" {
 		t.Fatalf("默认容器名错误: %s", n)
 	}
 	if n := containerNameOf(&InstanceConfig{ID: "inst-7", ContainerName: " my-redis "}); n != "my-redis" {
@@ -117,7 +117,7 @@ func TestDockerSpecOf(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec := dockerSpecOf(cfg, host)
-	if spec.Name != "go-tools-redis-inst-1" || spec.Image != "redis:7-alpine" {
+	if spec.Name != "Tools-redis-inst-1" || spec.Image != "redis:7-alpine" {
 		t.Fatalf("容器名/镜像错误: %+v", spec)
 	}
 	if spec.ContainerPort != containerPortRedis || spec.HostPort != 46381 || spec.HostIP != "127.0.0.1" {
@@ -131,7 +131,7 @@ func TestDockerSpecOf(t *testing.T) {
 	if spec.Labels[docker.LabelTool] != "redis" || spec.Labels[docker.LabelInstance] != "inst-1" {
 		t.Fatalf("标签错误（重启后要靠它找回容器）: %#v", spec.Labels)
 	}
-	if strings.Join(spec.Cmd, " ") != "redis-server /data/go-tools-docker.conf" {
+	if strings.Join(spec.Cmd, " ") != "redis-server /data/Tools-docker.conf" {
 		t.Fatalf("容器内命令错误: %#v", spec.Cmd)
 	}
 }
@@ -287,7 +287,7 @@ func TestGetStatusDockerFieldsWithoutEngine(t *testing.T) {
 	if st.Mode != ModeDocker {
 		t.Fatalf("状态应标出容器模式: %+v", st)
 	}
-	if st.Container != "go-tools-redis-inst-st" {
+	if st.Container != "Tools-redis-inst-st" {
 		t.Fatalf("容器名缺失: %+v", st)
 	}
 	if st.Version != "7.4.2" {

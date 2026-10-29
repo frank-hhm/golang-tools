@@ -12,9 +12,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as application$0 from "../../../github.com/wailsapp/wails/v3/pkg/application/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as config$0 from "../config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -70,41 +67,44 @@ import * as term$0 from "../../tools/term/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as usbserial$0 from "../../tools/usbserial/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as application$0 from "../../../github.com/wailsapp/wails/v3/pkg/application/models.js";
 
 /**
  * AppDataDir 返回全局数据目录下的服务子目录（不存在则创建），如 "videos" → <数据目录>/videos；
  * 数据基础目录默认 <程序目录>/data，设置页修改后新落点随即生效
  */
 export function AppDataDir(sub: string): $CancellablePromise<string> {
-    return $Call.ByID(4176648909, sub);
+    return $Call.ByID(3182206044, sub);
 }
 
 /**
  * ApplyAppName 将当前配置的应用名应用到主窗口标题和托盘提示
  */
 export function ApplyAppName(): $CancellablePromise<void> {
-    return $Call.ByID(726176919);
+    return $Call.ByID(13956758);
 }
 
 /**
  * BallClose 关闭桌面浮动球。
  */
 export function BallClose(): $CancellablePromise<void> {
-    return $Call.ByID(3202482370);
+    return $Call.ByID(2234145197);
 }
 
 /**
  * BallOpen 打开桌面浮动球（Go 原生 Win32 分层窗口：真透明、置顶、可拖动、点击弹原生菜单）。幂等。
  */
 export function BallOpen(): $CancellablePromise<void> {
-    return $Call.ByID(1105901190);
+    return $Call.ByID(1734502043);
 }
 
 /**
  * BrowserActivateTab 切换标签。
  */
 export function BrowserActivateTab(spaceID: string, tabID: string): $CancellablePromise<void> {
-    return $Call.ByID(2142159075, spaceID, tabID);
+    return $Call.ByID(1649529058, spaceID, tabID);
 }
 
 /**
@@ -115,84 +115,84 @@ export function BrowserActivateTab(spaceID: string, tabID: string): $Cancellable
  * x/y/w/h 为网页区矩形（CSS 像素，相对窗口客户区）。
  */
 export function BrowserAttach(spaceID: string, windowName: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
-    return $Call.ByID(2001320792, spaceID, windowName, x, y, w, h);
+    return $Call.ByID(643075107, spaceID, windowName, x, y, w, h);
 }
 
 /**
  * BrowserBack 后退。
  */
 export function BrowserBack(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(933969958, spaceID);
+    return $Call.ByID(3519306697, spaceID);
 }
 
 /**
  * BrowserClose 关闭一个空间（释放 profile 锁与内存）；页面切空间/退出时调用。
  */
 export function BrowserClose(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(2023231655, spaceID);
+    return $Call.ByID(3253448614, spaceID);
 }
 
 /**
  * BrowserCloseAll 关闭全部空间。
  */
 export function BrowserCloseAll(): $CancellablePromise<void> {
-    return $Call.ByID(1879912706);
+    return $Call.ByID(2347607813);
 }
 
 /**
  * BrowserCloseTab 关闭标签；关掉最后一个会自动开一个首页标签。
  */
 export function BrowserCloseTab(spaceID: string, tabID: string): $CancellablePromise<void> {
-    return $Call.ByID(4188308142, spaceID, tabID);
+    return $Call.ByID(1385400949, spaceID, tabID);
 }
 
 /**
  * BrowserConfig 返回整份浏览器配置（设置抽屉打开时拉一次）。
  */
 export function BrowserConfig(): $CancellablePromise<config$0.BrowserConfig> {
-    return $Call.ByID(144641787);
+    return $Call.ByID(2747061140);
 }
 
 /**
  * BrowserDevTools 打开活动标签的开发者工具（独立窗口）。
  */
 export function BrowserDevTools(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(3250434155, spaceID);
+    return $Call.ByID(1345460720, spaceID);
 }
 
 /**
  * BrowserEval 在活动标签里执行一段脚本。
  */
 export function BrowserEval(spaceID: string, script: string): $CancellablePromise<void> {
-    return $Call.ByID(1038581467, spaceID, script);
+    return $Call.ByID(1381318308, spaceID, script);
 }
 
 /**
  * BrowserFocusShell 把键盘焦点交回前端页面（网页区抢焦点时用，Ctrl+L 等场景）。
  */
 export function BrowserFocusShell(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(871904027, spaceID);
+    return $Call.ByID(2378136544, spaceID);
 }
 
 /**
  * BrowserForward 前进。
  */
 export function BrowserForward(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(2981070134, spaceID);
+    return $Call.ByID(2011896247, spaceID);
 }
 
 /**
  * BrowserNavigate 导航当前活动标签（支持 http/https/file/about:blank）。
  */
 export function BrowserNavigate(spaceID: string, url: string): $CancellablePromise<void> {
-    return $Call.ByID(4193098034, spaceID, url);
+    return $Call.ByID(2110910641, spaceID, url);
 }
 
 /**
  * BrowserNewTab 新建标签，返回标签 ID。url 为空时用空间首页。
  */
 export function BrowserNewTab(spaceID: string, url: string, activate: boolean): $CancellablePromise<string> {
-    return $Call.ByID(4281394812, spaceID, url, activate);
+    return $Call.ByID(2576550803, spaceID, url, activate);
 }
 
 /**
@@ -200,21 +200,21 @@ export function BrowserNewTab(spaceID: string, url: string, activate: boolean): 
  * 前端也可直接调，省得各处拼参数）。
  */
 export function BrowserOpenWindow(): $CancellablePromise<void> {
-    return $Call.ByID(4293481549);
+    return $Call.ByID(2909438126);
 }
 
 /**
  * BrowserRebuild 关掉再重开一个空间：代理/UA 等 environment 级设置改完后生效。
  */
 export function BrowserRebuild(spaceID: string, windowName: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
-    return $Call.ByID(3759950892, spaceID, windowName, x, y, w, h);
+    return $Call.ByID(2255952653, spaceID, windowName, x, y, w, h);
 }
 
 /**
  * BrowserReload 刷新。
  */
 export function BrowserReload(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(430652528, spaceID);
+    return $Call.ByID(3858388767, spaceID);
 }
 
 /**
@@ -223,21 +223,21 @@ export function BrowserReload(spaceID: string): $CancellablePromise<void> {
  * 返回恢复出来的标签数；空间还没 attach 时返回错误，前端应先 attach。
  */
 export function BrowserRestoreSession(spaceID: string): $CancellablePromise<number> {
-    return $Call.ByID(3724703247, spaceID);
+    return $Call.ByID(1454285324, spaceID);
 }
 
 /**
  * BrowserRuntime 返回 WebView2 运行时版本；返回空串表示本机不可用（前端据此提示）。
  */
 export function BrowserRuntime(): $CancellablePromise<string> {
-    return $Call.ByID(1515948943);
+    return $Call.ByID(1694888978);
 }
 
 /**
  * BrowserRuntimeInfo 返回运行时版本与浏览器配置摘要（页面顶部状态条用）。
  */
 export function BrowserRuntimeInfo(): $CancellablePromise<{ [_ in string]?: any } | null> {
-    return $Call.ByID(3590807963);
+    return $Call.ByID(268489514);
 }
 
 /**
@@ -248,21 +248,21 @@ export function BrowserRuntimeInfo(): $CancellablePromise<{ [_ in string]?: any 
  * 必须关掉重开才生效，由前端在保存后调用 BrowserRebuild 明确触发。
  */
 export function BrowserSaveConfig($in: config$0.BrowserConfig): $CancellablePromise<void> {
-    return $Call.ByID(263413514, $in);
+    return $Call.ByID(2325193317, $in);
 }
 
 /**
  * BrowserSessionInfo 返回上次会话摘要，供前端显示「恢复上次标签页」入口。
  */
 export function BrowserSessionInfo(): $CancellablePromise<{ [_ in string]?: any } | null> {
-    return $Call.ByID(1135789167);
+    return $Call.ByID(2415336574);
 }
 
 /**
  * BrowserSetBounds 更新网页区矩形（窗口缩放/拖动分隔条时高频调用，走异步投递）。
  */
 export function BrowserSetBounds(spaceID: string, x: number, y: number, w: number, h: number): $CancellablePromise<void> {
-    return $Call.ByID(2203052442, spaceID, x, y, w, h);
+    return $Call.ByID(1259583371, spaceID, x, y, w, h);
 }
 
 /**
@@ -272,49 +272,49 @@ export function BrowserSetBounds(spaceID: string, x: number, y: number, w: numbe
  * 前端先把它藏起来，关掉再显示。空间未创建时静默成功（没有可藏的东西）。
  */
 export function BrowserSetVisible(spaceID: string, visible: boolean): $CancellablePromise<void> {
-    return $Call.ByID(4200628739, spaceID, visible);
+    return $Call.ByID(1380104316, spaceID, visible);
 }
 
 /**
  * BrowserSpaceState 返回一个空间的标签快照。
  */
 export function BrowserSpaceState(spaceID: string): $CancellablePromise<browser$0.SpaceInfo> {
-    return $Call.ByID(732785434, spaceID);
+    return $Call.ByID(619755241, spaceID);
 }
 
 /**
  * BrowserSpaceStates 返回全部空间的标签快照。
  */
 export function BrowserSpaceStates(): $CancellablePromise<browser$0.SpaceInfo[] | null> {
-    return $Call.ByID(721425995);
+    return $Call.ByID(3236918382);
 }
 
 /**
  * BrowserSpaces 返回浏览器全局配置里的空间列表（含代理等，供页面展示与切换）。
  */
 export function BrowserSpaces(): $CancellablePromise<config$0.BrowserSpace[] | null> {
-    return $Call.ByID(2950666494);
+    return $Call.ByID(1760475397);
 }
 
 /**
  * BrowserStats 返回资源占用快照：空间数 + 标签数 + WebView2 进程数与常驻内存。
  */
 export function BrowserStats(): $CancellablePromise<browser$0.Stat> {
-    return $Call.ByID(1850874760);
+    return $Call.ByID(4080873913);
 }
 
 /**
  * BrowserStop 停止加载。
  */
 export function BrowserStop(spaceID: string): $CancellablePromise<void> {
-    return $Call.ByID(2042896313, spaceID);
+    return $Call.ByID(686076962, spaceID);
 }
 
 /**
  * CaptureCancel 放弃本次截图（ESC / 右键 / ✕）。
  */
 export function CaptureCancel(): $CancellablePromise<void> {
-    return $Call.ByID(3886581341);
+    return $Call.ByID(1317081334);
 }
 
 /**
@@ -323,7 +323,7 @@ export function CaptureCancel(): $CancellablePromise<void> {
  * 勾号/回车/双击走 false——只复制、直接收场，不打扰当前工作。
  */
 export function CaptureFinish(data: string, openPreview: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2194620100, data, openPreview);
+    return $Call.ByID(267223395, data, openPreview);
 }
 
 /**
@@ -334,7 +334,7 @@ export function CaptureFinish(data: string, openPreview: boolean): $CancellableP
  * 让前端能把实测视口、dpr 与异常带回来，否则这类问题根本无从定位。
  */
 export function CaptureLog(note: string): $CancellablePromise<void> {
-    return $Call.ByID(2688753707, note);
+    return $Call.ByID(4062793670, note);
 }
 
 /**
@@ -346,49 +346,49 @@ export function CaptureLog(note: string): $CancellablePromise<void> {
  * painted=true 表示这是「首帧已上屏」后的第一次心跳，用来量点亮到真正出画面的耗时。
  */
 export function CapturePing(painted: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1920166543, painted);
+    return $Call.ByID(3184734348, painted);
 }
 
 /**
  * CaptureReady 浮层已完成首帧渲染，可以亮出来了。
  */
 export function CaptureReady(): $CancellablePromise<void> {
-    return $Call.ByID(1111463234);
+    return $Call.ByID(3960642179);
 }
 
 /**
  * ChooseAppLogo 弹出文件选择器让用户选取 logo 图片，返回绝对路径
  */
 export function ChooseAppLogo(): $CancellablePromise<string> {
-    return $Call.ByID(1188072594);
+    return $Call.ByID(3147823229);
 }
 
 /**
  * ChooseDir 弹原生目录选择框（供设置页选择插件/数据/日志等基础目录），取消返回空串。
  */
 export function ChooseDir(title: string): $CancellablePromise<string> {
-    return $Call.ByID(17241181, title);
+    return $Call.ByID(911416894, title);
 }
 
 /**
  * ChooseLogDir 弹出原生目录选择框，返回所选目录（取消返回空串）。
  */
 export function ChooseLogDir(): $CancellablePromise<string> {
-    return $Call.ByID(2923047491);
+    return $Call.ByID(1817644206);
 }
 
 /**
  * ClearBallIcon 删除自定义球心图标，浮动球回退到应用 Logo/内置默认图。
  */
 export function ClearBallIcon(): $CancellablePromise<void> {
-    return $Call.ByID(2715978716);
+    return $Call.ByID(2721695031);
 }
 
 /**
  * ClearSnifferFlows 清空后台抓包缓冲（前端「清空」按钮同步调用，避免重开窗口旧数据复现）
  */
 export function ClearSnifferFlows(): $CancellablePromise<void> {
-    return $Call.ByID(2863665804);
+    return $Call.ByID(1370860323);
 }
 
 /**
@@ -396,49 +396,49 @@ export function ClearSnifferFlows(): $CancellablePromise<void> {
  * 下次截图会冷建一个新窗口。
  */
 export function CloseCaptureOverlay(): $CancellablePromise<void> {
-    return $Call.ByID(2103814371);
+    return $Call.ByID(3194224928);
 }
 
 /**
  * CloseConnection 关闭当前连接（串口/TCP/UDP 通用）
  */
 export function CloseConnection(): $CancellablePromise<void> {
-    return $Call.ByID(1307151893);
+    return $Call.ByID(2718194054);
 }
 
 /**
  * ClosePinnedImage 关闭一个图钉窗口并清理其数据。
  */
 export function ClosePinnedImage(id: number): $CancellablePromise<void> {
-    return $Call.ByID(3050788328, id);
+    return $Call.ByID(2826096025, id);
 }
 
 /**
  * ConnectionStatus 返回当前连接状态
  */
 export function ConnectionStatus(): $CancellablePromise<usbserial$0.ConnStatus> {
-    return $Call.ByID(950516773);
+    return $Call.ByID(4190563884);
 }
 
 /**
  * DiskCopy 把一批路径复制到目标目录。
  */
 export function DiskCopy(paths: string[] | null, dstDir: string): $CancellablePromise<number> {
-    return $Call.ByID(1921545799, paths, dstDir);
+    return $Call.ByID(2284300666, paths, dstDir);
 }
 
 /**
  * DiskDelete 删除一批路径；permanent=false 走系统回收站，true 直接删。
  */
 export function DiskDelete(paths: string[] | null, permanent: boolean): $CancellablePromise<number> {
-    return $Call.ByID(2888539397, paths, permanent);
+    return $Call.ByID(364810960, paths, permanent);
 }
 
 /**
  * DiskDirSize 递归计算目录/文件大小（列表里"计算"操作与属性面板用）。
  */
 export function DiskDirSize(path: string): $CancellablePromise<number> {
-    return $Call.ByID(877367792, path);
+    return $Call.ByID(3683379611, path);
 }
 
 /**
@@ -448,154 +448,154 @@ export function DiskDirSize(path: string): $CancellablePromise<number> {
  * 多选请在列表里用"复制"）。
  */
 export function DiskDownload(path: string): $CancellablePromise<string> {
-    return $Call.ByID(4105428874, path);
+    return $Call.ByID(2395128711, path);
 }
 
 /**
  * DiskDrives 枚举本机盘符（含容量与使用率），页面顶部总览用。
  */
 export function DiskDrives(): $CancellablePromise<disk$0.Drive[] | null> {
-    return $Call.ByID(2651215831);
+    return $Call.ByID(1639938830);
 }
 
 /**
  * DiskFavorites 读取收藏的目录。
  */
 export function DiskFavorites(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3919466623);
+    return $Call.ByID(79525624);
 }
 
 /**
  * DiskHome 默认浏览起点（用户主目录）。
  */
 export function DiskHome(): $CancellablePromise<string> {
-    return $Call.ByID(2190781765);
+    return $Call.ByID(3806793024);
 }
 
 /**
  * DiskList 浏览目录；path 为空时回到用户主目录。
  */
 export function DiskList(path: string): $CancellablePromise<disk$0.Listing> {
-    return $Call.ByID(1529718518, path);
+    return $Call.ByID(72621275, path);
 }
 
 /**
  * DiskMkdir 新建目录，返回新目录路径。
  */
 export function DiskMkdir(parent: string, name: string): $CancellablePromise<string> {
-    return $Call.ByID(2286280449, parent, name);
+    return $Call.ByID(3373731266, parent, name);
 }
 
 /**
  * DiskMove 把一批路径移动到目标目录。
  */
 export function DiskMove(paths: string[] | null, dstDir: string): $CancellablePromise<number> {
-    return $Call.ByID(1583193687, paths, dstDir);
+    return $Call.ByID(1237038554, paths, dstDir);
 }
 
 /**
  * DiskNewFile 新建空文件，返回文件路径。
  */
 export function DiskNewFile(parent: string, name: string): $CancellablePromise<string> {
-    return $Call.ByID(3431253234, parent, name);
+    return $Call.ByID(3147490173, parent, name);
 }
 
 /**
  * DiskOpenFile 用系统默认程序打开文件。
  */
 export function DiskOpenFile(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3864152932, path);
+    return $Call.ByID(3440927985, path);
 }
 
 /**
  * DiskOpenInExplorer 在资源管理器里定位到该路径。
  */
 export function DiskOpenInExplorer(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3915014082, path);
+    return $Call.ByID(3859298699, path);
 }
 
 /**
  * DiskOpenShell 在目录里打开命令行。
  */
 export function DiskOpenShell(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3791822804, path);
+    return $Call.ByID(3764992499, path);
 }
 
 /**
  * DiskOpenTrash 打开系统回收站（删除走回收站，得有个地方去看）。
  */
 export function DiskOpenTrash(): $CancellablePromise<void> {
-    return $Call.ByID(3972451112);
+    return $Call.ByID(3822357675);
 }
 
 /**
  * DiskRename 同级改名，返回新路径。
  */
 export function DiskRename(path: string, newName: string): $CancellablePromise<string> {
-    return $Call.ByID(2173317636, path, newName);
+    return $Call.ByID(3568675305, path, newName);
 }
 
 /**
  * DiskSaveFavorites 覆盖保存收藏列表。
  */
 export function DiskSaveFavorites(list: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2559939452, list);
+    return $Call.ByID(4287515347, list);
 }
 
 /**
  * DiskSearch 按名称搜索；includeSub=false 只搜当前层。
  */
 export function DiskSearch(root: string, keyword: string, includeSub: boolean): $CancellablePromise<disk$0.Entry[] | null> {
-    return $Call.ByID(128854450, root, keyword, includeSub);
+    return $Call.ByID(567201291, root, keyword, includeSub);
 }
 
 /**
  * DiskSearchContent 在文本文件里搜索内容，返回命中行（有内置上限，不会扫爆磁盘）。
  */
 export function DiskSearchContent(root: string, keyword: string, includeSub: boolean): $CancellablePromise<disk$0.Match[] | null> {
-    return $Call.ByID(935364075, root, keyword, includeSub);
+    return $Call.ByID(1741657900, root, keyword, includeSub);
 }
 
 /**
  * DiskUpload 选本机文件复制到当前目录（桌面版的"上传"），返回复制进来的路径。
  */
 export function DiskUpload(dstDir: string): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3866204175, dstDir);
+    return $Call.ByID(1946544422, dstDir);
 }
 
 /**
  * DiskUploadFolder 选本机目录整棵复制到当前目录。
  */
 export function DiskUploadFolder(dstDir: string): $CancellablePromise<string> {
-    return $Call.ByID(2525059451, dstDir);
+    return $Call.ByID(3355180758, dstDir);
 }
 
 /**
  * DockerPortTaken 报告宿主机端口能否发布容器端口，返回占用原因，空串表示可用
  */
 export function DockerPortTaken(port: number): $CancellablePromise<string> {
-    return $Call.ByID(3217086499, port);
+    return $Call.ByID(4055981344, port);
 }
 
 /**
  * DockerSrvAbortSetup 取消进行中的下载并删除已下载的半截文件（安装器启动后无法安全中断，返回提示）
  */
 export function DockerSrvAbortSetup(): $CancellablePromise<void> {
-    return $Call.ByID(1931246895);
+    return $Call.ByID(978609252);
 }
 
 /**
  * DockerSrvBuildImage 用目录里的 Dockerfile 构建镜像（进度经 "docker:imageop"）
  */
 export function DockerSrvBuildImage(dir: string, dockerfile: string, tag: string): $CancellablePromise<string> {
-    return $Call.ByID(2178671773, dir, dockerfile, tag);
+    return $Call.ByID(3336686266, dir, dockerfile, tag);
 }
 
 /**
  * DockerSrvBuildInstallerURL 把用户输入（空/build 号/完整 URL）换算成直链，供展示
  */
 export function DockerSrvBuildInstallerURL(input: string): $CancellablePromise<string> {
-    return $Call.ByID(1298888849, input);
+    return $Call.ByID(3858762608, input);
 }
 
 /**
@@ -603,105 +603,105 @@ export function DockerSrvBuildInstallerURL(input: string): $CancellablePromise<s
  * 否则按任务名（如 "pull mysql:8.4"）精确匹配；返回被取消的任务名
  */
 export function DockerSrvCancelImageOp(target: string): $CancellablePromise<string> {
-    return $Call.ByID(4163725584, target);
+    return $Call.ByID(1314794681, target);
 }
 
 /**
  * DockerSrvCancelMirrorProbe 叫停某个站正在跑的测速；返回 false 表示它已经测完了
  */
 export function DockerSrvCancelMirrorProbe(mirrorURL: string): $CancellablePromise<boolean> {
-    return $Call.ByID(3362148265, mirrorURL);
+    return $Call.ByID(2951719112, mirrorURL);
 }
 
 /**
  * DockerSrvCancelMirrorProbes 叫停所有在跑的测速（「全部测速」整批），返回叫停的个数
  */
 export function DockerSrvCancelMirrorProbes(): $CancellablePromise<number> {
-    return $Call.ByID(1393538094);
+    return $Call.ByID(2974195297);
 }
 
 /**
  * DockerSrvCheckEnv 只读体检（不装不改）：已装/WSL/管道/引擎/离线包 + 待办清单；dir 空=默认存放目录
  */
 export function DockerSrvCheckEnv(dir: string): $CancellablePromise<docker$0.EnvCheck> {
-    return $Call.ByID(4260605223, dir);
+    return $Call.ByID(2677502928, dir);
 }
 
 /**
  * DockerSrvChooseFile 弹原生文件选择框（导入镜像包用），取消返回空串
  */
 export function DockerSrvChooseFile(title: string): $CancellablePromise<string> {
-    return $Call.ByID(1079215071, title);
+    return $Call.ByID(1154742124, title);
 }
 
 /**
  * DockerSrvChooseSaveFile 弹原生保存框（导出镜像包用），取消返回空串
  */
 export function DockerSrvChooseSaveFile(title: string, defaultName: string): $CancellablePromise<string> {
-    return $Call.ByID(3377035450, title, defaultName);
+    return $Call.ByID(1316812809, title, defaultName);
 }
 
 /**
  * DockerSrvClearLogs 清空容器日志：记下清空时刻以 since 重拉跟随，刷新/重开不再回填旧行
  */
 export function DockerSrvClearLogs(id: string): $CancellablePromise<void> {
-    return $Call.ByID(451876334, id);
+    return $Call.ByID(987278179, id);
 }
 
 /**
  * DockerSrvComposeAction 对编排项目批量操作：start | stop | restart | down
  */
 export function DockerSrvComposeAction(project: string, action: string): $CancellablePromise<string> {
-    return $Call.ByID(973012190, project, action);
+    return $Call.ByID(848335955, project, action);
 }
 
 /**
  * DockerSrvContainerLogs 读容器日志尾部 n 行（含已停止容器）
  */
 export function DockerSrvContainerLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3640398716, id, lines);
+    return $Call.ByID(2836131337, id, lines);
 }
 
 /**
  * DockerSrvContainerMetrics 单容器实时资源占用（容器监控弹窗按 1s 轮询，无缓存）
  */
 export function DockerSrvContainerMetrics(id: string): $CancellablePromise<docker$0.ContainerMetrics | null> {
-    return $Call.ByID(3909508104, id);
+    return $Call.ByID(1898279431, id);
 }
 
 /**
  * DockerSrvCreateNetwork 新建自定义网络（driver 空=bridge，subnet 空=IPAM 自动分配）
  */
 export function DockerSrvCreateNetwork(spec: docker$0.NetworkSpec): $CancellablePromise<string> {
-    return $Call.ByID(772607418, spec);
+    return $Call.ByID(2373066575, spec);
 }
 
 /**
  * DockerSrvCreateVolume 新建存储卷
  */
 export function DockerSrvCreateVolume(spec: docker$0.VolumeSpec): $CancellablePromise<string> {
-    return $Call.ByID(2021438390, spec);
+    return $Call.ByID(1545882369, spec);
 }
 
 /**
  * DockerSrvCurrentImageOp 当前正在跑的长任务名（多个用“、”连接，空=空闲）
  */
 export function DockerSrvCurrentImageOp(): $CancellablePromise<string> {
-    return $Call.ByID(2900818349);
+    return $Call.ByID(1127934738);
 }
 
 /**
  * DockerSrvDaemonConfig 读引擎 daemon.json 的加速站与不安全仓库
  */
 export function DockerSrvDaemonConfig(): $CancellablePromise<docker$0.DaemonConfig> {
-    return $Call.ByID(2513862074);
+    return $Call.ByID(3066145997);
 }
 
 /**
  * DockerSrvDeleteRegistry 删除仓库配置
  */
 export function DockerSrvDeleteRegistry(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1512570748, id);
+    return $Call.ByID(3514525531, id);
 }
 
 /**
@@ -709,49 +709,49 @@ export function DockerSrvDeleteRegistry(id: string): $CancellablePromise<void> {
  * dir 为空时落到默认 <插件目录>\docker，否则用指定的另存目录。
  */
 export function DockerSrvDownloadInstaller(input: string, dir: string): $CancellablePromise<string> {
-    return $Call.ByID(1703661232, input, dir);
+    return $Call.ByID(3438657613, input, dir);
 }
 
 /**
  * DockerSrvEnableHyperV 提权启用 Hyper-V 角色（dism，需重启才生效）；confirm 为硬门禁
  */
 export function DockerSrvEnableHyperV(confirm: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1025248999, confirm);
+    return $Call.ByID(3292902020, confirm);
 }
 
 /**
  * DockerSrvEnableWsl2 提权执行 wsl --install --no-distribution（可能需重启才生效）
  */
 export function DockerSrvEnableWsl2(): $CancellablePromise<void> {
-    return $Call.ByID(4139260239);
+    return $Call.ByID(2722362112);
 }
 
 /**
  * DockerSrvEngineStatus 探测 Docker 引擎；不可达也返回（Available=false + 可读 Error）
  */
 export function DockerSrvEngineStatus(): $CancellablePromise<docker$0.EngineInfo> {
-    return $Call.ByID(1110919932);
+    return $Call.ByID(184827475);
 }
 
 /**
  * DockerSrvExportImage 导出镜像为 tar 包，outPath 空时落到默认数据目录
  */
 export function DockerSrvExportImage(ref: string, outPath: string): $CancellablePromise<string> {
-    return $Call.ByID(1920144523, ref, outPath);
+    return $Call.ByID(4153275042, ref, outPath);
 }
 
 /**
  * DockerSrvImportImage 从 dockersave 的 tar 包导入镜像（ref 空则沿用包内 tag）
  */
 export function DockerSrvImportImage(tarPath: string, ref: string): $CancellablePromise<string> {
-    return $Call.ByID(636916034, tarPath, ref);
+    return $Call.ByID(2771014195, tarPath, ref);
 }
 
 /**
  * DockerSrvInspectContainer 单容器实时状态
  */
 export function DockerSrvInspectContainer(id: string): $CancellablePromise<docker$0.ContainerState | null> {
-    return $Call.ByID(1675274587, id);
+    return $Call.ByID(3521202172, id);
 }
 
 /**
@@ -759,91 +759,91 @@ export function DockerSrvInspectContainer(id: string): $CancellablePromise<docke
  * installerPath 为空时按 dir（空=默认存放目录）找离线包，没有则按 input 下载；进度走 "docker:setup"。
  */
 export function DockerSrvInstallDocker(installerPath: string, input: string, dir: string, webDownload: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3179888051, installerPath, input, dir, webDownload);
+    return $Call.ByID(584746354, installerPath, input, dir, webDownload);
 }
 
 /**
  * DockerSrvLicenseNotes 安装前需如实告知的要点（前端展示在感叹号悬停提示里）
  */
 export function DockerSrvLicenseNotes(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3090264112);
+    return $Call.ByID(3307886803);
 }
 
 /**
  * DockerSrvListComposeProjects 按 compose 标签聚合出的编排项目（Engine API 没有 compose 端点）
  */
 export function DockerSrvListComposeProjects(): $CancellablePromise<docker$0.ComposeProject[] | null> {
-    return $Call.ByID(518762174);
+    return $Call.ByID(4286764963);
 }
 
 /**
  * DockerSrvListContainers 列出容器（all=false 仅运行中），运行中的附带 CPU/内存
  */
 export function DockerSrvListContainers(all: boolean): $CancellablePromise<docker$0.Container[] | null> {
-    return $Call.ByID(2310353284, all);
+    return $Call.ByID(3397897379, all);
 }
 
 /**
  * DockerSrvListImages 本地镜像列表
  */
 export function DockerSrvListImages(): $CancellablePromise<docker$0.Image[] | null> {
-    return $Call.ByID(1862439314);
+    return $Call.ByID(4013930125);
 }
 
 /**
  * DockerSrvListNetworks 列出 Docker 网络（含内置 bridge/host/none）
  */
 export function DockerSrvListNetworks(): $CancellablePromise<docker$0.Network[] | null> {
-    return $Call.ByID(2326215143);
+    return $Call.ByID(1908239188);
 }
 
 /**
  * DockerSrvListRegistries 已配置的私有仓库（不含密码，只标是否已保存）
  */
 export function DockerSrvListRegistries(): $CancellablePromise<docker$0.Registry[] | null> {
-    return $Call.ByID(2724762727);
+    return $Call.ByID(539113668);
 }
 
 /**
  * DockerSrvListVolumes 列出存储卷（inUse = 引用它的容器数）
  */
 export function DockerSrvListVolumes(): $CancellablePromise<docker$0.Volume[] | null> {
-    return $Call.ByID(3624363963);
+    return $Call.ByID(1879616470);
 }
 
 /**
  * DockerSrvLogsBuffered 取当前跟随环形缓冲（弹窗刚打开时补齐历史）
  */
 export function DockerSrvLogsBuffered(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2239223344, id, lines);
+    return $Call.ByID(428551615, id, lines);
 }
 
 /**
  * DockerSrvLogsFollow 开启日志跟随，新行经 "docker:serverlog" 事件推送（幂等）
  */
 export function DockerSrvLogsFollow(id: string): $CancellablePromise<void> {
-    return $Call.ByID(13559734, id);
+    return $Call.ByID(2422867553, id);
 }
 
 /**
  * DockerSrvLogsStop 停止日志跟随（弹窗关闭时调用）
  */
 export function DockerSrvLogsStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2189312555, id);
+    return $Call.ByID(167266924, id);
 }
 
 /**
  * DockerSrvPluginsDir docker 默认存放目录（全局插件目录下的 docker，供前端展示“留空即用这里”）
  */
 export function DockerSrvPluginsDir(): $CancellablePromise<string> {
-    return $Call.ByID(1808802679);
+    return $Call.ByID(1720436692);
 }
 
 /**
  * DockerSrvProbeInstaller 下载前探一次：直链有效性与真实体积（防把 404 页当安装包）
  */
 export function DockerSrvProbeInstaller(input: string): $CancellablePromise<docker$0.ProbeInfo> {
-    return $Call.ByID(1694969090, input);
+    return $Call.ByID(1656638557, input);
 }
 
 /**
@@ -851,28 +851,28 @@ export function DockerSrvProbeInstaller(input: string): $CancellablePromise<dock
  * 不返回 error：探不通是结果（grade=fail/empty），不应混进绑定调用异常里。
  */
 export function DockerSrvProbeMirror(mirrorURL: string, sample: string): $CancellablePromise<docker$0.MirrorProbe> {
-    return $Call.ByID(2911505229, mirrorURL, sample);
+    return $Call.ByID(745663112, mirrorURL, sample);
 }
 
 /**
  * DockerSrvProbeMirrors 一次探完多个站（界面上的「全部测速」）
  */
 export function DockerSrvProbeMirrors(mirrorURLs: string[] | null, sample: string): $CancellablePromise<docker$0.MirrorProbe[] | null> {
-    return $Call.ByID(1850716826, mirrorURLs, sample);
+    return $Call.ByID(4065650977, mirrorURLs, sample);
 }
 
 /**
  * DockerSrvPruneImages 清理无用镜像（all=false 只清悬空镜像）
  */
 export function DockerSrvPruneImages(all: boolean): $CancellablePromise<docker$0.PruneReport> {
-    return $Call.ByID(2211788650, all);
+    return $Call.ByID(1852556763, all);
 }
 
 /**
  * DockerSrvPruneVolumes 清理没有任何容器引用的存储卷
  */
 export function DockerSrvPruneVolumes(): $CancellablePromise<docker$0.VolumePruneReport> {
-    return $Call.ByID(2578190771);
+    return $Call.ByID(2703574020);
 }
 
 /**
@@ -881,133 +881,133 @@ export function DockerSrvPruneVolumes(): $CancellablePromise<docker$0.VolumePrun
  * 否则 Wails 会把“点了取消”记成「Binding call failed」的 ERR。
  */
 export function DockerSrvPullImage(image: string): $CancellablePromise<void> {
-    return $Call.ByID(3782304900, image);
+    return $Call.ByID(3953577149, image);
 }
 
 /**
  * DockerSrvPushImage 推送本地镜像到它 tag 里写的仓库（进度经 "docker:imageop"）
  */
 export function DockerSrvPushImage(ref: string): $CancellablePromise<void> {
-    return $Call.ByID(3930116337, ref);
+    return $Call.ByID(2113658416, ref);
 }
 
 /**
  * DockerSrvPushImageTo 把本地镜像以目标引用（仓库/命名空间/名:tag）推出去，必要时先打 tag
  */
 export function DockerSrvPushImageTo(localRef: string, targetRef: string): $CancellablePromise<void> {
-    return $Call.ByID(676221040, localRef, targetRef);
+    return $Call.ByID(3759225273, localRef, targetRef);
 }
 
 /**
  * DockerSrvRegistryRepos 列出私有仓库里的镜像（catalog + tag）
  */
 export function DockerSrvRegistryRepos(id: string): $CancellablePromise<docker$0.HubRepo[] | null> {
-    return $Call.ByID(2977817188, id);
+    return $Call.ByID(3742082757, id);
 }
 
 /**
  * DockerSrvRemoveContainer 删除容器（force=true 先杀再删）
  */
 export function DockerSrvRemoveContainer(id: string, force: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3906859743, id, force);
+    return $Call.ByID(368452990, id, force);
 }
 
 /**
  * DockerSrvRemoveImage 删除本地镜像（force=true 连带删除子引用）
  */
 export function DockerSrvRemoveImage(image: string, force: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2948462677, image, force);
+    return $Call.ByID(2696242376, image, force);
 }
 
 /**
  * DockerSrvRemoveNetwork 删除网络（仍有容器接入时 daemon 拒绝）
  */
 export function DockerSrvRemoveNetwork(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3361368302, id);
+    return $Call.ByID(1677067963, id);
 }
 
 /**
  * DockerSrvRemoveVolume 删除存储卷（仍被容器占用时 daemon 拒绝）
  */
 export function DockerSrvRemoveVolume(name: string): $CancellablePromise<void> {
-    return $Call.ByID(1757464970, name);
+    return $Call.ByID(1760320429, name);
 }
 
 /**
  * DockerSrvRenameContainer 重命名容器
  */
 export function DockerSrvRenameContainer(id: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(65805217, id, name);
+    return $Call.ByID(3321384120, id, name);
 }
 
 /**
  * DockerSrvRestartContainer 重启容器
  */
 export function DockerSrvRestartContainer(id: string): $CancellablePromise<void> {
-    return $Call.ByID(45674214, id);
+    return $Call.ByID(2072588677, id);
 }
 
 /**
  * DockerSrvRestartEngine 重启 Docker 引擎（改完 daemon.json 后让它生效）
  */
 export function DockerSrvRestartEngine(): $CancellablePromise<void> {
-    return $Call.ByID(1023803445);
+    return $Call.ByID(2000648724);
 }
 
 /**
  * DockerSrvRunImage 由镜像创建容器（可选发端口/环境变量/立即启动）
  */
 export function DockerSrvRunImage(spec: docker$0.ImageRunSpec): $CancellablePromise<string> {
-    return $Call.ByID(910434442, spec);
+    return $Call.ByID(2346135349, spec);
 }
 
 /**
  * DockerSrvSaveRegistry 新增/更新仓库；password 空=沿用旧密码，clearPass=true 才清空
  */
 export function DockerSrvSaveRegistry(r: docker$0.Registry, password: string, clearPass: boolean): $CancellablePromise<docker$0.Registry> {
-    return $Call.ByID(2189053126, r, password, clearPass);
+    return $Call.ByID(541797553, r, password, clearPass);
 }
 
 /**
  * DockerSrvSearchHub 在 Docker Hub 搜线上镜像（Star 数/来源/简介）
  */
 export function DockerSrvSearchHub(query: string, page: number): $CancellablePromise<docker$0.HubRepo[] | null> {
-    return $Call.ByID(3534458667, query, page);
+    return $Call.ByID(2491361542, query, page);
 }
 
 /**
  * DockerSrvSetDaemonConfig 只改 registry-mirrors 与 insecure-registries，其余键原样保留并备份
  */
 export function DockerSrvSetDaemonConfig(mirrors: string[] | null, insecure: string[] | null): $CancellablePromise<string> {
-    return $Call.ByID(1663063530, mirrors, insecure);
+    return $Call.ByID(3603605383, mirrors, insecure);
 }
 
 /**
  * DockerSrvStartContainer 启动容器
  */
 export function DockerSrvStartContainer(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1805321299, id);
+    return $Call.ByID(1308027384, id);
 }
 
 /**
  * DockerSrvStartEngine 已安装但引擎未运行时，以普通用户身份拉起并等待就绪（可被「停止」叫停）
  */
 export function DockerSrvStartEngine(): $CancellablePromise<void> {
-    return $Call.ByID(2909850518);
+    return $Call.ByID(2959536571);
 }
 
 /**
  * DockerSrvStopContainer 停止容器（timeoutSec 优雅退出等待秒，<=0 用 10）
  */
 export function DockerSrvStopContainer(id: string, timeoutSec: number): $CancellablePromise<void> {
-    return $Call.ByID(658629647, id, timeoutSec);
+    return $Call.ByID(2659090722, id, timeoutSec);
 }
 
 /**
  * DockerSrvStopEngine 停止 Docker Desktop 与其系统服务（会叫停在跑的启动等待）
  */
 export function DockerSrvStopEngine(): $CancellablePromise<void> {
-    return $Call.ByID(2996549050);
+    return $Call.ByID(79296841);
 }
 
 /**
@@ -1016,14 +1016,14 @@ export function DockerSrvStopEngine(): $CancellablePromise<void> {
  * 回落到了另一个后端时报错而不是谎报成功。confirmed 必须为 true（切换会新建空 VM）。
  */
 export function DockerSrvSwitchBackend(useWsl2: boolean, confirmed: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1061290100, useWsl2, confirmed);
+    return $Call.ByID(3284696621, useWsl2, confirmed);
 }
 
 /**
  * DockerSrvTestRegistry 用已保存凭据探一次仓库连通性
  */
 export function DockerSrvTestRegistry(id: string): $CancellablePromise<string> {
-    return $Call.ByID(1718377715, id);
+    return $Call.ByID(1616014172, id);
 }
 
 /**
@@ -1031,259 +1031,259 @@ export function DockerSrvTestRegistry(id: string): $CancellablePromise<string> {
  * Docker Desktop 切 WSL2 会静默沿用 Hyper-V，这里是那个情形的修复入口
  */
 export function DockerSrvUpdateWsl(): $CancellablePromise<void> {
-    return $Call.ByID(2221005565);
+    return $Call.ByID(3883342828);
 }
 
 /**
  * DockerSuggestPort 从 from 起探测一个可用的宿主机端口（跳过实例登记与系统监听）
  */
 export function DockerSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(3577933800, $from);
+    return $Call.ByID(710994675, $from);
 }
 
 /**
  * ExportConfig 弹保存框导出一份配置快照，返回实际写入的路径（取消返回空串）。
  */
 export function ExportConfig(): $CancellablePromise<string> {
-    return $Call.ByID(2160778251);
+    return $Call.ByID(3175938554);
 }
 
 /**
  * FtpCancelTransfer 取消一个传输任务
  */
 export function FtpCancelTransfer(id: string): $CancellablePromise<void> {
-    return $Call.ByID(755456982, id);
+    return $Call.ByID(3136255181, id);
 }
 
 /**
  * FtpChooseKeyFile 选 SSH 私钥文件，取消返回空串
  */
 export function FtpChooseKeyFile(): $CancellablePromise<string> {
-    return $Call.ByID(3559942091);
+    return $Call.ByID(3038030554);
 }
 
 /**
  * FtpChooseLocalFiles 选本机要上传的文件（可多选）
  */
 export function FtpChooseLocalFiles(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(1592797880);
+    return $Call.ByID(1260947543);
 }
 
 /**
  * FtpChooseLocalFolder 选本机目录（上传整棵目录 / 下载目标目录）
  */
 export function FtpChooseLocalFolder(title: string): $CancellablePromise<string> {
-    return $Call.ByID(212743125, title);
+    return $Call.ByID(1650528332, title);
 }
 
 /**
  * FtpChooseServerRoot 选择服务端根目录；取消返回空串
  */
 export function FtpChooseServerRoot(): $CancellablePromise<string> {
-    return $Call.ByID(4145477049);
+    return $Call.ByID(348426918);
 }
 
 /**
  * FtpCloseSession 主动关闭会话
  */
 export function FtpCloseSession(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(3376932523, sessionID);
+    return $Call.ByID(1569099716, sessionID);
 }
 
 /**
  * FtpDeleteAccount 删除虚拟账号（同时断开它的在线连接）
  */
 export function FtpDeleteAccount(id: string): $CancellablePromise<ftp$0.Account[] | null> {
-    return $Call.ByID(2377698255, id);
+    return $Call.ByID(495753434, id);
 }
 
 /**
  * FtpDeleteConnection 删除记录，返回更新后的完整列表
  */
 export function FtpDeleteConnection(id: string): $CancellablePromise<ftp$0.Connection[] | null> {
-    return $Call.ByID(1680774984, id);
+    return $Call.ByID(891453927, id);
 }
 
 /**
  * FtpDownload 下载远端文件/目录到本地目录
  */
 export function FtpDownload(sessionID: string, remotePaths: string[] | null, localDir: string): $CancellablePromise<ftp$0.Transfer[] | null> {
-    return $Call.ByID(1489009191, sessionID, remotePaths, localDir);
+    return $Call.ByID(1485742412, sessionID, remotePaths, localDir);
 }
 
 /**
  * FtpFirewallAllow 在系统防火墙放行当前端口（Windows 会弹 UAC）
  */
 export function FtpFirewallAllow(port: number): $CancellablePromise<void> {
-    return $Call.ByID(1929019772, port);
+    return $Call.ByID(1365661373, port);
 }
 
 /**
  * FtpFirewallRemove 删除程序的防火墙放行规则
  */
 export function FtpFirewallRemove(port: number): $CancellablePromise<void> {
-    return $Call.ByID(368981031, port);
+    return $Call.ByID(304767596, port);
 }
 
 /**
  * FtpKickServerConn 踢掉一条在线连接
  */
 export function FtpKickServerConn(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2621339644, id);
+    return $Call.ByID(585250751, id);
 }
 
 /**
  * FtpListAccounts 虚拟账号列表（不含密码）
  */
 export function FtpListAccounts(): $CancellablePromise<ftp$0.Account[] | null> {
-    return $Call.ByID(1868629159);
+    return $Call.ByID(894229680);
 }
 
 /**
  * FtpListConnections 连接记录列表（密码字段恒为空）
  */
 export function FtpListConnections(): $CancellablePromise<ftp$0.Connection[] | null> {
-    return $Call.ByID(4264776904);
+    return $Call.ByID(482912061);
 }
 
 /**
  * FtpListDir 浏览远端目录
  */
 export function FtpListDir(sessionID: string, dir: string): $CancellablePromise<ftp$0.Listing> {
-    return $Call.ByID(3198625626, sessionID, dir);
+    return $Call.ByID(1837989155, sessionID, dir);
 }
 
 /**
  * FtpListTransfers 当前传输任务列表（新的在前）
  */
 export function FtpListTransfers(): $CancellablePromise<ftp$0.Transfer[] | null> {
-    return $Call.ByID(1541001945);
+    return $Call.ByID(1487982964);
 }
 
 /**
  * FtpMkdir 在远端目录下新建一层目录
  */
 export function FtpMkdir(sessionID: string, dir: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(4208389346, sessionID, dir, name);
+    return $Call.ByID(1229315575, sessionID, dir, name);
 }
 
 /**
  * FtpOpenServerRoot 在文件管理器里打开服务端根目录（空则打开当前配置的根目录）
  */
 export function FtpOpenServerRoot(path: string): $CancellablePromise<void> {
-    return $Call.ByID(1006791716, path);
+    return $Call.ByID(1302440651, path);
 }
 
 /**
  * FtpOpenSession 按记录建立 SFTP 会话，返回会话句柄
  */
 export function FtpOpenSession(connID: string): $CancellablePromise<ftp$0.SessionInfo> {
-    return $Call.ByID(3890207785, connID);
+    return $Call.ByID(2626754304, connID);
 }
 
 /**
  * FtpPreview 预览远端文件（文本/图片）
  */
 export function FtpPreview(sessionID: string, path: string): $CancellablePromise<ftp$0.Preview> {
-    return $Call.ByID(2917365733, sessionID, path);
+    return $Call.ByID(1265356256, sessionID, path);
 }
 
 /**
  * FtpRemove 删除远端文件或空目录
  */
 export function FtpRemove(sessionID: string, targets: string[] | null): $CancellablePromise<number> {
-    return $Call.ByID(907887327, sessionID, targets);
+    return $Call.ByID(2777444340, sessionID, targets);
 }
 
 /**
  * FtpRename 重命名远端文件/目录
  */
 export function FtpRename(sessionID: string, target: string, newName: string): $CancellablePromise<void> {
-    return $Call.ByID(2160839049, sessionID, target, newName);
+    return $Call.ByID(444280262, sessionID, target, newName);
 }
 
 /**
  * FtpRetryTransfer 重试一个失败/取消的任务
  */
 export function FtpRetryTransfer(id: string): $CancellablePromise<ftp$0.Transfer> {
-    return $Call.ByID(656087328, id);
+    return $Call.ByID(1569720869, id);
 }
 
 /**
  * FtpSaveAccount 新增/更新虚拟账号；密码留空表示沿用原密码
  */
 export function FtpSaveAccount(acc: ftp$0.Account): $CancellablePromise<ftp$0.Account[] | null> {
-    return $Call.ByID(3038430449, acc);
+    return $Call.ByID(1947293696, acc);
 }
 
 /**
  * FtpSaveConnection 新增/更新一条记录，返回更新后的完整列表
  */
 export function FtpSaveConnection(c: ftp$0.Connection): $CancellablePromise<ftp$0.Connection[] | null> {
-    return $Call.ByID(3566363018, c);
+    return $Call.ByID(226900509, c);
 }
 
 /**
  * FtpServerConns 在线连接列表
  */
 export function FtpServerConns(): $CancellablePromise<ftp$0.ServerConn[] | null> {
-    return $Call.ByID(2406136199);
+    return $Call.ByID(478182134);
 }
 
 /**
  * FtpServerLogs 服务端日志（最近 300 条，旧在前）
  */
 export function FtpServerLogs(): $CancellablePromise<ftp$0.ServerLog[] | null> {
-    return $Call.ByID(2797892883);
+    return $Call.ByID(2624674684);
 }
 
 /**
  * FtpServerSaveConfig 保存监听配置；服务运行中会用新端口重启
  */
 export function FtpServerSaveConfig(cfg: ftp$0.ServerConfig): $CancellablePromise<ftp$0.ServerStatus> {
-    return $Call.ByID(1714272447, cfg);
+    return $Call.ByID(1951799740, cfg);
 }
 
 /**
  * FtpServerStart 启动 SFTP 服务端
  */
 export function FtpServerStart(): $CancellablePromise<ftp$0.ServerStatus> {
-    return $Call.ByID(1807155660);
+    return $Call.ByID(1737570349);
 }
 
 /**
  * FtpServerStatus 服务端状态快照（含在线连接、局域网地址）
  */
 export function FtpServerStatus(): $CancellablePromise<ftp$0.ServerStatus> {
-    return $Call.ByID(3453086258);
+    return $Call.ByID(3980155697);
 }
 
 /**
  * FtpServerStop 停止 SFTP 服务端（断开所有在线连接）
  */
 export function FtpServerStop(): $CancellablePromise<ftp$0.ServerStatus> {
-    return $Call.ByID(916249128);
+    return $Call.ByID(3393115999);
 }
 
 /**
  * FtpTestConnection 按表单参数测试 SFTP 连通性（只握手不开子系统），返回握手耗时毫秒
  */
 export function FtpTestConnection(c: ftp$0.Connection): $CancellablePromise<number> {
-    return $Call.ByID(949787391, c);
+    return $Call.ByID(2607683608, c);
 }
 
 /**
  * FtpUpload 上传本地文件/目录到远端目录
  */
 export function FtpUpload(sessionID: string, localPaths: string[] | null, remoteDir: string): $CancellablePromise<ftp$0.Transfer[] | null> {
-    return $Call.ByID(2027177414, sessionID, localPaths, remoteDir);
+    return $Call.ByID(4206174789, sessionID, localPaths, remoteDir);
 }
 
 /**
  * GetAppLogo 返回当前应用 logo 的 base64 PNG 字符串（自定义路径优先，否则内置默认）
  */
 export function GetAppLogo(): $CancellablePromise<string> {
-    return $Call.ByID(1282478875);
+    return $Call.ByID(2000783286);
 }
 
 /**
@@ -1293,7 +1293,7 @@ export function GetAppLogo(): $CancellablePromise<string> {
  * 包管理走绿色版还是系统包，全都读这里。字段定义见 sysx.Capabilities。
  */
 export function GetCapabilities(): $CancellablePromise<sysx$0.Capabilities> {
-    return $Call.ByID(1695827559);
+    return $Call.ByID(1801743980);
 }
 
 /**
@@ -1302,14 +1302,14 @@ export function GetCapabilities(): $CancellablePromise<sysx$0.Capabilities> {
  * 帧的释放在 CloseCaptureOverlay 里统一做。
  */
 export function GetCaptureFrame(): $CancellablePromise<screenshot$0.CaptureFrame | null> {
-    return $Call.ByID(1329458826);
+    return $Call.ByID(4020992125);
 }
 
 /**
  * GetConfig 返回当前应用配置（日志设置 + 工具列表）。
  */
 export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
-    return $Call.ByID(2669241151);
+    return $Call.ByID(1354590956);
 }
 
 /**
@@ -1320,35 +1320,35 @@ export function GetConfig(): $CancellablePromise<config$0.AppConfig> {
  * 	}
  */
 export function GetDevicesSniffer(): $CancellablePromise<sniffer$0.PcapDeviceInfo[] | null> {
-    return $Call.ByID(4288850799);
+    return $Call.ByID(1634573252);
 }
 
 /**
  * GetLocalIPs 获取本机可用 IPv4 地址列表（供 TCP/UDP 本地地址选择）
  */
 export function GetLocalIPs(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2207597894);
+    return $Call.ByID(290864809);
 }
 
 /**
  * GetLogDir 返回当前实际使用的日志目录。
  */
 export function GetLogDir(): $CancellablePromise<string> {
-    return $Call.ByID(3110914840);
+    return $Call.ByID(2173244415);
 }
 
 /**
  * GetPinnedImage 图钉页面按 id 取回要显示的图片 dataURL。
  */
 export function GetPinnedImage(id: number): $CancellablePromise<string> {
-    return $Call.ByID(2400177020, id);
+    return $Call.ByID(283354105, id);
 }
 
 /**
  * GetSerialPorts 获取系统串口列表
  */
 export function GetSerialPorts(): $CancellablePromise<usbserial$0.SerialDeviceInfo[] | null> {
-    return $Call.ByID(1082085539);
+    return $Call.ByID(3849851382);
 }
 
 /**
@@ -1356,49 +1356,49 @@ export function GetSerialPorts(): $CancellablePromise<usbserial$0.SerialDeviceIn
  * （页面关闭期间服务继续捕获的数据在这里，服务未运行/已停止时返回空）
  */
 export function GetSnifferFlows(): $CancellablePromise<sniffer$0.Flow[] | null> {
-    return $Call.ByID(2484124629);
+    return $Call.ByID(3926251126);
 }
 
 /**
  * GetSystemInfo 采集系统快照（绑定入口，实际采集在 services/sysinfo）
  */
 export function GetSystemInfo(): $CancellablePromise<sysinfo$0.SystemInfo | null> {
-    return $Call.ByID(1320699288);
+    return $Call.ByID(3715835343);
 }
 
 /**
  * Greet returns a greeting for the given name
  */
 export function Greet(name: string): $CancellablePromise<string> {
-    return $Call.ByID(209610756, name);
+    return $Call.ByID(508575299, name);
 }
 
 /**
  * GuardChooseProgram 弹原生文件选择框挑选要守护的程序，取消返回空串。
  */
 export function GuardChooseProgram(title: string): $CancellablePromise<string> {
-    return $Call.ByID(3122860351, title);
+    return $Call.ByID(2188179178, title);
 }
 
 /**
  * GuardClear 清空全部登记项（先停止全部进程）。
  */
 export function GuardClear(): $CancellablePromise<void> {
-    return $Call.ByID(855350877);
+    return $Call.ByID(3006197584);
 }
 
 /**
  * GuardGetState 返回当前守护列表与运行态（含开机自启、重启参数）。
  */
 export function GuardGetState(): $CancellablePromise<guard$0.Snapshot> {
-    return $Call.ByID(1758974417);
+    return $Call.ByID(35314650);
 }
 
 /**
  * GuardRemove 删除一条登记项（先停止其进程）。
  */
 export function GuardRemove(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1241671992, id);
+    return $Call.ByID(3064323555, id);
 }
 
 /**
@@ -1406,56 +1406,56 @@ export function GuardRemove(id: string): $CancellablePromise<void> {
  * 并推送一次状态让前端开关与设置页保持一致。
  */
 export function GuardSetAutoStart(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1897832301, enabled);
+    return $Call.ByID(2365616630, enabled);
 }
 
 /**
  * GuardSetEnabled 切换某项「启用守护」。
  */
 export function GuardSetEnabled(id: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(548374529, id, enabled);
+    return $Call.ByID(527938814, id, enabled);
 }
 
 /**
  * GuardSetSettings 更新重启策略参数：重启间隔（秒）与连续快速失败上限。
  */
 export function GuardSetSettings(delaySec: number, maxFastFail: number): $CancellablePromise<void> {
-    return $Call.ByID(3698188333, delaySec, maxFastFail);
+    return $Call.ByID(1160266984, delaySec, maxFastFail);
 }
 
 /**
  * GuardStart 手动启动一个登记项。
  */
 export function GuardStart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(4011510988, id);
+    return $Call.ByID(2356206101, id);
 }
 
 /**
  * GuardStartAll 启用所有程序（拉起全部「启用守护」项）。
  */
 export function GuardStartAll(): $CancellablePromise<void> {
-    return $Call.ByID(2041262231);
+    return $Call.ByID(828489364);
 }
 
 /**
  * GuardStop 手动停止一个登记项（主动停止，不触发自动重启）。
  */
 export function GuardStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(4193567528, id);
+    return $Call.ByID(1446007719, id);
 }
 
 /**
  * GuardStopAll 关闭所有程序（主动停止全部在跑/在守护项）。
  */
 export function GuardStopAll(): $CancellablePromise<void> {
-    return $Call.ByID(2840847147);
+    return $Call.ByID(75616770);
 }
 
 /**
  * GuardUpsert 新增或更新一条守护登记项（ID 为空即新增）。
  */
 export function GuardUpsert(e: guard$0.Entry): $CancellablePromise<void> {
-    return $Call.ByID(3533406283, e);
+    return $Call.ByID(2339177572, e);
 }
 
 /**
@@ -1465,448 +1465,448 @@ export function GuardUpsert(e: guard$0.Entry): $CancellablePromise<void> {
  * 保留本机当前值。导入后跑一遍 SaveConfig，让日志器/热键/自启/浮动球全部跟着生效。
  */
 export function ImportConfig(): $CancellablePromise<string> {
-    return $Call.ByID(1489744468);
+    return $Call.ByID(649187289);
 }
 
 /**
  * ListenTCPServer 作为 TCP 服务端侦听
  */
 export function ListenTCPServer(cfg: usbserial$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(1369635312, cfg);
+    return $Call.ByID(180460383, cfg);
 }
 
 /**
  * MySQLAddColumn 新增列
  */
 export function MySQLAddColumn(id: string, database: string, table: string, col: mysql$0.ColumnDef): $CancellablePromise<void> {
-    return $Call.ByID(3619947884, id, database, table, col);
+    return $Call.ByID(2153047949, id, database, table, col);
 }
 
 /**
  * MySQLBackup 生成 SQL 备份文本
  */
 export function MySQLBackup(id: string, database: string, tables: string[] | null): $CancellablePromise<string> {
-    return $Call.ByID(1089243297, id, database, tables);
+    return $Call.ByID(1061301178, id, database, tables);
 }
 
 /**
  * MySQLBeginTx 开启事务，返回事务 ID
  */
 export function MySQLBeginTx(id: string, database: string): $CancellablePromise<string> {
-    return $Call.ByID(2475203016, id, database);
+    return $Call.ByID(3029397917, id, database);
 }
 
 /**
  * MySQLChooseSQLLogDir 弹出原生目录选择框（取消返回空串）
  */
 export function MySQLChooseSQLLogDir(): $CancellablePromise<string> {
-    return $Call.ByID(2270502607);
+    return $Call.ByID(55916270);
 }
 
 /**
  * MySQLClearSQLLog 清空 SQL 日志文件，返回删除的文件数
  */
 export function MySQLClearSQLLog(): $CancellablePromise<number> {
-    return $Call.ByID(1836149674);
+    return $Call.ByID(1210114691);
 }
 
 /**
  * MySQLClose 关闭指定连接
  */
 export function MySQLClose(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1947881129, id);
+    return $Call.ByID(2821465048, id);
 }
 
 /**
  * MySQLCommitTx 提交事务
  */
 export function MySQLCommitTx(txID: string): $CancellablePromise<void> {
-    return $Call.ByID(328566086, txID);
+    return $Call.ByID(3883191845, txID);
 }
 
 /**
  * MySQLDeleteRow 按主键删除一行
  */
 export function MySQLDeleteRow(id: string, database: string, table: string, pkCol: string, pkVal: string): $CancellablePromise<void> {
-    return $Call.ByID(1170638356, id, database, table, pkCol, pkVal);
+    return $Call.ByID(3764427101, id, database, table, pkCol, pkVal);
 }
 
 /**
  * MySQLDeleteRows 按单列主键批量删除多行，返回受影响行数
  */
 export function MySQLDeleteRows(id: string, database: string, table: string, pkCol: string, pkVals: string[] | null): $CancellablePromise<number> {
-    return $Call.ByID(1048941605, id, database, table, pkCol, pkVals);
+    return $Call.ByID(1712399210, id, database, table, pkCol, pkVals);
 }
 
 /**
  * MySQLDropColumn 删除列
  */
 export function MySQLDropColumn(id: string, database: string, table: string, col: string): $CancellablePromise<void> {
-    return $Call.ByID(3540688888, id, database, table, col);
+    return $Call.ByID(2161641211, id, database, table, col);
 }
 
 /**
  * MySQLExecute 执行 SQL（查询返回结果集，其余返回受影响行）
  */
 export function MySQLExecute(id: string, database: string, sqlText: string): $CancellablePromise<mysql$0.QueryResult> {
-    return $Call.ByID(4006525686, id, database, sqlText);
+    return $Call.ByID(1881490371, id, database, sqlText);
 }
 
 /**
  * MySQLGetSQLLogSettings 返回 SQL 日志开关、目录与现存文件列表
  */
 export function MySQLGetSQLLogSettings(): $CancellablePromise<mysql$0.SQLLogSettings> {
-    return $Call.ByID(2243358218);
+    return $Call.ByID(761594811);
 }
 
 /**
  * MySQLInsertRow 插入一行
  */
 export function MySQLInsertRow(id: string, database: string, table: string, data: { [_ in string]?: string } | null): $CancellablePromise<number> {
-    return $Call.ByID(2879442286, id, database, table, data);
+    return $Call.ByID(3451077919, id, database, table, data);
 }
 
 /**
  * MySQLListDatabases 列出数据库
  */
 export function MySQLListDatabases(id: string): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3580070919, id);
+    return $Call.ByID(688432150, id);
 }
 
 /**
  * MySQLListRoutines 列出函数/存储过程
  */
 export function MySQLListRoutines(id: string, database: string): $CancellablePromise<mysql$0.RoutineInfo[] | null> {
-    return $Call.ByID(2014427886, id, database);
+    return $Call.ByID(3553249565, id, database);
 }
 
 /**
  * MySQLListTables 列出基表
  */
 export function MySQLListTables(id: string, database: string): $CancellablePromise<mysql$0.TableInfo[] | null> {
-    return $Call.ByID(3452235594, id, database);
+    return $Call.ByID(1333801513, id, database);
 }
 
 /**
  * MySQLListViews 列出视图
  */
 export function MySQLListViews(id: string, database: string): $CancellablePromise<mysql$0.ViewInfo[] | null> {
-    return $Call.ByID(1247484103, id, database);
+    return $Call.ByID(657883154, id, database);
 }
 
 /**
  * MySQLLoadConnections 从文件读取连接列表
  */
 export function MySQLLoadConnections(): $CancellablePromise<mysql$0.ConnConfig[] | null> {
-    return $Call.ByID(21053648);
+    return $Call.ByID(38231753);
 }
 
 /**
  * MySQLModifyColumn 修改/重命名列
  */
 export function MySQLModifyColumn(id: string, database: string, table: string, oldName: string, col: mysql$0.ColumnDef): $CancellablePromise<void> {
-    return $Call.ByID(1865071315, id, database, table, oldName, col);
+    return $Call.ByID(1742522560, id, database, table, oldName, col);
 }
 
 /**
  * MySQLOpen 建立并登记一个 MySQL 连接
  */
 export function MySQLOpen(cfg: mysql$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(1424533375, cfg);
+    return $Call.ByID(4096061764, cfg);
 }
 
 /**
  * MySQLOpenSQLLogDir 在资源管理器中打开 SQL 日志目录
  */
 export function MySQLOpenSQLLogDir(): $CancellablePromise<void> {
-    return $Call.ByID(2448454356);
+    return $Call.ByID(3442487913);
 }
 
 /**
  * MySQLRollbackTx 回滚事务
  */
 export function MySQLRollbackTx(txID: string): $CancellablePromise<void> {
-    return $Call.ByID(1190876323, txID);
+    return $Call.ByID(1441527052, txID);
 }
 
 /**
  * MySQLSaveConnections 保存连接配置到文件
  */
 export function MySQLSaveConnections(configs: mysql$0.ConnConfig[] | null): $CancellablePromise<string> {
-    return $Call.ByID(1311538587, configs);
+    return $Call.ByID(3221385834, configs);
 }
 
 /**
  * MySQLSetSQLLogSettings 保存 SQL 日志开关与目录（立即生效并落盘），返回实际写入目录
  */
 export function MySQLSetSQLLogSettings(enabled: boolean, dir: string): $CancellablePromise<string> {
-    return $Call.ByID(817186134, enabled, dir);
+    return $Call.ByID(2258315039, enabled, dir);
 }
 
 /**
  * MySQLSrvAddLocal 注册本机已有的 MySQL 目录
  */
 export function MySQLSrvAddLocal(dir: string): $CancellablePromise<void> {
-    return $Call.ByID(622808178, dir);
+    return $Call.ByID(719116107, dir);
 }
 
 /**
  * MySQLSrvChooseDir 弹原生目录选择框（供添加本机 MySQL 目录），取消返回空串
  */
 export function MySQLSrvChooseDir(): $CancellablePromise<string> {
-    return $Call.ByID(3869883688);
+    return $Call.ByID(3847365091);
 }
 
 /**
  * MySQLSrvClearLogs 真实清空实例日志（截断 mysql.err；容器模式无法本地截断退化为清屏）
  */
 export function MySQLSrvClearLogs(id: string): $CancellablePromise<void> {
-    return $Call.ByID(670780366, id);
+    return $Call.ByID(4238412133, id);
 }
 
 /**
  * MySQLSrvDefaultImage Docker 模式默认镜像
  */
 export function MySQLSrvDefaultImage(): $CancellablePromise<string> {
-    return $Call.ByID(3387085506);
+    return $Call.ByID(2200785167);
 }
 
 /**
  * MySQLSrvDockerImages 本地 mysql/mariadb/percona 系镜像 tag（Docker 模式表单候选）
  */
 export function MySQLSrvDockerImages(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2321414646);
+    return $Call.ByID(903589239);
 }
 
 /**
  * MySQLSrvInstall 异步下载安装 MySQL 版本
  */
 export function MySQLSrvInstall(version: string): $CancellablePromise<void> {
-    return $Call.ByID(3198591747, version);
+    return $Call.ByID(2027589868, version);
 }
 
 /**
  * MySQLSrvListInstances 列出全部实例配置
  */
 export function MySQLSrvListInstances(): $CancellablePromise<mysql$0.InstanceConfig[] | null> {
-    return $Call.ByID(3570562656);
+    return $Call.ByID(3159173539);
 }
 
 /**
  * MySQLSrvListVersions 聚合三渠道本地可用版本
  */
 export function MySQLSrvListVersions(): $CancellablePromise<mysql$0.ServerVersion[] | null> {
-    return $Call.ByID(2827068837);
+    return $Call.ByID(1387270812);
 }
 
 /**
  * MySQLSrvLogs 返回实例 mysql.err 尾部 n 行
  */
 export function MySQLSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3881042755, id, lines);
+    return $Call.ByID(3288590130, id, lines);
 }
 
 /**
  * MySQLSrvPluginsDir 返回插件目录 <exedir>/plugins/mysql，供前端展示指引
  */
 export function MySQLSrvPluginsDir(): $CancellablePromise<string> {
-    return $Call.ByID(3325014999);
+    return $Call.ByID(2398159190);
 }
 
 /**
  * MySQLSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
  */
 export function MySQLSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
-    return $Call.ByID(2051548418, port, excludeId);
+    return $Call.ByID(607845741, port, excludeId);
 }
 
 /**
  * MySQLSrvRemoteVersions 拉取线上可安装版本（dev.mysql.com 官方 zip）
  */
 export function MySQLSrvRemoteVersions(): $CancellablePromise<mysql$0.RemoteVersion[] | null> {
-    return $Call.ByID(206018315);
+    return $Call.ByID(2830786678);
 }
 
 /**
  * MySQLSrvRemoveInstance 删除实例配置（运行中先停止）
  */
 export function MySQLSrvRemoveInstance(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2496123539, id);
+    return $Call.ByID(3868904454, id);
 }
 
 /**
  * MySQLSrvRemoveVersion 删除版本（内置不可删，运行中实例引用时拒绝）
  */
 export function MySQLSrvRemoveVersion(version: string): $CancellablePromise<void> {
-    return $Call.ByID(268947924, version);
+    return $Call.ByID(1948577091, version);
 }
 
 /**
  * MySQLSrvSaveInstance 新增/更新实例配置（ID 为空则新建）
  */
 export function MySQLSrvSaveInstance(cfg: mysql$0.InstanceConfig): $CancellablePromise<void> {
-    return $Call.ByID(3507606106, cfg);
+    return $Call.ByID(599543079, cfg);
 }
 
 /**
  * MySQLSrvStart 启动实例
  */
 export function MySQLSrvStart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2095203516, id);
+    return $Call.ByID(2860717515, id);
 }
 
 /**
  * MySQLSrvStatus 实例运行状态
  */
 export function MySQLSrvStatus(id: string): $CancellablePromise<mysql$0.InstanceStatus> {
-    return $Call.ByID(3840703586, id);
+    return $Call.ByID(2528408747, id);
 }
 
 /**
  * MySQLSrvStop 停止实例（SHUTDOWN + 兆底 Kill）
  */
 export function MySQLSrvStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2480283864, id);
+    return $Call.ByID(1203333305, id);
 }
 
 /**
  * MySQLSrvSuggestPort 从 from 起探测可用端口
  */
 export function MySQLSrvSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(4102821493, $from);
+    return $Call.ByID(2261307690, $from);
 }
 
 /**
  * MySQLTableData 分页浏览表数据
  */
 export function MySQLTableData(id: string, database: string, table: string, filter: string, orderBy: string, desc: boolean, page: number, size: number): $CancellablePromise<mysql$0.QueryResult> {
-    return $Call.ByID(1846168789, id, database, table, filter, orderBy, desc, page, size);
+    return $Call.ByID(678096992, id, database, table, filter, orderBy, desc, page, size);
 }
 
 /**
  * MySQLTableSchema 返回表结构（列/索引/DDL）
  */
 export function MySQLTableSchema(id: string, database: string, table: string): $CancellablePromise<mysql$0.TableSchema> {
-    return $Call.ByID(3632139622, id, database, table);
+    return $Call.ByID(124471571, id, database, table);
 }
 
 /**
  * MySQLTest 按表单参数测试 MySQL 连通性（不登记到连接表），返回握手耗时毫秒
  */
 export function MySQLTest(cfg: mysql$0.ConnConfig): $CancellablePromise<number> {
-    return $Call.ByID(3567587783, cfg);
+    return $Call.ByID(3285796896, cfg);
 }
 
 /**
  * MySQLTxExecute 在事务中执行语句
  */
 export function MySQLTxExecute(txID: string, sqlText: string): $CancellablePromise<mysql$0.QueryResult> {
-    return $Call.ByID(4117139610, txID, sqlText);
+    return $Call.ByID(493400071, txID, sqlText);
 }
 
 /**
  * MySQLUpdateCell 按主键更新单元格
  */
 export function MySQLUpdateCell(id: string, database: string, table: string, pkCol: string, pkVal: string, col: string, val: string): $CancellablePromise<void> {
-    return $Call.ByID(433372738, id, database, table, pkCol, pkVal, col, val);
+    return $Call.ByID(765016213, id, database, table, pkCol, pkVal, col, val);
 }
 
 /**
  * NginxSrvAddLocal 注册本机已有的 Nginx 目录（含 nginx.exe）
  */
 export function NginxSrvAddLocal(dir: string): $CancellablePromise<void> {
-    return $Call.ByID(3895686956, dir);
+    return $Call.ByID(3790604089, dir);
 }
 
 /**
  * NginxSrvCheckConfig 执行 nginx -t 配置检查，返回输出文本
  */
 export function NginxSrvCheckConfig(id: string): $CancellablePromise<string> {
-    return $Call.ByID(2797600204, id);
+    return $Call.ByID(3248783979, id);
 }
 
 /**
  * NginxSrvChooseDir 弹原生目录选择框（供添加本机 Nginx 目录），取消返回空串
  */
 export function NginxSrvChooseDir(): $CancellablePromise<string> {
-    return $Call.ByID(2056147762);
+    return $Call.ByID(1291652457);
 }
 
 /**
  * NginxSrvDefaultImage Docker 模式默认镜像
  */
 export function NginxSrvDefaultImage(): $CancellablePromise<string> {
-    return $Call.ByID(2514487124);
+    return $Call.ByID(1415593309);
 }
 
 /**
  * NginxSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
  */
 export function NginxSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
-    return $Call.ByID(73952109);
+    return $Call.ByID(3748267198);
 }
 
 /**
  * NginxSrvDockerImages 本地 nginx 系镜像 tag（Docker 模式表单候选）
  */
 export function NginxSrvDockerImages(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(410592280);
+    return $Call.ByID(1049032101);
 }
 
 /**
  * NginxSrvGetConfigText 读取实例 nginx.conf 全文
  */
 export function NginxSrvGetConfigText(id: string): $CancellablePromise<string> {
-    return $Call.ByID(877102783, id);
+    return $Call.ByID(3014797220, id);
 }
 
 /**
  * NginxSrvHostsPath 返回本机系统 hosts 文件路径（供前端展示与拼接建议行）
  */
 export function NginxSrvHostsPath(): $CancellablePromise<string> {
-    return $Call.ByID(4184036558);
+    return $Call.ByID(1769809245);
 }
 
 /**
  * NginxSrvInstall 异步安装 Nginx 版本，进度经 nginx:install 事件推送
  */
 export function NginxSrvInstall(version: string): $CancellablePromise<void> {
-    return $Call.ByID(3371670321, version);
+    return $Call.ByID(401853902, version);
 }
 
 /**
  * NginxSrvListInstances 列出全部 Nginx 实例配置
  */
 export function NginxSrvListInstances(): $CancellablePromise<nginx$0.InstanceConfig[] | null> {
-    return $Call.ByID(3760475950);
+    return $Call.ByID(1069119773);
 }
 
 /**
  * NginxSrvListVersions 聚合三渠道本地可用 Nginx 版本
  */
 export function NginxSrvListVersions(): $CancellablePromise<nginx$0.ServerVersion[] | null> {
-    return $Call.ByID(2517261923);
+    return $Call.ByID(3615171958);
 }
 
 /**
  * NginxSrvLogs 返回实例最近 n 行日志
  */
 export function NginxSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3382912385, id, lines);
+    return $Call.ByID(722845868, id, lines);
 }
 
 /**
  * NginxSrvOpenHosts 打开本地 hosts 文件用于域名解析配置（Windows 提权拉记事本，Linux 提示 sudo）
  */
 export function NginxSrvOpenHosts(): $CancellablePromise<void> {
-    return $Call.ByID(1162372965);
+    return $Call.ByID(2559916802);
 }
 
 /**
  * NginxSrvPluginsDir 返回插件目录 <exedir>/plugins/nginx，供前端展示指引
  */
 export function NginxSrvPluginsDir(): $CancellablePromise<string> {
-    return $Call.ByID(168874897);
+    return $Call.ByID(2365194620);
 }
 
 /**
@@ -1914,49 +1914,49 @@ export function NginxSrvPluginsDir(): $CancellablePromise<string> {
  * 返回占用原因，空串表示可用
  */
 export function NginxSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
-    return $Call.ByID(4240796320, port, excludeId);
+    return $Call.ByID(3699504631, port, excludeId);
 }
 
 /**
  * NginxSrvReload 平滑重载配置
  */
 export function NginxSrvReload(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1488791911, id);
+    return $Call.ByID(825512238, id);
 }
 
 /**
  * NginxSrvRemoteVersions 拉取线上可安装版本（nginx.org 官方 zip）
  */
 export function NginxSrvRemoteVersions(): $CancellablePromise<nginx$0.RemoteVersion[] | null> {
-    return $Call.ByID(2763422229);
+    return $Call.ByID(1737097612);
 }
 
 /**
  * NginxSrvRemoveInstance 删除实例配置（运行中先停止）；一并删除关联的 PHP 后端
  */
 export function NginxSrvRemoveInstance(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3827999841, id);
+    return $Call.ByID(799275112, id);
 }
 
 /**
  * NginxSrvRemoveVersion 删除版本（内置不可删，运行中实例引用时拒绝）
  */
 export function NginxSrvRemoveVersion(version: string): $CancellablePromise<void> {
-    return $Call.ByID(3741852874, version);
+    return $Call.ByID(3824354933, version);
 }
 
 /**
  * NginxSrvRestart 重启实例；连带重启关联的 PHP 后端
  */
 export function NginxSrvRestart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(4190216069, id);
+    return $Call.ByID(2872135518, id);
 }
 
 /**
  * NginxSrvSaveConfigText 保存实例 nginx.conf（先备份后校验，失败回滚；容器模式不做 -t 不回滚）
  */
 export function NginxSrvSaveConfigText(id: string, text: string): $CancellablePromise<void> {
-    return $Call.ByID(2878092006, id, text);
+    return $Call.ByID(3146212075, id, text);
 }
 
 /**
@@ -1964,49 +1964,49 @@ export function NginxSrvSaveConfigText(id: string, text: string): $CancellablePr
  * 若启用 PHP 后端，同步创建/更新一个关联的 PHP 实例（全生命周期联动）；改回纯静态则删除旧关联。
  */
 export function NginxSrvSaveInstance(cfg: nginx$0.InstanceConfig): $CancellablePromise<void> {
-    return $Call.ByID(901581996, cfg);
+    return $Call.ByID(2987297053, cfg);
 }
 
 /**
  * NginxSrvStart 启动实例（-p prefix -c conf，隐藏窗口）；先拉起关联的 PHP 后端
  */
 export function NginxSrvStart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1302543514, id);
+    return $Call.ByID(3182166045, id);
 }
 
 /**
  * NginxSrvStatus 实例运行状态（端口探测 + master/worker 进程）
  */
 export function NginxSrvStatus(id: string): $CancellablePromise<nginx$0.InstanceStatus> {
-    return $Call.ByID(2336427948, id);
+    return $Call.ByID(2305117281, id);
 }
 
 /**
  * NginxSrvStop 停止实例（nginx -s quit + 兑底 kill）；随后停掉关联的 PHP 后端
  */
 export function NginxSrvStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(802531066, id);
+    return $Call.ByID(2412881423, id);
 }
 
 /**
  * NginxSrvSuggestPort 从 from 起探测可用端口
  */
 export function NginxSrvSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(3094967411, $from);
+    return $Call.ByID(1364502540, $from);
 }
 
 /**
  * NotifyClose 关闭通知卡片
  */
 export function NotifyClose(): $CancellablePromise<void> {
-    return $Call.ByID(1525335914);
+    return $Call.ByID(3091570313);
 }
 
 /**
  * NpmApplyToUserNpmrc 将托管配置同步到用户全局 ~/.npmrc（先备份），返回备份文件路径
  */
 export function NpmApplyToUserNpmrc(): $CancellablePromise<string> {
-    return $Call.ByID(3572349504);
+    return $Call.ByID(1530596199);
 }
 
 /**
@@ -2014,28 +2014,28 @@ export function NpmApplyToUserNpmrc(): $CancellablePromise<string> {
  * 加上它内部会跳转的全局 prefix 覆盖层，返回完整生效链与诊断提示
  */
 export function NpmCliChain(): $CancellablePromise<npm$0.NpmChain | null> {
-    return $Call.ByID(2839004471);
+    return $Call.ByID(561825800);
 }
 
 /**
  * NpmCliRefreshReleases 清缓存重拉版本清单（切换失败或刚改过镜像源后用）
  */
 export function NpmCliRefreshReleases(nodeVersion: string): $CancellablePromise<npm$0.NpmReleaseList | null> {
-    return $Call.ByID(1301242963, nodeVersion);
+    return $Call.ByID(907842388, nodeVersion);
 }
 
 /**
  * NpmCliReleases 当前 registry 上可用的 npm 版本清单（附带与指定 Node 的兼容性判定）
  */
 export function NpmCliReleases(nodeVersion: string): $CancellablePromise<npm$0.NpmReleaseList | null> {
-    return $Call.ByID(3401335640, nodeVersion);
+    return $Call.ByID(2950663289, nodeVersion);
 }
 
 /**
  * NpmCliRemoveOverride 删掉 prefix 覆盖层的 npm，让 cmd 回到该 Node 自带的版本
  */
 export function NpmCliRemoveOverride(entryDir: string): $CancellablePromise<void> {
-    return $Call.ByID(1231479774, entryDir);
+    return $Call.ByID(1653392543, entryDir);
 }
 
 /**
@@ -2044,70 +2044,70 @@ export function NpmCliRemoveOverride(entryDir: string): $CancellablePromise<void
  * Go 直接下 tarball 解压替换，不经过任何 npm CLI，避开自我覆盖与 PATH 权限问题。
  */
 export function NpmCliSwitch(layer: string, entryDir: string, npmVersion: string): $CancellablePromise<void> {
-    return $Call.ByID(946700002, layer, entryDir, npmVersion);
+    return $Call.ByID(1170436723, layer, entryDir, npmVersion);
 }
 
 /**
  * NpmCliUndoSwitch 撤销上一步切换，回 .npm-prev 里留存的旧版本
  */
 export function NpmCliUndoSwitch(layer: string, entryDir: string): $CancellablePromise<void> {
-    return $Call.ByID(2542376532, layer, entryDir);
+    return $Call.ByID(1170544425, layer, entryDir);
 }
 
 /**
  * NpmCommonRegistries 返回常用镜像源列表（供前端快捷选择）
  */
 export function NpmCommonRegistries(): $CancellablePromise<npm$0.NpmConfigKV[] | null> {
-    return $Call.ByID(3243686658);
+    return $Call.ByID(601987977);
 }
 
 /**
  * NpmConfigItems 列出托管 .npmrc 配置键值
  */
 export function NpmConfigItems(): $CancellablePromise<npm$0.NpmConfigKV[] | null> {
-    return $Call.ByID(3145261810);
+    return $Call.ByID(949416631);
 }
 
 /**
  * NpmGetConfigText 读取托管 .npmrc 全文
  */
 export function NpmGetConfigText(): $CancellablePromise<string> {
-    return $Call.ByID(257588393);
+    return $Call.ByID(2558991340);
 }
 
 /**
  * NpmGetRegistry 返回当前生效的 registry
  */
 export function NpmGetRegistry(): $CancellablePromise<string> {
-    return $Call.ByID(3116585107);
+    return $Call.ByID(613058778);
 }
 
 /**
  * NpmGlobalPackages 列出指定 Node 版本的全局已安装包
  */
 export function NpmGlobalPackages(version: string): $CancellablePromise<npm$0.NpmPackage[] | null> {
-    return $Call.ByID(656494466, version);
+    return $Call.ByID(420622157, version);
 }
 
 /**
  * NpmInstallGlobal 异步安装全局包，进度经 npm:install 事件推送
  */
 export function NpmInstallGlobal(version: string, pkg: string): $CancellablePromise<void> {
-    return $Call.ByID(4250724432, version, pkg);
+    return $Call.ByID(735052721, version, pkg);
 }
 
 /**
  * NpmInstallWith 用指定包管理器全局安装（自动适配 yarn global add / pnpm add -g 等语法）
  */
 export function NpmInstallWith(manager: string, pkg: string): $CancellablePromise<void> {
-    return $Call.ByID(1628034419, manager, pkg);
+    return $Call.ByID(2754298322, manager, pkg);
 }
 
 /**
  * NpmManagerVersion 执行一次 <管理器> --version 校准版本号
  */
 export function NpmManagerVersion(manager: string): $CancellablePromise<string> {
-    return $Call.ByID(1338596521, manager);
+    return $Call.ByID(755763690, manager);
 }
 
 /**
@@ -2115,35 +2115,35 @@ export function NpmManagerVersion(manager: string): $CancellablePromise<string> 
  * 全局安装的 yarn / pnpm / cnpm，原生安装的 bun）
  */
 export function NpmPackageManagers(): $CancellablePromise<npm$0.PackageManager[] | null> {
-    return $Call.ByID(955291756);
+    return $Call.ByID(449110445);
 }
 
 /**
  * NpmPathBind 把选定 Node 目录前置到 PATH 并移除其它 Node 目录；system=true 改系统 PATH（需管理员），否则改用户 PATH
  */
 export function NpmPathBind(entryDir: string, system: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1401292808, entryDir, system);
+    return $Call.ByID(1120848063, entryDir, system);
 }
 
 /**
  * NpmPathStatus 读取当前用户 PATH 的 Node 绑定情况（强制切换本地 npm 命令）
  */
 export function NpmPathStatus(): $CancellablePromise<npm$0.NpmPathBind | null> {
-    return $Call.ByID(2839062777);
+    return $Call.ByID(103395338);
 }
 
 /**
  * NpmPathUnbind 恢复绑定前备份的用户 PATH
  */
 export function NpmPathUnbind(): $CancellablePromise<string> {
-    return $Call.ByID(1375114359);
+    return $Call.ByID(2546628980);
 }
 
 /**
  * NpmSaveConfigText 保存托管 .npmrc
  */
 export function NpmSaveConfigText(text: string): $CancellablePromise<void> {
-    return $Call.ByID(3026751248, text);
+    return $Call.ByID(2168708963, text);
 }
 
 /**
@@ -2151,133 +2151,133 @@ export function NpmSaveConfigText(text: string): $CancellablePromise<void> {
  * （直读磁盘 package.json，不起子进程，npm CLI 坏了也能列出来）
  */
 export function NpmScanGlobalPackages(): $CancellablePromise<npm$0.NpmPackage[] | null> {
-    return $Call.ByID(3208848419);
+    return $Call.ByID(1054462292);
 }
 
 /**
  * NpmSetConfigItem 设置单条 npm 配置
  */
 export function NpmSetConfigItem(key: string, value: string): $CancellablePromise<void> {
-    return $Call.ByID(1021450325, key, value);
+    return $Call.ByID(642699152, key, value);
 }
 
 /**
  * NpmSetRegistry 设置 registry
  */
 export function NpmSetRegistry(url: string): $CancellablePromise<void> {
-    return $Call.ByID(2797573055, url);
+    return $Call.ByID(2521860382, url);
 }
 
 /**
  * NpmSrvAddLocal 注册本机已有的 Node.js 目录（含 node.exe）
  */
 export function NpmSrvAddLocal(dir: string): $CancellablePromise<void> {
-    return $Call.ByID(1919056967, dir);
+    return $Call.ByID(1851494710, dir);
 }
 
 /**
  * NpmSrvChooseDir 弹原生目录选择框（供添加本机 Node.js 目录），取消返回空串
  */
 export function NpmSrvChooseDir(): $CancellablePromise<string> {
-    return $Call.ByID(3086520383);
+    return $Call.ByID(348525676);
 }
 
 /**
  * NpmSrvDefaultImage Docker 模式默认镜像
  */
 export function NpmSrvDefaultImage(): $CancellablePromise<string> {
-    return $Call.ByID(3272509275);
+    return $Call.ByID(2083069302);
 }
 
 /**
  * NpmSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
  */
 export function NpmSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
-    return $Call.ByID(2283787256);
+    return $Call.ByID(494155347);
 }
 
 /**
  * NpmSrvDockerImages 本地 nginx 系镜像 tag（静态站点 Docker 模式表单候选）
  */
 export function NpmSrvDockerImages(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(1281306251);
+    return $Call.ByID(3719867890);
 }
 
 /**
  * NpmSrvInstall 异步安装 Node.js 版本，进度经 npm:install 事件推送
  */
 export function NpmSrvInstall(version: string): $CancellablePromise<void> {
-    return $Call.ByID(3193641544, version);
+    return $Call.ByID(3648663351, version);
 }
 
 /**
  * NpmSrvListInstances 列出全部静态站点实例配置
  */
 export function NpmSrvListInstances(): $CancellablePromise<npm$0.InstanceConfig[] | null> {
-    return $Call.ByID(488954607);
+    return $Call.ByID(2867095796);
 }
 
 /**
  * NpmSrvListVersions 聚合三渠道本地可用 Node.js 版本
  */
 export function NpmSrvListVersions(): $CancellablePromise<npm$0.ServerVersion[] | null> {
-    return $Call.ByID(3894541392);
+    return $Call.ByID(1040259905);
 }
 
 /**
  * NpmSrvLogs 返回实例最近 n 行访问日志
  */
 export function NpmSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(211994334, id, lines);
+    return $Call.ByID(2726244135, id, lines);
 }
 
 /**
  * NpmSrvPluginsDir 返回插件目录 <exedir>/plugins/npm，供前端展示指引
  */
 export function NpmSrvPluginsDir(): $CancellablePromise<string> {
-    return $Call.ByID(4115022242);
+    return $Call.ByID(2591943131);
 }
 
 /**
  * NpmSrvPortTaken 报告端口是否已被占用（其它站点登记或进程监听），返回占用原因，空串表示可用
  */
 export function NpmSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
-    return $Call.ByID(661077201, port, excludeId);
+    return $Call.ByID(532605950, port, excludeId);
 }
 
 /**
  * NpmSrvRemoteVersions 拉取线上可安装版本（nodejs.org dist index.json）
  */
 export function NpmSrvRemoteVersions(): $CancellablePromise<npm$0.RemoteVersion[] | null> {
-    return $Call.ByID(3503125378);
+    return $Call.ByID(3693186079);
 }
 
 /**
  * NpmSrvRemoveInstance 删除实例配置（运行中先停止）
  */
 export function NpmSrvRemoveInstance(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2608887426, id);
+    return $Call.ByID(3777641223, id);
 }
 
 /**
  * NpmSrvRemoveVersion 删除版本（内置不可删，运行中实例引用时拒绝）
  */
 export function NpmSrvRemoveVersion(version: string): $CancellablePromise<void> {
-    return $Call.ByID(3178766791, version);
+    return $Call.ByID(2622206160, version);
 }
 
 /**
  * NpmSrvRestart 重启实例（容器模式没有平滑重载通道，重启即重启容器）
  */
 export function NpmSrvRestart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3772704340, id);
+    return $Call.ByID(2170325975, id);
 }
 
 /**
  * NpmSrvSaveInstance 新增/更新实例配置（ID 为空则新建）
  */
 export function NpmSrvSaveInstance(cfg: npm$0.InstanceConfig): $CancellablePromise<void> {
-    return $Call.ByID(318025147, cfg);
+    return $Call.ByID(2874880534, cfg);
 }
 
 /**
@@ -2285,63 +2285,63 @@ export function NpmSrvSaveInstance(cfg: npm$0.InstanceConfig): $CancellablePromi
  * 返回本次新增登记的版本（已登记过的不重复计入）
  */
 export function NpmSrvScanLocal(): $CancellablePromise<npm$0.ServerVersion[] | null> {
-    return $Call.ByID(603567307);
+    return $Call.ByID(1592522384);
 }
 
 /**
  * NpmSrvStart 启动静态站点（本地：内置 Go HTTP 服务器；Docker：nginx 容器）
  */
 export function NpmSrvStart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(210918951, id);
+    return $Call.ByID(1289689632, id);
 }
 
 /**
  * NpmSrvStatus 实例运行状态（端口探测 + 请求计数）
  */
 export function NpmSrvStatus(id: string): $CancellablePromise<npm$0.InstanceStatus> {
-    return $Call.ByID(167628231, id);
+    return $Call.ByID(2061460598, id);
 }
 
 /**
  * NpmSrvStop 停止静态站点（本地：优雅 Shutdown；Docker：停容器）
  */
 export function NpmSrvStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(173440077, id);
+    return $Call.ByID(1467368292, id);
 }
 
 /**
  * NpmSrvSuggestPort 从 from 起探测可用端口
  */
 export function NpmSrvSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(1799968190, $from);
+    return $Call.ByID(3364486177, $from);
 }
 
 /**
  * NpmUninstallGlobal 异步卸载全局包，进度经 npm:install 事件推送
  */
 export function NpmUninstallGlobal(version: string, pkg: string): $CancellablePromise<void> {
-    return $Call.ByID(3458261765, version, pkg);
+    return $Call.ByID(2795648248, version, pkg);
 }
 
 /**
  * NpmUninstallWith 用指定包管理器全局卸载；installedAt 传入该包的磁盘目录，用于反查装它的管理器
  */
 export function NpmUninstallWith(manager: string, pkg: string, installedAt: string): $CancellablePromise<void> {
-    return $Call.ByID(3852054534, manager, pkg, installedAt);
+    return $Call.ByID(2326629451, manager, pkg, installedAt);
 }
 
 /**
  * NpmUserNpmrc 返回用户全局 ~/.npmrc 的路径/内容/是否存在，并附带托管 registry 同步能力
  */
 export function NpmUserNpmrc(): $CancellablePromise<[string, string, boolean]> {
-    return $Call.ByID(3178401231);
+    return $Call.ByID(2762916714);
 }
 
 /**
  * NpmVersionOf 返回指定 Node 版本配套的 npm 版本号
  */
 export function NpmVersionOf(version: string): $CancellablePromise<string> {
-    return $Call.ByID(1034593109, version);
+    return $Call.ByID(2685473940, version);
 }
 
 /**
@@ -2349,7 +2349,7 @@ export function NpmVersionOf(version: string): $CancellablePromise<string> {
  * 实现细节（WinRT + PowerShell 5.1 调用）在 tools/ocr，这里只保留绑定入口。
  */
 export function OcrImage(data: string): $CancellablePromise<string> {
-    return $Call.ByID(3535316554, data);
+    return $Call.ByID(1655764179, data);
 }
 
 /**
@@ -2357,21 +2357,21 @@ export function OcrImage(data: string): $CancellablePromise<string> {
  * 重复触发（热键连按）时直接忽略，避免把已经打开的浮层再刷一遍。
  */
 export function OpenCaptureOverlay(): $CancellablePromise<void> {
-    return $Call.ByID(611954573);
+    return $Call.ByID(2772278140);
 }
 
 /**
  * OpenConfigDir 在文件管理器中打开配置文件所在目录（手工备份/替换 config.json 用）。
  */
 export function OpenConfigDir(): $CancellablePromise<void> {
-    return $Call.ByID(217538284);
+    return $Call.ByID(357267255);
 }
 
 /**
  * OpenLogDir 在系统资源管理器中打开当前日志目录（Windows: explorer）。
  */
 export function OpenLogDir(): $CancellablePromise<void> {
-    return $Call.ByID(3701698846);
+    return $Call.ByID(1692273443);
 }
 
 /**
@@ -2380,21 +2380,21 @@ export function OpenLogDir(): $CancellablePromise<void> {
  * 返回图钉 id，页面据 id 从 GetPinnedImage 拉图、从 ClosePinnedImage 关窗。
  */
 export function OpenPinnedImage(data: string, x: number, y: number, w: number, h: number): $CancellablePromise<number> {
-    return $Call.ByID(348015934, data, x, y, w, h);
+    return $Call.ByID(3820129837, data, x, y, w, h);
 }
 
 /**
  * OpenSerial 打开串口
  */
 export function OpenSerial(cfg: usbserial$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(3913336563, cfg);
+    return $Call.ByID(57634346, cfg);
 }
 
 /**
  * OpenTCPClient 作为 TCP 客户端连接远端
  */
 export function OpenTCPClient(cfg: usbserial$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(2154542897, cfg);
+    return $Call.ByID(2454598646, cfg);
 }
 
 /**
@@ -2406,280 +2406,280 @@ export function OpenTCPClient(cfg: usbserial$0.ConnConfig): $CancellablePromise<
  * path 的 query 带 fs=0（工具配置“禁用全屏”）时，隐藏最大化按钮、禁止标题栏双击最大化，并禁用边框拖拽缩放。
  */
 export function OpenToolWindow(path: string, title: string, single: boolean, fullscreen: boolean, width: number, height: number): $CancellablePromise<void> {
-    return $Call.ByID(1847339705, path, title, single, fullscreen, width, height);
+    return $Call.ByID(3231300140, path, title, single, fullscreen, width, height);
 }
 
 /**
  * OpenUDP 打开 UDP 连接
  */
 export function OpenUDP(cfg: usbserial$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(1342756010, cfg);
+    return $Call.ByID(512302341, cfg);
 }
 
 /**
  * PhpSrvAddDisableFunctions 追加禁用函数
  */
 export function PhpSrvAddDisableFunctions(id: string, names: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2780671120, id, names);
+    return $Call.ByID(330829559, id, names);
 }
 
 /**
  * PhpSrvAddLocal 注册本机已有的 PHP 目录（含 php.exe）
  */
 export function PhpSrvAddLocal(dir: string): $CancellablePromise<void> {
-    return $Call.ByID(1602910344, dir);
+    return $Call.ByID(74272681, dir);
 }
 
 /**
  * PhpSrvChooseDir 弹原生目录选择框（供添加本机 PHP 目录），取消返回空串
  */
 export function PhpSrvChooseDir(): $CancellablePromise<string> {
-    return $Call.ByID(2489320334);
+    return $Call.ByID(57449977);
 }
 
 /**
  * PhpSrvClearLogs 真实清空实例日志（截断日志文件 + 清环形；容器模式退化为清环形）
  */
 export function PhpSrvClearLogs(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3593556380, id);
+    return $Call.ByID(1549262715, id);
 }
 
 /**
  * PhpSrvCommonlyDisabled 返回常见建议禁用函数列表（供前端快捷添加）
  */
 export function PhpSrvCommonlyDisabled(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2903529472);
+    return $Call.ByID(2024237821);
 }
 
 /**
  * PhpSrvDefaultImage Docker 模式默认镜像
  */
 export function PhpSrvDefaultImage(): $CancellablePromise<string> {
-    return $Call.ByID(1568508128);
+    return $Call.ByID(2720262989);
 }
 
 /**
  * PhpSrvDisableFunctions 读取实例禁用函数列表
  */
 export function PhpSrvDisableFunctions(id: string): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3560824403, id);
+    return $Call.ByID(830690106, id);
 }
 
 /**
  * PhpSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
  */
 export function PhpSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
-    return $Call.ByID(3735884353);
+    return $Call.ByID(1482141454);
 }
 
 /**
  * PhpSrvDockerImages 本地 php 系镜像 tag（Docker 模式表单候选）
  */
 export function PhpSrvDockerImages(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(418614988);
+    return $Call.ByID(749675029);
 }
 
 /**
  * PhpSrvExtCatalog 常用扩展在线清单（PECL）：已安装 / 可下载 / 下载中
  */
 export function PhpSrvExtCatalog(id: string, force: boolean): $CancellablePromise<php$0.RemoteExtensionInfo[] | null> {
-    return $Call.ByID(600540936, id, force);
+    return $Call.ByID(1097375721, id, force);
 }
 
 /**
  * PhpSrvExtInstall 异步下载安装扩展 dll 到版本 ext 目录，enable=true 顺带启用；进度经 php:ext-install 事件推送
  */
 export function PhpSrvExtInstall(id: string, ext: string, enable: boolean): $CancellablePromise<void> {
-    return $Call.ByID(610273328, id, ext, enable);
+    return $Call.ByID(1673006825, id, ext, enable);
 }
 
 /**
  * PhpSrvExtRefresh 清空 PECL 线上索引缓存（配合 PhpSrvExtCatalog(force=true) 使用）
  */
 export function PhpSrvExtRefresh(): $CancellablePromise<void> {
-    return $Call.ByID(1448857252);
+    return $Call.ByID(3049345633);
 }
 
 /**
  * PhpSrvExtRemove 删除由本工具下载的扩展 dll（内置扩展不可删）
  */
 export function PhpSrvExtRemove(id: string, ext: string): $CancellablePromise<void> {
-    return $Call.ByID(3357920173, id, ext);
+    return $Call.ByID(2852840302, id, ext);
 }
 
 /**
  * PhpSrvExtensions 列出实例候选扩展（可用/已启用/已加载）
  */
 export function PhpSrvExtensions(id: string): $CancellablePromise<php$0.ExtensionInfo[] | null> {
-    return $Call.ByID(2719885796, id);
+    return $Call.ByID(926729785, id);
 }
 
 /**
  * PhpSrvGetCommon 读取实例常用配置项（内存/上传/时区等）
  */
 export function PhpSrvGetCommon(id: string): $CancellablePromise<php$0.CommonFields | null> {
-    return $Call.ByID(2300193483, id);
+    return $Call.ByID(3992739112, id);
 }
 
 /**
  * PhpSrvGetConfigText 读取实例 php.ini 全文
  */
 export function PhpSrvGetConfigText(id: string): $CancellablePromise<string> {
-    return $Call.ByID(3133714715, id);
+    return $Call.ByID(1216637748, id);
 }
 
 /**
  * PhpSrvInfo 返回实例 php -i 关键配置概览
  */
 export function PhpSrvInfo(id: string): $CancellablePromise<php$0.PHPInfo | null> {
-    return $Call.ByID(3252870118, id);
+    return $Call.ByID(1048429475, id);
 }
 
 /**
  * PhpSrvInstall 异步安装 PHP 版本（nts=true 下载 NTS 构型），进度经 php:install 事件推送
  */
 export function PhpSrvInstall(version: string, nts: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1709613741, version, nts);
+    return $Call.ByID(3521578974, version, nts);
 }
 
 /**
  * PhpSrvListInstances 列出全部 PHP 实例配置
  */
 export function PhpSrvListInstances(): $CancellablePromise<php$0.InstanceConfig[] | null> {
-    return $Call.ByID(369939242);
+    return $Call.ByID(1749079309);
 }
 
 /**
  * PhpSrvListVersions 聚合三渠道本地可用 PHP 版本
  */
 export function PhpSrvListVersions(): $CancellablePromise<php$0.ServerVersion[] | null> {
-    return $Call.ByID(1107912679);
+    return $Call.ByID(3362162022);
 }
 
 /**
  * PhpSrvLoadedExtensions 实测已加载扩展名列表（php -m）
  */
 export function PhpSrvLoadedExtensions(id: string): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2980807209, id);
+    return $Call.ByID(2993866332, id);
 }
 
 /**
  * PhpSrvLogs 返回实例最近 n 行日志
  */
 export function PhpSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(3130517501, id, lines);
+    return $Call.ByID(2636922236, id, lines);
 }
 
 /**
  * PhpSrvPluginsDir 返回插件目录 <exedir>/plugins/php，供前端展示指引
  */
 export function PhpSrvPluginsDir(): $CancellablePromise<string> {
-    return $Call.ByID(3154647549);
+    return $Call.ByID(2957014700);
 }
 
 /**
  * PhpSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
  */
 export function PhpSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
-    return $Call.ByID(2102372516, port, excludeId);
+    return $Call.ByID(2168069831, port, excludeId);
 }
 
 /**
  * PhpSrvRemoteVersions 拉取线上可安装版本（windows.php.net）
  */
 export function PhpSrvRemoteVersions(): $CancellablePromise<php$0.RemoteVersion[] | null> {
-    return $Call.ByID(4020903473);
+    return $Call.ByID(4194778236);
 }
 
 /**
  * PhpSrvRemoveDisableFunctions 移除若干禁用函数
  */
 export function PhpSrvRemoveDisableFunctions(id: string, names: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(585108119, id, names);
+    return $Call.ByID(4268159830, id, names);
 }
 
 /**
  * PhpSrvRemoveInstance 删除实例配置（运行中先停止）
  */
 export function PhpSrvRemoveInstance(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2784215501, id);
+    return $Call.ByID(3004208536, id);
 }
 
 /**
  * PhpSrvRemoveVersion 删除版本（内置不可删，运行中实例引用时拒绝）
  */
 export function PhpSrvRemoveVersion(version: string): $CancellablePromise<void> {
-    return $Call.ByID(1237865758, version);
+    return $Call.ByID(2992166117, version);
 }
 
 /**
  * PhpSrvRestart 重启实例
  */
 export function PhpSrvRestart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(409545385, id);
+    return $Call.ByID(2168662798, id);
 }
 
 /**
  * PhpSrvSaveConfigText 保存实例 php.ini（先备份后校验，加载失败回滚）
  */
 export function PhpSrvSaveConfigText(id: string, text: string): $CancellablePromise<void> {
-    return $Call.ByID(1991875650, id, text);
+    return $Call.ByID(1985748795, id, text);
 }
 
 /**
  * PhpSrvSaveInstance 新增/更新实例配置（ID 为空则新建）
  */
 export function PhpSrvSaveInstance(cfg: php$0.InstanceConfig): $CancellablePromise<void> {
-    return $Call.ByID(2110958672, cfg);
+    return $Call.ByID(4184057485, cfg);
 }
 
 /**
  * PhpSrvSetCommon 写入实例常用配置项
  */
 export function PhpSrvSetCommon(id: string, f: php$0.CommonFields): $CancellablePromise<void> {
-    return $Call.ByID(1833043151, id, f);
+    return $Call.ByID(3399217660, id, f);
 }
 
 /**
  * PhpSrvSetDisableFunctions 全量设置禁用函数列表
  */
 export function PhpSrvSetDisableFunctions(id: string, list: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(3952008139, id, list);
+    return $Call.ByID(4096993960, id, list);
 }
 
 /**
  * PhpSrvSetExtension 启用/禁用扩展，返回提示信息
  */
 export function PhpSrvSetExtension(id: string, name: string, enable: boolean): $CancellablePromise<string> {
-    return $Call.ByID(2669190807, id, name, enable);
+    return $Call.ByID(1438677682, id, name, enable);
 }
 
 /**
  * PhpSrvStart 启动实例（本地：php -S 内置服务器隐藏窗口；Docker：创建/启动容器）
  */
 export function PhpSrvStart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2539961686, id);
+    return $Call.ByID(2378366509, id);
 }
 
 /**
  * PhpSrvStatus 实例运行状态（端口探测 + ini 概览）
  */
 export function PhpSrvStatus(id: string): $CancellablePromise<php$0.InstanceStatus> {
-    return $Call.ByID(1547766040, id);
+    return $Call.ByID(228003121, id);
 }
 
 /**
  * PhpSrvStop 停止实例（本地：kill 进程树；Docker：停止容器）
  */
 export function PhpSrvStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2899585534, id);
+    return $Call.ByID(3405363551, id);
 }
 
 /**
  * PhpSrvSuggestPort 从 from 起探测可用端口（跳过其它实例已登记与系统已监听的）
  */
 export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(1582683879, $from);
+    return $Call.ByID(3601758652, $from);
 }
 
 /**
@@ -2689,266 +2689,266 @@ export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
  * 也不会被枚举成可截窗口（本进程窗口已过滤），更不会挡住桌面点击。
  */
 export function PrewarmCaptureOverlay(): $CancellablePromise<void> {
-    return $Call.ByID(2420787035);
+    return $Call.ByID(1228806336);
 }
 
 /**
  * RealQuit 真正退出程序：置退出标志（使关闭钩子不再拦截）、销毁托盘，再终止应用。
  */
 export function RealQuit(): $CancellablePromise<void> {
-    return $Call.ByID(4272363976);
+    return $Call.ByID(4228902349);
 }
 
 /**
  * RedisBatchSetString 批量生成 string 键：keyPrefix+序号 / valuePrefix+序号，序号 [start,end]（含），ttl 秒（<=0 不过期）。返回写入数量
  */
 export function RedisBatchSetString(id: string, keyPrefix: string, valuePrefix: string, start: number, end: number, ttl: number): $CancellablePromise<number> {
-    return $Call.ByID(2145549307, id, keyPrefix, valuePrefix, start, end, ttl);
+    return $Call.ByID(704285660, id, keyPrefix, valuePrefix, start, end, ttl);
 }
 
 /**
  * RedisClose 关闭指定 Redis 连接
  */
 export function RedisClose(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3283419330, id);
+    return $Call.ByID(452992059, id);
 }
 
 /**
  * RedisConnectionsFilePath 返回配置文件路径
  */
 export function RedisConnectionsFilePath(): $CancellablePromise<string> {
-    return $Call.ByID(2706141374);
+    return $Call.ByID(949578775);
 }
 
 /**
  * RedisDeleteKeys 删除若干键，返回删除数量
  */
 export function RedisDeleteKeys(id: string, keys: string[] | null): $CancellablePromise<number> {
-    return $Call.ByID(1735041729, id, keys);
+    return $Call.ByID(140946350, id, keys);
 }
 
 /**
  * RedisGetKey 读取键详情（按类型返回结构）
  */
 export function RedisGetKey(id: string, key: string): $CancellablePromise<redis$0.KeyValue> {
-    return $Call.ByID(1872114281, id, key);
+    return $Call.ByID(2285858006, id, key);
 }
 
 /**
  * RedisLoadConnections 从配置文件读取连接列表
  */
 export function RedisLoadConnections(): $CancellablePromise<redis$0.ConnConfig[] | null> {
-    return $Call.ByID(2839851331);
+    return $Call.ByID(4061312026);
 }
 
 /**
  * RedisOpen 建立并登记一个 Redis 连接
  */
 export function RedisOpen(cfg: redis$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(967554694, cfg);
+    return $Call.ByID(1289817969, cfg);
 }
 
 /**
  * RedisSaveConnections 将连接配置保存到用户配置文件，返回文件路径
  */
 export function RedisSaveConnections(configs: redis$0.ConnConfig[] | null): $CancellablePromise<string> {
-    return $Call.ByID(2005189184, configs);
+    return $Call.ByID(2689707777, configs);
 }
 
 /**
  * RedisScan 增量扫描键（pattern 为空默认 *，limit 限制返回数量）
  */
 export function RedisScan(id: string, pattern: string, count: number, limit: number): $CancellablePromise<redis$0.ScanResult> {
-    return $Call.ByID(998584931, id, pattern, count, limit);
+    return $Call.ByID(1848827424, id, pattern, count, limit);
 }
 
 /**
  * RedisSetString 写入/更新 string 类型键
  */
 export function RedisSetString(id: string, key: string, value: string, ttl: number): $CancellablePromise<void> {
-    return $Call.ByID(110488239, id, key, value, ttl);
+    return $Call.ByID(2976147774, id, key, value, ttl);
 }
 
 /**
  * RedisSetTTL 设置/清除键过期时间
  */
 export function RedisSetTTL(id: string, key: string, ttl: number): $CancellablePromise<void> {
-    return $Call.ByID(676142710, id, key, ttl);
+    return $Call.ByID(2549139781, id, key, ttl);
 }
 
 /**
  * RedisSlowlog 拉取慢查询日志
  */
 export function RedisSlowlog(id: string, count: number): $CancellablePromise<redis$0.SlowlogEntry[] | null> {
-    return $Call.ByID(2966428223, id, count);
+    return $Call.ByID(250341026, id, count);
 }
 
 /**
  * RedisSrvAddLocal 注册本机已有的 redis-server 目录
  */
 export function RedisSrvAddLocal(dir: string): $CancellablePromise<void> {
-    return $Call.ByID(3759772109, dir);
+    return $Call.ByID(2425220516, dir);
 }
 
 /**
  * RedisSrvChooseDir 弹原生目录选择框（供添加本机 Redis 目录），取消返回空串
  */
 export function RedisSrvChooseDir(): $CancellablePromise<string> {
-    return $Call.ByID(2491338461);
+    return $Call.ByID(3932242634);
 }
 
 /**
  * RedisSrvClearLogs 真实清空实例日志（截断 server.log + 清环形；容器模式退化为清环形）
  */
 export function RedisSrvClearLogs(id: string): $CancellablePromise<void> {
-    return $Call.ByID(4209830343, id);
+    return $Call.ByID(3714617344, id);
 }
 
 /**
  * RedisSrvDefaultImage Docker 模式默认镜像
  */
 export function RedisSrvDefaultImage(): $CancellablePromise<string> {
-    return $Call.ByID(1455590433);
+    return $Call.ByID(598072460);
 }
 
 /**
  * RedisSrvDockerAvailable Docker 引擎是否就绪（不可用时返回原因，仅提示不阻断保存）
  */
 export function RedisSrvDockerAvailable(): $CancellablePromise<[boolean, string]> {
-    return $Call.ByID(2027966186);
+    return $Call.ByID(2583078229);
 }
 
 /**
  * RedisSrvDockerImages 本地 redis 系镜像 tag（Docker 模式表单候选）
  */
 export function RedisSrvDockerImages(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(1897304353);
+    return $Call.ByID(1653314464);
 }
 
 /**
  * RedisSrvInstall 异步安装版本，进度经 redis:install 事件推送
  */
 export function RedisSrvInstall(version: string): $CancellablePromise<void> {
-    return $Call.ByID(1739165202, version);
+    return $Call.ByID(325901993, version);
 }
 
 /**
  * RedisSrvListInstances 列出全部实例配置
  */
 export function RedisSrvListInstances(): $CancellablePromise<redis$0.InstanceConfig[] | null> {
-    return $Call.ByID(4106394769);
+    return $Call.ByID(864258742);
 }
 
 /**
  * RedisSrvListVersions 列出本地可用版本（内置/已下载/本机登记，按版本降序）
  */
 export function RedisSrvListVersions(): $CancellablePromise<redis$0.ServerVersion[] | null> {
-    return $Call.ByID(1313185602);
+    return $Call.ByID(4062833947);
 }
 
 /**
  * RedisSrvLogs 返回实例最近 n 行日志
  */
 export function RedisSrvLogs(id: string, lines: number): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2493264784, id, lines);
+    return $Call.ByID(3770665513, id, lines);
 }
 
 /**
  * RedisSrvPortTaken 报告端口能否给实例用（任意工具实例已登记或进程监听），返回占用原因，空串表示可用
  */
 export function RedisSrvPortTaken(port: number, excludeId: string): $CancellablePromise<string> {
-    return $Call.ByID(3218033587, port, excludeId);
+    return $Call.ByID(3962043496, port, excludeId);
 }
 
 /**
  * RedisSrvRemoteVersions 拉取线上可安装版本（GitHub redis-windows，>=7.0）
  */
 export function RedisSrvRemoteVersions(): $CancellablePromise<redis$0.RemoteVersion[] | null> {
-    return $Call.ByID(4189768640);
+    return $Call.ByID(3612803661);
 }
 
 /**
  * RedisSrvRemoveInstance 删除实例配置（运行中先停止）
  */
 export function RedisSrvRemoveInstance(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3854284012, id);
+    return $Call.ByID(2275683481, id);
 }
 
 /**
  * RedisSrvRemoveVersion 删除版本（内置不可删，运行中实例引用时拒绝）
  */
 export function RedisSrvRemoveVersion(version: string): $CancellablePromise<void> {
-    return $Call.ByID(3019475953, version);
+    return $Call.ByID(522724530, version);
 }
 
 /**
  * RedisSrvSaveInstance 新增/更新实例配置（ID 为空则新建）
  */
 export function RedisSrvSaveInstance(cfg: redis$0.InstanceConfig): $CancellablePromise<void> {
-    return $Call.ByID(803225001, cfg);
+    return $Call.ByID(1810150724, cfg);
 }
 
 /**
  * RedisSrvServersDir 返回离线/插件目录 <exedir>/plugins/redis（内置版本与离线 zip 放置位置），供前端展示指引
  */
 export function RedisSrvServersDir(): $CancellablePromise<string> {
-    return $Call.ByID(4285580056);
+    return $Call.ByID(1472128497);
 }
 
 /**
  * RedisSrvStart 启动实例（隐藏窗口拉起 redis-server，日志经 redis:serverlog 事件推送）
  */
 export function RedisSrvStart(id: string): $CancellablePromise<void> {
-    return $Call.ByID(112117585, id);
+    return $Call.ByID(3203044338, id);
 }
 
 /**
  * RedisSrvStatus 实例运行状态（PING+INFO 实时探测）
  */
 export function RedisSrvStatus(id: string): $CancellablePromise<redis$0.InstanceStatus> {
-    return $Call.ByID(3590732949, id);
+    return $Call.ByID(2567737172, id);
 }
 
 /**
  * RedisSrvStop 停止实例（优雅 SHUTDOWN NOSAVE，兑底 Kill）
  */
 export function RedisSrvStop(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3104220171, id);
+    return $Call.ByID(716429874, id);
 }
 
 /**
  * RedisSrvSuggestPort 从 from 起探测可用端口
  */
 export function RedisSrvSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(2193662296, $from);
+    return $Call.ByID(3232528059, $from);
 }
 
 /**
  * RedisStartMonitor 开始监控命令（逐条通过 redis:monitor 事件推送）
  */
 export function RedisStartMonitor(cfg: redis$0.ConnConfig): $CancellablePromise<void> {
-    return $Call.ByID(2783334280, cfg);
+    return $Call.ByID(278339431, cfg);
 }
 
 /**
  * RedisStatus 获取服务器状态概览
  */
 export function RedisStatus(id: string): $CancellablePromise<redis$0.ServerStatus> {
-    return $Call.ByID(3125832712, id);
+    return $Call.ByID(601579223, id);
 }
 
 /**
  * RedisStopMonitor 停止监控命令
  */
 export function RedisStopMonitor(): $CancellablePromise<void> {
-    return $Call.ByID(1812640784);
+    return $Call.ByID(600203921);
 }
 
 /**
  * RedisTest 按表单参数测试 Redis 连通性（含密码/DB 验证），返回握手耗时毫秒
  */
 export function RedisTest(cfg: redis$0.ConnConfig): $CancellablePromise<number> {
-    return $Call.ByID(2425371758, cfg);
+    return $Call.ByID(1629184685, cfg);
 }
 
 /**
@@ -2957,7 +2957,7 @@ export function RedisTest(cfg: redis$0.ConnConfig): $CancellablePromise<number> 
  * 图标值本身（icon-xxx / Arco 名）随 ball.icon 由 SaveConfig 持久化，供设置页回显。
  */
 export function SaveBallIcon(b64Png: string): $CancellablePromise<void> {
-    return $Call.ByID(1828387070, b64Png);
+    return $Call.ByID(4005009651, b64Png);
 }
 
 /**
@@ -2965,28 +2965,28 @@ export function SaveBallIcon(b64Png: string): $CancellablePromise<void> {
  * 用户确认后把成品 PNG 写到所选路径。返回最终路径；用户取消则返回空串、不报错。
  */
 export function SaveCaptureFile(data: string): $CancellablePromise<string> {
-    return $Call.ByID(3329736298, data);
+    return $Call.ByID(3345937301, data);
 }
 
 /**
  * SaveConfig 保存配置：写入用户配置目录 JSON + 重新初始化日志器 + 热键重载 + 浮动球显隐；返回日志目录。
  */
 export function SaveConfig(cfg: config$0.AppConfig): $CancellablePromise<string> {
-    return $Call.ByID(864612616, cfg);
+    return $Call.ByID(2313836705, cfg);
 }
 
 /**
  * SendSerialHex 以 hex 字符串发送数据到当前连接对端，返回发送字节数
  */
 export function SendSerialHex(hexData: string): $CancellablePromise<number> {
-    return $Call.ByID(3844614734, hexData);
+    return $Call.ByID(1520008077, hexData);
 }
 
 /**
  * SetApp 注入 Wails v3 应用实例，供事件推送使用
  */
 export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
-    return $Call.ByID(1078574912, app);
+    return $Call.ByID(2052326069, app);
 }
 
 /**
@@ -2994,14 +2994,14 @@ export function SetApp(app: application$0.App | null): $CancellablePromise<void>
  * 以便浮动球原生菜单等 Go 侧 UI 跟随应用浅/暗黑模式。
  */
 export function SetAppTheme(theme: string): $CancellablePromise<void> {
-    return $Call.ByID(2343244069, theme);
+    return $Call.ByID(1233977474, theme);
 }
 
 /**
  * SetDefaultLogo 注入内置默认 logo 字节
  */
 export function SetDefaultLogo(b: string | null): $CancellablePromise<void> {
-    return $Call.ByID(1315853365, b);
+    return $Call.ByID(763630052, b);
 }
 
 /**
@@ -3010,14 +3010,14 @@ export function SetDefaultLogo(b: string | null): $CancellablePromise<void> {
  * 走 config.Update 读改写并落盘，只动 Order 段，不触发 SaveConfig 那一整套副作用（日志器/热键/球等）。
  */
 export function SetListOrder(key: string, ids: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2928230559, key, ids);
+    return $Call.ByID(2425166818, key, ids);
 }
 
 /**
  * SetMainWindow 注入主窗口句柄，供托盘“打开主界面”及关闭到托盘使用
  */
 export function SetMainWindow(w: application$0.Window): $CancellablePromise<void> {
-    return $Call.ByID(428211000, w);
+    return $Call.ByID(1322846375, w);
 }
 
 /**
@@ -3027,14 +3027,14 @@ export function SetMainWindow(w: application$0.Window): $CancellablePromise<void
  * 都会建一个永远不会显示的通知窗口。
  */
 export function SetNativeNotify(v: boolean): $CancellablePromise<void> {
-    return $Call.ByID(951107091, v);
+    return $Call.ByID(2203486880, v);
 }
 
 /**
  * SetSerialControlBits 实时切换串口 RTS / DTR 电平
  */
 export function SetSerialControlBits(rts: boolean, dtr: boolean): $CancellablePromise<void> {
-    return $Call.ByID(4275661150, rts, dtr);
+    return $Call.ByID(1677960627, rts, dtr);
 }
 
 /**
@@ -3043,14 +3043,14 @@ export function SetSerialControlBits(rts: boolean, dtr: boolean): $CancellablePr
  * 任一侧排完都广播 config:saved，让主页/侧栏/设置页一起跟上；未列出的工具保持原相对顺序排在末尾。
  */
 export function SetToolOrder(ids: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2158094021, ids);
+    return $Call.ByID(1945109552, ids);
 }
 
 /**
  * SetTrayIcon 注入托盘图标字节（PNG/ICO）
  */
 export function SetTrayIcon(b: string | null): $CancellablePromise<void> {
-    return $Call.ByID(4116207548, b);
+    return $Call.ByID(2204952799, b);
 }
 
 /**
@@ -3058,7 +3058,7 @@ export function SetTrayIcon(b: string | null): $CancellablePromise<void> {
  * 自动消失；同一时间仅保留最新一条通知。
  */
 export function ShowMessage(level: string, text: string): $CancellablePromise<void> {
-    return $Call.ByID(3786414005, level, text);
+    return $Call.ByID(3017425490, level, text);
 }
 
 /**
@@ -3066,7 +3066,7 @@ export function ShowMessage(level: string, text: string): $CancellablePromise<vo
  * 应用名 + 标题 + 内容 + 关闭钮），驻留直到用户点 ✕ 或代码调用 NotifyClose。
  */
 export function ShowNotification(title: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(541284893, title, content);
+    return $Call.ByID(1113145460, title, content);
 }
 
 /**
@@ -3074,7 +3074,7 @@ export function ShowNotification(title: string, content: string): $CancellablePr
  * 安装任务的完成/失败用它把颜色区分开。
  */
 export function ShowNotificationLevel(title: string, content: string, level: string): $CancellablePromise<void> {
-    return $Call.ByID(3795708357, title, content, level);
+    return $Call.ByID(2826198314, title, content, level);
 }
 
 /**
@@ -3082,42 +3082,42 @@ export function ShowNotificationLevel(title: string, content: string, level: str
  * （系统右下角渲染、自动消失、可进入操作中心/专注助手），异步执行不阻塞调用方。
  */
 export function ShowSystemNotification(title: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(1795054056, title, content);
+    return $Call.ByID(1275626385, title, content);
 }
 
 /**
  * SiteCloneCancel 取消当前仿站任务；无任务时静默返回。
  */
 export function SiteCloneCancel(): $CancellablePromise<void> {
-    return $Call.ByID(4025635643);
+    return $Call.ByID(260130656);
 }
 
 /**
  * SiteCloneStart 启动一次仿站抓取，立即返回 jobId；结束/取消前重复调用会被拒。
  */
 export function SiteCloneStart(opts: siteclone$0.Options): $CancellablePromise<string> {
-    return $Call.ByID(4187290751, opts);
+    return $Call.ByID(2279788554, opts);
 }
 
 /**
  * SnifferPortTaken 报告代理端口能否使用，返回占用原因，空串表示可用
  */
 export function SnifferPortTaken(port: number): $CancellablePromise<string> {
-    return $Call.ByID(2005291832, port);
+    return $Call.ByID(3090033473, port);
 }
 
 /**
  * SnifferProxyStatus 返回代理运行状态与端口
  */
 export function SnifferProxyStatus(): $CancellablePromise<[boolean, number]> {
-    return $Call.ByID(1615184120);
+    return $Call.ByID(968368661);
 }
 
 /**
  * SnifferSuggestPort 从 from 起探测一个可用的代理端口（跳过实例登记与系统监听）
  */
 export function SnifferSuggestPort($from: number): $CancellablePromise<number> {
-    return $Call.ByID(3640183019, $from);
+    return $Call.ByID(37096654, $from);
 }
 
 /**
@@ -3126,7 +3126,7 @@ export function SnifferSuggestPort($from: number): $CancellablePromise<number> {
  * 新增 ports 参数，例如传入 ["80"] 或 ["80", "443"]
  */
 export function StartCaptureSniffer(devices: string[] | null, protocols: string[] | null, ports: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(557472460, devices, protocols, ports);
+    return $Call.ByID(1385152819, devices, protocols, ports);
 }
 
 /**
@@ -3134,119 +3134,119 @@ export function StartCaptureSniffer(devices: string[] | null, protocols: string[
  * 每捕获一条请求/响应，通过 "sniffer:flow" 事件推送给前端。
  */
 export function StartSnifferProxy(port: number): $CancellablePromise<void> {
-    return $Call.ByID(2713932840, port);
+    return $Call.ByID(1680792995, port);
 }
 
 /**
  * StopCapture 暴露给前端：停止抓包
  */
 export function StopCaptureSniffer(): $CancellablePromise<void> {
-    return $Call.ByID(2564309322);
+    return $Call.ByID(4112502779);
 }
 
 /**
  * StopSnifferProxy 停止 MITM 代理：还原系统代理并卸载根证书
  */
 export function StopSnifferProxy(): $CancellablePromise<void> {
-    return $Call.ByID(3926363566);
+    return $Call.ByID(4218153979);
 }
 
 /**
  * TaskClear 清掉一条已结束的任务（进行中的不允许删，还在写）。
  */
 export function TaskClear(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1401327851, id);
+    return $Call.ByID(1646634148, id);
 }
 
 /**
  * TaskClearFinished 一次清掉所有已结束的任务。
  */
 export function TaskClearFinished(): $CancellablePromise<void> {
-    return $Call.ByID(3956386149);
+    return $Call.ByID(2186267250);
 }
 
 /**
  * TaskList 返回安装/下载任务的快照：进行中的在最前，其次是最近结束的。
  */
 export function TaskList(): $CancellablePromise<tasks$0.Task[] | null> {
-    return $Call.ByID(2647769246);
+    return $Call.ByID(3794352451);
 }
 
 /**
  * TermChooseKeyFile 弹原生文件选择框选 SSH 私钥，取消返回空串
  */
 export function TermChooseKeyFile(): $CancellablePromise<string> {
-    return $Call.ByID(4222580509);
+    return $Call.ByID(1481409402);
 }
 
 /**
  * TermClose 主动关闭会话
  */
 export function TermClose(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(2893216063, sessionID);
+    return $Call.ByID(2914667960, sessionID);
 }
 
 /**
  * TermDeleteHost 删除记录，返回更新后的完整列表
  */
 export function TermDeleteHost(id: string): $CancellablePromise<term$0.Host[] | null> {
-    return $Call.ByID(3900509968, id);
+    return $Call.ByID(2672881945, id);
 }
 
 /**
  * TermListHosts 终端连接记录列表（密码字段恒为空）
  */
 export function TermListHosts(): $CancellablePromise<term$0.Host[] | null> {
-    return $Call.ByID(1622853180);
+    return $Call.ByID(4038055895);
 }
 
 /**
  * TermOpenDocker 在容器内打开一条交互终端（复用同一套会话/事件通道）
  */
 export function TermOpenDocker(containerID: string, title: string, cols: number, rows: number): $CancellablePromise<term$0.SessionInfo> {
-    return $Call.ByID(3218499685, containerID, title, cols, rows);
+    return $Call.ByID(1920309376, containerID, title, cols, rows);
 }
 
 /**
  * TermOpenSSH 按记录打开一条 SSH 终端会话，返回会话句柄
  */
 export function TermOpenSSH(hostID: string, cols: number, rows: number): $CancellablePromise<term$0.SessionInfo> {
-    return $Call.ByID(3712154377, hostID, cols, rows);
+    return $Call.ByID(1119130830, hostID, cols, rows);
 }
 
 /**
  * TermResize 前端终端尺寸变化时同步远端 PTY
  */
 export function TermResize(sessionID: string, cols: number, rows: number): $CancellablePromise<void> {
-    return $Call.ByID(1377306573, sessionID, cols, rows);
+    return $Call.ByID(2652404700, sessionID, cols, rows);
 }
 
 /**
  * TermSaveHost 新增/更新一条记录，返回更新后的完整列表
  */
 export function TermSaveHost(h: term$0.Host): $CancellablePromise<term$0.Host[] | null> {
-    return $Call.ByID(1237442486, h);
+    return $Call.ByID(467523099, h);
 }
 
 /**
  * TermTestSSH 按表单参数测试 SSH 连通性（只握手不建会话），返回握手耗时毫秒
  */
 export function TermTestSSH(h: term$0.Host): $CancellablePromise<number> {
-    return $Call.ByID(3341519325, h);
+    return $Call.ByID(864272178, h);
 }
 
 /**
  * TermWrite 终端按键输入（data 为 Base64）
  */
 export function TermWrite(sessionID: string, data: string): $CancellablePromise<void> {
-    return $Call.ByID(1664547608, sessionID, data);
+    return $Call.ByID(1249382483, sessionID, data);
 }
 
 /**
  * ToastClose 关闭通知小窗（通知页倒计时结束或用户点关闭时调用）
  */
 export function ToastClose(): $CancellablePromise<void> {
-    return $Call.ByID(4268167846);
+    return $Call.ByID(3822506951);
 }
 
 /**
@@ -3256,14 +3256,14 @@ export function ToastClose(): $CancellablePromise<void> {
  * 返回 true 表示已在 Go 侧处理完毕，调用方不必再广播给前端。
  */
 export function TryActivateNativeTool(toolID: string): $CancellablePromise<boolean> {
-    return $Call.ByID(1625397988, toolID);
+    return $Call.ByID(3765204471, toolID);
 }
 
 /**
  * VideoCmd 悬浮小窗 → 录制工具窗的命令转发（start|pause|resume|stop|cancel）
  */
 export function VideoCmd(command: string): $CancellablePromise<void> {
-    return $Call.ByID(2059714958, command);
+    return $Call.ByID(242221787, command);
 }
 
 /**
@@ -3273,47 +3273,47 @@ export function VideoCmd(command: string): $CancellablePromise<void> {
  * anchorX/anchorY 为小窗锚定的屏幕右下角坐标（DIP）；filename 为建议保存文件名。
  */
 export function VideoOpenWidget(mode: string, fps: number, fx: number, fy: number, fw: number, fh: number, anchorX: number, anchorY: number, filename: string): $CancellablePromise<void> {
-    return $Call.ByID(3065103074, mode, fps, fx, fy, fw, fh, anchorX, anchorY, filename);
+    return $Call.ByID(2313625553, mode, fps, fx, fy, fw, fh, anchorX, anchorY, filename);
 }
 
 /**
  * VideoReport 录制工具窗 → 悬浮小窗的状态上报
  */
 export function VideoReport(state: string, elapsed: number, note: string): $CancellablePromise<void> {
-    return $Call.ByID(111738828, state, elapsed, note);
+    return $Call.ByID(4234303547, state, elapsed, note);
 }
 
 /**
  * VideoSaveAbort 放弃一次上传会话（不写盘）
  */
 export function VideoSaveAbort(session: string): $CancellablePromise<void> {
-    return $Call.ByID(687234487, session);
+    return $Call.ByID(328913754, session);
 }
 
 /**
  * VideoSaveBegin 开始一次视频分块上传会话，返回会话 ID
  */
 export function VideoSaveBegin(filename: string): $CancellablePromise<string> {
-    return $Call.ByID(15326572, filename);
+    return $Call.ByID(3283362573, filename);
 }
 
 /**
  * VideoSaveChunk 追加一块 base64 编码的视频数据
  */
 export function VideoSaveChunk(session: string, base64Chunk: string): $CancellablePromise<void> {
-    return $Call.ByID(3695820712, session, base64Chunk);
+    return $Call.ByID(1420458901, session, base64Chunk);
 }
 
 /**
  * VideoSavePrompt 弹出原生“另存为”对话框选择目录并写盘；用户取消时返回空字符串
  */
 export function VideoSavePrompt(session: string): $CancellablePromise<string> {
-    return $Call.ByID(3332286041, session);
+    return $Call.ByID(170792334, session);
 }
 
 /**
  * VideoWidgetDone 小窗退出：重新显示工具窗口并推送退出事件（保留 recToolWin 引用供另存对话框挂父窗）
  */
 export function VideoWidgetDone(savePath: string): $CancellablePromise<void> {
-    return $Call.ByID(1370169194, savePath);
+    return $Call.ByID(3311465953, savePath);
 }

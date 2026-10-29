@@ -13,8 +13,8 @@ import (
 	"sync"
 	"syscall"
 
-	"go-tools/services/applog"
-	"go-tools/tools/logtail"
+	"Tools/services/applog"
+	"Tools/tools/logtail"
 )
 
 // ============================================================
@@ -211,9 +211,9 @@ func (p *systemdProc) spec(id string) (ProcSpec, error) {
 	return spec, nil
 }
 
-// unitName 生成 unit 文件名：go-tools-<service>-<id>.service（只保留安全字符）。
+// unitName 生成 unit 文件名：Tools-<service>-<id>.service（只保留安全字符）。
 func unitName(spec ProcSpec) string {
-	return "go-tools-" + unitSlug(spec.Service) + "-" + unitSlug(spec.ID) + ".service"
+	return "Tools-" + unitSlug(spec.Service) + "-" + unitSlug(spec.ID) + ".service"
 }
 
 // unitSlug 把任意标识压成 systemd 文件名/单元名允许的字符集。
@@ -237,9 +237,9 @@ func unitSlug(s string) string {
 // renderUnit 生成 unit 文本（Env 排序后再写，保证同样配置产出同样文件）。
 func renderUnit(spec ProcSpec) string {
 	var b strings.Builder
-	b.WriteString("# 由 go-tools 生成，请勿手改；改配置请回面板操作后重新保存\n")
+	b.WriteString("# 由 Tools 生成，请勿手改；改配置请回面板操作后重新保存\n")
 	b.WriteString("[Unit]\n")
-	fmt.Fprintf(&b, "Description=go-tools %s/%s\n", spec.Service, spec.ID)
+	fmt.Fprintf(&b, "Description=Tools %s/%s\n", spec.Service, spec.ID)
 	b.WriteString("After=network.target\n\n")
 
 	b.WriteString("[Service]\n")

@@ -5,10 +5,10 @@ package mysql
 // 结构复刻 tools/redis/server.go，差异点：
 //   - 版本库：官方 dev.mysql.com 免安装 winx64 zip（约 230MB，解压约 1.5GB）
 //   - bundled    ：<exedir>/plugins/mysql/<ver>/（发布内置，无安装标记）
-//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/mysql/<ver>/ 并写 .go-tools-installed 标记
-//   - local      ：用户手动注册的本机已有目录（登记在 go-tools/mysql-locals.json）
-//   - 实例：配置持久化 go-tools/mysql-instances.json；数据/日志在
-//     go-tools/mysql-instances/<id>/（my.ini + data/ + mysql.err）。
+//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/mysql/<ver>/ 并写 .Tools-installed 标记
+//   - local      ：用户手动注册的本机已有目录（登记在 Tools/mysql-locals.json）
+//   - 实例：配置持久化 Tools/mysql-instances.json；数据/日志在
+//     Tools/mysql-instances/<id>/（my.ini + data/ + mysql.err）。
 //     首次启动自动 mysqld --initialize-insecure（root 空密码），
 //     配置了 RootPassword 则在宣告就绪前落库并二次验证（就绪 = 配置密码真能连）。
 //     my.ini 刻意不启用 skip-name-resolve：TCP 127.0.0.1 需要反解回
@@ -39,11 +39,11 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
-	"go-tools/services/sysx"
-	"go-tools/tools/logtail"
-	"go-tools/tools/portcheck"
-	"go-tools/tools/srvstate"
+	"Tools/appdirs"
+	"Tools/services/sysx"
+	"Tools/tools/logtail"
+	"Tools/tools/portcheck"
+	"Tools/tools/srvstate"
 )
 
 func init() {
@@ -107,7 +107,7 @@ type InstanceConfig struct {
 	// Docker 运行模式（零值/"local" 为本地拉起 mysqld，向后兼容）
 	Mode          string `json:"mode"`          // local | docker
 	Image         string `json:"image"`         // docker 模式必填，如 mysql:8.4
-	ContainerName string `json:"containerName"` // 留空则 go-tools-mysql-<id>
+	ContainerName string `json:"containerName"` // 留空则 Tools-mysql-<id>
 }
 
 // InstanceStatus 实例运行状态（TCP 探测 + SHOW STATUS 聚合）
@@ -151,7 +151,7 @@ func pluginsRoot() (string, error) { return appdirs.Plugins("mysql") }
 func PluginsDir() (string, error) { return pluginsRoot() }
 
 // installedMarker 安装版标记（区别于发布内置版，允许删除）
-const installedMarker = ".go-tools-installed"
+const installedMarker = ".Tools-installed"
 
 func isInstalledVersion(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, installedMarker))
@@ -159,7 +159,7 @@ func isInstalledVersion(dir string) bool {
 }
 
 func markInstalled(dir string) {
-	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by go-tools\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by Tools\n"), 0o644)
 }
 
 func localsRegistryPath() (string, error) {
@@ -986,7 +986,7 @@ func SaveInstance(cfg InstanceConfig) error {
 	}
 	if isDockerMode(&cfg) && strings.TrimSpace(cfg.ContainerName) == "" {
 		// 容器名默认按最终 ID 生成（保证唯一且可凭名反查实例）
-		cfg.ContainerName = "go-tools-mysql-" + cfg.ID
+		cfg.ContainerName = "Tools-mysql-" + cfg.ID
 	}
 	for i := range list {
 		if list[i].ID == cfg.ID {
@@ -1528,7 +1528,7 @@ func quarantineDataDir(dataDir string) (string, error) {
 	return bak, nil
 }
 
-// appendErrNote 往 mysql.err 追加一行 go-tools 自己的说明（备份路径/重建原因）。
+// appendErrNote 往 mysql.err 追加一行 Tools 自己的说明（备份路径/重建原因）。
 //
 // mysqld 的 log-error 是 append 模式，不会截断；写在这里能跟着实例日志一起被前端
 // 读走，比只记应用日志更容易被用户看到（数据目录被挪走这种事必须留个交代）。
@@ -1541,7 +1541,7 @@ func appendErrNote(errPath, note string) {
 		return
 	}
 	defer f.Close()
-	fmt.Fprintf(f, "[go-tools] %s\n", note)
+	fmt.Fprintf(f, "[Tools] %s\n", note)
 }
 
 // errTail 读 mysql.err 尾部 k 行（拼进错误信息，免跳页面排查）
@@ -1566,7 +1566,7 @@ func buildMyIni(cfg *InstanceConfig, basedir, instDir, dataDir string) string {
 		maxConn = 20
 	}
 	var b strings.Builder
-	b.WriteString("# go-tools 自动生成，请勿手改（每次启动覆盖）\n[mysqld]\n")
+	b.WriteString("# Tools 自动生成，请勿手改（每次启动覆盖）\n[mysqld]\n")
 	fmt.Fprintf(&b, "basedir=%s\n", filepath.ToSlash(basedir))
 	fmt.Fprintf(&b, "datadir=%s\n", filepath.ToSlash(dataDir))
 	fmt.Fprintf(&b, "port=%d\n", cfg.Port)

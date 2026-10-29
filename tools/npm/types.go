@@ -6,13 +6,13 @@ package npm
 // 结构复刻 tools/mysql/server.go（redis 同款范式），能力：
 //   - 版本库：nodejs.org 官方 dist（index.json + node-v<ver>-win-x64.zip）
 //   - bundled    ：<exedir>/plugins/npm/<ver>/（发布内置，无安装标记）
-//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/npm/<ver>/ 并写 .go-tools-installed 标记
-//   - local      ：用户手动注册的本机已有目录（登记在 go-tools/npm-locals.json）
-//   - 实例：go-tools/npm-instances.json；每个实例是一个「本地静态站点服务」，
+//   - downloaded ：在线获取/离线 zip 安装，统一落 <exedir>/plugins/npm/<ver>/ 并写 .Tools-installed 标记
+//   - local      ：用户手动注册的本机已有目录（登记在 Tools/npm-locals.json）
+//   - 实例：Tools/npm-instances.json；每个实例是一个「本地静态站点服务」，
 //     由本程序内置的 Go HTTP 服务器承载（不依赖 http-server 等外部包，零网络风险），
 //     记录的 Node 版本用于展示与「用该 Node 跑 npm 命令」。
-//     目录：go-tools/npm-instances/<id>/{logs/, www/}
-//   - npm 配置：go-tools/npmrc（本程序托管的 .npmrc），所有 npm 命令统一带
+//     目录：Tools/npm-instances/<id>/{logs/, www/}
+//   - npm 配置：Tools/npmrc（本程序托管的 .npmrc），所有 npm 命令统一带
 //     --userconfig 走这份文件，避免误改用户 ~/.npmrc；
 //     同时提供「应用到用户全局 ~/.npmrc」「打开目录」等主动操作。
 //   - 全局包：npm ls -g --depth=0 --json / npm install -g <name>（进度经 "npm:install" 事件）
@@ -36,7 +36,7 @@ import (
 	"sync"
 	"time"
 
-	"go-tools/appdirs"
+	"Tools/appdirs"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -88,7 +88,7 @@ type InstanceConfig struct {
 	Mode string `json:"mode"`
 	// Image 容器模式的镜像（如 nginx:alpine）；站点目录挂到 /usr/share/nginx/html
 	Image string `json:"image"`
-	// ContainerName 容器名，留空按实例 ID 自动生成（go-tools-npm-<id>）
+	// ContainerName 容器名，留空按实例 ID 自动生成（Tools-npm-<id>）
 	ContainerName string `json:"containerName"`
 }
 
@@ -169,7 +169,7 @@ func pluginsRoot() (string, error) { return appdirs.Plugins("npm") }
 func PluginsDir() (string, error) { return pluginsRoot() }
 
 // installedMarker 安装版标记（区别于发布内置版，允许删除）
-const installedMarker = ".go-tools-installed"
+const installedMarker = ".Tools-installed"
 
 func isInstalledVersion(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, installedMarker))
@@ -177,7 +177,7 @@ func isInstalledVersion(dir string) bool {
 }
 
 func markInstalled(dir string) {
-	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by go-tools\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, installedMarker), []byte("installed by Tools\n"), 0o644)
 }
 
 func localsRegistryPath() (string, error) {
@@ -468,7 +468,7 @@ func RemoveVersion(version string) error {
 			if findNode(d) == "" {
 				return fmt.Errorf("未找到版本 %s 的安装目录", version)
 			}
-			return fmt.Errorf("目录 %s 非 go-tools 安装版（内置或手工放置），不可删除", version)
+			return fmt.Errorf("目录 %s 非 Tools 安装版（内置或手工放置），不可删除", version)
 		}
 		return os.RemoveAll(d)
 	case "local":

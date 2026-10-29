@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-tools/tools/logtail"
-	"go-tools/tools/portcheck"
+	"Tools/tools/logtail"
+	"Tools/tools/portcheck"
 )
 
 func init() {
