@@ -118,6 +118,9 @@ func (a *App) FtpChooseKeyFile() (string, error) {
 		SetTitle("选择 SSH 私钥").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return path, nil
@@ -134,6 +137,9 @@ func (a *App) FtpChooseLocalFiles() ([]string, error) {
 		SetTitle("选择要上传的文件").
 		PromptForMultipleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return picked, nil
@@ -153,6 +159,9 @@ func (a *App) FtpChooseLocalFolder(title string) (string, error) {
 		SetTitle(title).
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return strings.TrimSpace(picked), nil

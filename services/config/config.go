@@ -178,19 +178,21 @@ func DefaultConfig() AppConfig {
 			{ID: "speedtest", Key: "speedtest", Name: "网速测速", Path: "/tools/speedtest", Icon: "icon-cesu", Single: true, Width: 1080, Height: 720},
 			{ID: "term", Key: "term", Name: "终端连接", Path: "/tools/term", Icon: "icon-terminal", Single: true, Width: 1200, Height: 800},
 			{ID: "disk", Key: "disk", Name: "磁盘管理", Path: "/tools/disk", Icon: "icon-yingpan", Single: true, Width: 1360, Height: 860},
+			{ID: "siteclone", Key: "siteclone", Name: "仿站工具", Path: "/tools/siteclone", Icon: "download", Single: true, Width: 1120, Height: 780, Home: homeOff()},
+			{ID: "guard", Key: "guard", Name: "进程守护", Path: "/tools/guard", Icon: "apps", Single: true, Width: 1120, Height: 720, Home: homeOff()},
 			{ID: "ftp", Key: "ftp", Name: "文件传输", Path: "/tools/ftp", Icon: "icon-ftp", Single: true, Width: 1360, Height: 860},
 			{ID: "redis", Key: "redis", Name: "Redis管理", Path: "/tools/redis", Icon: "icon-icon-redis", Single: true, Width: 1360, Height: 860},
 			{ID: "mysql", Key: "mysql", Name: "MySQL管理", Path: "/tools/mysql", Icon: "icon-MySQL", Single: true, Width: 1360, Height: 860},
 			{ID: "php", Key: "php", Name: "PHP管理", Path: "/tools/php", Icon: "icon-php", Single: true, Width: 1360, Height: 860},
 			{ID: "nginx", Key: "nginx", Name: "Nginx管理", Path: "/tools/nginx", Icon: "icon-ngnix", Single: true, Width: 1360, Height: 860},
 			{ID: "npm", Key: "npm", Name: "Npm管理", Path: "/tools/npm", Icon: "icon-npm", Single: true, Width: 1360, Height: 860},
-			{ID: "sniffer", Key: "sniffer", Name: "抓包工具", Path: "/tools/sniffer", Icon: "bug", Single: true, Fullscreen: true, Quick: true},
+			{ID: "sniffer", Key: "sniffer", Name: "抓包工具", Path: "/tools/sniffer", Icon: "bug", Single: true, Fullscreen: true},
 			{ID: "websocket", Key: "websocket", Name: "WebSocket调试", Path: "/tools/websocket", Icon: "icon-wangluo1", Single: true, Fullscreen: true, Width: 1360, Height: 860},
 			{ID: "timestamp", Key: "timestamp", Name: "时间戳转换", Path: "/tools/timestamp", Icon: "icon-riqishijianzhuanhuanmiaoshu"},
 			{ID: "usbserial", Key: "usbserial", Name: "USB调试", Path: "/tools/usbserial", Icon: "icon-usb1", Single: true, Width: 1360, Height: 860},
-			{ID: "video", Key: "video", Name: "视频录制", Path: "/tools/video", Icon: "video-camera", Single: true, Fullscreen: true, Quick: true, Home: homeOff()},
+			{ID: "video", Key: "video", Name: "视频录制", Path: "/tools/video", Icon: "video-camera", Single: true, Fullscreen: true, Home: homeOff()},
 			{ID: "screenshot", Key: "screenshot", Name: "截图", Event: "screenshot", Icon: "icon-jietu", Shortcut: "Ctrl+Alt+A", Quick: true},
-			{ID: "colorpicker", Key: "colorpicker", Name: "颜色取色器", Path: "/tools/colorpicker", Icon: "icon-quseqi", Single: true, DisableFullscreen: true, Width: 480, Height: 560, Quick: true},
+			{ID: "colorpicker", Key: "colorpicker", Name: "颜色取色器", Path: "/tools/colorpicker", Icon: "icon-quseqi", Single: true, DisableFullscreen: true, Width: 480, Height: 276, Quick: true},
 			{ID: "encdec", Key: "encdec", Name: "文字加密解密", Path: "/tools/encdec", Icon: "lock", Home: homeOff()},
 			{ID: "strrandom", Key: "strrandom", Name: "随机字符串生成", Path: "/tools/strrandom", Icon: "icon-zifuchuan", Home: homeOff()},
 			{ID: "qrcode", Key: "qrcode", Name: "二维码生成", Path: "/tools/qrcode", Icon: "icon-erweima3", Home: homeOff()},
@@ -462,6 +464,8 @@ func normalizeConfig(cfg *AppConfig) {
 		{"speedtest", "speedtest", "网速测速", "/tools/speedtest", "icon-cesu"},
 		{"browser", "browser", "浏览器", "/tools/browser", "icon-liulanqi1"},
 		{"disk", "disk", "磁盘管理", "/tools/disk", "icon-yingpan"},
+		{"siteclone", "siteclone", "仿站工具", "/tools/siteclone", "download"},
+		{"guard", "guard", "进程守护", "/tools/guard", "apps"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -496,6 +500,14 @@ func normalizeConfig(cfg *AppConfig) {
 				// 双栏文件管理要满屏，左右两栏都不挤
 				newTool.Width, newTool.Height = 0, 0
 				newTool.Fullscreen = true
+			}
+			if extra.key == "siteclone" {
+				newTool.Width, newTool.Height = 1120, 780
+				newTool.Home = homeOff()
+			}
+			if extra.key == "guard" {
+				newTool.Width, newTool.Height = 1120, 720
+				newTool.Home = homeOff()
 			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}

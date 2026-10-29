@@ -140,6 +140,9 @@ func (a *App) DiskUpload(dstDir string) ([]string, error) {
 		SetTitle("选择要复制到当前目录的文件").
 		PromptForMultipleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	if len(picked) == 0 {
@@ -164,6 +167,9 @@ func (a *App) DiskUploadFolder(dstDir string) (string, error) {
 		SetTitle("选择要复制到当前目录的文件夹").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	if strings.TrimSpace(picked) == "" {
@@ -200,6 +206,9 @@ func (a *App) DiskDownload(path string) (string, error) {
 		AddFilter("所有文件 (*.*)", "*.*").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	if strings.TrimSpace(target) == "" {

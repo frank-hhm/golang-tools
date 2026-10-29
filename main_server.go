@@ -41,6 +41,7 @@ import (
 	"go-tools/services/tasks"
 	"go-tools/tools/docker"
 	"go-tools/tools/ftp"
+	"go-tools/tools/guard"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
@@ -95,6 +96,8 @@ func init() {
 	application.RegisterEvent[ftp.ServerLog]("ftp:serverlog")
 	// 统一的安装/下载任务增量：前端只认这一种形状
 	application.RegisterEvent[tasks.Task](tasks.UpdateEvent)
+	// 进程守护：守护列表与运行态的实时推送
+	application.RegisterEvent[guard.Snapshot]("guard:status")
 }
 
 func main() {
@@ -186,8 +189,11 @@ func main() {
 	npm.SetEmitter(emit)
 	term.SetEmitter(emit)
 	ftp.SetEmitter(emit)
+	guard.SetEmitter(emit)
 	// 面板部署里服务端同样可开：配了自动启动就在进程内拉起
 	ftp.StartAutoServer()
+	// 守护工具：按“启用守护”自动拉起登记的程序
+	guard.StartAutoGuard()
 
 	// 对外服务：登录鉴权 + 安全入口 + 反向代理到上面的回环地址
 	panelSrv, err := panel.New(fmt.Sprintf("127.0.0.1:%d", innerPort), panelSet, panel.Options{
@@ -220,6 +226,8 @@ func main() {
 	// 兜底收尾：service 生命周期正常时会关一遍，这里防退出路径绕过，把远端 shell 挂住
 	term.CloseAll()
 	ftp.CloseAll()
+	// 守护工具：一并结束由其拉起的子进程
+	guard.Shutdown()
 
 	if runErr != nil {
 		log.Fatal(runErr)

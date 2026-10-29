@@ -30,6 +30,9 @@ func (a *App) TermChooseKeyFile() (string, error) {
 		SetTitle("选择 SSH 私钥").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return path, nil

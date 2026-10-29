@@ -43,6 +43,13 @@ export interface FtpPart {
   path: string;
 }
 
+/** 跨栏拖拽落点事件的负载：只带传输真正需要的字段，拖拽状态才能不握 FtpEntry 实例 */
+export interface FtpDragItem {
+  path: string;
+  name: string;
+  isDir: boolean;
+}
+
 export interface FtpListing {
   path: string;
   parent: string;

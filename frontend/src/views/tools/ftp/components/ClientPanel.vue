@@ -82,13 +82,13 @@
         <div class="work-body">
           <div class="pane-cell">
             <file-pane ref="localPane" side="local" title="本地" :session-id="session.id" :upload-dir="remotePath"
-              @path-change="() => {}" @drop-entry="(e: FtpEntry, s: 'local' | 'remote') => onDropEntry(s, e)" />
+              @path-change="() => {}" @drop-entry="(i: FtpDragItem, s: 'local' | 'remote') => onDropEntry(s, i)" />
           </div>
           <div class="pane-split" />
           <div class="pane-cell">
             <file-pane ref="remotePane" side="remote" title="远程" :session-id="session.id" :start-path="session.home"
               @preview="onPreview" @path-change="(p: string) => (remotePath = p)"
-              @drop-entry="(e: FtpEntry, s: 'local' | 'remote') => onDropEntry(s, e)" />
+              @drop-entry="(i: FtpDragItem, s: 'local' | 'remote') => onDropEntry(s, i)" />
           </div>
         </div>
 
@@ -109,7 +109,7 @@ import FilePane from './FilePane.vue';
 import TransferQueue from './TransferQueue.vue';
 import ConnectionFormModal from './ConnectionFormModal.vue';
 import PreviewModal from './PreviewModal.vue';
-import type { FtpConnection, FtpEntry, FtpSessionInfo, FtpTransfer } from '../types';
+import type { FtpConnection, FtpDragItem, FtpEntry, FtpSessionInfo, FtpTransfer } from '../types';
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
@@ -249,15 +249,15 @@ function onPreview(entry: FtpEntry) {
 
 /** 把一栏拖起的文件放到另一栏：
  *  - 从本地拖起、落到远程栏 → 上传到远程当前目录
- *  - 从远程拖起、落到本地栏 → 下载到本地目录 */
-function onDropEntry(sourceSide: 'local' | 'remote', entry: FtpEntry) {
+ *  - 从远程拖起、落到本地栏 → 下载到本地当前目录（不弹选择框）
+ * sourceSide 是 FilePane 带回来的「拖起那侧」，不是落点那侧。 */
+function onDropEntry(sourceSide: 'local' | 'remote', item: FtpDragItem) {
   if (!session.value) {
     Message.warning({ content: '请先连接服务器再拖拽传输', position: 'top', duration: 3000 });
     return;
   }
-  // sourceSide = 拖起来源栏：本地拖起→上传到远程当前目录；远程拖起→下载到本地
-  if (sourceSide === 'local') void remotePane.value?.uploadPaths?.([entry.path]);
-  else void localPane.value?.download?.(entry.path);
+  if (sourceSide === 'local') void remotePane.value?.uploadPaths?.([item.path]);
+  else void localPane.value?.downloadPaths?.([item.path]);
 }
 
 /* ==================== 传输队列 ==================== */

@@ -15,12 +15,14 @@ import (
 	"go-tools/services/tasks"
 	"go-tools/tools/docker"
 	"go-tools/tools/ftp"
+	"go-tools/tools/guard"
 	"go-tools/tools/mysql"
 	"go-tools/tools/nginx"
 	"go-tools/tools/npm"
 	"go-tools/tools/php"
 	"go-tools/tools/redis"
 	"go-tools/tools/screenshot"
+	"go-tools/tools/siteclone"
 	"go-tools/tools/sniffer"
 	"go-tools/tools/srvstate"
 	"go-tools/tools/term"
@@ -84,6 +86,10 @@ func init() {
 	application.RegisterEvent[ftp.ServerLog]("ftp:serverlog")
 	// 统一的安装/下载任务增量：前端只认这一种形状
 	application.RegisterEvent[tasks.Task](tasks.UpdateEvent)
+	// 仿站工具：扒站/整站下载与离线改写的进度推送
+	application.RegisterEvent[siteclone.Progress]("siteclone:progress")
+	// 进程守护：守护列表与运行态（启动/退出/重启）的实时推送
+	application.RegisterEvent[guard.Snapshot]("guard:status")
 }
 
 func main() {
@@ -169,8 +175,11 @@ func main() {
 	npm.SetEmitter(emit)
 	term.SetEmitter(emit)
 	ftp.SetEmitter(emit)
+	guard.SetEmitter(emit)
 	// 服务端若配了“随应用启动”就在这里拉起（失败只记日志，不阻断启动）
 	ftp.StartAutoServer()
+	// 守护工具：按“启用守护”自动拉起登记的程序
+	guard.StartAutoGuard()
 
 	// Create a new window with the necessary options.
 	// 'Title' is the title of the window.
@@ -226,6 +235,8 @@ func main() {
 	// 把远端 shell 一直挂在服务器上。
 	term.CloseAll()
 	ftp.CloseAll()
+	// 守护工具：一并结束由其拉起的子进程
+	guard.Shutdown()
 
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {

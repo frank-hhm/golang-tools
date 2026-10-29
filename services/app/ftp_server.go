@@ -140,6 +140,9 @@ func (a *App) FtpChooseServerRoot() (string, error) {
 		SetTitle("选择服务端根目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return strings.TrimSpace(picked), nil

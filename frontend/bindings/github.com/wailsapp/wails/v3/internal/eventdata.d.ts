@@ -19,6 +19,9 @@ import type * as docker$0 from "../../../../../go-tools/tools/docker/models.js";
 import type * as ftp$0 from "../../../../../go-tools/tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as guard$0 from "../../../../../go-tools/tools/guard/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as mysql$0 from "../../../../../go-tools/tools/mysql/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -35,6 +38,9 @@ import type * as redis$0 from "../../../../../go-tools/tools/redis/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as screenshot$0 from "../../../../../go-tools/tools/screenshot/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as siteclone$0 from "../../../../../go-tools/tools/siteclone/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as sniffer$0 from "../../../../../go-tools/tools/sniffer/models.js";
@@ -57,6 +63,7 @@ declare module "@wailsio/runtime" {
             "ftp:serverlog": ftp$0.ServerLog;
             "ftp:session": ftp$0.SessionEvent;
             "ftp:transfer": ftp$0.Transfer;
+            "guard:status": guard$0.Snapshot;
             "mysql:install": mysql$0.InstallProgress;
             "nginx:install": nginx$0.InstallProgress;
             "npm:install": npm$0.InstallProgress;
@@ -67,6 +74,7 @@ declare module "@wailsio/runtime" {
             "redis:serverlog": redis$0.ServerLogLine;
             "serial:data": usbserial$0.SerialData;
             "serial:status": usbserial$0.ConnStatusEvent;
+            "siteclone:progress": siteclone$0.Progress;
             "sniffer:flow": sniffer$0.Flow;
             "task:update": tasks$0.Task;
             "term:data": term$0.DataEvent;

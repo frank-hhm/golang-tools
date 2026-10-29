@@ -1874,6 +1874,10 @@ onUnmounted(() => {
 }
 
 .card-extra {
+  /* a-space 根节点是 inline-flex，不撑满就只占内容宽，flex-end 等于白写——
+     工具条会紧贴 tab 尾巴落在中左部；宽度吃满 extra 后靠右才真正生效 */
+  display: flex;
+  width: 100%;
   justify-content: flex-end;
 }
 

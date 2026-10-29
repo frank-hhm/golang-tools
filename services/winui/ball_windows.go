@@ -919,8 +919,9 @@ func bmPx(dip int) int32 {
 func ballShowMenu(ballHwnd uintptr) {
 	ballMenuDark = ballEffectiveDark()
 
-	// 组装菜单项：仅 quick 工具（“关闭浮动球”入口已移除，关闭走设置页开关）
-	items := ballQuickItems()
+	// 组装菜单项：quick 工具（“关闭浮动球”入口已移除，关闭走设置页开关）
+	// + 末尾固定一项「打开主页」：不来自配置，没标任何快捷工具也一直在
+	items := append(ballQuickItems(), MenuItem{ID: BallHomeItemID, Label: "打开主页"})
 	ballMenuItems = items
 
 	// 菜单字体（现代无行线）；失败则绘制时回退系统 GUI 字体

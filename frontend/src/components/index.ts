@@ -14,6 +14,7 @@ import CommonInfoRow from '@/components/common/info-row/index.vue'
 import CommonLogModal from '@/components/common/log-modal/index.vue'
 import CommonTitleBar from '@/components/common/title-bar/index.vue'
 import CommonToolIcon from '@/components/common/tool-icon/index.vue'
+import CommonFileIcon from '@/components/common/file-icon/index.vue'
 import BodyViewer from '@/components/business/body-viewer/index.vue'
 import DockerImages from '@/components/business/docker-images/index.vue'
 
@@ -56,6 +57,8 @@ export const ComponentsPlugin: Plugin = {
         app.component('common-title-bar', CommonTitleBar);
         // common-tool-icon：渲染功能配置里的图标值（icon-xxx 字体图标 / Arco 图标名两种写法都认）
         app.component('common-tool-icon', CommonToolIcon);
+        // common-file-icon：Windows 11 风格的文件/目录图标（内联 SVG，按扩展名上色），磁盘管理与 FTP 文件列表共用
+        app.component('common-file-icon', CommonFileIcon);
         // select-icon-modal：图标选择弹层，通过 type 属性切换图标源
         //  - type="iconfont"（默认）：本地字体图标，emit `icon-xxx`
         //  - type="arco"：Arco Design 图标库，emit 图标名（如 camera / clock-circle）
@@ -66,4 +69,4 @@ export const ComponentsPlugin: Plugin = {
         app.component('docker-images', DockerImages);
     },
 };
-export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, selectIconModal, BodyViewer, DockerImages };
+export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, selectIconModal, BodyViewer, DockerImages };

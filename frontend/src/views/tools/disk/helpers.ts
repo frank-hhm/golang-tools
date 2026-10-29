@@ -46,16 +46,3 @@ export function driveRootOf(p: string): string {
     const m = /^([A-Za-z]:)[\\/]/.exec(String(p || ""));
     return m ? m[1].toUpperCase() + "\\" : "";
 }
-
-/** 文件扩展名 → 表格里的小图标名（Arco 图标组件名，模板里 withIcon 拼出来） */
-export function extIcon(ext: string): string {
-    const e = (ext || "").toLowerCase();
-    if (["png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "svg"].includes(e)) return "file-image";
-    if (["mp3", "wav", "flac", "aac", "ogg"].includes(e)) return "file-audio";
-    if (["mp4", "mkv", "avi", "mov", "flv", "webm"].includes(e)) return "file-video";
-    if (e === "pdf") return "file-pdf";
-    if (["zip", "rar", "7z", "gz", "tar", "bz2"].includes(e)) return "archive";
-    if (["go", "ts", "js", "vue", "py", "java", "c", "cpp", "h", "rs", "sh", "ps1", "json", "yml", "yaml", "xml", "html", "css", "scss"].includes(e))
-        return "code";
-    return "file";
-}

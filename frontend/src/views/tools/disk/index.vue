@@ -158,7 +158,7 @@
                             <template #cell="{ record }">
                                 <div class="name-cell">
                                     <span class="name-icon" :class="{ dir: record.isDir }">
-                                        <component :is="'icon-' + iconOf(record)" />
+                                        <common-file-icon :is-dir="record.isDir" :ext="record.ext" :size="18" />
                                     </span>
                                     <div class="name-box">
                                         <a-tooltip :content="record.name">
@@ -235,7 +235,7 @@
                             :class="{ sel: selectedKeys.includes(r.path) }" @click="toggleRow(r)"
                             @dblclick="openEntry(r)">
                             <span class="g-icon" :class="{ dir: r.isDir }">
-                                <component :is="'icon-' + iconOf(r)" :size="34" />
+                                <common-file-icon :is-dir="r.isDir" :ext="r.ext" :size="40" />
                             </span>
                             <a-tooltip :content="r.name">
                                 <div class="g-name">{{ r.name }}</div>
@@ -342,7 +342,7 @@ import { computed, getCurrentInstance, onMounted, reactive, ref, watch } from "v
 import { Message, Modal } from "@arco-design/web-vue";
 import DiskOverview from "./components/DiskOverview.vue";
 import CommonBatchRenameModal from "./components/BatchRenameModal.vue";
-import { baseName, driveRootOf, extIcon, fmtSize } from "./helpers";
+import { baseName, driveRootOf, fmtSize } from "./helpers";
 
 /**
  * 磁盘管理（资源管理器）
@@ -443,10 +443,6 @@ watch(sourceRows, (rows) => {
 /* ============================ 小工具 ============================ */
 
 const errText = (e: any) => (typeof e === "string" ? e : e?.message || String(e || "未知错误"));
-
-function iconOf(r: any): string {
-    return r?.isDir ? "folder" : extIcon(r?.ext || "");
-}
 
 /** "C:\\a\\b.txt" → "C:\\a"（盘符根要保留反斜杠） */
 function parentOf(p: string): string {
@@ -1023,11 +1019,6 @@ onMounted(async () => {
     flex: none;
     display: flex;
     align-items: center;
-    color: var(--color-text-3);
-}
-
-.name-icon.dir {
-    color: rgb(var(--orange-6));
 }
 
 .name-box {
@@ -1119,11 +1110,7 @@ onMounted(async () => {
 }
 
 .g-icon {
-    color: var(--color-text-3);
-}
-
-.g-icon.dir {
-    color: rgb(var(--orange-6));
+    display: flex;
 }
 
 .g-name {

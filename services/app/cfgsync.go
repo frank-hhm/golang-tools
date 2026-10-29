@@ -39,6 +39,9 @@ func (a *App) ExportConfig() (string, error) {
 		AddFilter("所有文件 (*.*)", "*.*").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	if strings.TrimSpace(path) == "" {
@@ -74,6 +77,9 @@ func (a *App) ImportConfig() (string, error) {
 		SetTitle("导入配置").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	if strings.TrimSpace(path) == "" {

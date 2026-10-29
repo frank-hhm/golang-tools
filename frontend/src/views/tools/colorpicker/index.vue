@@ -342,6 +342,9 @@ async function fitWindow() {
     try {
         const size = await Window.Size();
         if (size.width > 0) await Window.SetSize(size.width, innerH);
+        // 后端建窗时用 Hidden 藏掉了窗口（避免先以配置高度闪一下再缩小），
+        // 尺寸贴合完在这里才显示：开窗即最终大小。Go 侧另有超时兜底防卡隐。
+        await Window.Show();
     } catch {
         /* 非原生窗口环境（浏览器调试等）忽略 */
     }
@@ -420,6 +423,7 @@ onMounted(() => {
 .cp-hue {
     position: relative;
     width: 18px;
+    max-height: 130px;
     flex: none;
     border-radius: var(--base-radius-small);
     cursor: pointer;

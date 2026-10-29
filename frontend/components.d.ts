@@ -13,6 +13,7 @@ declare module '@vue/runtime-core' {
     CanvasClock: typeof import('./src/components/common/canvas-clock/index.vue')['default']
     DockerImages: typeof import('./src/components/business/docker-images/index.vue')['default']
     DockerOff: typeof import('./src/components/common/docker-off/index.vue')['default']
+    FileIcon: typeof import('./src/components/common/file-icon/index.vue')['default']
     InfoRow: typeof import('./src/components/common/info-row/index.vue')['default']
     ItemCard: typeof import('./src/components/common/item-card/index.vue')['default']
     LayoutBody: typeof import('./src/components/layouts/LayoutBody.vue')['default']

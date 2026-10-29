@@ -95,7 +95,7 @@ func waitTitle(t *testing.T, events <-chan Event, want string, timeout time.Dura
 // TestFindWindowByTitle 验证"按标题找 HWND"这条链路：
 // Wails 不暴露窗口句柄，宿主只能靠我们自己设定的唯一标题反查。
 func TestFindWindowByTitle(t *testing.T) {
-	const title = "go-tools browser probe 7f3a"
+	const title = "Tools browser probe 7f3a"
 	hwnd := createTestWindow(t, title)
 	defer pumpOnce()
 	defer procDestroyWindow.Call(hwnd)

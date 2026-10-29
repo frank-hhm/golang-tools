@@ -6,7 +6,6 @@
         <a-tag v-if="running" size="small" color="arcoblue">{{ running }} 进行中</a-tag>
         <a-tag v-if="failed" size="small" color="red">{{ failed }} 失败</a-tag>
         <a-tag v-if="done" size="small" color="green">{{ done }} 完成</a-tag>
-        <span v-if="!transfers.length" class="dim">暂无任务</span>
       </div>
       <a-space :size="4">
         <a-button v-if="finished" size="mini" type="text" @click="emit('clear')">清空已完成</a-button>
@@ -16,7 +15,10 @@
       </a-space>
     </div>
 
+    <!-- 展开态始终渲染表体：无任务时靠 min-height 撑出一块可视区域放空态提示，
+         省得整条队列塌成一根细条，传输开始时高度也是从这里长而不是凭空插入 -->
     <div v-show="!collapsed" class="tq-body">
+      <div v-if="!transfers.length" class="tq-empty">暂无传输任务</div>
       <div v-for="t in transfers" :key="t.id" class="tq-row">
         <div class="tq-line">
           <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
@@ -124,15 +126,20 @@ function fmtSpeed(n: number): string {
   font-weight: 600;
 }
 
-.dim {
-  color: var(--color-text-3);
-  font-size: 12px;
-}
-
 .tq-body {
   max-height: 156px;
   overflow: auto;
   border-top: 1px solid var(--color-border-1);
+}
+
+/* 空态：占满 min-height 并居中提示，高度兜底让“暂无任务”不再是孤零零一行字 */
+.tq-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  color: var(--color-text-3);
+  font-size: 12px;
 }
 
 .tq-row {

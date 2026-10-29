@@ -15,6 +15,11 @@ type MenuItem struct {
 	Label string
 }
 
+// BallHomeItemID 菜单末尾固定追加的「打开主页」项 ID：不对应任何工具，
+// 由主程序 OnBallAction 特判（拉起主窗口 + 让前端路由回首页）。
+// 取个工具 key 不可能撞上的形式，免得以后新增同名工具被误拦。
+const BallHomeItemID = "__home__"
+
 // Hotkey 一条全局热键绑定：ID 为工具标识，Shortcut 形如 "Ctrl+Alt+S"。
 type Hotkey struct {
 	ID       string

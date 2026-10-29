@@ -39,6 +39,9 @@ import * as docker$0 from "../../tools/docker/models.js";
 import * as ftp$0 from "../../tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as guard$0 from "../../tools/guard/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as mysql$0 from "../../tools/mysql/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -55,6 +58,9 @@ import * as redis$0 from "../../tools/redis/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as screenshot$0 from "../../tools/screenshot/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as siteclone$0 from "../../tools/siteclone/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as sniffer$0 from "../../tools/sniffer/models.js";
@@ -1365,6 +1371,91 @@ export function GetSystemInfo(): $CancellablePromise<sysinfo$0.SystemInfo | null
  */
 export function Greet(name: string): $CancellablePromise<string> {
     return $Call.ByID(209610756, name);
+}
+
+/**
+ * GuardChooseProgram 弹原生文件选择框挑选要守护的程序，取消返回空串。
+ */
+export function GuardChooseProgram(title: string): $CancellablePromise<string> {
+    return $Call.ByID(3122860351, title);
+}
+
+/**
+ * GuardClear 清空全部登记项（先停止全部进程）。
+ */
+export function GuardClear(): $CancellablePromise<void> {
+    return $Call.ByID(855350877);
+}
+
+/**
+ * GuardGetState 返回当前守护列表与运行态（含开机自启、重启参数）。
+ */
+export function GuardGetState(): $CancellablePromise<guard$0.Snapshot> {
+    return $Call.ByID(1758974417);
+}
+
+/**
+ * GuardRemove 删除一条登记项（先停止其进程）。
+ */
+export function GuardRemove(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1241671992, id);
+}
+
+/**
+ * GuardSetAutoStart 切换开机自启：复用全局 General.AutoStart（写配置 + 同步 Wails Autostart 注册），
+ * 并推送一次状态让前端开关与设置页保持一致。
+ */
+export function GuardSetAutoStart(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1897832301, enabled);
+}
+
+/**
+ * GuardSetEnabled 切换某项「启用守护」。
+ */
+export function GuardSetEnabled(id: string, enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(548374529, id, enabled);
+}
+
+/**
+ * GuardSetSettings 更新重启策略参数：重启间隔（秒）与连续快速失败上限。
+ */
+export function GuardSetSettings(delaySec: number, maxFastFail: number): $CancellablePromise<void> {
+    return $Call.ByID(3698188333, delaySec, maxFastFail);
+}
+
+/**
+ * GuardStart 手动启动一个登记项。
+ */
+export function GuardStart(id: string): $CancellablePromise<void> {
+    return $Call.ByID(4011510988, id);
+}
+
+/**
+ * GuardStartAll 启用所有程序（拉起全部「启用守护」项）。
+ */
+export function GuardStartAll(): $CancellablePromise<void> {
+    return $Call.ByID(2041262231);
+}
+
+/**
+ * GuardStop 手动停止一个登记项（主动停止，不触发自动重启）。
+ */
+export function GuardStop(id: string): $CancellablePromise<void> {
+    return $Call.ByID(4193567528, id);
+}
+
+/**
+ * GuardStopAll 关闭所有程序（主动停止全部在跑/在守护项）。
+ */
+export function GuardStopAll(): $CancellablePromise<void> {
+    return $Call.ByID(2840847147);
+}
+
+/**
+ * GuardUpsert 新增或更新一条守护登记项（ID 为空即新增）。
+ */
+export function GuardUpsert(e: guard$0.Entry): $CancellablePromise<void> {
+    return $Call.ByID(3533406283, e);
 }
 
 /**
@@ -2992,6 +3083,20 @@ export function ShowNotificationLevel(title: string, content: string, level: str
  */
 export function ShowSystemNotification(title: string, content: string): $CancellablePromise<void> {
     return $Call.ByID(1795054056, title, content);
+}
+
+/**
+ * SiteCloneCancel 取消当前仿站任务；无任务时静默返回。
+ */
+export function SiteCloneCancel(): $CancellablePromise<void> {
+    return $Call.ByID(4025635643);
+}
+
+/**
+ * SiteCloneStart 启动一次仿站抓取，立即返回 jobId；结束/取消前重复调用会被拒。
+ */
+export function SiteCloneStart(opts: siteclone$0.Options): $CancellablePromise<string> {
+    return $Call.ByID(4187290751, opts);
 }
 
 /**

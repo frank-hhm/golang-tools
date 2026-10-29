@@ -155,6 +155,26 @@ func (a *App) GetAppLogo() string {
 	return ""
 }
 
+// isDialogCanceled 判断原生文件/目录对话框返回的错误是否只是「用户点了取消」。
+// Wails 取消时返回内部包 cfd 的哨兵错误（文本 "cancelled by user"），该包是 internal
+// 无法用 errors.Is 跨包匹配，只能按文本判断。取消不是异常：前端按「空结果」处理即可，
+// 别冒泡成控制台那行「Binding call failed ... cancelled by user」红字。
+func isDialogCanceled(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "cancel")
+}
+
+// dlgSingle 规整单选对话框的 (string, error) 返回：取消 → ("", nil)。
+// 可直接包在 `return dlgSingle(xxx.PromptForSingleSelection())` 上。
+func dlgSingle(s string, err error) (string, error) {
+	if isDialogCanceled(err) {
+		return "", nil
+	}
+	return s, err
+}
+
 // ChooseAppLogo 弹出文件选择器让用户选取 logo 图片，返回绝对路径
 func (a *App) ChooseAppLogo() (string, error) {
 	if a.app == nil {
@@ -167,6 +187,9 @@ func (a *App) ChooseAppLogo() (string, error) {
 		SetTitle("选择 Logo 图片").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return path, nil
@@ -430,8 +453,25 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 	if isFtp {
 		opts.EnableFileDrop = true
 	}
+	// 取色器窗口的实际高度由前端 fitWindow 按内容实测后 SetSize 贴合，
+	// 若按常规方式建窗即显，会先以配置高度闪一下再缩小。Hidden 让窗口
+	// 创建时不带 WS_VISIBLE（Wails 用这一手防的正是开窗白闪），前端调完
+	// 尺寸再 Window.Show()，开窗即最终大小、零闪动。
+	isColorPicker := strings.Contains(path, "/tools/colorpicker")
+	if isColorPicker {
+		opts.Hidden = true
+	}
 	applog.Infof("window", "新建窗口: %s (%s) single=%v fullscreen=%v %dx%d", path, title, single, fullscreen, width, height)
 	w := a.app.Window.NewWithOptions(opts)
+	if isColorPicker {
+		// 兜底：前端若因异常没走到 Show（JS 报错等），超时直接显示——
+		// 宁可闪一下尺寸，也不能开出一个永远看不见的窗口。
+		// Show 幂等，前端先显示了定时器再响也无副作用；经 InvokeAsync 回主线程执行。
+		win := w
+		time.AfterFunc(1200*time.Millisecond, func() {
+			application.InvokeAsync(func() { win.Show().Focus() })
+		})
+	}
 	if isFtp {
 		w.OnWindowEvent(events.Common.WindowFilesDropped, func(ev *application.WindowEvent) {
 			files := ev.Context().DroppedFiles()
@@ -771,6 +811,9 @@ func (a *App) RedisSrvChooseDir() (string, error) {
 		SetTitle("选择 redis-server 所在目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil
@@ -859,6 +902,9 @@ func (a *App) MySQLSrvChooseDir() (string, error) {
 		SetTitle("选择 mysqld.exe 所在目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil
@@ -1065,12 +1111,12 @@ func (a *App) DockerSrvChooseFile(title string) (string, error) {
 	if strings.TrimSpace(title) == "" {
 		title = "选择文件"
 	}
-	return a.app.Dialog.OpenFile().
+	return dlgSingle(a.app.Dialog.OpenFile().
 		CanChooseFiles(true).
 		CanChooseDirectories(false).
 		AddFilter("镜像包 (*.tar)", "*.tar").
 		SetTitle(title).
-		PromptForSingleSelection()
+		PromptForSingleSelection())
 }
 
 // DockerSrvChooseSaveFile 弹原生保存框（导出镜像包用），取消返回空串
@@ -1081,11 +1127,11 @@ func (a *App) DockerSrvChooseSaveFile(title, defaultName string) (string, error)
 	if strings.TrimSpace(title) == "" {
 		title = "保存为"
 	}
-	return a.app.Dialog.SaveFile().
+	return dlgSingle(a.app.Dialog.SaveFile().
 		AddFilter("镜像包 (*.tar)", "*.tar").
 		SetFilename(defaultName).
 		SetMessage(title).
-		PromptForSingleSelection()
+		PromptForSingleSelection())
 }
 
 /* ======================== Docker 仓库、加速站与线上镜像 ======================== */
@@ -1261,6 +1307,9 @@ func (a *App) PhpSrvChooseDir() (string, error) {
 		SetTitle("选择 php.exe 所在目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil
@@ -1413,6 +1462,9 @@ func (a *App) NginxSrvChooseDir() (string, error) {
 		SetTitle("选择 nginx.exe 所在目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil
@@ -1622,6 +1674,9 @@ func (a *App) NpmSrvChooseDir() (string, error) {
 		SetTitle("选择 node.exe 所在目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil
@@ -1939,6 +1994,9 @@ func (a *App) MySQLChooseSQLLogDir() (string, error) {
 		SetTitle("选择 SQL 日志目录").
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil
@@ -2366,12 +2424,21 @@ func (a *App) ClearBallIcon() error {
 	return nil
 }
 
-// handleBallAction 处理浮动球菜单选择：close 直接关窗，Go 侧能直接处理的工具事件
-// （截图）就地调起省一趟前端往返，其余以 "ball:action" 事件交回主窗口。
+// handleBallAction 处理浮动球菜单选择：close 直接关窗，「打开主页」拉起主窗口并路由回首页，
+// Go 侧能直接处理的工具事件（截图）就地调起省一趟前端往返，其余以 "ball:action" 事件交回主窗口。
 func (a *App) handleBallAction(id string) {
 	applog.Infof("ball", "菜单选择: %s", id)
 	if id == "close" {
 		winui.StopBall()
+		return
+	}
+	if id == winui.BallHomeItemID {
+		// 主窗口可能停在任意工具页、也可能藏在托盘，两步都要：先拉起再切路由。
+		// 只发给主窗口：工具窗口是另起 webview，广播会把它们也跳到首页。
+		a.showMainWindow()
+		if a.mainWindow != nil {
+			a.mainWindow.EmitEvent("home:open")
+		}
 		return
 	}
 	if a.app == nil {
@@ -2554,6 +2621,9 @@ func (a *App) ChooseDir(title string) (string, error) {
 		SetTitle(title).
 		PromptForSingleSelection()
 	if err != nil {
+		if isDialogCanceled(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return dir, nil

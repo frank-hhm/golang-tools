@@ -36,7 +36,7 @@
 </template>
 <script setup lang="ts">
 import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { Events, Window } from "@wailsio/runtime";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { useCaps } from "@/utils/caps";
@@ -56,6 +56,7 @@ const { openToolWindow } = useToolWindow();
 /** 平台能力：决定显示侧边导航、以及顶部要不要给窗口按钮 */
 const caps = useCaps();
 const route = useRoute();
+const router = useRouter();
 
 const appTitle = ref("Tools");
 // 应用 Logo：自定义路径优先、否则内置默认，由后端统一返回 base64（同浮动球用的那张）
@@ -101,6 +102,7 @@ async function loadLogo() {
 }
 
 let off: (() => void) | null = null;
+let offHome: (() => void) | null = null;
 onMounted(() => {
     loadTitle();
     loadLogo();
@@ -109,8 +111,15 @@ onMounted(() => {
         const r = Events.On("config:saved", () => { void loadTitle(); void loadLogo(); });
         if (typeof r === "function") off = r as () => void;
     } catch { /* */ }
+    // 浮动球菜单「打开主页」：Go 侧已把主窗口拉起，这里只负责把路由切回首页（已在家就不动）
+    try {
+        const r = Events.On("home:open", () => {
+            if (route.path !== "/index" && route.path !== "/") void router.push("/index");
+        });
+        if (typeof r === "function") offHome = r as () => void;
+    } catch { /* */ }
 });
-onUnmounted(() => { off?.(); });
+onUnmounted(() => { off?.(); offHome?.(); });
 </script>
 <style scoped>
 .basic-layout {

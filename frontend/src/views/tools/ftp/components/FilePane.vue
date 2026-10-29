@@ -39,21 +39,39 @@
     </div>
 
     <div class="pane-path">
-      <a-input v-model="pathInput" size="mini" class="path-input" placeholder="输入路径后回车跳转"
-        @press-enter="load(pathInput)">
+      <!-- 默认展示可点击面包屑（参考磁盘管理页）：点任一段直接跳到该目录，末段是当前目录不可点；
+           FTP 远端路径常需手输，右侧编辑按钮切成输入框，回车跳转、失焦/再点收起 -->
+      <a-breadcrumb v-if="!pathEditing" class="crumbs">
+        <a-breadcrumb-item v-for="(p, i) in listing?.parts || []" :key="p.path">
+          <a-tooltip :content="p.path" :disabled="i === (listing?.parts?.length || 0) - 1">
+            <span class="crumb" :class="{ cur: i === (listing?.parts?.length || 0) - 1 }"
+              @click="onCrumbClick(p, i)">{{ p.name }}</span>
+          </a-tooltip>
+        </a-breadcrumb-item>
+      </a-breadcrumb>
+      <a-input v-else ref="pathInputEl" v-model="pathInput" size="mini" class="path-input"
+        placeholder="输入路径后回车跳转" @press-enter="submitPath" @blur="cancelPathEdit">
         <template #prefix><icon-folder /></template>
       </a-input>
+      <a-tooltip :content="pathEditing ? '收起' : '手动输入路径'">
+        <a-button size="mini" class="path-edit-btn" @mousedown.prevent="togglePathEdit">
+          <template #icon><icon-close v-if="pathEditing" /><icon-edit v-else /></template>
+        </a-button>
+      </a-tooltip>
     </div>
 
-    <div class="pane-body">
+    <div class="pane-body" ref="paneBodyEl">
+      <!-- scroll.y 让表头固定、表体在自己可视区内滚动：横向滚动条常驻可视区底部，
+           不用竖着滚到全部内容最底才拿到；minWidth 保证窄栏下列不被挤压换行
+           （列总宽 = 200+76+150+60+150）；首尾列钉住，横向滚动时名称与操作按钮不会被滚出可视区 -->
       <a-table :data="rows" :loading="loading" row-key="path" :pagination="false" size="mini"
-        :bordered="false" :hoverable="true" :stripe="false">
+        :bordered="false" :hoverable="true" :stripe="false" :scroll="tableScroll">
         <template #columns>
-          <a-table-column title="名称">
+          <a-table-column title="名称" :min-width="200" fixed="left" :ellipsis="true">
             <template #cell="{ record }">
               <div class="name-cell" draggable="true" @dragstart="onRowDragStart(record, $event)" @dragend="onRowDragEnd">
                 <span class="name-icon" :class="{ dir: record.isDir }">
-                  <component :is="'icon-' + iconOf(record)" />
+                  <common-file-icon :is-dir="record.isDir" :ext="record.ext" :size="18" />
                 </span>
                 <a-tooltip :content="record.path">
                   <span class="name-text" :class="{ dir: record.isDir }" @click="activate(record)">{{ record.name }}</span>
@@ -65,13 +83,13 @@
           <a-table-column title="大小" :width="76" align="right">
             <template #cell="{ record }"><span class="dim">{{ record.isDir ? '-' : fmtSize(record.size) }}</span></template>
           </a-table-column>
-          <a-table-column title="修改时间" :width="140">
-            <template #cell="{ record }"><span class="dim">{{ record.modTime }}</span></template>
+          <a-table-column title="修改时间" :width="150">
+            <template #cell="{ record }"><span class="dim nowrap">{{ record.modTime }}</span></template>
           </a-table-column>
           <a-table-column title="权限" :width="60">
-            <template #cell="{ record }"><span class="dim">{{ record.mode }}</span></template>
+            <template #cell="{ record }"><span class="dim nowrap">{{ record.mode }}</span></template>
           </a-table-column>
-          <a-table-column title="" :width="126" align="right">
+          <a-table-column title="" :width="150" align="right" fixed="right">
             <template #cell="{ record }">
               <a-space :size="2">
                 <a-button v-if="side === 'remote'" size="mini" type="text" @click="download(record)">下载</a-button>
@@ -101,10 +119,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
-import { fmtSize, extIcon } from '@/views/tools/disk/helpers';
-import type { FtpEntry, FtpListing } from '../types';
+import { fmtSize } from '@/views/tools/disk/helpers';
+import { paneDrag, resetPaneDrag } from '../drag-state';
+import type { FtpDragItem, FtpEntry, FtpListing, FtpPart } from '../types';
 
 /**
  * 文件栏：side=local 走 Disk* 绑定，side=remote 走 Ftp* 绑定。
@@ -129,20 +148,38 @@ const emit = defineEmits<{
   (e: 'preview', entry: FtpEntry): void;
   (e: 'path-change', path: string): void;
   (e: 'transferred'): void;
-  (e: 'drop-entry', entry: FtpEntry, sourceSide: 'local' | 'remote'): void;
+  (e: 'drop-entry', item: FtpDragItem, sourceSide: 'local' | 'remote'): void;
 }>();
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
 const paneEl = ref<HTMLElement | null>(null);
 const dragOver = ref(false);
-/** 本次拖拽的来源栏与条目：同文档内跨栏拖放用模块变量传递（比 dataTransfer 读路径更稳） */
-let dragPayload: { side: 'local' | 'remote'; entry: FtpEntry } | null = null;
+
+/* ---------------- 表体可视高（表头固定 + 内部滚动） ---------------- */
+const paneBodyEl = ref<HTMLElement | null>(null);
+/** Arco 的 y 用 '100%' 要靠中间层都有确定高度，量出来的数值最稳；给个初值避免首帧未分割时行被裁掉 */
+const tableY = ref(320);
+const tableScroll = computed(() => ({ x: '100%', minWidth: 636, y: tableY.value }));
+
+function calcTableY() {
+  const wrap = paneBodyEl.value;
+  if (!wrap) return;
+  const avail = wrap.clientHeight;
+  if (!avail) return; // 未布局/隐藏时高度为 0，跳过本次
+  const header = wrap.querySelector('.arco-table-header') as HTMLElement | null;
+  tableY.value = Math.max(140, avail - (header?.offsetHeight ?? 32));
+}
+
+let paneBodyRO: ResizeObserver | null = null;
 
 const listing = ref<FtpListing | null>(null);
 const loading = ref(false);
 const curPath = ref('');
 const pathInput = ref('');
+/** 路径栏是否处于手输编辑态：假时显可点击面包屑，真时显输入框 */
+const pathEditing = ref(false);
+const pathInputEl = ref<any>(null);
 const keyword = ref('');
 const showHidden = ref(false);
 const localCacheKey = 'ftp:localPath';
@@ -156,10 +193,6 @@ const rows = computed<FtpEntry[]>(() => {
     return e.name.toLowerCase().includes(k);
   });
 });
-
-function iconOf(e: FtpEntry): string {
-  return e.isDir ? 'folder' : extIcon(e.ext);
-}
 
 function isRemote(): boolean {
   return props.side === 'remote';
@@ -176,6 +209,7 @@ async function load(path?: string) {
     listing.value = next;
     curPath.value = next.path;
     pathInput.value = next.path;
+    pathEditing.value = false;
     keyword.value = '';
     if (isRemote()) emit('path-change', next.path);
     else if (next.path) localStorage.setItem(localCacheKey, next.path);
@@ -184,6 +218,42 @@ async function load(path?: string) {
   } finally {
     loading.value = false;
   }
+}
+
+/* ---------------- 路径栏：面包屑 <-> 手输 ---------------- */
+
+/** 点面包屑某段：跳到该目录；末段是当前目录，忽略 */
+function onCrumbClick(p: FtpPart, i: number) {
+  const parts = listing.value?.parts || [];
+  if (i === parts.length - 1) return;
+  load(p.path);
+}
+
+/** 编辑按钮：未编辑时进入手输态并聚焦；已在编辑时收起（不跳转，回填当前路径） */
+function togglePathEdit() {
+  if (pathEditing.value) {
+    cancelPathEdit();
+    return;
+  }
+  pathInput.value = curPath.value;
+  pathEditing.value = true;
+  nextTick(() => pathInputEl.value?.focus?.());
+}
+
+/** 回车提交：与当前路径不同才跳转，否则退回面包屑 */
+function submitPath() {
+  if (!pathEditing.value) return;
+  const target = String(pathInput.value || '').trim();
+  pathEditing.value = false;
+  if (target && target !== curPath.value) load(target);
+  else pathInput.value = curPath.value;
+}
+
+/** 失焦/取消：不跳转，退回面包屑（回车后输入框被 v-if 移除也会触发，靠 pathEditing 守卫去重） */
+function cancelPathEdit() {
+  if (!pathEditing.value) return;
+  pathEditing.value = false;
+  pathInput.value = curPath.value;
 }
 
 /** 名称单击：目录进入；远端文件预览，本地文件交给系统默认程序打开 */
@@ -259,32 +329,34 @@ function uploadPaths(files: string[]) {
 
 /* ==================== 栏内拖拽 → 跨栏传输 ==================== */
 
-/** 拖起某一行：记录来源栏与条目；只有拖到「另一栏」才算跨栏传输 */
+/** 拖起某一行：把来源栏与条目写进两栏共用的模块状态；只有拖到「另一栏」才算跨栏传输 */
 function onRowDragStart(entry: FtpEntry, ev: DragEvent) {
-  dragPayload = { side: props.side, entry };
+  paneDrag.side = props.side;
+  paneDrag.item = { path: entry.path, name: entry.name, isDir: !!entry.isDir };
   if (ev.dataTransfer) {
     ev.dataTransfer.effectAllowed = 'copy';
-    // 同文档内以模块变量为准，setData 仅作兜底（读不到完整本地路径，不做依赖）
+    // 同文档内以共享状态为准，setData 仅作兜底（读不到完整本地路径，不做依赖）
     ev.dataTransfer.setData('text/plain', entry.path);
   }
 }
 
 function onRowDragEnd() {
-  dragPayload = null;
+  resetPaneDrag();
   dragOver.value = false;
 }
 
-/** 本栏是否为合法落点：有拖拽负载且来自另一栏 */
-function isForeignDrag(ev: DragEvent): boolean {
-  return !!dragPayload && dragPayload.side !== props.side;
+/** 本栏是否为合法落点：有拖拽负载且来自另一栏（状态由两栏共用，见 ../drag-state.ts） */
+function isForeignDrag(): boolean {
+  return !!paneDrag.side && paneDrag.side !== props.side;
 }
 
-function onDragEnter(ev: DragEvent) {
-  if (isForeignDrag(ev)) dragOver.value = true;
+function onDragEnter() {
+  if (isForeignDrag()) dragOver.value = true;
 }
 
 function onDragOver(ev: DragEvent) {
-  if (!isForeignDrag(ev)) return;
+  // 不 preventDefault 浏览器就不会给本元素派发 drop：跨栏拖拽“没反应”通常就卡在这一行
+  if (!isForeignDrag()) return;
   ev.preventDefault();
   if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
   dragOver.value = true;
@@ -298,24 +370,20 @@ function onDragLeave(ev: DragEvent) {
 }
 
 function onDrop(ev: DragEvent) {
-  if (!isForeignDrag(ev)) return;
+  if (!isForeignDrag()) return;
   ev.preventDefault();
-  const payload = dragPayload;
+  const item = paneDrag.item;
+  const sourceSide = paneDrag.side;
+  resetPaneDrag();
   dragOver.value = false;
-  dragPayload = null;
   // 带上真正的来源栏（拖起那侧），父组件据此判定上传/下载方向，避免用落点栏侧误判
-  if (payload) emit('drop-entry', payload.entry, payload.side);
+  if (item && sourceSide) emit('drop-entry', item, sourceSide);
 }
 
-async function download(entry: FtpEntry | string) {
-  // 兼容两种入参：行内下载按钮传 FtpEntry，跨栏拖拽传远程路径字符串
-  const remotePath = typeof entry === 'string' ? entry : entry?.path;
-  if (!remotePath) return;
+async function startDownload(paths: string[], dir: string) {
+  if (!paths?.length || !dir) return;
   try {
-    let dir = props.downloadDir;
-    if (!dir) dir = await GoTools.FtpChooseLocalFolder('选择下载到');
-    if (!dir) return;
-    const list = await GoTools.FtpDownload(props.sessionId, [remotePath], dir);
+    const list = await GoTools.FtpDownload(props.sessionId, paths, dir);
     if (list?.length) {
       Message.info({ content: `已加入下载队列（${list.length} 项）`, position: 'top', duration: 2000 });
       emit('transferred');
@@ -323,6 +391,20 @@ async function download(entry: FtpEntry | string) {
   } catch (e: any) {
     Message.error({ content: String(e?.message || e || '下载失败'), position: 'top', duration: 3000 });
   }
+}
+
+async function download(entry: FtpEntry | string) {
+  // 兼容两种入参：行内下载按钮传 FtpEntry，跨栏拖拽传远程路径字符串
+  const remotePath = typeof entry === 'string' ? entry : entry?.path;
+  if (!remotePath) return;
+  let dir = props.downloadDir;
+  if (!dir) dir = await GoTools.FtpChooseLocalFolder('选择下载到');
+  await startDownload([remotePath], dir);
+}
+
+/** 跨栏拖拽下载：直接落到本栏当前目录，不弹选择框（拖过去松手就是下载） */
+function downloadPaths(paths: string[]) {
+  return startDownload(paths, curPath.value);
 }
 
 /* ==================== 新建 / 重命名 / 删除 ==================== */
@@ -408,6 +490,12 @@ watch(
 );
 
 onMounted(() => {
+  // 表体高度由 flex 撑出，传输队列展开/收起、窗口缩放都要重算，用 ResizeObserver 盯住包裹容器
+  calcTableY();
+  if (typeof ResizeObserver !== 'undefined' && paneBodyEl.value) {
+    paneBodyRO = new ResizeObserver(() => calcTableY());
+    paneBodyRO.observe(paneBodyEl.value);
+  }
   if (isRemote()) {
     if (props.sessionId) void load(props.startPath || '');
     return;
@@ -416,7 +504,15 @@ onMounted(() => {
   void load(cached);
 });
 
-defineExpose({ refresh: () => load(curPath.value), handleDrop, download, uploadPaths });
+onBeforeUnmount(() => {
+  paneBodyRO?.disconnect();
+  paneBodyRO = null;
+});
+
+// 列表切换后表头高度可能变（出现纵向滚动条），重测一次
+watch(rows, () => nextTick(calcTableY));
+
+defineExpose({ refresh: () => load(curPath.value), handleDrop, download, downloadPaths, uploadPaths });
 </script>
 
 <style scoped>
@@ -469,18 +565,63 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, uploadP
 }
 
 .pane-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--color-border-1);
 }
 
+/* 面包屑占满剩余宽，长路径单行省略（与磁盘页一致） */
+.crumbs {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.crumb {
+  cursor: pointer;
+  color: var(--color-text-2);
+}
+
+.crumb:hover {
+  color: rgb(var(--primary-6));
+}
+
+.crumb.cur {
+  cursor: default;
+  color: var(--color-text-1);
+  font-weight: 600;
+}
+
+.crumb.cur:hover {
+  color: var(--color-text-1);
+}
+
 .path-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.path-edit-btn {
+  flex: none;
 }
 
 .pane-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  /* 滚动交给表体自己（scroll.y），外层再滚会把横向滚动条顶到内容最底部 */
+  overflow: hidden;
+}
+
+/* 表体内部滚动时，横向滚动条要常驻可视区底部：Arco 的 x 滚动条挂在表体上 */
+.pane-body :deep(.arco-table-body) {
+  overflow-x: auto;
+}
+
+.nowrap {
+  white-space: nowrap;
 }
 
 .pane-empty {
@@ -510,12 +651,9 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, uploadP
 }
 
 .name-icon {
-  color: var(--color-text-3);
   flex: none;
-}
-
-.name-icon.dir {
-  color: rgb(var(--primary-6));
+  display: flex;
+  align-items: center;
 }
 
 .name-text {

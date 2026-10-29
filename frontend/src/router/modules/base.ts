@@ -26,6 +26,8 @@ export const TOOLS = [
     { key: "Speedtest", menu_name: "网速测速", path: "tools/speedtest", component: () => import('@/views/tools/speedtest/index.vue') },
     { key: "Browser", menu_name: "浏览器", path: "tools/browser", component: () => import('@/views/tools/browser/index.vue') },
     { key: "Disk", menu_name: "磁盘管理", path: "tools/disk", component: () => import('@/views/tools/disk/index.vue') },
+    { key: "Siteclone", menu_name: "仿站工具", path: "tools/siteclone", component: () => import('@/views/tools/siteclone/index.vue') },
+    { key: "Guard", menu_name: "进程守护", path: "tools/guard", component: () => import('@/views/tools/guard/index.vue') },
     { key: "Settings", menu_name: "设置", path: "tools/settings", component: () => import('@/views/tools/settings/index.vue') },
 
 ];
