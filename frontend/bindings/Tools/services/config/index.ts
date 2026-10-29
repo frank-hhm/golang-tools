@@ -7,6 +7,8 @@ export type {
     BrowserConfig,
     BrowserSpace,
     GeneralConfig,
+    LauncherConfig,
+    LauncherScopes,
     LogConfig,
     PathsConfig,
     ToolConfig,

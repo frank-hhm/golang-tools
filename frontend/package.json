@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:dev": "vue-tsc && vite build --minify false --mode development",
-    "build": "vue-tsc && vite build --mode production",
+    "build:dev": "node scripts/build.mjs --dev",
+    "build": "node scripts/build.mjs",
+    "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview"
   },
   "lint-staged": {

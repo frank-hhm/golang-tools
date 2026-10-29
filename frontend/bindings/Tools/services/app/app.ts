@@ -39,6 +39,9 @@ import * as ftp$0 from "../../tools/ftp/models.js";
 import * as guard$0 from "../../tools/guard/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as launcher$0 from "../../tools/launcher/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as mysql$0 from "../../tools/mysql/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -1475,6 +1478,95 @@ export function ImportConfig(): $CancellablePromise<string> {
 }
 
 /**
+ * LauncherCommands 当前可搜的命令清单（设置页"能搜什么"的帮助文案）。
+ */
+export function LauncherCommands(): $CancellablePromise<launcher$0.Command[] | null> {
+    return $Call.ByID(3541701976);
+}
+
+/**
+ * LauncherDefaultDirs 平台已知目录里真实存在的那些（设置页展示"默认已纳入"）。
+ */
+export function LauncherDefaultDirs(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3708289215);
+}
+
+/**
+ * LauncherDirExists 校验一个目录能不能纳入索引。
+ */
+export function LauncherDirExists(p: string): $CancellablePromise<boolean> {
+    return $Call.ByID(682460857, p);
+}
+
+/**
+ * LauncherExecute 执行一条结果。
+ * 参数拆成类型 + ID 而不是整个 Item：绑定层传结构体要前后端都有一份模型，
+ * 而引擎真正需要的也只有这两个字段。
+ */
+export function LauncherExecute(typ: string, id: string): $CancellablePromise<void> {
+    return $Call.ByID(942842537, typ, id);
+}
+
+/**
+ * LauncherHide 前端按 Esc / 执行完一条结果后收起面板。
+ */
+export function LauncherHide(): $CancellablePromise<void> {
+    return $Call.ByID(3423671834);
+}
+
+/**
+ * LauncherHomeDir 用户主目录，设置页"追加目录"输入框的默认起点。
+ */
+export function LauncherHomeDir(): $CancellablePromise<string> {
+    return $Call.ByID(1217351556);
+}
+
+/**
+ * LauncherIndexStatus 文件索引状态（设置页展示条数/是否不全/上次构建时间）。
+ * 未开启时也照常返回：设置页要在关闭状态下仍能讲清"现在没有索引"。
+ */
+export function LauncherIndexStatus(): $CancellablePromise<launcher$0.IndexInfo> {
+    return $Call.ByID(81130496);
+}
+
+/**
+ * LauncherOpenLocation 在资源管理器里定位这条结果背后的文件（Alt+Enter）。
+ * 窗口类结果的 exe 路径放在 Sub 里，故一并传进来。
+ */
+export function LauncherOpenLocation(typ: string, id: string, sub: string): $CancellablePromise<void> {
+    return $Call.ByID(3582464721, typ, id, sub);
+}
+
+/**
+ * LauncherRebuildIndex 同步重建一次索引，前端转圈等它（首次扫盘可能要几秒）。
+ */
+export function LauncherRebuildIndex(): $CancellablePromise<void> {
+    return $Call.ByID(2209307843);
+}
+
+/**
+ * LauncherSearch 按当前设置的范围检索一次。空查询返回空列表（前端自己展示提示语）。
+ */
+export function LauncherSearch(q: string): $CancellablePromise<launcher$0.Result> {
+    return $Call.ByID(1307515330, q);
+}
+
+/**
+ * LauncherToggle 呼出或收起搜索面板（全局热键走这里，前端也能调）。
+ * 绑定方法，不带 build tag：Web 面板里它返回错误而不是消失。
+ */
+export function LauncherToggle(): $CancellablePromise<void> {
+    return $Call.ByID(1952732226);
+}
+
+/**
+ * LauncherUsageReset 清空使用频次：排序被历史点击带偏时给一个退路。
+ */
+export function LauncherUsageReset(): $CancellablePromise<void> {
+    return $Call.ByID(506851632);
+}
+
+/**
  * ListenTCPServer 作为 TCP 服务端侦听
  */
 export function ListenTCPServer(cfg: usbserial$0.ConnConfig): $CancellablePromise<void> {
@@ -2724,6 +2816,16 @@ export function PortSnapshot(): $CancellablePromise<portman$0.Snapshot> {
  */
 export function PrewarmCaptureOverlay(): $CancellablePromise<void> {
     return $Call.ByID(1228806336);
+}
+
+/**
+ * PrewarmLauncher 预建隐藏的面板窗口，把"新建 WebView2 窗口 + 页面 bootstrap"
+ * 这笔几百毫秒的开销从热键按下的那一下挪到启动空闲期。
+ * 窗口是真隐藏创建的（不叠加任何 StartState），不会挡桌面点击，也不会被窗口枚举
+ * 收进搜索结果（建好后立刻 ExcludeWindow 报了句柄）。
+ */
+export function PrewarmLauncher(): $CancellablePromise<void> {
+    return $Call.ByID(3445047494);
 }
 
 /**

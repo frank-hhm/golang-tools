@@ -180,4 +180,15 @@ export default [{
         menu_name: "图钉",
     },
     component: () => import('@/views/widget/pin.vue')
+}, {
+    // 快捷搜索面板（Alt+Space）：无边框透明置顶小窗，由后端 LauncherToggle 开窗/点亮。
+    // 不注册为工具项，也不在主页网格出现，所以只有这一条独立路由。
+    path: '/widget/launcher',
+    name: '/widget/launcher',
+    meta: {
+        auth: false,
+        blank: true,
+        menu_name: "快捷搜索",
+    },
+    component: () => import('@/views/widget/launcher.vue')
 }]

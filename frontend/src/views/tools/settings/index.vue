@@ -249,7 +249,89 @@
                         </a-form>
                     </a-card>
 
-                    <!-- ===================== 工具列表编辑 ===================== -->
+                    <!-- ===================== 快捷搜索设置 ===================== -->
+                    <a-card v-show="activeTab === 'launcher'" class="pane-card card-head-tool">
+                        <template #title>快捷搜索（Alt+Space 面板）</template>
+                        <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
+                            <a-form-item field="lkEnabled">
+                                <template #label>启用快捷搜索</template>
+                                <a-switch v-model="form.launcher.enabled" type="round" @change="onLauncherEnabled" />
+                                <span class="hint">
+                                    开启后才会挂载这套服务：注册全局热键、创建面板小窗、扫描目录建索引。
+                                    关掉时三者一个都不留（面板当场收起、索引释放、热键注销），不会在后台留常驻开销。
+                                </span>
+                            </a-form-item>
+
+                            <a-form-item field="lkShortcut">
+                                <template #label>呼出热键</template>
+                                <a-input :model-value="form.launcher.shortcut" readonly placeholder="点击后直接按下组合键（默认 Alt+Space）"
+                                    @click="lkStartRecord" @keydown="lkOnShortcutKeydown">
+                                    <template #suffix>
+                                        <span v-if="lkRecording" class="rec-tip">录制中</span>
+                                    </template>
+                                </a-input>
+                                <span class="hint">与工具热键撞车时以先注册者为准，注册失败会在日志里记一条告警。按 Esc 退出录制。</span>
+                            </a-form-item>
+
+                            <a-form-item field="lkScopes">
+                                <template #label>检索范围</template>
+                                <a-space wrap>
+                                    <a-checkbox v-model="form.launcher.scopes.apps" @change="scheduleSave(0)">已安装应用</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.tools" @change="scheduleSave(0)">本程序工具</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.windows" @change="scheduleSave(0)">运行中的窗口</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.files" @change="scheduleSave(0)">本地文件</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.commands" @change="scheduleSave(0)">命令 / 算式 / 网址</a-checkbox>
+                                </a-space>
+                            </a-form-item>
+
+                            <a-form-item field="lkDirs">
+                                <template #label>额外索引目录</template>
+                                <div class="lk-dirs">
+                                    <div v-for="(d, i) in form.launcher.dirs" :key="i" class="lk-dir-row">
+                                        <span class="lk-dir-path" :title="d">{{ d }}</span>
+                                        <a-button size="mini" @click="removeLauncherDir(i)">移除</a-button>
+                                    </div>
+                                    <div v-if="!form.launcher.dirs.length" class="hint">未追加目录，仅索引下面列出的已知目录。</div>
+                                    <a-button size="small" @click="addLauncherDir">添加目录</a-button>
+                                </div>
+                                <span class="hint">默认已纳入：{{ lkDefaultDirs.join('、') || '（没有可索引的已知目录）' }}；AppData、node_modules、回收站等一律跳过。</span>
+                            </a-form-item>
+
+                            <a-form-item field="lkMaxEntries">
+                                <template #label>索引条目上限</template>
+                                <a-input-number v-model="form.launcher.maxEntries" :min="1000" :step="10000" hide-button
+                                    @change="scheduleSave(600)" />
+                                <span class="hint">撞顶时索引标记为“不全”，新文件可能搜不到；可提高上限，或把过深的目录从索引里移出去。</span>
+                            </a-form-item>
+
+                            <a-form-item field="lkIndex">
+                                <template #label>索引状态</template>
+                                <a-space>
+                                    <a-button size="small" :loading="lkRebuilding" @click="rebuildLauncherIndex">重建索引</a-button>
+                                    <a-button size="small" @click="resetLauncherUsage">清空使用频次</a-button>
+                                    <a-button size="small" :disabled="!form.launcher.enabled" @click="testLauncher">试一下面板</a-button>
+                                </a-space>
+                                <div class="lk-idx-line">
+                                    条目 {{ lkIdx?.count || 0 }}
+                                    <template v-if="lkIdx?.building"> · 正在建立…</template>
+                                    <template v-else-if="lkIdx?.age"> · 上次构建 {{ lkIdx.age }} 前</template>
+                                    <template v-else> · 从未构建</template>
+                                    <template v-if="lkIdx?.partial"> · 已达上限（索引不全）</template>
+                                </div>
+                                <div v-if="lkIdx?.lastErr" class="lk-idx-err">{{ lkIdx.lastErr }}</div>
+                                <span class="hint">未启用时不扫盘、不建索引，这里的条数会归零；“重建索引”会顺带刷新应用清单（刚装的程序搜不到就用它）。</span>
+                            </a-form-item>
+
+                            <a-form-item field="lkCommands">
+                                <template #label>可搜的内置命令</template>
+                                <div class="lk-cmds">
+                                    <span v-for="c in lkCmds" :key="c.id" class="lk-cmd" :class="{ danger: c.danger }"
+                                        :title="c.sub">{{ c.title }}</span>
+                                </div>
+                                <span class="hint">在搜索框里以 &gt; 开头可只搜命令，屏蔽应用与文件的干扰。</span>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
                     <div v-show="activeTab === 'tools'" class="tools-pane">
                         <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }">
                             <template #title>功能列表</template>
@@ -642,11 +724,20 @@ const form = reactive<{
     ball: { enabled: boolean; icon: string };
     general: { autoStart: boolean; appName: string; appLogo: string; theme: string };
     paths: { plugins: string; data: string; logs: string };
+    launcher: LauncherCfg;
 }>({
     log: { enabled: true, level: "info", path: "" },
     ball: { enabled: false, icon: "" },
     general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" },
     paths: { plugins: "", data: "", logs: "" },
+    // 默认关闭：与后端 defaultLauncherConfig 一致，除开关外其余字段都是可直接编辑的初值
+    launcher: {
+        enabled: false,
+        shortcut: "Alt+Space",
+        scopes: { apps: true, tools: true, windows: true, files: true, commands: true },
+        dirs: [],
+        maxEntries: 60000,
+    },
 });
 const tools = ref<ToolRow[]>([]);
 
@@ -664,6 +755,7 @@ const SETTING_TABS = computed(() =>
         { key: "paths", label: "目录", icon: "IconFolder", desktopOnly: false },
         { key: "panel", label: "访问与安全", icon: "IconLock", desktopOnly: false, webOnly: true },
         { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
+        { key: "launcher", label: "快捷搜索", icon: "IconSearch", desktopOnly: true },
         { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
         { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
         { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
@@ -788,6 +880,7 @@ async function copyAccess() {
 // 首次进页时面板若还没登录态，这里会 401，由 installPanelGuard 统一跳登录页。
 watch(activeTab, (k) => {
     if (k === "panel" && !panelInfo.value && !panelLoading.value) void loadPanel();
+    if (k === "launcher") void loadLauncherInfo();
 });
 
 /** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
@@ -1029,6 +1122,7 @@ async function load() {
             form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "" };
             form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
             form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "" };
+            form.launcher = normLauncher(cfg.launcher);
             if (cfg.browser) {
                 // 整段拷贝：页面上直接绑到 browserForm，保存时整段回传
                 browserForm.value = { ...cfg.browser, spaces: cfg.browser.spaces || [] };
@@ -1236,7 +1330,7 @@ function autoSave(): Promise<void> {
 async function runSave() {
     saving.value = true;
     try {
-        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, tools: tools.value.map(normTool) };
+        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, launcher: { ...form.launcher, scopes: { ...form.launcher.scopes }, dirs: [...form.launcher.dirs] }, tools: tools.value.map(normTool) };
         const path = await GoTools?.SaveConfig(payload);
         fullConfig.value = payload;
         activePath.value = path || "";
@@ -1370,7 +1464,188 @@ function onShortcutKeydown(e: KeyboardEvent) {
     recording.value = false;
 }
 
+/* ===================== 快捷搜索（启动器） =====================
+ * 这一页只是这份配置的编辑面。“开/关到底挂不挂服务”的判定在 Go 侧
+ * （App.launcherMounted = 开关 && 原生窗口能力 && 应用已起来）：
+ * 开着才注册热键、建面板窗、扫盘建索引；关掉时 SaveConfig 会顺带收窗、
+ * 释放索引、并把热键从清单里抽出去。前端只负责把开关落盘 + 把后端回
+ * 馈（索引条数 / 默认目录 / 命令清单）显示出来。
+ */
+
+/** 表单里的一份快捷搜索配置（与 config.LauncherConfig 同构） */
+interface LauncherCfg {
+    enabled: boolean;
+    shortcut: string;
+    scopes: { apps: boolean; tools: boolean; windows: boolean; files: boolean; commands: boolean };
+    dirs: string[];
+    maxEntries: number;
+}
+
+/** 索引状态（与 launcher.IndexInfo 同构） */
+interface LkIndexInfo {
+    count: number;
+    building: boolean;
+    partial: boolean;
+    lastErr: string;
+    roots: string[] | null;
+    age: string;
+}
+
+/** 命令清单条目（与 launcher.Command 同构） */
+interface LkCommand {
+    id: string;
+    title: string;
+    sub: string;
+    keywords: string[] | null;
+    danger: boolean;
+}
+
+/** 把配置里的 launcher 段规整成表单结构：老配置没这一段（nil）时全走默认值 */
+function normLauncher(c: any): LauncherCfg {
+    return {
+        enabled: !!c?.enabled,
+        shortcut: String(c?.shortcut || "Alt+Space"),
+        // 范围默认全开：指针缺失或字段省略都算“没说不”，与后端 normalize 保持一致
+        scopes: {
+            apps: c?.scopes?.apps !== false,
+            tools: c?.scopes?.tools !== false,
+            windows: c?.scopes?.windows !== false,
+            files: c?.scopes?.files !== false,
+            commands: c?.scopes?.commands !== false,
+        },
+        dirs: (c?.dirs || []).map((d: any) => String(d ?? "").trim()).filter((d: string) => d),
+        maxEntries: c?.maxEntries > 0 ? Number(c.maxEntries) : 60000,
+    };
+}
+
+const lkDefaultDirs = ref<string[]>([]);
+const lkCmds = ref<LkCommand[]>([]);
+const lkIdx = ref<LkIndexInfo | null>(null);
+const lkRebuilding = ref(false);
+
+/** 拉一次只有后端知道的信息：默认索引目录、可搜命令、索引状态 */
+async function loadLauncherInfo() {
+    if (!caps.nativeWindows) return;
+    try {
+        lkDefaultDirs.value = (await GoTools?.LauncherDefaultDirs()) || [];
+        lkCmds.value = (await GoTools?.LauncherCommands()) || [];
+        lkIdx.value = (await GoTools?.LauncherIndexStatus()) || null;
+    } catch { /* 非 Wails 环境或绑定缺失：面板仍可读，只是状态空白 */ }
+}
+
+/**
+ * 总开关：先落盘，SaveConfig 里面就会按新状态完成挂载/卸载，
+ * 再把索引状态读回来显示——避免用户拨完开关看不出发生过什么。
+ */
+async function onLauncherEnabled() {
+    await saveNow();
+    await loadLauncherInfo();
+    if (form.launcher.enabled) {
+        Message.success(`已开启：按 ${form.launcher.shortcut || "（未设置热键）"} 呼出面板，索引正在后台建立`);
+    } else {
+        Message.info("已关闭：热键已注销，面板收起，索引已释放");
+    }
+}
+
+/* ---- 呼出热键录制：与工具热键同一套规范化规则，只是写进 launcher 段 ---- */
+const lkRecording = ref(false);
+
+function lkStartRecord() {
+    lkRecording.value = true;
+}
+
+function lkOnShortcutKeydown(e: KeyboardEvent) {
+    e.preventDefault();
+    if (e.key === "Escape") {
+        lkRecording.value = false;
+        return;
+    }
+    if (e.key === "Backspace" || e.key === "Delete") {
+        form.launcher.shortcut = "";
+        lkRecording.value = false;
+        scheduleSave(0);
+        return;
+    }
+    // 仅按下修饰键时忽略，等主键
+    if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push("Ctrl");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.metaKey) parts.push("Win");
+    parts.push(normalizeKey(e.key));
+    form.launcher.shortcut = parts.join("+");
+    lkRecording.value = false;
+    // 热键变了要尽快重新注册，不跟普通输入一样走 300ms 防抖
+    scheduleSave(0);
+}
+
+async function addLauncherDir() {
+    try {
+        const dir = String((await GoTools?.ChooseDir("选择要加入索引的目录")) || "");
+        if (!dir) return;
+        if (form.launcher.dirs.includes(dir)) {
+            Message.info("该目录已在索引列表里");
+            return;
+        }
+        if (!(await GoTools?.LauncherDirExists(dir))) {
+            Message.error(`目录不存在或不可读：${dir}`);
+            return;
+        }
+        form.launcher.dirs.push(dir);
+        await saveNow();
+        // 目录变了不重建就搜不到新内容，直接把重建拉起来
+        await rebuildLauncherIndex();
+    } catch { /* 用户取消 */ }
+}
+
+function removeLauncherDir(i: number) {
+    form.launcher.dirs.splice(i, 1);
+    scheduleSave(0);
+}
+
+/** 重建索引：Go 侧扫盘是异步的，按下后隔几档轮询一次，建完就止 */
+async function rebuildLauncherIndex() {
+    if (!form.launcher.enabled) {
+        Message.warning("请先启用快捷搜索");
+        return;
+    }
+    lkRebuilding.value = true;
+    try {
+        await GoTools?.LauncherRebuildIndex();
+        for (const delay of [600, 2500, 6000]) {
+            await new Promise((r) => setTimeout(r, delay));
+            lkIdx.value = (await GoTools?.LauncherIndexStatus()) || null;
+            if (lkIdx.value && !lkIdx.value.building) break;
+        }
+        Message.success(`索引完成，当前 ${lkIdx.value?.count || 0} 条`);
+    } catch (e: any) {
+        Message.error(`重建索引失败：${String(e?.message || e)}`);
+    } finally {
+        lkRebuilding.value = false;
+    }
+}
+
+async function resetLauncherUsage() {
+    try {
+        await GoTools?.LauncherUsageReset();
+        Message.success("已清空使用频次，排序回归字面匹配");
+    } catch (e: any) {
+        Message.error(`清空失败：${String(e?.message || e)}`);
+    }
+}
+
+/** 从设置页直接呼出面板验一下，省得记热键；面板已显示时再次呼出即收起 */
+async function testLauncher() {
+    try {
+        await GoTools?.LauncherToggle();
+    } catch (e: any) {
+        Message.error(`呼出失败：${String(e?.message || e)}`);
+    }
+}
+
 let offConfigSaved: (() => void) | null = null;
+let offLauncherIndex: (() => void) | null = null;
 
 onMounted(() => {
     load();
@@ -1378,6 +1653,12 @@ onMounted(() => {
     try {
         const ret = Events.On("config:saved", () => { void syncToolsFromConfig(); });
         if (typeof ret === "function") offConfigSaved = ret as () => void;
+        // 索引后台建完会广播这里：“重建索引”按下去时扫描可能还远没收尾，
+        // 靠这个事件把状态行上的条数补上，不必一直轮询。
+        const ret2 = Events.On("launcher:index", () => {
+            if (activeTab.value === "launcher") void loadLauncherInfo();
+        });
+        if (typeof ret2 === "function") offLauncherIndex = ret2 as () => void;
     } catch { /* 非 Wails 环境没有事件总线 */ }
     window.addEventListener("resize", onWinResize);
     if (typeof ResizeObserver !== "undefined") {
@@ -1389,6 +1670,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
     if (offConfigSaved) offConfigSaved();
     offConfigSaved = null;
+    if (offLauncherIndex) offLauncherIndex();
+    offLauncherIndex = null;
     window.removeEventListener("resize", onWinResize);
     ro?.disconnect();
     ro = null;
@@ -1767,5 +2050,70 @@ onBeforeUnmount(() => {
 }
 .ball-icon-glyph {
     font-size: 26px;
+}
+
+/* 快捷搜索：额外索引目录列表（每行一条路径 + 移除按钮，长路径省略号收尾） */
+.lk-dirs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    align-items: flex-start;
+}
+
+.lk-dir-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 2px 8px;
+    border: 1px solid var(--color-border-2);
+    border-radius: 4px;
+    background: var(--color-fill-1);
+}
+
+.lk-dir-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+/* 索引状态行：弱色小字，与下面的 hint 区分开层次 */
+.lk-idx-line {
+    margin-top: 6px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+.lk-idx-err {
+    margin-top: 2px;
+    font-size: var(--base-size-small);
+    color: rgb(var(--danger-6));
+    word-break: break-all;
+}
+
+/* 可搜命令清单：只作展示，点不动，颜色跟面板结果里的 danger 语义一致 */
+.lk-cmds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.lk-cmd {
+    padding: 1px 8px;
+    border: 1px solid var(--color-border-2);
+    border-radius: 10px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+    background: var(--color-fill-1);
+}
+
+.lk-cmd.danger {
+    border-color: rgba(var(--danger-6), 0.5);
+    color: rgb(var(--danger-6));
 }
 </style>

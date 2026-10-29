@@ -20,6 +20,12 @@ type MenuItem struct {
 // 取个工具 key 不可能撞上的形式，免得以后新增同名工具被误拦。
 const BallHomeItemID = "__home__"
 
+// LauncherHotkeyID 快捷搜索面板的全局热键 ID：同样不对应任何工具项，
+// 由主程序 DispatchTool 特判成「呼出/收起搜索面板」。
+// 这条热键只在设置里打开快捷搜索时才由 Hotkeys() 给出——关掉开关时它压根
+// 不进清单，热键线程重载后自然就把原来那条注销了。
+const LauncherHotkeyID = "__launcher__"
+
 // Hotkey 一条全局热键绑定：ID 为工具标识，Shortcut 形如 "Ctrl+Alt+S"。
 type Hotkey struct {
 	ID       string

@@ -7,6 +7,7 @@ import (
 	"Tools/services/sysx"
 	"Tools/services/winui"
 	"Tools/tools/docker"
+	"Tools/tools/launcher"
 	"Tools/tools/mysql"
 	"Tools/tools/nginx"
 	"Tools/tools/npm"
@@ -62,6 +63,14 @@ type App struct {
 
 	// nativeNotify 当前构建能否弹原生通知卡（面板模式为 false，见 SetNativeNotify）
 	nativeNotify atomic.Bool
+
+	// 快捷搜索面板（Alt+Space）：单个隐藏窗口，热键呼出/收起，失焦自动收起。
+	// 整套生命周期受设置里的总开关约束（见 launcher.go 文件头）：没开启就
+	// 不建窗口、不挂热键、不扫盘建索引，也不留一个常驻的隐藏 WebView2 实例。
+	launcherMu      sync.Mutex
+	launcherWin     application.Window
+	launcherShown   bool      // 面板当前是亮着的（Wails 没有可靠的可见态查询，自己记）
+	launcherShownAt time.Time // 最近一次点亮的时刻：给失焦自动收起留一段宽限期
 
 	// 截图选区浮层（WebView 版）：Go 侧只持有窗口句柄
 	capMu    sync.Mutex
@@ -251,11 +260,20 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 			applog.Warnf("ball", "启动时显示浮动球失败: %v", err)
 		}
 	}
+	// 快捷搜索：执行器与索引广播无条件装好（没有副作用），但服务本体只在
+	// 设置里开着时才挂——热键那条由 nativeHost.Hotkeys 按开关决定给不给，
+	// 这里只负责面板预热与首轮索引，两者在关闭时一律不做。
+	a.installLauncherHooks()
+	if a.launcherMounted() {
+		launcher.EnsureIndex()
+	}
 	// 预热截图浮层：WebView2 开窗 + 页面 bootstrap 是首次截图最贵的一笔（实测 ~300ms），
 	// 挪到启动空闲期付掉，之后每次截图都只走“推帧 + 复用窗口”。
 	go func() {
 		time.Sleep(2 * time.Second)
 		a.PrewarmCaptureOverlay()
+		// 面板窗口错开一笔再建：两者都要起 WebView2，挤在一起会把启动拖得更长
+		a.PrewarmLauncher()
 	}()
 	// 关闭主窗口时隐藏到托盘（不退出），并提供托盘右键菜单
 	a.setupCloseToTray()
@@ -2377,6 +2395,12 @@ func (h nativeHost) Hotkeys() []winui.Hotkey {
 		}
 		out = append(out, winui.Hotkey{ID: id, Shortcut: t.Shortcut})
 	}
+	// 快捷搜索：开着才交出这一条。本方法就是热键清单的唯一数据源，
+	// SaveConfig 后的 ReloadHotkeys 会重新收集——于是关掉开关时这条连同
+	// RegisterHotKey 一起被注销，不需要额外的“反注册”代码。
+	if sc := launcher.ShortcutFromConfig(); sc != "" && h.a.launcherMounted() {
+		out = append(out, winui.Hotkey{ID: winui.LauncherHotkeyID, Shortcut: sc})
+	}
 	return out
 }
 
@@ -2386,10 +2410,29 @@ func (h nativeHost) DispatchTool(id string) {
 	if h.a == nil || h.a.app == nil {
 		return
 	}
-	if h.a.TryActivateNativeTool(id) {
+	// 快捷搜索不是工具项，没有路由也没有事件，只能在这里特判（同浮动球菜单的「打开主页」）
+	if id == winui.LauncherHotkeyID {
+		if err := h.a.toggleLauncher(); err != nil {
+			applog.Warnf("launcher", "热键呼出面板失败: %v", err)
+			// 开不出来也得给个响：否则按下热键像坏了，用户无从知道是没开启还是没窗口
+			h.a.ShowMessage("warning", err.Error())
+		}
 		return
 	}
-	h.a.app.Event.Emit("tool:activate", id)
+	h.a.dispatchToolID(id)
+}
+
+// dispatchToolID 按工具标识触发一个内置工具：Go 侧能直接处理的（截图）就地调起，
+// 其余以 "tool:activate" 事件交回主窗口。全局热键、浮动球菜单、快捷搜索三条
+// 原生入口共用这一句，行为差异不会悄悄长在三个地方。
+func (a *App) dispatchToolID(id string) {
+	if a.app == nil {
+		return
+	}
+	if a.TryActivateNativeTool(id) {
+		return
+	}
+	a.app.Event.Emit("tool:activate", id)
 }
 
 // SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
@@ -2496,6 +2539,12 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	if len(cfg.Browser.Spaces) == 0 {
 		cfg.Browser = config.CurrentConfig().Browser
 	}
+	// 快捷搜索段只有设置页的那一面板会编它（LauncherConfig 是指针 + omitempty）：
+	// payload 里没带就等于“这次不动它”，否则任何一次其它页面的保存都会把用户配好的
+	// 开关、热键与目录整段抹掉。
+	if cfg.Launcher == nil {
+		cfg.Launcher = config.CurrentConfig().Launcher
+	}
 	path, err := config.SaveAppConfig(cfg)
 	if err != nil {
 		applog.Errorf("config", "保存配置失败: %v", err)
@@ -2507,7 +2556,7 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	// SQL 日志默认目录随日志基础目录变更重解析（配置了固定目录的不受影响）
 	ms := cfg.ToolSettings["mysql"]
 	mysql.ConfigureSQLLog(ms.SQLLogEnabled, ms.SQLLogDir)
-	applog.Infof("config", "配置已保存: %s（日志目录: %s, enabled=%v level=%s, ball=%v, autoStart=%v, paths=%s|%s|%s）", path, logDir, cfg.Log.Enabled, cfg.Log.Level, cfg.Ball.Enabled, cfg.General.AutoStart, cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs)
+	applog.Infof("config", "配置已保存: %s（日志目录: %s, enabled=%v level=%s, ball=%v, launcher=%v, autoStart=%v, paths=%s|%s|%s）", path, logDir, cfg.Log.Enabled, cfg.Log.Level, cfg.Ball.Enabled, config.LauncherSection(cfg).Enabled, cfg.General.AutoStart, cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs)
 	// 热键可能变更：请求热键线程按新配置重载
 	winui.ReloadHotkeys()
 	// 开机自启随设置即时生效（Enable/Disable 均幂等）
@@ -2522,6 +2571,9 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	} else {
 		a.BallClose()
 	}
+	// 快捷搜索开关随设置即时生效：开着才挂（预热窗口 + 首轮索引），
+	// 关掉就把面板销毁、索引丢弃，不留任何常驻开销
+	a.applyLauncherSwitch()
 	// 广播配置变更：首页等窗口据此刷新工具列表（设置页会自动保存，前端自行去重）
 	if a.app != nil {
 		a.app.Event.Emit("config:saved", path)

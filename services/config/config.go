@@ -121,6 +121,89 @@ type BrowserConfig struct {
 	Spaces       []BrowserSpace `json:"spaces"`       // 空间列表（至少一个）
 }
 
+// LauncherScopes 快捷搜索的检索范围：勾选哪几类参与检索。
+type LauncherScopes struct {
+	Apps     bool `json:"apps"`     // 已安装应用（开始菜单 + Program Files 快捷方式）
+	Tools    bool `json:"tools"`    // 本程序内置工具（与首页/浮动球同一份列表）
+	Windows  bool `json:"windows"`  // 运行中的窗口
+	Files    bool `json:"files"`    // 已索引目录下的本地文件
+	Commands bool `json:"commands"` // 内置命令、算式求值、URL 直达
+}
+
+// LauncherConfig 快捷搜索启动器（Alt+Space 面板）设置。
+type LauncherConfig struct {
+	// Enabled 总开关。关掉时整套服务都不挂载：不注册全局热键、不建面板窗口、
+	// 不扫盘建索引；已开着的窗口也会在保存后被收起。默认关闭，避免用户没启用
+	// 就凭空多一个全局热键和一轮启动扫描。
+	Enabled    bool           `json:"enabled"`
+	Shortcut   string         `json:"shortcut"`   // 全局热键，如 "Alt+Space"
+	Scopes     LauncherScopes `json:"scopes"`     // 检索范围
+	Dirs       []string       `json:"dirs"`       // 额外参与文件索引的目录（已知目录默认包含）
+	MaxEntries int            `json:"maxEntries"` // 文件索引条目上限；<=0 用默认值
+}
+
+// DefaultLauncherShortcut 快捷搜索的默认热键。
+const DefaultLauncherShortcut = "Alt+Space"
+
+// DefaultLauncherMaxEntries 文件索引默认条目上限：够覆盖个人目录树，
+// 又不至于让用户误设一个把整块盘扫下来的值（扫描本身是异步的，但内存与耗时都要有界）。
+const DefaultLauncherMaxEntries = 60000
+
+// defaultLauncherConfig 默认配置：关闭状态，但把范围与热键都填好，
+// 用户在设置页第一次打开开关就能看到完整可编辑的面板。
+func defaultLauncherConfig() *LauncherConfig {
+	return &LauncherConfig{
+		Enabled:    false,
+		Shortcut:   DefaultLauncherShortcut,
+		Scopes:     LauncherScopes{Apps: true, Tools: true, Windows: true, Files: true, Commands: true},
+		MaxEntries: DefaultLauncherMaxEntries,
+	}
+}
+
+// LauncherSection 取快捷搜索设置。配置里从未出现过这一段（老配置）时返回默认值，
+// 调用方因此永远不用判空。
+func LauncherSection(cfg AppConfig) LauncherConfig {
+	if cfg.Launcher == nil {
+		d := defaultLauncherConfig()
+		return *d
+	}
+	return *cfg.Launcher
+}
+
+// LauncherCfg 当前缓存配置里的快捷搜索设置，供 tools/launcher 直接读。
+func LauncherCfg() LauncherConfig { return LauncherSection(CurrentConfig()) }
+
+// LauncherEnabled 快捷搜索总开关。false 时宿主不注册热键、不建窗口、不建索引。
+func LauncherEnabled() bool { return LauncherCfg().Enabled }
+
+// normalizeLauncherConfig 补齐快捷搜索设置：热键兜底、上限兜范围、目录去空去重。
+// 全是 idempotent 修正，不会覆盖用户填的值；手改 config.json 把这一段删掉时
+// （读回来是 nil）什么都不做，调用方走 LauncherSection 拿到默认值。
+func normalizeLauncherConfig(cfg *AppConfig) {
+	l := cfg.Launcher
+	if l == nil {
+		return
+	}
+	l.Shortcut = strings.TrimSpace(l.Shortcut)
+	if l.Shortcut == "" {
+		l.Shortcut = DefaultLauncherShortcut
+	}
+	if l.MaxEntries <= 0 {
+		l.MaxEntries = DefaultLauncherMaxEntries
+	}
+	seen := map[string]bool{}
+	dirs := make([]string, 0, len(l.Dirs))
+	for _, d := range l.Dirs {
+		d = strings.TrimSpace(d)
+		if d == "" || seen[strings.ToLower(d)] {
+			continue
+		}
+		seen[strings.ToLower(d)] = true
+		dirs = append(dirs, d)
+	}
+	l.Dirs = dirs
+}
+
 // AppConfig 应用总配置
 type AppConfig struct {
 	Log          LogConfig               `json:"log"`
@@ -133,6 +216,10 @@ type AppConfig struct {
 	// Order 各列表的拖拽自定义顺序：键为“面”标识（如 php:list / nginx:list / home:tools），
 	// 值为该面内条目 ID 的有序列表。主页与各服务列表各用独立键，互不共用。随整份配置导出/导入。
 	Order map[string][]string `json:"order"`
+	// Launcher 快捷搜索启动器设置。指针类型：老配置文件里没有这一段，读回来就是 nil，
+	// 序列化时也随之省略（omitempty），不会凭空对象污染用户手写的配置。
+	// 关掉时不挂热键、不建窗口、不建索引，见 LauncherConfig.Enabled。
+	Launcher *LauncherConfig `json:"launcher,omitempty"`
 }
 
 // DefaultMaxSpaces 浏览器空间数量默认上限。
@@ -164,10 +251,11 @@ var (
 // DefaultConfig 返回带默认日志设置与默认工具列表的配置。
 func DefaultConfig() AppConfig {
 	return AppConfig{
-		Log:     LogConfig{Enabled: true, Level: "info", Path: ""},
-		Ball:    BallConfig{Enabled: true},
-		General: GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: "light"},
-		Browser: defaultBrowserConfig(),
+		Log:      LogConfig{Enabled: true, Level: "info", Path: ""},
+		Ball:     BallConfig{Enabled: true},
+		General:  GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: "light"},
+		Browser:  defaultBrowserConfig(),
+		Launcher: defaultLauncherConfig(),
 		ToolSettings: map[string]ToolSettings{
 			// MySQL：默认开启 SQL 日志，目录留空走 DefaultSQLLogDir
 			"mysql": {SQLLogEnabled: true},
@@ -467,6 +555,7 @@ func normalizeConfig(cfg *AppConfig) {
 	cfg.Paths.Data = strings.TrimSpace(cfg.Paths.Data)
 	cfg.Paths.Logs = strings.TrimSpace(cfg.Paths.Logs)
 	normalizeBrowserConfig(&cfg.Browser)
+	normalizeLauncherConfig(cfg)
 	switch cfg.General.Theme {
 	case "light", "dark", "auto":
 	default:
@@ -580,6 +669,10 @@ func LoadAppConfig() AppConfig {
 				}
 				if loaded.Order != nil {
 					cfg.Order = loaded.Order
+				}
+				// 快捷搜索：nil 与“已关闭”语义一致，直接拿读回来的那一份覆盖默认值。
+				if loaded.Launcher != nil {
+					cfg.Launcher = loaded.Launcher
 				}
 			}
 		}

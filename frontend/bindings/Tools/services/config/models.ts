@@ -22,6 +22,13 @@ export interface AppConfig {
      * 值为该面内条目 ID 的有序列表。主页与各服务列表各用独立键，互不共用。随整份配置导出/导入。
      */
     "order": { [_ in string]?: string[] | null } | null;
+
+    /**
+     * Launcher 快捷搜索启动器设置。指针类型：老配置文件里没有这一段，读回来就是 nil，
+     * 序列化时也随之省略（omitempty），不会凭空对象污染用户手写的配置。
+     * 关掉时不挂热键、不建窗口、不建索引，见 LauncherConfig.Enabled。
+     */
+    "launcher"?: LauncherConfig | null;
 }
 
 /**
@@ -190,6 +197,68 @@ export interface GeneralConfig {
      * 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
      */
     "theme": string;
+}
+
+/**
+ * LauncherConfig 快捷搜索启动器（Alt+Space 面板）设置。
+ */
+export interface LauncherConfig {
+    /**
+     * Enabled 总开关。关掉时整套服务都不挂载：不注册全局热键、不建面板窗口、
+     * 不扫盘建索引；已开着的窗口也会在保存后被收起。默认关闭，避免用户没启用
+     * 就凭空多一个全局热键和一轮启动扫描。
+     */
+    "enabled": boolean;
+
+    /**
+     * 全局热键，如 "Alt+Space"
+     */
+    "shortcut": string;
+
+    /**
+     * 检索范围
+     */
+    "scopes": LauncherScopes;
+
+    /**
+     * 额外参与文件索引的目录（已知目录默认包含）
+     */
+    "dirs": string[] | null;
+
+    /**
+     * 文件索引条目上限；<=0 用默认值
+     */
+    "maxEntries": number;
+}
+
+/**
+ * LauncherScopes 快捷搜索的检索范围：勾选哪几类参与检索。
+ */
+export interface LauncherScopes {
+    /**
+     * 已安装应用（开始菜单 + Program Files 快捷方式）
+     */
+    "apps": boolean;
+
+    /**
+     * 本程序内置工具（与首页/浮动球同一份列表）
+     */
+    "tools": boolean;
+
+    /**
+     * 运行中的窗口
+     */
+    "windows": boolean;
+
+    /**
+     * 已索引目录下的本地文件
+     */
+    "files": boolean;
+
+    /**
+     * 内置命令、算式求值、URL 直达
+     */
+    "commands": boolean;
 }
 
 /**

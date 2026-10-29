@@ -183,7 +183,14 @@ func NewCred() Cred { return platformCred() }
 type Opener interface {
 	Dir(path string) error
 	// File 用系统默认程序打开文件（无图形环境时返回 ErrUnsupported）。
+	//
+	// 注意 Windows 上它是"用记事本编辑"而不是"按扩展名关联"：本仓库拿它开 hosts /
+	// 配置文本，指望的是可编辑。要把一个 .lnk / pdf / docx 交给 shell 选定的程序，
+	// 用 Launch。
 	File(path string) error
+	// Launch 交给 shell 按关联程序启动：.lnk 会拉起它指向的程序，
+	// 文档会交给默认应用。无图形环境时返回 ErrUnsupported。
+	Launch(path string) error
 	URL(url string) error
 }
 

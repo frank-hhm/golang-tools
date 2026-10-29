@@ -730,18 +730,18 @@ onUnmounted(() => {
 
 /* “更多”弹窗内的网格：四列、不滚动（交给弹窗自身），格子带名称 */
 .tools-grid-modal {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   overflow-y: visible;
   flex: none;
 }
 
 .tool-cell-named {
   gap: 6px;
-  padding: 12px 8px;
+  padding: 8px 8px 4px;
 }
 
 .tool-cell-named .tool-icon {
-  font-size: 24px;
+  font-size: 28px;
 }
 
 .tool-name {

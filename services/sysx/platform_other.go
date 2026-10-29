@@ -43,7 +43,7 @@ func killTree(p *os.Process) error {
 	return nil
 }
 
-// otherOpener 用系统自带的 open 命令打开目录/链接。
+// otherOpener 用系统自带的 open 命令打开目录/文件/链接。
 type otherOpener struct{}
 
 // platformOpen 返回兜底平台打开器。
@@ -52,8 +52,15 @@ func platformOpen() Opener { return otherOpener{} }
 // Dir 打开目录。
 func (otherOpener) Dir(path string) error { return openTarget(path) }
 
+// File 用系统默认程序打开文件：macOS/BSD 的 open 对文件与目录是同一用法，
+// 交给系统按扩展名选程序；找不到 open 命令时 openTarget 自己回 ErrUnsupported。
+func (otherOpener) File(path string) error { return openTarget(path) }
+
 // URL 打开链接。
 func (otherOpener) URL(u string) error { return openTarget(u) }
+
+// Launch 交给系统按扩展名选程序启动（与 File 同一用法）。
+func (otherOpener) Launch(path string) error { return openTarget(path) }
 
 // openTarget 调 open 并立即返回。
 func openTarget(target string) error {

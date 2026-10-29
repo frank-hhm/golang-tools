@@ -24,6 +24,10 @@ func (linuxOpener) File(path string) error { return xdgOpen(path) }
 // URL 用默认浏览器打开链接。
 func (linuxOpener) URL(u string) error { return xdgOpen(u) }
 
+// Launch 交给桌面环境按关联程序启动。Linux 上 File 与 Launch 同义
+// （xdg-open 本来就走 MimeAssociation），分开只为接口层面说清语义。
+func (linuxOpener) Launch(path string) error { return xdgOpen(path) }
+
 // xdgOpen 调 xdg-open 并立即返回（不等待目标程序退出）。
 //
 // 服务器上常常没有桌面环境，此时 xdg-open 会失败——调用方（面板）应把错误

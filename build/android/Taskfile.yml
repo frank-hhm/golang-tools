@@ -7,24 +7,39 @@ vars:
   APP_ID: '{{.APP_ID | default "com.wails.app"}}'
   MIN_SDK: '21'
   TARGET_SDK: '35'
+  # 下面这一组全局变量全是「只在 POSIX 主机上才有意义」的探测：uname / command -v /
+  # sort -V / tail。Task 在解析被 include 的 Taskfile 时就会求值它的全局 vars，而根
+  # Taskfile 无条件 include 了 android —— 于是 Windows 上每一次 `wails3 build|dev|package`
+  # 都会拿 PowerShell/cmd 去跑这几条命令，只为了往构建日志里灌：
+  #   "uname": executable file not found in $PATH   (×2)
+  #   "tail": executable file not found in $PATH
+  #   -V系统找不到指定的文件。
+  # 而且取回来的值本身也是错的（$HOME 不是 Windows 上 Android SDK 的位置）。
+  # 所以每条 sh 前面加 OS 分支：Windows 分支只 echo 一个模板里现算好的字面量，
+  # 绝不碰 POSIX 命令。试过 evalOnly + eval 的「零 spawn」写法，wails3 内嵌的 Task
+  # 没有 eval 函数（template: :1: function "eval" not defined），故退回 OS 分支。
+  # Windows 下 SDK 根目录：ANDROID_HOME > ANDROID_SDK_ROOT > %LOCALAPPDATA%\Android\Sdk。
+  # 末尾把反斜杠换成正斜杠：Task 的 sh 是自己内置的 shell 解释层，`echo C:\Users\...`
+  # 里的 `\U` 会被当转义吃掉，拼出 C:UsersAdministrator... 这种废路径。
+  WIN_SDK_ROOT: '{{ (env "ANDROID_HOME" | default (env "ANDROID_SDK_ROOT" | default (printf "%s/Android/Sdk" (env "LOCALAPPDATA" | default (env "USERPROFILE" | default "C:"))))) | replace "\\" "/" }}'
   # The emulator runs the host architecture; physical devices are arm64
   HOST_ARCH:
-    sh: '[ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64"'
+    sh: '{{if eq OS "windows"}}echo {{ARCH}}{{else}}[ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64"{{end}}'
   # System-image ABI for the host, used in the "create an AVD" hint below.
   ANDROID_ABI:
-    sh: '[ "$(uname -m)" = "arm64" ] && echo "arm64-v8a" || echo "x86_64"'
+    sh: '{{if eq OS "windows"}}echo {{if eq ARCH "arm64"}}arm64-v8a{{else}}x86_64{{end}}{{else}}[ "$(uname -m)" = "arm64" ] && echo "arm64-v8a" || echo "x86_64"{{end}}'
   # SDK location: $ANDROID_HOME / $ANDROID_SDK_ROOT, else the per-OS default
   # (macOS: ~/Library/Android/sdk, Linux/other: ~/Android/Sdk)
   SDK_ROOT:
-    sh: 'echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}"'
+    sh: '{{if eq OS "windows"}}echo {{.WIN_SDK_ROOT}}{{else}}echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}"{{end}}'
   ADB:
-    sh: 'command -v adb || echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}/platform-tools/adb"'
+    sh: '{{if eq OS "windows"}}echo {{.WIN_SDK_ROOT}}/platform-tools/adb.exe{{else}}command -v adb || echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}/platform-tools/adb"{{end}}'
   EMULATOR:
-    sh: 'command -v emulator || echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}/emulator/emulator"'
+    sh: '{{if eq OS "windows"}}echo {{.WIN_SDK_ROOT}}/emulator/emulator.exe{{else}}command -v emulator || echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}/emulator/emulator"{{end}}'
   # avdmanager lives under cmdline-tools/<version>/bin; used to auto-create an
   # AVD when none exists (mirrors the iOS `ensure-simulator` auto-create flow).
   AVDMANAGER:
-    sh: 'command -v avdmanager || ls "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}"/cmdline-tools/*/bin/avdmanager 2>/dev/null | sort -V | tail -1 || true'
+    sh: '{{if eq OS "windows"}}echo {{.WIN_SDK_ROOT}}/cmdline-tools/latest/bin/avdmanager.bat{{else}}command -v avdmanager || ls "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$([ -d "$HOME/Library/Android/sdk" ] && echo "$HOME/Library/Android/sdk" || echo "$HOME/Android/Sdk")}}"/cmdline-tools/*/bin/avdmanager 2>/dev/null | sort -V | tail -1 || true{{end}}'
 
 tasks:
   install:deps:
