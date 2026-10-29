@@ -28,6 +28,10 @@ export const TOOLS = [
     { key: "Disk", menu_name: "磁盘管理", path: "tools/disk", component: () => import('@/views/tools/disk/index.vue') },
     { key: "Siteclone", menu_name: "仿站工具", path: "tools/siteclone", component: () => import('@/views/tools/siteclone/index.vue') },
     { key: "Guard", menu_name: "进程守护", path: "tools/guard", component: () => import('@/views/tools/guard/index.vue') },
+    // 进程管理：不进工具项/设置页，仅首页 CPU/内存 卡片点击唤起（/ 与 /win 两条路由由 TOOLS 自动生成）
+    { key: "Procman", menu_name: "进程管理", path: "tools/procman", component: () => import('@/views/tools/procman/index.vue') },
+    // 端口管理：同上，不进工具项/设置页，仅首页「网络」卡片点击唤起
+    { key: "Portman", menu_name: "端口管理", path: "tools/portman", component: () => import('@/views/tools/portman/index.vue') },
     { key: "Settings", menu_name: "设置", path: "tools/settings", component: () => import('@/views/tools/settings/index.vue') },
 
 ];

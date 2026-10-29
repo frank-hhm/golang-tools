@@ -2530,7 +2530,7 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 }
 
 // SetListOrder 保存某个“面”的拖拽自定义顺序到用户配置（随导出/导入一起搬运）。
-// key 为面标识（如 home:stats / home:services / home:tools / php:list），ids 为该面内条目 ID 的有序列表。
+// key 为面标识（如 php:list / nginx:list / home:tools），ids 为该面内条目 ID 的有序列表。
 // 走 config.Update 读改写并落盘，只动 Order 段，不触发 SaveConfig 那一整套副作用（日志器/热键/球等）。
 func (a *App) SetListOrder(key string, ids []string) error {
 	k := strings.TrimSpace(key)

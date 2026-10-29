@@ -19,10 +19,11 @@
               </template>
 
               <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
-                   栅格用 a-row/a-col，横纵间距由 gutter 提供 -->
+                   栅格用 a-row/a-col，横纵间距由 gutter 提供；顺序固定，不做拖拽排序；
+                   带 link 的卡片可点，跳到对应的监控面板（都不进工具列表） -->
               <a-row :gutter="[12, 12]" class="stat-cards">
-                <a-col v-for="c in orderedStatCards" :key="c.key" :span="8"
-                  v-bind="statsReo.handlers(c.key)" :class="{ 'reorder-dragging': statsReo.isDragging(c.key), 'reorder-over': statsReo.isOver(c.key) }">
+                <a-col v-for="c in statCards" :key="c.key" :span="8" :class="{ 'stat-clickable': !!c.link }"
+                  :title="c.link ? '点击查看' + c.link : undefined" @click="onStatCardClick(c.key)">
                   <common-stat-card :icon="c.icon" :icon-value="c.p" :icon-size="26" :tone="c.tone"
                     :label="c.label" :value="c.big" :unit="c.unit" :detail="c.detail" />
                 </a-col>
@@ -46,11 +47,10 @@
                   <a-radio value="docker">Docker</a-radio>
                 </a-radio-group>
               </template>
+              <!-- 本地服务实例卡片：顺序跟随后端返回的实例列表，不做拖拽排序 -->
               <div class="svc-cards" v-if="filteredServices.length">
-                <div v-for="s in orderedServices" :key="s.id" class="svc-card" @click="openServiceDetail(s)"
-                                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])"
-                                  v-bind="servicesReo.handlers(s.id)"
-                                  :class="{ 'reorder-dragging': servicesReo.isDragging(s.id), 'reorder-over': servicesReo.isOver(s.id) }">
+                <div v-for="s in filteredServices" :key="s.id" class="svc-card" @click="openServiceDetail(s)"
+                                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
                   <div class="svc-card-top">
                     <div class="svc-logo" :class="'logo-' + s.type">
                       <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />
@@ -124,7 +124,7 @@
     </a-row>
 
     <!-- 全部工具：无背景蒙层（mask=false），不阻断后方页面交互 -->
-    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" :mask="false" :mask-closable="false"
+    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" 
       :footer="false" draggable class="tools-more-modal">
       <div class="tools-grid tools-grid-modal">
         <div v-for="item in orderedAllTools" :key="item.id || item.name" class="tool-cell tool-cell-named"
@@ -202,6 +202,26 @@ const onToolClick = (item: ToolRow) => {
 function openSettings() {
   openToolWindow("/tools/settings", "设置", { single: true });
 }
+
+/** 进程管理面板：不进工具项/设置页，首页 CPU 与内存卡片都唤起它（同一窗口，单例） */
+function openProcManager() {
+  openToolWindow("/tools/procman", "进程管理", { single: true, width: 1180, height: 780 });
+}
+/** 端口管理面板：同样不进工具项，首页「网络」卡片唤起 */
+function openPortManager() {
+  openToolWindow("/tools/portman", "端口管理", { single: true, width: 1180, height: 760 });
+}
+/** 磁盘面板是既有工具项：优先走它自己的配置（尺寸/单例跟着用户设置走），配置里被删了才兜底 */
+function openDiskPanel() {
+  const item = toolsList.value.find((t) => t.id === "disk" || t.key === "disk");
+  if (item) { onToolClick(item); return; }
+  openToolWindow("/tools/disk", "磁盘管理", { single: true, width: 1360, height: 860 });
+}
+function onStatCardClick(key: string) {
+  if (key === "cpu" || key === "mem") openProcManager();
+  else if (key === "disk") openDiskPanel();
+  else if (key === "net") openPortManager();
+}
 function activateById(id: string) {
   const item = toolsList.value.find((t) => t.id === id || t.key === id);
   if (item) onToolClick(item);
@@ -225,18 +245,20 @@ interface StatCard {
   icon: StatIconName;
   /** 数据驱动进度 0-100：CPU 脉冲频率 / 内存液位 / 磁盘进度条 */
   p?: number;
+  /** 点击卡片唤起的面板名；留空表示这张卡不可点 */
+  link?: string;
 }
 const statCards = computed<StatCard[]>(() => {
   const s = sysInfo.value;
   return [
     {
-      tone: "blue", icon: "cpu", label: "CPU", key: "cpu",
+      tone: "blue", icon: "cpu", label: "CPU", key: "cpu", link: "进程管理",
       big: s ? s.cpuUsage.toFixed(1) : "--", unit: "%",
       detail: s ? s.cpuCores + " 核 · " + s.cpuThreads + " 线程" : "",
       p: s?.cpuUsage,
     },
     {
-      tone: "cyan", icon: "mem", label: "内存", key: "mem",
+      tone: "cyan", icon: "mem", label: "内存", key: "mem", link: "进程管理",
       big: s ? s.memPercent.toFixed(1) : "--", unit: "%",
       detail: s ? fmtBytes(s.memUsed) + " / " + fmtBytes(s.memTotal) : "",
       p: s?.memPercent,
@@ -252,13 +274,13 @@ const statCards = computed<StatCard[]>(() => {
       detail: s ? "堆 " + fmtBytes(s.appMemAlloc) : "",
     },
     {
-      tone: "green", icon: "disk", label: "磁盘 C:", key: "disk",
+      tone: "green", icon: "disk", label: "磁盘 C:", key: "disk", link: "磁盘面板",
       big: s ? s.diskPercent.toFixed(1) : "--", unit: "%",
       detail: s ? fmtBytes(s.diskUsed) + " / " + fmtBytes(s.diskTotal) : "",
       p: s?.diskPercent,
     },
     {
-      tone: "blue", icon: "net", label: "网络", key: "net",
+      tone: "blue", icon: "net", label: "网络", key: "net", link: "端口管理",
       big: s ? fmtBytes(s.netSent + s.netRecv) : "--", unit: " 累计",
       detail: s ? "↑ " + fmtBytes(s.netSent) + "  ↓ " + fmtBytes(s.netRecv) : "",
     },
@@ -275,29 +297,7 @@ const filteredServices = computed(() => {
   return list.filter((s: any) => s.type === svcFilter.value);
 });
 
-/* ==================== 拖拽排序（主页三区，存入用户配置随导出搬运） ==================== */
-const statsOrder = ref<string[]>([]);
-const servicesOrder = ref<string[]>([]);
-
-/** 把可见列表按新顺序重排，返回重排后的 id（供持久化写回） */
-function reorderIds(items: any[], newVis: string[], idOf: (x: any, i: number) => string): string[] {
-  const idx = new Map(newVis.map((id, i) => [id, i] as const));
-  // 先把原始索引固定下来：兜底键（如工具无 id 时用 index）不随排序过程漂移
-  return items
-    .map((x, i) => ({ k: idOf(x, i), r: idx.get(idOf(x, i)) ?? 1e9 }))
-    .sort((a, b) => a.r - b.r)
-    .map((x) => x.k);
-}
-
-const statsReo = useReorder("home:stats", {
-  getVisible: () => statCards.value.map((c) => c.key),
-  onReordered: (nv) => { statsOrder.value = reorderIds(statCards.value, nv, (c) => c.key); },
-});
-const servicesReo = useReorder("home:services", {
-  getVisible: () => filteredServices.value.map((s: any) => String(s.id)),
-  getFull: () => (sysInfo.value?.services || []).map((s: any) => String(s.id)),
-  onReordered: (nv) => { servicesOrder.value = reorderIds(filteredServices.value, nv, (s) => String(s.id)); },
-});
+/* ==================== 拖拽排序（仅主页快捷操作，顺序回写配置 tools 数组） ==================== */
 /** 主页“快捷操作”网格只展示勾选了主页展示的工具；“更多”弹窗展示全部 */
 const homeTools = computed(() => toolsList.value.filter((t) => t.home !== false));
 /** 工具项的稳定标识：与 Go 侧 SetToolOrder 的匹配规则一致（id 优先，其次 key/path） */
@@ -313,9 +313,7 @@ const toolsReo = useReorder("home:tools", {
   onReordered: (_nv, full) => { toolsList.value = applyOrder(toolsList.value, full, toolKeyOf); },
 });
 
-const orderedStatCards = computed(() => applyOrder(statCards.value, statsOrder.value, (c) => c.key));
-const orderedServices = computed(() => applyOrder(filteredServices.value, servicesOrder.value, (s: any) => String(s.id)));
-// 工具区不再走 Order 表：配置里 tools 数组的顺序就是显示顺序
+// 工具区不走 Order 表：配置里 tools 数组的顺序就是显示顺序
 const orderedTools = homeTools;
 const orderedAllTools = toolsList;
 
@@ -324,11 +322,6 @@ const moreVisible = ref(false);
 function onMoreToolClick(item: ToolRow) {
   moreVisible.value = false;
   onToolClick(item);
-}
-
-async function loadHomeOrders() {
-  const [st, sv] = await Promise.all([loadOrder("home:stats"), loadOrder("home:services")]);
-  statsOrder.value = st; servicesOrder.value = sv;
 }
 
 /** 旧版把快捷操作顺序单独存在 order["home:tools"]，与设置页各排一份：并进配置的工具顺序后清掉该键 */
@@ -461,7 +454,6 @@ function pollSysInfo() {
 
 onMounted(async () => {
   await loadTools();
-  void loadHomeOrders();
   void migrateToolsOrder();
   refreshSysInfo();
   sysTimer = setInterval(pollSysInfo, 5000);
@@ -484,6 +476,11 @@ onUnmounted(() => {
 /* 统计卡片行：横纵间距由 a-row 的 gutter 提供，这里只留与下方内容块的间距 */
 .stat-cards {
   margin-bottom: var(--base-padding);
+}
+
+/* 可点击唤起面板的统计卡片（CPU / 内存 → 进程管理，磁盘 → 磁盘面板，网络 → 端口管理） */
+.stat-clickable {
+  cursor: pointer;
 }
 
 /* 服务实例卡片 */

@@ -51,6 +51,12 @@ import * as npm$0 from "../../tools/npm/models.js";
 import * as php$0 from "../../tools/php/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as portman$0 from "../../tools/portman/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as procman$0 from "../../tools/procman/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as redis$0 from "../../tools/redis/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -2683,6 +2689,34 @@ export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
 }
 
 /**
+ * PortIcon 按 exe 路径取图标 PNG dataURL；取不到返回空串。
+ */
+export function PortIcon(exe: string): $CancellablePromise<string> {
+    return $Call.ByID(1470962172, exe);
+}
+
+/**
+ * PortOpenPath 在系统文件管理器中定位该 exe。
+ */
+export function PortOpenPath(exe: string): $CancellablePromise<void> {
+    return $Call.ByID(2557773022, exe);
+}
+
+/**
+ * PortOpenVt 按 exe 的 SHA256 用系统浏览器打开 VirusTotal 文件页。
+ */
+export function PortOpenVt(exe: string): $CancellablePromise<void> {
+    return $Call.ByID(3428811487, exe);
+}
+
+/**
+ * PortSnapshot 一次本机端口表（TCP/UDP 监听 + 已连接，带归属进程）。
+ */
+export function PortSnapshot(): $CancellablePromise<portman$0.Snapshot> {
+    return $Call.ByID(1792110769);
+}
+
+/**
  * PrewarmCaptureOverlay 预建隐藏的浮层窗口（不抓屏），把“新建 WebView2 窗口 +
  * 页面 bootstrap”这笔最贵的开销从第一次截图的体验里挪到启动阶段。
  * 预热窗口必须真的是隐藏的：既不会被下次 GDI 抓屏抓进去（SW_HIDE 窗口不渲染），
@@ -2690,6 +2724,69 @@ export function PhpSrvSuggestPort($from: number): $CancellablePromise<number> {
  */
 export function PrewarmCaptureOverlay(): $CancellablePromise<void> {
     return $Call.ByID(1228806336);
+}
+
+/**
+ * ProcIcon 进程图标 PNG dataURL；取不到返回空串。
+ */
+export function ProcIcon(pid: number): $CancellablePromise<string> {
+    return $Call.ByID(3176593543, pid);
+}
+
+/**
+ * ProcInfo 进程属性（命令行/用户/位数等重字段）。
+ */
+export function ProcInfo(pid: number): $CancellablePromise<procman$0.ProcInfo> {
+    return $Call.ByID(1417704306, pid);
+}
+
+/**
+ * ProcKill 结束进程（tree=true 连整棵子树）；Windows 下权限不足自动走一次 UAC 提权。
+ */
+export function ProcKill(pid: number, tree: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4038364190, pid, tree);
+}
+
+/**
+ * ProcOpenPath 在文件管理器中定位进程 exe。
+ */
+export function ProcOpenPath(pid: number): $CancellablePromise<void> {
+    return $Call.ByID(2994243857, pid);
+}
+
+/**
+ * ProcOpenVt 用系统浏览器打开该进程 exe 的 VirusTotal 文件页（按 SHA256）。
+ */
+export function ProcOpenVt(pid: number): $CancellablePromise<void> {
+    return $Call.ByID(2207849896, pid);
+}
+
+/**
+ * ProcRestart 以原路径与命令行重启进程。
+ */
+export function ProcRestart(pid: number): $CancellablePromise<void> {
+    return $Call.ByID(21876061, pid);
+}
+
+/**
+ * ProcSetPriority 调整优先级：high | normal | low。
+ */
+export function ProcSetPriority(pid: number, $class: string): $CancellablePromise<void> {
+    return $Call.ByID(136649854, pid, $class);
+}
+
+/**
+ * ProcSnapshot 一次全量进程快照 + 状态栏汇总。
+ */
+export function ProcSnapshot(): $CancellablePromise<procman$0.Snapshot> {
+    return $Call.ByID(3472186886);
+}
+
+/**
+ * ProcSuspend 挂起（on=true）/ 恢复（on=false）进程。
+ */
+export function ProcSuspend(pid: number, on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1553649014, pid, on);
 }
 
 /**
@@ -3006,7 +3103,7 @@ export function SetDefaultLogo(b: string | null): $CancellablePromise<void> {
 
 /**
  * SetListOrder 保存某个“面”的拖拽自定义顺序到用户配置（随导出/导入一起搬运）。
- * key 为面标识（如 home:stats / home:services / home:tools / php:list），ids 为该面内条目 ID 的有序列表。
+ * key 为面标识（如 php:list / nginx:list / home:tools），ids 为该面内条目 ID 的有序列表。
  * 走 config.Update 读改写并落盘，只动 Order 段，不触发 SaveConfig 那一整套副作用（日志器/热键/球等）。
  */
 export function SetListOrder(key: string, ids: string[] | null): $CancellablePromise<void> {

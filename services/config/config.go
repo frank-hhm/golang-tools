@@ -130,7 +130,7 @@ type AppConfig struct {
 	Browser      BrowserConfig           `json:"browser"`
 	Tools        []ToolConfig            `json:"tools"`
 	ToolSettings map[string]ToolSettings `json:"toolSettings"` // 工具级设置，键为工具 Key（如 mysql）
-	// Order 各列表的拖拽自定义顺序：键为“面”标识（如 home:stats / home:services / home:tools / php:list），
+	// Order 各列表的拖拽自定义顺序：键为“面”标识（如 php:list / nginx:list / home:tools），
 	// 值为该面内条目 ID 的有序列表。主页与各服务列表各用独立键，互不共用。随整份配置导出/导入。
 	Order map[string][]string `json:"order"`
 }

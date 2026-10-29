@@ -1,28 +1,29 @@
 <template>
   <!-- 进程守护：登记本地程序，守护引擎负责拉起、监控、意外退出后自动重启 -->
   <div class="gd-shell">
-    <a-card class="gd-card" :bordered="false">
+    <common-title-bar>
       <template #title>
-        <span class="gd-title">进程守护</span>
         <span class="gd-sub">登记程序后自动拉起并监控，意外退出按退避策略重启</span>
       </template>
-
-      <!-- 工具栏 -->
-      <div class="gd-toolbar">
+    </common-title-bar>
+    <a-card class="gd-card">
+      <template #title>
         <a-space>
-          <a-button type="primary" @click="openAdd">
+          <a-button size="small" @click="openAdd">
             <template #icon><icon-plus /></template>新增
           </a-button>
-          <a-button @click="startAll">启用所有程序</a-button>
-          <a-button @click="stopAll">关闭所有程序</a-button>
+          <a-button  size="small" @click="startAll">启用所有程序</a-button>
+          <a-button size="small" @click="stopAll">关闭所有程序</a-button>
           <a-popconfirm content="确定清空全部守护登记项？正在运行的程序会一并停止。" type="warning" @ok="clearAll">
-            <a-button status="danger">清空</a-button>
+            <a-button  size="small" >清空</a-button>
           </a-popconfirm>
         </a-space>
-        <div class="gd-toolbar-right">
+      </template>
+      <template #extra>
+        <a-space>
           <a-checkbox :model-value="autoStart" @change="onAutoStart">开机启动</a-checkbox>
           <a-popover trigger="click" position="br" title="守护设置">
-            <a-button>
+            <a-button   size="small">
               <template #icon><icon-settings /></template>守护设置
             </a-button>
             <template #content>
@@ -38,23 +39,16 @@
                   <a-input-number v-model="maxFailInput" :min="1" :max="1000" hide-button style="width: 120px" />
                 </div>
                 <div class="gd-set-tip">进程运行不足 5 秒即退出计一次快速失败，达到上限则暂停该项守护。</div>
-                <a-button type="primary" size="small" long @click="saveSettings">保存</a-button>
+                <a-button size="small" long @click="saveSettings">保存</a-button>
               </div>
             </template>
           </a-popover>
-        </div>
-      </div>
+        </a-space>
+      </template>
 
       <!-- 列表 -->
-      <a-table
-        class="gd-table"
-        :data="rows"
-        :columns="columns"
-        :loading="loading"
-        :pagination="false"
-        row-key="id"
-        size="medium"
-      >
+      <a-table class="gd-table" :data="rows" :columns="columns" :loading="loading" :pagination="false" row-key="id"
+        size="medium">
         <template #index="{ rowIndex }">{{ rowIndex + 1 }}</template>
         <template #name="{ record }">
           <span class="gd-name">{{ record.name }}</span>
@@ -72,7 +66,8 @@
           <div v-if="record.lastError && record.state !== 'running'" class="gd-err">{{ record.lastError }}</div>
         </template>
         <template #enabled="{ record }">
-          <a-switch :model-value="record.enabled" :disabled="loading" @change="(v: any) => toggleEnabled(record, !!v)" />
+          <a-switch :model-value="record.enabled" type="round" size="small" :disabled="loading"
+            @change="(v: any) => toggleEnabled(record, !!v)" />
         </template>
         <template #ops="{ record }">
           <a-space :size="4">
@@ -91,14 +86,8 @@
     </a-card>
 
     <!-- 新增 / 编辑弹窗 -->
-    <a-modal
-      v-model:visible="modalVisible"
-      :title="editingId ? '编辑守护程序' : '新增守护程序'"
-      :ok-loading="saving"
-      :mask-closable="false"
-      @ok="save"
-      @cancel="modalVisible = false"
-    >
+    <a-modal v-model:visible="modalVisible" :title="editingId ? '编辑守护程序' : '新增守护程序'" :ok-loading="saving"
+      :mask-closable="false" @ok="save" @cancel="modalVisible = false">
       <a-form :model="form" layout="vertical">
         <a-form-item field="name" label="程序名称">
           <a-input v-model="form.name" placeholder="留空则取可执行文件名" allow-clear />
@@ -119,7 +108,7 @@
           </a-input-group>
         </a-form-item>
         <a-form-item field="enabled" label="启用守护">
-          <a-switch v-model="form.enabled" type="round" />
+          <a-switch v-model="form.enabled" type="round"  size="small"/>
           <span class="gd-hint-inline">{{ form.enabled ? '随应用启动并自动重启' : '仅登记，不自动拉起' }}</span>
         </a-form-item>
       </a-form>
@@ -308,7 +297,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--base-padding);
   box-sizing: border-box;
 }
 
