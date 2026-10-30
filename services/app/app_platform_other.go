@@ -34,3 +34,19 @@ func (a *App) ShowSystemNotification(title string, content string) error {
 func (a *App) notifySync(title string, content string) error {
 	return a.ShowSystemNotification(title, content)
 }
+
+// notifyWithTarget 非 Windows 没有通知中心，带不带跳转目标一律回 unsupported。
+// 方法本身（ShowSystemNotificationWithTarget）在 navigate.go 里跨平台存在，
+// 不会被 build tag 挡掉而变成 unknown bound method id。
+func (a *App) notifyWithTarget(title string, content string, target string) error {
+	return a.ShowSystemNotification(title, content)
+}
+
+// ensureToastRegistered 非 Windows 没有 WinRT 通知中心，也不需要 AUMID/快捷方式
+// 登记：空实现。与 toast_windows.go 同名函数成对，让 ServiceStartup 能跨平台调用。
+func ensureToastRegistered() {}
+
+// toastStatusText 非 Windows 无系统通知中心，诊断文本直接回不支持。
+func toastStatusText() string {
+	return "本平台无 Windows 系统通知中心（原生 Toast 仅桌面版 Windows 提供）"
+}

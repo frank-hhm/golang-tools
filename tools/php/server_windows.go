@@ -50,22 +50,28 @@ func iniTemplateCandidates(phpDir string) []string {
 	}
 }
 
+// createNoWindow 是 Win32 CREATE_NO_WINDOW：GUI 子系统（-H windowsgui）构建里，
+// 光靠 HideWindow(SW_HIDE) 藏不住子控制台——Win11 默认终端是 Windows Terminal，
+// 它是独立进程、不吃子进程的 STARTUPINFO 显示标志，于是每次 spawn php.exe 都闪一个终端窗。
+// CREATE_NO_WINDOW 让系统根本不分配控制台，从根上不产生那个窗口。
+const createNoWindow = 0x08000000
+
 // hideWindowAttr 隐藏控制台窗口（php.exe 是控制台程序，不隐藏会闪黑框）
 func hideWindowAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{HideWindow: true}
+	return &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 }
 
 // killTree 结束进程树（php -S 为单进程，/T 兼容可能派生的子进程）
 func killTree(pid int) error {
 	cmd := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(pid))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideWindowAttr()
 	return cmd.Run()
 }
 
 // findPidsByName 按镜像名查找进程 PID（tasklist 输出解析）
 func findPidsByName(name string) []int {
 	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name, "/FO", "CSV", "/NH")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = hideWindowAttr()
 	out, err := cmd.Output()
 	if err != nil {
 		return nil

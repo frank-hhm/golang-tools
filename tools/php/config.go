@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 /* ============================ ini 行级工具 ============================ */
@@ -875,6 +877,39 @@ func runPHPInfo(exe, iniPath string) (*PHPInfo, error) {
 		return nil, err
 	}
 	return parsePHPInfo(string(out)), nil
+}
+
+// phpInfoCache 按 (exe, iniPath) 缓存 php -i 结果，键值附带 ini 的修改时间。
+// 状态轮询每 3 秒调一次 GetInstanceStatus，若每次都跑 php -i 会在 GUI 构建里
+// 狂闪控制台窗口（Win11 上 HideWindow 藏不住 Windows Terminal），且白白 spawn 进程。
+// 这里只在首次、或 php.ini 真的被改过（mtime 变化）时才重跑，其余命中缓存。
+var phpInfoCache sync.Map // key string(exe+"|"+iniPath) -> phpInfoEntry
+
+type phpInfoEntry struct {
+	iniMod time.Time
+	info   *PHPInfo
+}
+
+// runPHPInfoCached 是 runPHPInfo 的带缓存版本，供高频状态轮询使用。
+func runPHPInfoCached(exe, iniPath string) (*PHPInfo, error) {
+	var mod time.Time
+	if iniPath != "" {
+		if st, err := os.Stat(iniPath); err == nil {
+			mod = st.ModTime()
+		}
+	}
+	key := exe + "|" + iniPath
+	if v, ok := phpInfoCache.Load(key); ok {
+		if e := v.(phpInfoEntry); e.info != nil && e.iniMod.Equal(mod) {
+			return e.info, nil
+		}
+	}
+	info, err := runPHPInfo(exe, iniPath)
+	if err != nil {
+		return nil, err
+	}
+	phpInfoCache.Store(key, phpInfoEntry{iniMod: mod, info: info})
+	return info, nil
 }
 
 func parsePHPInfo(text string) *PHPInfo {

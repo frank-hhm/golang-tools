@@ -27,10 +27,18 @@
         <a-form-item label="通知内容" style="margin-bottom: 0">
           <a-textarea v-model="ntContent" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="通知正文（最多显示 3 行）" />
         </a-form-item>
+        <a-form-item label="点击跳转目标（前端路由）" style="margin-bottom: 0">
+          <a-input v-model="ntTarget" placeholder="如 /tools/download；留空则 Toast 不可点跳转" allow-clear />
+        </a-form-item>
         <a-space wrap>
           <a-button size="small" @click="notify()"><template #icon><icon-notification /></template>Go → 系统通知卡片</a-button>
           <a-button size="small" type="outline" status="success" @click="sysNotify()"><template #icon><icon-notification /></template>Go → 系统通知中心（原生 Toast）</a-button>
         </a-space>
+
+        <a-space wrap>
+          <a-button size="small" @click="checkToastDiag">通知诊断（查看为何无 logo / 点击不跳转）</a-button>
+        </a-space>
+        <pre v-if="toastDiag" class="diag-box">{{ toastDiag }}</pre>
 
         <a-divider style="margin: 4px 0" />
 
@@ -62,6 +70,8 @@ const GoTools = (getCurrentInstance() as any)?.appContext.config.globalPropertie
 const text = ref("你好，来自 Golang 的消息提示 🎉");
 const ntTitle = ref("回复完成");
 const ntContent = ref("会话：完善串口调试（USB调试），功能如图 已完成回复，可打开查看。");
+const ntTarget = ref("/tools/download");
+const toastDiag = ref("");
 
 function notify() {
   try {
@@ -73,7 +83,12 @@ function notify() {
 
 function sysNotify() {
   try {
-    GoTools?.ShowSystemNotification(ntTitle.value || "通知", ntContent.value || "(无内容)");
+    // 带跳转目标：点 Toast 时 Windows 经 tools: 协议把用户带回对应面板（仅桌面生效）。
+    GoTools?.ShowSystemNotificationWithTarget(
+      ntTitle.value || "通知",
+      ntContent.value || "(无内容)",
+      (ntTarget.value || "").trim(),
+    );
   } catch (e: any) {
     Message.error("调用 Go 方法失败：" + (e?.message || e));
   }
@@ -90,6 +105,15 @@ function fromGo(level: string) {
 function fromWeb(level: string) {
   (Message as any)[level](text.value || "(空)");
 }
+
+async function checkToastDiag() {
+  try {
+    const s = await GoTools?.GetToastStatus?.();
+    toastDiag.value = String(s ?? "（GetToastStatus 无返回）");
+  } catch (e: any) {
+    toastDiag.value = "读取诊断失败：" + (e?.message || e);
+  }
+}
 </script>
 
 <style scoped>
@@ -103,5 +127,17 @@ function fromWeb(level: string) {
 .demo-card code {
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+.diag-box {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--color-fill-2);
+  color: var(--color-text-1);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

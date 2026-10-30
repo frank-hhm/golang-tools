@@ -321,7 +321,7 @@ func installSendTo(exe string) error {
 	cmd.Stdin = strings.NewReader(lnkScript)
 	cmd.Env = append(os.Environ(),
 		"ARC_LNK="+lnk, "ARC_EXE="+exe, "ARC_ARGS="+ArgPanel)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 不闪现 PowerShell 控制台
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW：不闪现 PowerShell 控制台（Win11 上 HideWindow 藏不住 Windows Terminal）
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("生成快捷方式失败: %v %s", err, strings.TrimSpace(string(out)))

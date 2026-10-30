@@ -1605,6 +1605,14 @@ export function GetLogDir(): $CancellablePromise<string> {
 }
 
 /**
+ * GetPendingNavigate 前端挂载时取走并清空冷启动目标（取一次即消费）。
+ * 非桌面平台永远空串：没有协议、也就不会有 pending。
+ */
+export function GetPendingNavigate(): $CancellablePromise<string> {
+    return $Call.ByID(849144902);
+}
+
+/**
  * GetPinnedImage 图钉页面按 id 取回要显示的图片 dataURL。
  */
 export function GetPinnedImage(id: number): $CancellablePromise<string> {
@@ -1631,6 +1639,15 @@ export function GetSnifferFlows(): $CancellablePromise<sniffer$0.Flow[] | null> 
  */
 export function GetSystemInfo(): $CancellablePromise<sysinfo$0.SystemInfo | null> {
     return $Call.ByID(3715835343);
+}
+
+/**
+ * GetToastStatus 返回系统通知身份登记的诊断文本，供前端「通知诊断」查看：
+ * 未登记成功时 Toast 没有 logo、点击也不跳转——这里给出原因。方法跨平台存在
+ * （绑定 id 不能藏在 build tag 后），非 Windows 由 toastStatusText 回不支持提示。
+ */
+export function GetToastStatus(): $CancellablePromise<string> {
+    return $Call.ByID(311983711);
 }
 
 /**
@@ -3509,6 +3526,13 @@ export function SetNativeNotify(v: boolean): $CancellablePromise<void> {
 }
 
 /**
+ * SetPendingNavigate 记下冷启动目标，等前端挂载后取。
+ */
+export function SetPendingNavigate(target: string): $CancellablePromise<void> {
+    return $Call.ByID(367049450, target);
+}
+
+/**
  * SetSerialControlBits 实时切换串口 RTS / DTR 电平
  */
 export function SetSerialControlBits(rts: boolean, dtr: boolean): $CancellablePromise<void> {
@@ -3558,9 +3582,21 @@ export function ShowNotificationLevel(title: string, content: string, level: str
 /**
  * ShowSystemNotification 直接调用 Windows 系统通知中心弹原生 Toast
  * （系统右下角渲染、自动消失、可进入操作中心/专注助手），异步执行不阻塞调用方。
+ * 不带点击跳转；要跳转用 ShowSystemNotificationWithTarget。
  */
 export function ShowSystemNotification(title: string, content: string): $CancellablePromise<void> {
     return $Call.ByID(1275626385, title, content);
+}
+
+/**
+ * ShowSystemNotificationWithTarget 弹一条带点击跳转的系统通知：点 Toast 时经
+ * tools: 协议把用户带回 target 对应的面板（一条前端路由，如 "/tools/download"）。
+ * 
+ * target 为空时等价于 ShowSystemNotification（只弹不跳）。非 Windows 平台由
+ * notifyWithTarget 回 sysx.ErrUnsupported，方法本身照常存在（绑定 id 跨平台）。
+ */
+export function ShowSystemNotificationWithTarget(title: string, content: string, target: string): $CancellablePromise<void> {
+    return $Call.ByID(3238477864, title, content, target);
 }
 
 /**

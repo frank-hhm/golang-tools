@@ -85,7 +85,7 @@ func (windowsOpener) URL(u string) error {
 // startDetached 起一个不等待、不弹黑窗的子进程。
 func startDetached(bin string, args ...string) error {
 	cmd := exec.Command(bin, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("启动 %s 失败: %w", filepath.Base(bin), err)
 	}

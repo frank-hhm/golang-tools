@@ -18,29 +18,29 @@
     </div>
   </div>
 
-  <a-drawer v-model:visible="open" :width="430" placement="right" :unmount-on-close="true"
-    :footer="finishedCount > 0">
+  <a-drawer v-model:visible="open" :width="430" placement="right" :unmount-on-close="true" :footer="finishedCount > 0"
+    drawer-class="task-hub-drawer">
     <template #title>
-      <div class="th-drawer-title">
-        <span>任务</span>
-        <span class="th-drawer-sub">
-          {{ st.runningCount ? `${st.runningCount} 个进行中` : "没有进行中的任务" }}
-          <template v-if="st.failed.length">· {{ st.failed.length }} 个失败</template>
-        </span>
+      <!-- 下载管理入口：Arco 2.59 的 Drawer 没有 extra 插槽（只有 header/title/default/footer），
+           旧的 #extra 按钮因此被静默丢弃。改塞进 title 里，靠 flex 推到右端紧邻关闭 X。
+           复用 goTool 的开窗链路（原生单例窗口 / Web 回退路由），是抽屉里进下载页的唯一入口。 -->
+      <div class="th-drawer-head">
+        <div class="th-drawer-title">
+          <span>任务</span>
+          <span class="th-drawer-sub">
+            {{ st.runningCount ? `${st.runningCount} 个进行中` : "没有进行中的任务" }}
+            <template v-if="st.failed.length">· {{ st.failed.length }} 个失败</template>
+          </span>
+        </div>
+        <a-button size="small" @click="goDownloadPage"><icon-download />下载管理</a-button>
       </div>
-    </template>
-    <template #extra>
-      <!-- 下载页入口：抽屉标题栏右侧，复用 goTool 的开窗链路（原生单例窗口 / Web 回退路由） -->
-      <a-tooltip content="打开下载页" position="br">
-        <a-button size="small" @click="goDownloadPage"><icon-download /></a-button>
-      </a-tooltip>
     </template>
 
     <!-- 分类筛选：全部 / 下载 / 安装（对齐下载页，各带条数）。
          下载桶 = 引擎任务（tool=download，含安装类下载）；安装桶 = 工具安装台账（kind install/ext/setup）；
          docker 拉镜像 / 镜像操作等只在「全部」出现。 -->
     <div class="th-filter">
-      <a-radio-group v-model="filter" type="button" size="small">
+      <a-radio-group v-model="filter" type="button" size="medium">
         <a-radio value="all">全部 {{ allCount }}</a-radio>
         <a-radio value="download">下载 {{ downloadCount }}</a-radio>
         <a-radio value="install">安装 {{ installCount }}</a-radio>
@@ -56,43 +56,55 @@
     <a-empty v-if="list.length === 0" :description="emptyText" />
 
     <common-item-card v-for="t in list" :key="t.id" class="th-item" :clickable="false"
-      :error="t.status === 'error'" pad="10px">
+      :error="liveStatus(t) === 'error'" pad="10px">
       <template #status>
-        <span class="th-dot" :class="'dot-' + t.status"></span>
+        <span class="th-dot" :class="'dot-' + liveStatus(t)"></span>
       </template>
       <template #title>
         <span class="th-tool">{{ toolLabel(t.tool) }}</span>
         <span class="th-title" :title="t.title">{{ t.title }}</span>
       </template>
       <template #extra>
-        <a-tag size="small" :color="statusTagColor(t.status)">{{ rowTag(t) }}</a-tag>
+        <a-tag size="small" :color="statusTagColor(liveStatus(t))">{{ rowTag(t) }}</a-tag>
       </template>
 
-      <common-task-progress :status="normalizeStatus(t.status)" :percent="pct(t)" size="small"
-        :show-text="false" :divided="false" variant="bare"
-        :indeterminate="t.status === 'running' && pct(t) === 0">
+      <common-task-progress :status="normalizeStatus(liveStatus(t))" :percent="pct(t)" size="small" :show-text="false"
+        :divided="false" variant="bare" :show-header="false"
+        :indeterminate="liveStatus(t) === 'running' && pct(t) === 0">
         <template #meta>
           <div class="th-note-wrap">
-            <div class="th-note" :class="{ 'is-err': t.status === 'error', 'is-open': openedNotes.has(t.id) }"
-              :title="t.note">{{ t.note || stageText(t.stage) || "—" }}</div>
-            <a-link v-if="(t.note || '').length > 60" class="th-note-toggle" size="mini"
-              @click="toggleNote(t.id)">{{ openedNotes.has(t.id) ? '收起' : '展开' }}</a-link>
+            <div class="th-note" :class="{ 'is-err': liveStatus(t) === 'error', 'is-open': openedNotes.has(t.id) }"
+              :title="t.note">{{ t.note || rowTag(t) || "—" }}</div>
+            <a-link v-if="(t.note || '').length > 60" class="th-note-toggle" size="mini" @click="toggleNote(t.id)">{{
+              openedNotes.has(t.id) ? '收起' : '展开' }}</a-link>
           </div>
         </template>
         <template #left>
-          <span class="th-time">{{ t.status === "running" ? since(t.startedAt) + " 前开始" : since(t.updatedAt) + " 前" }}</span>
+          <span class="th-time">{{ liveStatus(t) === "running" ? since(t.startedAt) + " 前开始" : since(t.updatedAt) + " 前"
+            }}</span>
         </template>
         <template #actions>
-          <a-link class="th-link" @click="goTool(t)">
-            <icon-location />打开页面
-          </a-link>
-          <a-link class="th-link" @click="toggleLog(t.id)">
+          <a-button size="mini" class="th-link" @click="toggleLog(t.id)">
             <component :is="logsOf.has(t.id) ? IconUp : IconDown" />
-            {{ logsOf.has(t.id) ? '收起日志' : '日志' }}
-          </a-link>
-          <a-link v-if="t.status !== 'running'" class="th-link th-link-del" @click="st.dismiss(t.id)">
+            {{ logsOf.has(t.id) ? '收起' : '展开' }}
+          </a-button>
+          <!-- 下载任务：就地操作，与下载页同一组件、同一状态联动（进度事件回流后按钮自动切换） -->
+          <template v-if="isDownloadTask(t)">
+            <a-button v-if="liveStatus(t) === 'running'" size="mini" @click="dlPause(t)">暂停</a-button>
+            <a-button v-else-if="liveStatus(t) === 'paused'" size="mini"
+              @click="dlResume(t)">继续</a-button>
+            <a-button v-else-if="liveStatus(t) === 'error' || liveStatus(t) === 'canceled'" size="mini"
+              @click="dlRetry(t)">重试</a-button>
+            <a-button v-if="['running', 'queued', 'pending', 'paused'].includes(liveStatus(t))" size="mini"
+              status="danger" @click="dlStop(t)">停止</a-button>
+          </template>
+          <!-- 非下载任务：开对应工具页。下载任务的入口统一收到标题栏“下载面板”，行内不再放。 -->
+          <a-button size="mini" v-if="!isDownloadTask(t)" class="th-link" @click="goTool(t)">
+            <icon-location />打开页面
+          </a-button>
+          <a-button size="mini" v-if="t.status !== 'running'" class="th-link th-link-del" @click="st.dismiss(t.id)">
             <icon-delete />移除
-          </a-link>
+          </a-button>
         </template>
       </common-task-progress>
 
@@ -123,6 +135,7 @@
  */
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Events } from "@wailsio/runtime";
+import { Message } from "@arco-design/web-vue";
 import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
 import type { Task } from "bindings/Tools/services/tasks/index";
 import { ensureTasks, useTasksStoreHook } from "@/store/modules/tasks";
@@ -133,6 +146,15 @@ import { useToolWindow } from "@/views/index/useToolWindow";
 const st = useTasksStoreHook();
 const { openToolWindow } = useToolWindow();
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+
+/** 下载行就地操作：直转引擎绑定方法（id 就是引擎任务 id）；动作后引擎会回流 download:progress，按钮自动切换 */
+async function dlCall(fn: () => Promise<unknown>) {
+  try { await fn(); } catch (e) { Message.error(String((e as any)?.message || e)); }
+}
+const dlPause = (t: Task) => dlCall(() => GoTools.DownloadPause(t.id));
+const dlResume = (t: Task) => dlCall(() => GoTools.DownloadResume(t.id));
+const dlRetry = (t: Task) => dlCall(() => GoTools.DownloadRetry(t.id));
+const dlStop = (t: Task) => dlCall(() => GoTools.DownloadStop(t.id));
 /** 工具 key → 原生新窗口选项（single/尺寸…）：首次点「打开页面」时从配置懒加载一次 */
 const toolWinMeta = ref<Record<string, any>>({});
 let toolWinMetaLoaded = false;
@@ -164,6 +186,14 @@ const filter = ref<"all" | "download" | "install">("all");
 /** 引擎下载任务（含安装类下载）在台账里 tool 恒为 "download"；工具安装类 kind ∈ install/ext/setup。 */
 const isDownloadTask = (t: Task) => t.tool === "download";
 const isInstallTask = (t: Task) => ["install", "ext", "setup"].includes(String(t.kind));
+/**
+ * 行内“活状态”：下载行取引擎细粒度相位（台账把它记在 stage 里：
+ * pending/queued/running/paused/done/error/canceled），其余行用粗粒度 status。
+ * 抽屉据此渲染状态点 / 标签 / 进度，并驱动就地操作按钮的联动。
+ */
+function liveStatus(t: Task): string {
+  return isDownloadTask(t) ? (t.stage || t.status) : t.status;
+}
 /** 展开日志的任务 id（默认全收起，避免抽屉一开就是一大坨） */
 const logsOf = reactive(new Map<string, string[]>());
 /** 展开长备注（失败原因）的任务 id：默认两行截断，全文靠这里展开 */
@@ -283,6 +313,7 @@ const TOOL_LABEL: Record<string, string> = {
   nginx: "Nginx",
   npm: "npm",
   archive: "文件压缩",
+  download: "下载",
 };
 
 function toolLabel(tool: string): string {
@@ -408,6 +439,7 @@ async function goDownloadPage() {
 
 /* 失败浮标轻微呼吸：只动光晕不动尺寸，提醒但不骚扰 */
 @keyframes th-fab-breathe {
+
   0%,
   100% {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
@@ -495,10 +527,22 @@ async function goDownloadPage() {
   font-size: 12px;
 }
 
+/* 抽屉头部：标题靠左、下载管理入口靠右（紧邻关闭 X）。
+   撑满 .arco-drawer-title 的 flex 规则放在文件末尾的全局 style 块里——
+   Drawer 会 teleport 出本组件 DOM，scoped :deep 未必命中，故用 drawer-class 限定作用域。 */
+.th-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
 .th-drawer-title {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
 }
 
 .th-drawer-sub {
@@ -576,6 +620,7 @@ async function goDownloadPage() {
 }
 
 @keyframes th-dot-pulse {
+
   0%,
   100% {
     box-shadow: 0 0 0 0 rgba(var(--primary-6), 0.35);
@@ -690,5 +735,14 @@ async function goDownloadPage() {
 .th-log-line.is-dim {
   color: var(--color-text-4);
 }
+</style>
 
+<style>
+/* 全局（非 scoped）：Arco 的 .arco-drawer-title 默认 margin-right:auto 只占内容宽，
+   这里用 drawer-class 限定，仅对本任务抽屉把它撑满，好让标题内的 space-between
+   把「下载管理」按钮推到右端、紧邻关闭 X。 */
+.task-hub-drawer .arco-drawer-header .arco-drawer-title {
+  flex: 1;
+  min-width: 0;
+}
 </style>

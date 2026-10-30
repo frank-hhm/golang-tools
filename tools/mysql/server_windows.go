@@ -51,7 +51,11 @@ func initFailHint(output string) string {
 // 实例之间不会互相抢全局 socket 路径，不需要额外写这两行。
 func myIniPlatformLines(string) string { return "" }
 
+// createNoWindow = Win32 CREATE_NO_WINDOW：GUI 子系统构建里 HideWindow(SW_HIDE)
+// 藏不住 Win11 的 Windows Terminal，只有不分配控制台才不闪窗。
+const createNoWindow = 0x08000000
+
 // hideWindowAttr 以隐藏窗口方式拉起 mysqld 子进程（后台服务无黑框）
 func hideWindowAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{HideWindow: true}
+	return &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 }

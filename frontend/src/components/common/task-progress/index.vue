@@ -2,7 +2,7 @@
     <div class="ctp" :class="[`ctp--${variant}`, { 'ctp--divided': divided, 'ctp--clickable': clickable }]"
         @click="clickable && emit('click')">
         <!-- 头行：名称 ↔ 速度（无名称且无额外内容时整行不渲染，交给外层卡片头） -->
-        <div v-if="hasHeader" class="ctp-head">
+        <div v-if="showHeader !== false && hasHeader" class="ctp-head">
             <div class="ctp-name">
                 <slot name="name">
                     <span class="ctp-name-text" :title="name">{{ name }}</span>
@@ -55,11 +55,11 @@
                             @click="emit('cancel')">
                             取消
                         </a-button>
-                        <a-button v-else-if="status === 'paused'" size="mini" type="primary"
+                        <a-button v-else-if="status === 'paused'" size="mini"
                             @click="emit('resume')">
                             继续
                         </a-button>
-                        <a-button v-else-if="status === 'error' || status === 'canceled'" size="mini" type="primary"
+                        <a-button v-else-if="status === 'error' || status === 'canceled'" size="mini"
                             @click="emit('retry')">
                             重试
                         </a-button>
@@ -134,6 +134,8 @@ const props = withDefaults(defineProps<{
     showPercent?: boolean;
     /** 底部分隔线 */
     divided?: boolean;
+    /** 显式隐藏头行：嵌进卡片里时头行与卡片头重复；即使误传 speed 占位符也不渲染 */
+    showHeader?: boolean;
     /** plain=独立块自带内边距；bare=嵌进 common-item-card 内不加额外外框 */
     variant?: "plain" | "bare";
     /** 整行可点（emit click） */

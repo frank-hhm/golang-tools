@@ -14,7 +14,7 @@
         <!-- ==================== 工具条 ==================== -->
         <a-card class="dl-bar card-head-tool" size="small" :body-style="{ padding: '8px 12px' }">
             <div class="dl-tools">
-                <a-button type="primary" size="small" @click="addVisible = true">
+                <a-button size="small" @click="addVisible = true">
                     <template #icon><icon-plus /></template>新建任务
                 </a-button>
                 <a-divider direction="vertical" />
@@ -83,14 +83,15 @@
                         </template>
                         <template #title>
                             <span class="dl-name" :title="t.name">{{ t.name }}</span>
-                            <a-tag size="small" :color="statusTagColor(t.status)">{{ statusLabel(t.status) }}</a-tag>
                         </template>
                         <template #extra>
                             <span class="dl-size">{{ t.size > 0 ? fmtBytes(t.size) : '大小未知' }}</span>
+                            <a-tag size="small" :color="statusTagColor(t.status)">{{ statusLabel(t.status) }}</a-tag>
                         </template>
 
-                        <common-task-progress variant="bare" :divided="false" :show-text="false" size="small"
-                            :status="normalizeStatus(t.status)" :percent="pctOf(t)" :speed="fmtSpeed(t.speed)"
+                        <common-task-progress variant="bare" :divided="false" :show-text="false" :show-header="false"
+                            size="small" :status="normalizeStatus(t.status)" :percent="pctOf(t)"
+                            :speed="t.status === 'running' && t.speed > 0 ? fmtSpeed(t.speed) : ''"
                             :indeterminate="t.status === 'running' && pctOf(t) === 0" @click="selectedId = t.id"
                             @resume="resume(t)" @retry="retry(t)" @cancel="stop(t)" @open="openFile(t)">
                             <template #meta>
@@ -109,17 +110,18 @@
                                     @click.stop="start(t)">开始</a-button>
                                 <a-tooltip v-else-if="t.status === 'queued'" content="已在队列中，前面的任务让出额度后自动开始"
                                     position="tl">
-                                    <a-button size="mini" type="primary" disabled>开始</a-button>
+                                    <a-button size="mini" disabled>开始</a-button>
                                 </a-tooltip>
                                 <a-button v-else-if="t.status === 'error' || t.status === 'canceled'" size="mini"
-                                    type="primary" @click.stop="retry(t)">重试</a-button>
+                                    @click.stop="retry(t)">重试</a-button>
                                 <a-tooltip v-if="t.status === 'done'" content="打开所在目录">
                                     <a-button size="mini" @click.stop="openLocation(t)">
                                         <template #icon><icon-folder /></template>
                                     </a-button>
                                 </a-tooltip>
-                                <a-button v-if="t.status !== 'pending'" size="mini" status="danger"
-                                    @click.stop="stop(t)">停止</a-button>
+                                <!-- 停止只在能被停止的状态出现：done/error/canceled 已是终态，再摆「停止」与左侧标签、右侧「重试」互相矛盾 -->
+                                <a-button v-if="['running', 'queued', 'pending', 'paused'].includes(t.status)"
+                                    size="mini" status="danger" @click.stop="stop(t)">停止</a-button>
                                 <a-popconfirm content="删除任务及其已下载文件？" type="warning" ok-text="删除" cancel-text="取消"
                                     @ok="del(t)">
                                     <a-button size="mini" @click.stop>

@@ -620,3 +620,69 @@ func TestManager_QueuedPromotion(t *testing.T) {
 		t.Fatalf("A 让位后 B 应被调度拉起并跑完，实际 %s", got)
 	}
 }
+
+// TestManager_EmitOnQueuedPromotion 回归：排队任务被提升为“下载中”时，引擎必须
+// 主动广播一条 download:progress 事件。否则前端卡片停在“排队中”，非要点刷新
+// （List）才更新——正是这个联动缺口的守卫。
+//
+// 断言形状：“下载中 + Downloaded==0”的广播。launch 时刻的快照正是这个形状（刚起、
+// 未下字节）；而字节流动时的 updateProgress 首个事件 dl 必 >0——故该形状唯一对应
+// “提升即广播”（不修则测不到）。
+func TestManager_EmitOnQueuedPromotion(t *testing.T) {
+	data := genData(128 * 1024)
+	srv := newRangeServer(t, data, true)
+	dir := t.TempDir()
+
+	m := New(Options{MaxRunningTasks: 1, DefaultConnections: 1}, dir, dir)
+	defer m.Shutdown()
+
+	var mu sync.Mutex
+	promoted := map[string]bool{}
+	m.SetEmitter(func(name string, d ...any) {
+		if name == EventProgress && len(d) == 1 {
+			if ts, ok := d[0].(Task); ok && ts.Status == StatusRunning && ts.Downloaded == 0 {
+				mu.Lock()
+				promoted[ts.ID] = true
+				mu.Unlock()
+			}
+		}
+	})
+
+	// A 占额度：真实可下，限速拖慢，确保 B 有段时间排在其后。
+	a, err := m.Add(srv.URL+"/a.zip", AddOpts{Name: "a.zip", Connections: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = m.SetSpeedLimit(a.ID, 8*1024)
+	if err := m.Start(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForStatus(m, a.ID, StatusRunning, 3*time.Second); got != StatusRunning {
+		t.Fatalf("A 应先跑起来，实际 %s", got)
+	}
+
+	b, err := m.Add(srv.URL+"/b.zip", AddOpts{Name: "b.zip", Connections: 1, AutoStart: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForStatus(m, b.ID, StatusQueued, 3*time.Second); got != StatusQueued {
+		t.Fatalf("B 应排队，实际 %s", got)
+	}
+
+	// 暂停 A 腾出额度 → 调度应把 B 提升为 running 并在 launch 时刻广播。
+	if err := m.Pause(a.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		seen := promoted[b.ID]
+		mu.Unlock()
+		if seen {
+			return // 收到 launch 广播，联动修复生效
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("B 从排队提升到下载中，却没收到对应的 download:progress 广播（前端会停在‘排队中’，需手动刷新）")
+}

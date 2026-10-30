@@ -129,6 +129,17 @@ func main() {
 		appInstance.SetArchiveArgs(os.Args)
 	}
 
+	// 系统通知点击跳转：Toast 经 tools: 协议拉起本进程时，命令行里多了个
+	// tools:<目标>。本机已有实例在跑就把目标转交过去、本进程直接退出（不重复开
+	// 窗口/托盘/热键）；没有实例就把目标记成 pending，正常起 GUI 后由前端取走跳转。
+	// 只认 tools: 前缀，普通双击启动零影响——因此不必开 SingleInstance。
+	if target, ok := appsvc.NavigationTarget(os.Args); ok {
+		if appsvc.HandoffNavigate(target) {
+			os.Exit(0)
+		}
+		appInstance.SetPendingNavigate(target)
+	}
+
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.

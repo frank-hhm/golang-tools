@@ -372,7 +372,7 @@ func DefaultConfig() AppConfig {
 			{ID: "hexconvert", Key: "hexconvert", Name: "进制转换", Path: "/tools/hexconvert", Icon: "swap", Home: homeOff()},
 			{ID: "archive", Key: "archive", Name: "文件压缩", Path: "/tools/archive", Icon: "archive", Single: true, Width: 1120, Height: 760, Home: homeOff()},
 			{ID: "viewer", Key: "viewer", Name: "文件查看器", Path: "/tools/viewer", Icon: "file", Single: true, Width: 1280, Height: 820, Home: homeOff()},
-			{ID: "download", Key: "download", Name: "下载管理", Path: "/tools/download", Icon: "icon-xiazai", Single: true, Width: 1280, Height: 820},
+			{ID: "download", Key: "download", Name: "下载管理", Path: "/tools/download", Icon: "icon-xiazai", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 		},
 	}
 }
@@ -656,6 +656,12 @@ func normalizeConfig(cfg *AppConfig) {
 		if fixed, ok := legacyToolIcons[cfg.Tools[i].Icon]; ok {
 			cfg.Tools[i].Icon = fixed
 		}
+		// 下载管理的入口已从主页“快捷操作”移到任务抽屉标题栏右侧，默认不再占主页一格。
+		// 存量配置里 download 的 Home 多为 nil（旧默认=展示），这里显式改为关闭；
+		// 用户手动开过（home:true 非 nil）的原样保留，不覆盖其选择。
+		if cfg.Tools[i].Key == "download" && cfg.Tools[i].Home == nil {
+			cfg.Tools[i].Home = homeOff()
+		}
 	}
 	// 补齐存量配置中缺失的新增默认工具（仅限下面列出的，尊重用户手动移除的其他工具）
 	// 图标与 DefaultConfig 的基线保持一致，别让补录出来的工具长回旧样子
@@ -729,6 +735,8 @@ func normalizeConfig(cfg *AppConfig) {
 			if extra.key == "download" {
 				// 左分类树 + 右列表/分块详情，宽窗才展得开 FlashGet 式布局
 				newTool.Width, newTool.Height = 1280, 820
+				// 入口在任务抽屉标题栏，不占主页快捷操作一格
+				newTool.Home = homeOff()
 			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}

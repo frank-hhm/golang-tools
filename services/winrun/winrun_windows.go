@@ -155,12 +155,16 @@ func IsUACCancelled(err error) bool {
 	return ok
 }
 
+// createNoWindow = Win32 CREATE_NO_WINDOW：GUI 子系统构建里 HideWindow(SW_HIDE)
+// 藏不住 Win11 的 Windows Terminal，只有不分配控制台才不闪窗。
+const createNoWindow = 0x08000000
+
 // StartDetached 以后台方式启动一个程序（不提权、不等结束、不抢焦点窗口）。
 // 静默安装 Docker Desktop 后需要以普通用户身份拉起它，提权进程派生的话
 // 会变成管理员权限运行，容器与卷的归属都不对，故这里显式走非提权路径。
 func StartDetached(exe string, args ...string) error {
 	cmd := exec.Command(exe, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("启动 %s 失败: %w", exe, err)
 	}
@@ -224,7 +228,7 @@ func RunHiddenEnv(timeout time.Duration, extraEnv []string, name string, args ..
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
 	}

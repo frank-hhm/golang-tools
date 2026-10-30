@@ -592,7 +592,7 @@ func GetInstanceStatus(id string) (InstanceStatus, error) {
 		exe = phpExe(cfg.Version, !cfg.NTS)
 	}
 	if exe != "" {
-		if info, err := runPHPInfo(exe, st.ConfigPath); err == nil {
+		if info, err := runPHPInfoCached(exe, st.ConfigPath); err == nil {
 			st.ExtensionsLoaded = len(info.Loaded)
 			if info.Version != "" {
 				st.Version = cfg.Version

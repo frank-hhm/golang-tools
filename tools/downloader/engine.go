@@ -472,6 +472,9 @@ func (m *Manager) schedule() {
 	now := m.clk().UnixMilli()
 	m.mu.Lock()
 	var changed bool
+	// 状态有变的任务快照：解锁后统一广播。emitTask 内部要抢 m.mu 读 emitter，
+	// 不能在持锁的 schedule 里直接发，故先攒起来、Unlock 后再逐条 emit。
+	var emit []Task
 	// 1) 到点的计划任务：pending（带未来 ScheduledAt）现在到期 → queued
 	for _, id := range m.order {
 		t := m.tasks[id]
@@ -483,6 +486,7 @@ func (m *Manager) schedule() {
 		}
 		t.Status = StatusQueued
 		t.Stage = "downloading"
+		emit = append(emit, cloneTask(t))
 		changed = true
 	}
 	// 2) 填额度：按加入顺序取 queued
@@ -495,12 +499,18 @@ func (m *Manager) schedule() {
 			continue
 		}
 		m.launchLocked(t)
+		// 关键：queued→running 必须广播。否则额度腾出、任务已开跑，前端仍停在
+		// “排队中”，非要点刷新（List）才更新——正是这次要修的联动缺口。
+		emit = append(emit, cloneTask(t))
 		changed = true
 	}
 	if changed {
 		m.persistLocked()
 	}
 	m.mu.Unlock()
+	for _, s := range emit {
+		m.emitTask(s)
+	}
 }
 
 // launchLocked 起一个任务 goroutine（调用方持锁）。

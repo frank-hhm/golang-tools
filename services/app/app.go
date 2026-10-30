@@ -270,6 +270,11 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	// 文件压缩：按开关挂右键 verb / SendTo / 本机转交监听，
 	// 并处理 --archive-panel 带来的“启动即呼出选项小窗”（见 archive.go）
 	a.applyArchiveOnStart()
+	// 系统通知点击跳转：起导航转交监听（仅桌面）。再登记通知身份（进程 AUMID /
+	// tools: 协议 / 注册表 AppUserModelId）——全是普通注册表与 shell32 操作，安全，
+	// 就地同步做完（已改用纯注册表登记，不再走会崩的 COM 快捷方式），详见 toast_windows.go。
+	a.mountNavigateHost()
+	ensureToastRegistered()
 	// 预热截图浮层：WebView2 开窗 + 页面 bootstrap 是首次截图最贵的一笔（实测 ~300ms），
 	// 挪到启动空闲期付掉，之后每次截图都只走“推帧 + 复用窗口”。
 	go func() {
@@ -299,6 +304,8 @@ func (a *App) ServiceShutdown() error {
 	npm.StopAll()
 	// 压缩的本机转交监听：收掉监听与端点文件，别给下一个实例留半个占位
 	a.unmountArchiveHost()
+	// 导航转交监听：同样收干净
+	a.unmountNavigateHost()
 	// 浏览器空间：销毁 controller 并释放 profile 锁（不然下次启动会报目录被占用）
 	a.BrowserCloseAll()
 	return nil

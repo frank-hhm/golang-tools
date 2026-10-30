@@ -127,6 +127,11 @@ type payload struct {
 	// 会连带改动它们的 emitter 与前端，收益不抵风险。
 	Name string `json:"name"`
 	Msg  string `json:"msg"`
+	// ID / Status 是下载引擎那一路：id 当台账主键（抽屉就地暂停/继续/重试/停止要用它
+	// 回调引擎），status 是细粒度相位（pending/queued/running/paused/done/error/canceled）。
+	// 其余工具的负载没有这两个键，取值为空，不影响它们的记账。
+	ID     string `json:"id"`
+	Status string `json:"status"`
 }
 
 /* ============================ 存储 ============================ */
@@ -267,6 +272,12 @@ func apply(meta eventMeta, p payload) (Task, bool, bool) {
 		t.Status = StatusRunning
 	}
 
+	// 下载任务：把引擎的细粒度状态记进 Stage，供抽屉渲染状态点与就地操作按钮。
+	// Status 仍是粗粒度（running / 终态），不影响浮标计数、终态通知与「清理已结束」。
+	if meta.tool == "download" && p.Status != "" {
+		t.Stage = p.Status
+	}
+
 	if note := trimNote(noteOf(p)); note != "" {
 		t.Note = note
 		if stageChanged || p.Stage == "info" || terminalStage {
@@ -307,6 +318,11 @@ func identify(meta eventMeta, p payload) (id, name, title string) {
 		name = "engine"
 	}
 	id = meta.tool + "|" + meta.kind + "|" + name
+	// 下载任务：台账主键直接用引擎任务 id，抽屉才能就地操作；
+	// 同名多任务（重名避让出的 (1)(2)…）也不会被误并成一行。
+	if meta.tool == "download" && p.ID != "" {
+		id = p.ID
+	}
 
 	switch meta.kind {
 	case "setup":

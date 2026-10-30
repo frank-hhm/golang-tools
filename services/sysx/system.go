@@ -3,10 +3,12 @@ package sysx
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -74,6 +76,12 @@ var verNumRe = regexp.MustCompile(`\d+\.\d+(?:\.\d+)?`)
 // TrimVersion 从任意文本里取第一个版本号（"Redis server v=7.0.15 sha=..." → "7.0.15"）。
 func TrimVersion(s string) string { return verNumRe.FindString(s) }
 
+// versionProbeCache 缓存 "<bin> <args> → 版本号" 的探测结果，键含二进制修改时间。
+// 高频调用方（例如每次实例状态轮询都会经 phpExe→ListVersions→这里跑一次 php -v）
+// 若每次都 spawn 进程，在 GUI 构建里会反复闪控制台窗、并白白吃 CPU。二进制没换
+// （mtime 不变）就复用缓存，首次或换版本才真探一次；超时不缓存，下次重试。
+var versionProbeCache sync.Map // key string -> string
+
 // ProbeVersion 跑一次 "<bin> <args...>"，从合并输出里提取版本号，失败返回空串。
 //
 // 系统安装的版本没有"目录名"可当版本号用，只能问二进制自己。注意不能
@@ -83,20 +91,32 @@ func ProbeVersion(bin string, args ...string) string {
 	if strings.TrimSpace(bin) == "" {
 		return ""
 	}
+	key := bin + " " + strings.Join(args, " ")
+	if st, err := os.Stat(bin); err == nil {
+		key += fmt.Sprintf("|%d", st.ModTime().UnixNano())
+	}
+	if v, ok := versionProbeCache.Load(key); ok {
+		return v.(string)
+	}
 	type result struct {
 		out []byte
 	}
 	done := make(chan result, 1)
 	go func() {
-		out, _ := exec.Command(bin, args...).CombinedOutput()
+		cmd := exec.Command(bin, args...)
+		procAttr(cmd) // 隐藏/不分配控制台窗口，避免探测时闪黑框
+		out, _ := cmd.CombinedOutput()
 		done <- result{out: out}
 	}()
+	var ver string
 	select {
 	case r := <-done:
-		return TrimVersion(string(r.out))
+		ver = TrimVersion(string(r.out))
 	case <-time.After(VersionProbeTimeout):
-		return ""
+		return "" // 超时不缓存，下次再试
 	}
+	versionProbeCache.Store(key, ver)
+	return ver
 }
 
 // RunStreaming 同步执行命令，把 stdout/stderr 合并后逐行交给 onLine。
@@ -113,6 +133,7 @@ func RunStreaming(timeout time.Duration, name string, args []string, env []strin
 		return err
 	}
 	cmd.Stderr = cmd.Stdout // 单管道读，保证输出顺序
+	procAttr(cmd)           // 隐藏/不分配控制台窗口：安装器是控制台程序，不隐藏会闪黑框
 	if err := cmd.Start(); err != nil {
 		return err
 	}

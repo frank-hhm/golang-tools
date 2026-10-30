@@ -11,10 +11,15 @@ import (
 	"syscall"
 )
 
+// createNoWindow = Win32 CREATE_NO_WINDOW：GUI 子系统（-H windowsgui）构建里，
+// HideWindow(SW_HIDE) 藏不住 Win11 的 Windows Terminal（它是独立进程、不吃子进程
+// 的 STARTUPINFO 显示标志），只有根本不分配控制台才不闪窗。
+const createNoWindow = 0x08000000
+
 // procAttr 子进程不弹黑窗：服务类进程（nginx/mysql/redis…）都是无控制台的，
 // 一旦漏了这行，面板每起一个服务就会闪一个 cmd 窗口。
 func procAttr(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 }
 
 // envKey Windows 环境变量名不区分大小写（Path 与 PATH 是同一个），统一转大写比对。
@@ -29,7 +34,7 @@ func killTree(p *os.Process) error {
 		return nil
 	}
 	kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(p.Pid))
-	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	if err := kill.Run(); err == nil {
 		return nil
 	}

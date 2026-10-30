@@ -9,6 +9,13 @@
                 <img v-if="appLogo" :src="appLogo" class="tb-logo" alt="" />
             </template>
             <common-theme-switch />
+            <!-- 任务/下载抽屉入口：常驻标题栏，有任务时才亮徽标（进行中数 / 未读结果数）。
+                 左下角浮标只在有任务时出现，这里是固定落点，不依赖浮标也能随时打开抽屉。 -->
+            <a-badge :count="hubBadgeCount" :max-count="99" :class="{ 'tb-hub-idle': !hubActive }">
+                <a-tooltip :content="hubRunning ? `任务：${hubRunning} 个进行中` : '任务'">
+                    <a-button size="small" @click="openTaskHub"><icon-download /></a-button>
+                </a-tooltip>
+            </a-badge>
             <a-tooltip content="设置">
                 <a-button size="small" @click="openSettings"><icon-settings /></a-button>
             </a-tooltip>
@@ -23,19 +30,21 @@
             <router-view />
         </div>
         <!-- 安装/下载任务浮标：任务在 Go 侧独立跑，这里保证离开页面也能看到进度 -->
-        <task-hub />
+        <task-hub ref="taskHubRef" />
     </div>
 </template>
 <script setup lang="ts">
 import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Events, Window } from "@wailsio/runtime";
+import { Notification } from "@arco-design/web-vue";
 import { useToolWindow } from "@/views/index/useToolWindow";
 import { useCaps } from "@/utils/caps";
 import { routeLoading } from "@/router/permission";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
 import SideNav from "@/components/layouts/SideNav.vue";
 import TaskHub from "@/components/business/task-hub/index.vue";
+import { useTasksStoreHook } from "@/store/modules/tasks";
 
 /**
  * 主窗口基础布局（无边框）。
@@ -68,6 +77,17 @@ function openSettings() {
 }
 const close = () => Window.Close();
 
+/* 标题栏任务入口：徽标数据直读全局任务台账，点开即打开任务抽屉（抽屉内部会标已读）。
+   无任务时徽标不亮但按钮常驻：入口位置固定，不随任务有无跳动。 */
+const tasksStore = useTasksStoreHook();
+const taskHubRef = ref<InstanceType<typeof TaskHub> | null>(null);
+const hubRunning = computed(() => tasksStore.runningCount);
+const hubActive = computed(() => hubRunning.value > 0 || tasksStore.unseenCount > 0);
+const hubBadgeCount = computed(() => hubRunning.value || tasksStore.unseenCount);
+function openTaskHub() {
+    (taskHubRef.value as unknown as { open?: () => void } | null)?.open?.();
+}
+
 async function loadTitle() {
     try {
         const cfg = await GoTools?.GetConfig();
@@ -83,9 +103,27 @@ async function loadLogo() {
 
 let off: (() => void) | null = null;
 let offHome: (() => void) | null = null;
+let offNav: (() => void) | null = null;
+let offNotify: (() => void) | null = null;
+
+/** 切到目标面板：主窗口内路由过去（Go 侧已把窗口拉到前台），已在目标页就不动 */
+function gotoTarget(target: string) {
+    if (!target) return;
+    if (route.path !== target) void router.push(target);
+}
+
+/** 冷启动带来的跳转目标：协议拉起、无在跑实例时由 Go 记成 pending，这里挂载后取走一次 */
+async function consumePendingNavigate() {
+    try {
+        const p = await GoTools?.GetPendingNavigate?.();
+        if (p) gotoTarget(String(p));
+    } catch { /* 非桌面/方法不可用忽略 */ }
+}
+
 onMounted(() => {
     loadTitle();
     loadLogo();
+    void consumePendingNavigate();
     // 设置页改名/换 Logo 后即时同步标题栏
     try {
         const r = Events.On("config:saved", () => { void loadTitle(); void loadLogo(); });
@@ -98,8 +136,26 @@ onMounted(() => {
         });
         if (typeof r === "function") offHome = r as () => void;
     } catch { /* */ }
+    // 系统通知点击跳转：Go 侧经 tools: 协议转交给运行实例、拉前台后广播目标路由
+    try {
+        const r = Events.On("app:navigate", (ev: any) => {
+            gotoTarget(String(ev?.data ?? ev ?? ""));
+        });
+        if (typeof r === "function") offNav = r as () => void;
+    } catch { /* */ }
+    // 原生系统通知弹不出时的降级：Go 侧广播 app:notify，这里用 a-notification 在页内弹一条
+    try {
+        const r = Events.On("app:notify", (ev: any) => {
+            const p = (ev?.data ?? ev ?? {}) as { title?: string; content?: string };
+            Notification.info({
+                title: String(p.title || "通知"),
+                content: String(p.content || ""),
+            });
+        });
+        if (typeof r === "function") offNotify = r as () => void;
+    } catch { /* */ }
 });
-onUnmounted(() => { off?.(); offHome?.(); });
+onUnmounted(() => { off?.(); offHome?.(); offNav?.(); offNotify?.(); });
 </script>
 <style scoped>
 .basic-layout {
@@ -145,6 +201,12 @@ onUnmounted(() => { off?.(); offHome?.(); });
 /* 顶部栏左端让开侧栏，由侧栏的品牌区占位，视觉上连成一整列 */
 .basic-layout.is-web :deep(.win-titlebar) {
     left: var(--side-nav-w);
+}
+
+/* 无任务时徽标不亮：藏掉数字/圆点，按钮本身保留（入口位置固定） */
+.tb-hub-idle :deep(.arco-badge-number),
+.tb-hub-idle :deep(.arco-badge-dot) {
+    display: none;
 }
 
 .layout-content {
