@@ -6,10 +6,16 @@
  * 这里只补下载特有的展示细节（速度带单位、分块区间、分类树与状态筛选）。
  */
 import type { Task } from "bindings/Tools/tools/downloader/index";
-import { etaFromBytes } from "@/utils/taskProgress";
+import { etaFromBytes, statusLabel, statusTagColor } from "@/utils/taskProgress";
 
-/** 分类树固定项（与引擎 categoryByExt 的取值一一对应，多一个"全部"聚合） */
-export const CATEGORIES = ["全部", "压缩", "文档", "音乐", "程序", "视频", "图片", "其他"] as const;
+// 状态文案 / 标签色已下沉到 @/utils/taskProgress，与主页下载抽屉同一口径；
+// 本页按原名再导出，既有 import（index.vue）零改动。
+export { statusLabel, statusTagColor };
+
+/** 分类树固定项（与引擎 categoryByExt 的取值一一对应，多一个"全部"聚合）。
+ * "安装"为安装类下载专用桶：mysql/redis/php/nginx/npm 版本包、php 扩展包、docker 安装器
+ * 经 downloader.Fetch 落盘时统一传 Category="安装"，故单列一类便于与用户手动下载区分。 */
+export const CATEGORIES = ["全部", "安装", "压缩", "文档", "音乐", "程序", "视频", "图片", "其他"] as const;
 
 /**
  * 分类 → 图标：统一交给公共组件 common-file-icon 渲染（Windows 11 风格按类型上色的纸片/文件夹）。
@@ -17,6 +23,7 @@ export const CATEGORIES = ["全部", "压缩", "文档", "音乐", "程序", "�
  */
 export const CATEGORY_ICON: Record<string, { dir?: boolean; ext?: string }> = {
   全部: { dir: true },
+  安装: { ext: "exe" },
   压缩: { ext: "zip" },
   文档: { ext: "doc" },
   音乐: { ext: "mp3" },
@@ -33,34 +40,6 @@ export const STATE_GROUPS = [
   { key: "done", label: "已完成" },
   { key: "failed", label: "失败 / 已取消" },
 ] as const;
-
-/** 引擎 Task.Status → 中文短标签 */
-const STATUS_LABEL: Record<string, string> = {
-  pending: "待开始",
-  queued: "排队中",
-  running: "下载中",
-  paused: "已暂停",
-  done: "已完成",
-  error: "失败",
-  canceled: "已取消",
-};
-
-export function statusLabel(status?: string): string {
-  return STATUS_LABEL[String(status || "")] || "—";
-}
-
-/** 状态标签色（a-tag color）：与 common-task-progress 的语义色保持同一取向 */
-export function statusTagColor(status?: string): string {
-  switch (String(status || "")) {
-    case "done": return "green";
-    case "error": return "red";
-    case "canceled": return "gray";
-    case "paused": return "orange";
-    case "queued":
-    case "pending": return "gray";
-    default: return "arcoblue";
-  }
-}
 
 /** 字节数 → "12.3 MB"；0 / 负 / 非有限值统一显 "0 B"（与引擎 size 缺省口径一致） */
 export function fmtBytes(n?: number): string {

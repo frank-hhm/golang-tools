@@ -22,7 +22,6 @@ package docker
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,6 +35,7 @@ import (
 
 	"Tools/appdirs"
 	"Tools/services/winrun"
+	"Tools/tools/downloader"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -652,95 +652,28 @@ func DownloadInstaller(input, dir string) (string, error) {
 	defer func() { cancel(); unregisterCancel() }()
 	registerCancel(cancel)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.Url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", browserUA)
-	part := dest + ".part"
-	var done int64
-	if st, err := os.Stat(part); err == nil && total > 0 && st.Size() < total {
-		done = st.Size()
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", done))
-	}
-	client := &http.Client{Timeout: downloadTimeout}
 	emitSetup(SetupProgress{Stage: "info", Note: fmt.Sprintf("开始下载 %s（约 %s）到 %s", name, humanSize(total), destDir)})
-	resp, err := client.Do(req)
-	if err != nil {
+	// 下载交给 tools/downloader 引擎：天然进「下载管理」页，可暂停 / 续传 / 限速 / 排队；
+	// 进度经 onProgress 桥接回 docker:setup 事件，面板零改动照常显示百分比。
+	// ctx 取消 = 停止该引擎任务（AbortSetup 走的就是这个 cancel）。
+	savePath, _, ferr := downloader.Fetch(ctx, info.Url, downloader.FetchOpts{
+		Name:     name,
+		SaveDir:  destDir,
+		Category: "安装",
+	}, func(pct int, downloaded, size int64, _ float64) {
+		emitSetup(SetupProgress{Stage: "downloading", Percent: pct, Received: downloaded, Total: size,
+			Note: fmt.Sprintf("%s / %s", humanSize(downloaded), humanSize(size))})
+	})
+	if ferr != nil {
 		if ctx.Err() == context.Canceled {
-			note := "下载已取消，" + dropPart(part)
-			emitSetup(SetupProgress{Stage: "error", Note: note})
+			emitSetup(SetupProgress{Stage: "error", Note: "下载已取消"})
 			return "", fmt.Errorf("下载已取消")
 		}
-		e := SetupProgress{Stage: "error", Note: "下载失败: " + err.Error()}
-		emitSetup(e)
-		return "", err
+		emitSetup(SetupProgress{Stage: "error", Note: "下载失败: " + ferr.Error()})
+		return "", ferr
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		err = fmt.Errorf("HTTP %d", resp.StatusCode)
-		emitSetup(SetupProgress{Stage: "error", Note: "下载失败: " + err.Error()})
-		return "", err
-	}
-	if done > 0 && resp.StatusCode != http.StatusPartialContent {
-		done = 0 // 服务端不理 Range，从头写
-	}
-	f, err := os.OpenFile(part, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return "", err
-	}
-	if done == 0 {
-		_ = f.Truncate(0)
-	}
-	defer f.Close()
-	if total <= 0 {
-		total = resp.ContentLength + done
-	}
-	buf := make([]byte, 512*1024)
-	lastPct := -1
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				emitSetup(SetupProgress{Stage: "error", Note: "写入失败: " + werr.Error()})
-				return "", werr
-			}
-			done += int64(n)
-			if total > 0 {
-				pct := int(done * 100 / total)
-				if pct/2 != lastPct/2 {
-					lastPct = pct
-					emitSetup(SetupProgress{Stage: "downloading", Percent: pct, Received: done, Total: total,
-						Note: fmt.Sprintf("%s / %s", humanSize(done), humanSize(total))})
-				}
-			}
-		}
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			if ctx.Err() == context.Canceled {
-				_ = f.Close() // Windows 下文件还开着删不掉，先收句柄
-				note := "下载已取消，" + dropPart(part)
-				emitSetup(SetupProgress{Stage: "error", Note: note})
-				return "", fmt.Errorf("下载已取消")
-			}
-			emitSetup(SetupProgress{Stage: "error", Note: "下载中断: " + rerr.Error() + "（保留 .part 可续传）"})
-			return "", rerr
-		}
-	}
-	f.Close()
-	if total > 0 {
-		if st, err := os.Stat(part); err != nil || st.Size() != total {
-			emitSetup(SetupProgress{Stage: "error", Note: "下载不完整，可重试续传"})
-			return "", fmt.Errorf("下载不完整")
-		}
-	}
-	if err := os.Rename(part, dest); err != nil {
-		return "", fmt.Errorf("安装包就位失败: %w", err)
-	}
-	emitSetup(SetupProgress{Stage: "info", Percent: 100, Note: "安装包就绪: " + dest})
-	return dest, nil
+	emitSetup(SetupProgress{Stage: "info", Percent: 100, Note: "安装包就绪: " + savePath})
+	return savePath, nil
 }
 
 /* ============================ 安装 ============================ */

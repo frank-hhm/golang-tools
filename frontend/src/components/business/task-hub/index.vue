@@ -2,12 +2,11 @@
   <!-- 全局任务浮标：左下角常驻，跟在哪个页面无关 -->
   <div v-if="st.hasTasks" class="task-hub">
     <div class="th-fab" :class="{ 'is-bad': isBad }" @click="open = true">
-      <a-spin v-if="st.runningCount" :size="14" />
-      <icon-close-circle-fill v-else-if="isBad" class="th-fab-bad" />
-      <icon-check-circle-fill v-else class="th-fab-ok" />
+      <!-- 前导状态圆点：与下载页同款语义（进行中主色脉冲 / 失败红晕 / 完成绿） -->
+      <span class="th-fab-dot" :class="st.runningCount ? 'dot-run' : (isBad ? 'dot-bad' : 'dot-ok')"></span>
       <div class="th-fab-body">
         <div class="th-fab-line">
-          <span class="th-fab-text">{{ fabText }}</span>
+          <span class="th-fab-text">{{ st.runningCount ? (topTask?.title || '正在进行') : fabText }}</span>
           <span v-if="st.runningCount" class="th-fab-pct">{{ topPercent }}%</span>
         </div>
         <div v-if="st.runningCount" class="th-fab-bar">
@@ -23,13 +22,30 @@
     :footer="finishedCount > 0">
     <template #title>
       <div class="th-drawer-title">
-        <span>安装任务</span>
+        <span>任务</span>
         <span class="th-drawer-sub">
           {{ st.runningCount ? `${st.runningCount} 个进行中` : "没有进行中的任务" }}
           <template v-if="st.failed.length">· {{ st.failed.length }} 个失败</template>
         </span>
       </div>
     </template>
+    <template #extra>
+      <!-- 下载页入口：抽屉标题栏右侧，复用 goTool 的开窗链路（原生单例窗口 / Web 回退路由） -->
+      <a-tooltip content="打开下载页" position="br">
+        <a-button size="small" @click="goDownloadPage"><icon-download /></a-button>
+      </a-tooltip>
+    </template>
+
+    <!-- 分类筛选：全部 / 下载 / 安装（对齐下载页，各带条数）。
+         下载桶 = 引擎任务（tool=download，含安装类下载）；安装桶 = 工具安装台账（kind install/ext/setup）；
+         docker 拉镜像 / 镜像操作等只在「全部」出现。 -->
+    <div class="th-filter">
+      <a-radio-group v-model="filter" type="button" size="small">
+        <a-radio value="all">全部 {{ allCount }}</a-radio>
+        <a-radio value="download">下载 {{ downloadCount }}</a-radio>
+        <a-radio value="install">安装 {{ installCount }}</a-radio>
+      </a-radio-group>
+    </div>
 
     <!-- 面板模式下浏览器是唯一的通知出口：权限要用户点一下才给 -->
     <div v-if="needNotifyHint" class="th-hint">
@@ -37,7 +53,7 @@
       <a-button size="mini" type="outline" @click="askNotify">开启通知</a-button>
     </div>
 
-    <a-empty v-if="list.length === 0" description="暂无任务：装版本、拉镜像时这里会显示进度" />
+    <a-empty v-if="list.length === 0" :description="emptyText" />
 
     <common-item-card v-for="t in list" :key="t.id" class="th-item" :clickable="false"
       :error="t.status === 'error'" pad="10px">
@@ -49,7 +65,7 @@
         <span class="th-title" :title="t.title">{{ t.title }}</span>
       </template>
       <template #extra>
-        <a-tag size="small" :color="tagColor(t)">{{ statusText(t) }}</a-tag>
+        <a-tag size="small" :color="statusTagColor(t.status)">{{ rowTag(t) }}</a-tag>
       </template>
 
       <common-task-progress :status="normalizeStatus(t.status)" :percent="pct(t)" size="small"
@@ -111,7 +127,7 @@ import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
 import type { Task } from "bindings/Tools/services/tasks/index";
 import { ensureTasks, useTasksStoreHook } from "@/store/modules/tasks";
 import { isNativeWindows } from "@/utils/caps";
-import { normalizeStatus } from "@/utils/taskProgress";
+import { normalizeStatus, statusLabel, statusTagColor } from "@/utils/taskProgress";
 import { useToolWindow } from "@/views/index/useToolWindow";
 
 const st = useTasksStoreHook();
@@ -140,6 +156,14 @@ onMounted(() => {
 onUnmounted(stopTimer);
 
 const open = ref(false);
+/**
+ * 抽屉顶部分类筛选：all 全部 / download 下载 / install 安装。
+ * 默认全部；有进行中任务时由 watch(open) 自动定位到对应桶。
+ */
+const filter = ref<"all" | "download" | "install">("all");
+/** 引擎下载任务（含安装类下载）在台账里 tool 恒为 "download"；工具安装类 kind ∈ install/ext/setup。 */
+const isDownloadTask = (t: Task) => t.tool === "download";
+const isInstallTask = (t: Task) => ["install", "ext", "setup"].includes(String(t.kind));
 /** 展开日志的任务 id（默认全收起，避免抽屉一开就是一大坨） */
 const logsOf = reactive(new Map<string, string[]>());
 /** 展开长备注（失败原因）的任务 id：默认两行截断，全文靠这里展开 */
@@ -151,7 +175,15 @@ function toggleNote(id: string) {
 }
 
 /** 打开抽屉就算“看过了”：未读状态下浮标才是红的（不把失败永久钉在那里） */
-watch(open, (v) => { if (v) st.markSeen(); });
+watch(open, (v) => {
+  if (!v) return;
+  st.markSeen();
+  // 有进行中任务时优先定位到对应桶：下载在跑→下载桶，安装类在跑→安装桶；否则回到「全部」。
+  const running = st.running;
+  if (running.some(isDownloadTask)) filter.value = "download";
+  else if (running.some(isInstallTask)) filter.value = "install";
+  else filter.value = "all";
+});
 // 抽屉开着的时候任务结束：用户正看着列表，不算未读
 watch(() => st.unseenCount, () => { if (open.value) st.markSeen(); });
 
@@ -169,7 +201,21 @@ watch(
   { immediate: true },
 );
 
-const list = computed(() => st.tasks);
+const list = computed(() => {
+  const arr = st.tasks;
+  if (filter.value === "download") return arr.filter(isDownloadTask);
+  if (filter.value === "install") return arr.filter(isInstallTask);
+  return arr;
+});
+const allCount = computed(() => st.tasks.length);
+const downloadCount = computed(() => st.tasks.filter(isDownloadTask).length);
+const installCount = computed(() => st.tasks.filter(isInstallTask).length);
+/** 当前桶为空但别处有任务时，给一句区分于“真没任务”的提示 */
+const emptyText = computed(() =>
+  st.tasks.length === 0
+    ? "暂无任务：装版本、下载、拉镜像时这里会显示进度"
+    : "该分类下没有任务",
+);
 const finishedCount = computed(() => st.tasks.filter((t) => t.status !== "running").length);
 /** 浮标上那句主文案取"最近更新"的那笔进行中任务；没在跑就取最新一条未读结果 */
 const topTask = computed<Task | undefined>(() => {
@@ -224,11 +270,9 @@ function statusText(t: Task): string {
   return stageText(t.stage) || "进行中";
 }
 
-function tagColor(t: Task): string {
-  if (t.status === "error") return "red";
-  if (t.status === "done") return "green";
-  if (t.status === "canceled") return "gray";
-  return "arcoblue";
+/** 下载行镜像下载页文案（引擎态）；安装行沿用阶段语义（解压中 / 安装中…）。 */
+function rowTag(t: Task): string {
+  return isDownloadTask(t) ? statusLabel(t.status) : statusText(t);
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -313,6 +357,18 @@ function toggleLog(id: string) {
 
 /** 对外入口：标题栏的下载按钮经 ref 调用，与点浮标等效 */
 defineExpose({ open: () => { open.value = true; } });
+
+/** 抽屉标题右侧的「打开下载页」：按下载管理工具的配置开单例窗口（与 goTool 同一路子） */
+async function goDownloadPage() {
+  const meta = await resolveToolWin("download");
+  openToolWindow("/tools/download", meta?.name || "下载管理", {
+    single: meta?.single ?? true,
+    fullscreen: !!meta?.fullscreen,
+    disableFullscreen: !!meta?.disableFullscreen,
+    width: meta?.width,
+    height: meta?.height,
+  });
+}
 </script>
 
 <style scoped>
@@ -362,14 +418,26 @@ defineExpose({ open: () => { open.value = true; } });
   }
 }
 
-.th-fab-bad {
-  color: rgb(var(--danger-6));
-  font-size: 15px;
+.th-fab-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-4);
 }
 
-.th-fab-ok {
-  color: rgb(var(--success-6));
-  font-size: 15px;
+.th-fab-dot.dot-run {
+  background: rgb(var(--primary-6));
+  animation: th-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.th-fab-dot.dot-bad {
+  background: rgb(var(--danger-6));
+  box-shadow: 0 0 0 3px rgba(var(--danger-6), 0.16);
+}
+
+.th-fab-dot.dot-ok {
+  background: rgb(var(--success-6));
 }
 
 .th-fab-body {
@@ -439,6 +507,20 @@ defineExpose({ open: () => { open.value = true; } });
   font-weight: 400;
 }
 
+/* 顶部分类筛选（全部 / 下载 / 安装）：与下载页同一取用，靠下间距隔开门体 */
+.th-filter {
+  margin-bottom: var(--base-margin);
+}
+
+.th-filter :deep(.arco-radio-group-button) {
+  width: 100%;
+}
+
+.th-filter :deep(.arco-radio-button) {
+  flex: 1;
+  text-align: center;
+}
+
 .th-hint {
   display: flex;
   align-items: center;
@@ -469,6 +551,15 @@ defineExpose({ open: () => { open.value = true; } });
 .dot-running {
   background: rgb(var(--primary-6));
   animation: th-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.dot-pending,
+.dot-queued {
+  background: var(--color-text-4);
+}
+
+.dot-paused {
+  background: rgb(var(--orange-6));
 }
 
 .dot-done {

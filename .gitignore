@@ -3,7 +3,8 @@ build/bin
 bin/
 *.exe
 *.exe~
-/Tools
+# 注意：不要加 /Tools 忽略运行时数据目录——core.ignorecase=true 时它会连带吞掉 tools/ 源码目录；
+# 运行时数据都在 bin/ 下（已被上面的规则忽略），根目录不会产生 Tools。
 # 由 wails3 generate syso 生成、构建完会被删掉，不该进版本库
 *.syso
 

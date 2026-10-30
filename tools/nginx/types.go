@@ -19,10 +19,10 @@ package nginx
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,10 +31,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"Tools/appdirs"
 	"Tools/services/sysx"
+	"Tools/tools/downloader"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -681,55 +681,18 @@ func locateOrDownloadZip(version string) (string, bool, error) {
 	return tmp, true, nil
 }
 
+// downloadFile 把安装包下载交给统一下载引擎（tools/downloader）：下载天然出现在
+// 「下载管理」页、可暂停/续传/限速；onProgress 里把百分比桥接回 nginx:install 事件。
 func downloadFile(url, dest, version string) error {
-	client := &http.Client{Timeout: 20 * time.Minute}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", userAgent())
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	total := resp.ContentLength
-	var done int64
-	lastPct := -1
-	buf := make([]byte, 256*1024)
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				return werr
-			}
-			done += int64(n)
-			if total > 0 {
-				pct := int(done * 100 / total)
-				if pct/5 != lastPct/5 {
-					lastPct = pct
-					emitInstall(InstallProgress{Version: version, Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
-				}
-			}
-		}
-		if rerr == io.EOF {
-			return nil
-		}
-		if rerr != nil {
-			return rerr
-		}
-	}
+	_ = os.Remove(dest)
+	_, _, err := downloader.Fetch(context.Background(), url, downloader.FetchOpts{
+		Name:     filepath.Base(dest),
+		SaveDir:  filepath.Dir(dest),
+		Category: "安装",
+	}, func(pct int, _, _ int64, _ float64) {
+		emitInstall(InstallProgress{Version: version, Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
+	})
+	return err
 }
 
 // extractZip 安全解压（拒绝路径穿越）

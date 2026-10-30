@@ -79,3 +79,36 @@ export interface TaskProgressView {
   percent?: number;
   eta?: string;
 }
+
+/**
+ * 引擎 / 台账状态词 → 中文短标签。下载页与主页抽屉共用同一口径，避免两套文案漂移。
+ * 认：pending/queued/running/paused/done/error/canceled；未知显"—"。
+ */
+const STATUS_LABEL: Record<string, string> = {
+  pending: "待开始",
+  queued: "排队中",
+  running: "下载中",
+  paused: "已暂停",
+  done: "已完成",
+  error: "失败",
+  canceled: "已取消",
+};
+
+export function statusLabel(status?: string): string {
+  return STATUS_LABEL[String(status || "")] || "—";
+}
+
+/**
+ * 状态标签色（a-tag color）：common-task-progress 语义色取向，下载页状态标签与抽屉状态标签共用。
+ */
+export function statusTagColor(status?: string): string {
+  switch (String(status || "")) {
+    case "done": return "green";
+    case "error": return "red";
+    case "canceled": return "gray";
+    case "paused": return "orange";
+    case "queued":
+    case "pending": return "gray";
+    default: return "arcoblue";
+  }
+}

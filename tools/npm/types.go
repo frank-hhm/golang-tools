@@ -21,6 +21,7 @@ package npm
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,7 @@ import (
 	"time"
 
 	"Tools/appdirs"
+	"Tools/tools/downloader"
 )
 
 /* ============================ 事件推送 ============================ */
@@ -723,57 +725,18 @@ func downloadFile(url, dest, version string) error {
 	})
 }
 
-// downloadFileTo 下载并把进度交给 emit 派发。
-// Node 安装包与 npm tarball 共用这段循环，只是回报到不同事件上。
+// downloadFileTo 下载并把进度交给 emit 派发。Node 安装包与 npm tarball 共用这段逻辑，
+// 统一走下载引擎（tools/downloader）：下载天然出现在「下载管理」页、可暂停/续传/限速。
 func downloadFileTo(url, dest string, emit func(InstallProgress)) error {
-	client := &http.Client{Timeout: 40 * time.Minute}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", userAgent())
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	total := resp.ContentLength
-	var done int64
-	lastPct := -1
-	buf := make([]byte, 256*1024)
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				return werr
-			}
-			done += int64(n)
-			if total > 0 {
-				pct := int(done * 100 / total)
-				if pct/5 != lastPct/5 {
-					lastPct = pct
-					emit(InstallProgress{Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
-				}
-			}
-		}
-		if rerr == io.EOF {
-			return nil
-		}
-		if rerr != nil {
-			return rerr
-		}
-	}
+	_ = os.Remove(dest)
+	_, _, err := downloader.Fetch(context.Background(), url, downloader.FetchOpts{
+		Name:     filepath.Base(dest),
+		SaveDir:  filepath.Dir(dest),
+		Category: "安装",
+	}, func(pct int, _, _ int64, _ float64) {
+		emit(InstallProgress{Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
+	})
+	return err
 }
 
 // extractZip 安全解压（拒绝路径穿越）

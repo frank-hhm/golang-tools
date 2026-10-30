@@ -12,9 +12,8 @@ package php
 // ============================================================
 
 import (
+	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"Tools/tools/downloader"
 )
 
 const (
@@ -709,56 +710,18 @@ func installExtAsync(id, ext, url, phpDir string, enable bool) {
 	extEmit(InstallProgress{Version: ext, Stage: "done", Percent: 100, Note: want})
 }
 
-// downloadExtZip 下载扩展包，进度经 "php:ext-install" 推送
+// downloadExtZip 下载扩展包：交给统一下载引擎（tools/downloader），进度经 "php:ext-install" 推送。
+// 于是这笔下载也出现在「下载管理」页（分类「安装」），可暂停/续传/限速。
 func downloadExtZip(url, dest, ext string) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", phpUserAgent())
-	client := &http.Client{Timeout: 20 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	total := resp.ContentLength
-	var done int64
-	lastPct := -1
-	buf := make([]byte, 256*1024)
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				return werr
-			}
-			done += int64(n)
-			if total > 0 {
-				pct := int(done * 100 / total)
-				if pct/10 != lastPct/10 { // 10% 步进推送
-					lastPct = pct
-					extEmit(InstallProgress{Version: ext, Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
-				}
-			}
-		}
-		if rerr != nil {
-			if rerr == io.EOF {
-				return nil
-			}
-			return rerr
-		}
-	}
+	_ = os.Remove(dest)
+	_, _, err := downloader.Fetch(context.Background(), url, downloader.FetchOpts{
+		Name:     filepath.Base(dest),
+		SaveDir:  filepath.Dir(dest),
+		Category: "安装",
+	}, func(pct int, _, _ int64, _ float64) {
+		extEmit(InstallProgress{Version: ext, Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
+	})
+	return err
 }
 
 // replaceFile 覆盖目标文件（目标被占用时给出可读错误）

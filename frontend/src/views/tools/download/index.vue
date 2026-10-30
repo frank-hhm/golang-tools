@@ -105,8 +105,12 @@
                                 <a-button v-if="t.status === 'running'" size="mini" @click.stop="pause(t)">暂停</a-button>
                                 <a-button v-else-if="t.status === 'paused'" size="mini" type="primary"
                                     @click.stop="resume(t)">继续</a-button>
-                                <a-button v-else-if="t.status === 'pending' || t.status === 'queued'" size="mini"
-                                    type="primary" @click.stop="start(t)">开始</a-button>
+                                <a-button v-else-if="t.status === 'pending'" size="mini" type="primary"
+                                    @click.stop="start(t)">开始</a-button>
+                                <a-tooltip v-else-if="t.status === 'queued'" content="已在队列中，前面的任务让出额度后自动开始"
+                                    position="tl">
+                                    <a-button size="mini" type="primary" disabled>开始</a-button>
+                                </a-tooltip>
                                 <a-button v-else-if="t.status === 'error' || t.status === 'canceled'" size="mini"
                                     type="primary" @click.stop="retry(t)">重试</a-button>
                                 <a-tooltip v-if="t.status === 'done'" content="打开所在目录">
@@ -136,10 +140,10 @@
 
                     <div class="dl-det-grid">
                         <div class="dl-field">
-                            <span class="dl-k">连接数</span>
+                            <span class="dl-k">连接</span>
                             <a-input-number v-model="editConn" :min="1" :max="16" size="small" hide-button
                                 @change="applyConn" />
-                            <span class="dl-hint">改后下次下载生效</span>
+                            <span class="dl-hint">下次下载生效</span>
                         </div>
                         <div class="dl-field">
                             <span class="dl-k">本任务限速</span>
@@ -681,7 +685,7 @@ onUnmounted(() => { if (offProgress) offProgress(); });
     overflow: auto;
     padding: 10px 12px;
     border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-8);
+    border-radius: var(--base-radius-default);
     background: var(--color-bg-2);
 }
 
@@ -718,11 +722,15 @@ onUnmounted(() => { if (offProgress) offProgress(); });
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    /* 字段不被 flex 压缩：标签/提示词永远单行，不给竖排换行留机会 */
+    flex: none;
+    white-space: nowrap;
 }
 
 .dl-k {
     font-size: var(--base-size-small);
     color: var(--color-text-3);
+    white-space: nowrap;
 }
 
 .dl-v {
@@ -737,6 +745,7 @@ onUnmounted(() => { if (offProgress) offProgress(); });
 .dl-hint {
     font-size: 11px;
     color: var(--color-text-4);
+    white-space: nowrap;
 }
 
 .dl-parts {

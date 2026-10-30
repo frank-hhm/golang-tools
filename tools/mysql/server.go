@@ -23,6 +23,7 @@ package mysql
 
 import (
 	"archive/zip"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,7 @@ import (
 
 	"Tools/appdirs"
 	"Tools/services/sysx"
+	"Tools/tools/downloader"
 	"Tools/tools/logtail"
 	"Tools/tools/portcheck"
 	"Tools/tools/srvstate"
@@ -754,55 +756,20 @@ func locateOrDownloadZip(version string) (string, bool, error) {
 	return tmp, true, nil
 }
 
+// downloadFile 把安装包下载交给统一下载引擎（tools/downloader）：
+// 于是这笔下载天然出现在「下载管理」页、可暂停/续传/限速；onProgress 里把百分比
+// 桥接回 mysql:install 事件，版本管理弹窗与任务台账零改动照常显示进度。
+// 先删同名残留，确保引擎按精确名落盘（避开重名避让改名，让调用方能用回 dest）。
 func downloadFile(url, dest, version string) error {
-	client := &http.Client{Timeout: 60 * time.Minute} // 230MB 大包，放宽总时限
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	total := resp.ContentLength
-	var done int64
-	lastPct := -1
-	buf := make([]byte, 256*1024)
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				return werr
-			}
-			done += int64(n)
-			if total > 0 {
-				pct := int(done * 100 / total)
-				if pct/5 != lastPct/5 { // 5% 步进推送
-					lastPct = pct
-					emitInstall(InstallProgress{Version: version, Stage: "downloading", Percent: pct, Note: fmt.Sprintf("mysql-%s-winx64.zip", version)})
-				}
-			}
-		}
-		if rerr == io.EOF {
-			return nil
-		}
-		if rerr != nil {
-			return rerr
-		}
-	}
+	_ = os.Remove(dest)
+	_, _, err := downloader.Fetch(context.Background(), url, downloader.FetchOpts{
+		Name:     filepath.Base(dest),
+		SaveDir:  filepath.Dir(dest),
+		Category: "安装",
+	}, func(pct int, _, _ int64, _ float64) {
+		emitInstall(InstallProgress{Version: version, Stage: "downloading", Percent: pct, Note: filepath.Base(url)})
+	})
+	return err
 }
 
 // extractZip 安全解压（拒绝路径穿越）
