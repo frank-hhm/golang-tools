@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"Tools/appdirs"
@@ -60,9 +61,10 @@ $app = $env:TOAST_APP
 if ([string]::IsNullOrWhiteSpace($app)) { $app = "Tools" }
 $aumid = $env:TOAST_AUMID
 if ([string]::IsNullOrWhiteSpace($aumid)) { $aumid = $app }
-function Emit($s) { try { $s | Out-File -FilePath $env:TOAST_RESULT -Append -Encoding ascii } catch {}; Write-Output $s }
+function Emit($s) { try { $s | Out-File -FilePath $env:TOAST_RESULT -Append -Encoding ascii } catch {}; try { Write-Output $s } catch {} }
 Emit ("START aumid=" + $aumid)
 try {
+Emit "STEP=1load"
 [void][Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom.XmlDocument,ContentType=WindowsRuntime]
 $tpl = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
@@ -85,17 +87,26 @@ $root.SetAttribute("launch", $launch) | Out-Null
 $root.SetAttribute("arguments", $launch) | Out-Null
 $root.SetAttribute("activationType", "protocol") | Out-Null
 }
-# 关键诊断：Windows 对该 AUMID 的通知授权状态。返回非 Enabled 时 Show() 不报错却
-# 什么也不弹（这正是「登记成功但通知卡不出现」的隐蔽成因）——把它打出来。
-$setting = [Windows.UI.Notifications.ToastNotificationManager]::GetSettingForToastNotifier($aumid)
 Emit ("AUMID=" + $aumid)
-Emit ("SETTING=" + $setting)
+Emit "STEP=6show"
 $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid)
 $toast = [Windows.UI.Notifications.ToastNotification]::new($tpl)
 $notifier.Show($toast)
 Emit "SHOW_OK"
+# SETTING 诊断（Windows 对该 AUMID 的通知授权状态）改为尽力而为、且放在 Show 之后：
+# GetSettingForToastNotifier 在 Windows PowerShell 5.1 上可能不存在（抛 MethodNotFound），
+# 若放在 Show 前 + $ErrorActionPreference=Stop，会直接中止脚本、通知永不弹出——
+# 这正是「Toast 不出现」的真凶，绝不能为诊断牺牲投递。
+try {
+$setting = [Windows.UI.Notifications.ToastNotificationManager]::GetSettingForToastNotifier($aumid)
+Emit ("SETTING=" + $setting)
+} catch {
+Emit ("SETTING=unavailable:" + $_.Exception.GetType().Name)
+}
+Emit "END"
 } catch {
 Emit ("PS_ERR=" + $_.Exception.Message)
+Emit "END"
 exit 1
 }
 `
@@ -150,10 +161,18 @@ func (a *App) runToast(title string, content string, target string) error {
 	if target != "" && aumid == "" {
 		applog.Warnf("notify", "已请求点击跳转(target=%s)但通知身份未登记成功，本次 Toast 不带跳转——点它不会跳面板；原因见上一条 notify 日志或测试页「通知诊断」。", target)
 	}
-	// 脚本经 stdin 传入（-Command -），避免命令行引号转义问题
+	// 脚本落临时 .ps1 用 -File 执行：此前经 stdin(-Command -) 传整段脚本，真机复现
+	// 「PowerShell 只执行到第一条 Emit(START) 就以退出码 0 结束，try/catch 都没跑到」——
+	// PowerShell 先解析整段再执行，try 都没进说明 stdin 首行后即被截断，改 -File 彻底规避。
+	// 脚本含中文注释，PowerShell 5.1 以 -File 读取时需 UTF-8 BOM 才能正确解码多字节字符。
+	psPath := ""
+	if f, e := os.CreateTemp("", "go-tools-toast-*.ps1"); e == nil {
+		psPath = f.Name()
+		_, _ = f.Write(append([]byte("\xEF\xBB\xBF"), []byte(toastPSScript)...))
+		_ = f.Close()
+	}
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-		"-ExecutionPolicy", "Bypass", "-Command", "-")
-	cmd.Stdin = strings.NewReader(toastPSScript)
+		"-ExecutionPolicy", "Bypass", "-File", psPath)
 	// 诊断结果文件：脚本把 AUMID/SETTING/结果逐行写到这里。PowerShell 经 stdin(-Command -)
 	// 执行时，stdout 管道在部分环境下拿不到内容（真机踩到：日志里「PowerShell输出」为空），
 	// 故再落一份到文件，Go 读文件为准、stdout 兜底。
@@ -174,28 +193,45 @@ func (a *App) runToast(title string, content string, target string) error {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
+	start := time.Now()
 	err := cmd.Run()
-	diag := strings.TrimSpace(out.String())
+	elapsed := time.Since(start).Milliseconds()
+	// 双来源诊断：以结果文件为准（PowerShell 经 stdin -Command - 执行时 stdout 管道常被丢弃），
+	// stdout 兜底；两路都留痕，用于区分「脚本真没跑到底」与「跑了但输出丢了」。
+	stdoutDiag := strings.TrimSpace(out.String())
+	fileDiag := ""
 	if resPath != "" {
-		if b, e := os.ReadFile(resPath); e == nil && len(strings.TrimSpace(string(b))) > 0 {
-			diag = strings.TrimSpace(string(b))
+		if b, e := os.ReadFile(resPath); e == nil {
+			fileDiag = strings.TrimSpace(string(b))
 		}
 		_ = os.Remove(resPath)
 	}
+	if psPath != "" {
+		_ = os.Remove(psPath)
+	}
+	diag := fileDiag
+	if diag == "" {
+		diag = stdoutDiag
+	}
 	if err != nil {
 		// 原生 Toast 都没能交给系统渲染 → 降级为页内 a-notification
-		applog.Warnf("notify", "Toast 发送失败: %v 目标=%q aumid=%q PowerShell输出: %s", err, target, aumid, diag)
+		applog.Warnf("notify", "Toast 发送失败 耗时=%dms: %v 目标=%q aumid=%q 文件输出=[%s] stdout输出=[%s]", elapsed, err, target, aumid, fileDiag, stdoutDiag)
 		a.emitNotifyFallback(title, content)
 		return err
 	}
-	applog.Infof("notify", "Toast 已提交渲染 目标=%q aumid=%q PowerShell输出: %s", target, aumid, diag)
+	// 退出码 0 却没有 END 哨兵：脚本多半在 START 之后被中途终止（崩溃/被杀），或结果文件写入被
+	// Emit 内的 catch 吞掉——这正是「日志只到 START、查不到 SETTING」的判据，单独告警便于定位卡在第几步。
+	if !strings.Contains(diag, "END") {
+		applog.Warnf("notify", "Toast 疑似异常 耗时=%dms：PowerShell 退出码=0 但诊断缺少 END 哨兵（脚本可能中途终止或输出丢失），目标=%q aumid=%q 文件输出=[%s] stdout输出=[%s]", elapsed, target, aumid, fileDiag, stdoutDiag)
+		return nil
+	}
+	applog.Infof("notify", "Toast 已提交渲染 耗时=%dms 目标=%q aumid=%q PowerShell输出: %s", elapsed, target, aumid, diag)
 	return nil
 }
 
-// toastLogoURI 把当前 logo（自定义文件优先，否则内置默认）落一份 PNG 到数据目录，
-// 返回 WinRT Toast 可用的 file:/// URI（供 appLogoOverride 内联图用）。
-// 失败回空串：通知照常弹，只是没图，不影响主流程。
-func (a *App) toastLogoURI() string {
+// toastLogoPath 把当前 logo（自定义文件优先，否则内置默认）落一份 PNG 到数据目录，
+// 返回其绝对文件路径（供注册表 IconUri 用）。失败回空串。
+func (a *App) toastLogoPath() string {
 	var data []byte
 	if cfg := config.CurrentConfig(); cfg.General.AppLogo != "" {
 		if b, err := os.ReadFile(cfg.General.AppLogo); err == nil {
@@ -218,6 +254,16 @@ func (a *App) toastLogoURI() string {
 		if err := os.WriteFile(p, data, 0o644); err != nil {
 			return ""
 		}
+	}
+	return p
+}
+
+// toastLogoURI 把 toastLogoPath 的路径转成 WinRT Toast 可用的 file:/// URI（供
+// appLogoOverride 内联图用）。失败回空串：通知照常弹，只是没图，不影响主流程。
+func (a *App) toastLogoURI() string {
+	p := a.toastLogoPath()
+	if p == "" {
+		return ""
 	}
 	// file:/// + 正斜杠绝对路径；空格转 %20，避免 URI 截断
 	return "file:///" + strings.ReplaceAll(filepath.ToSlash(p), " ", "%20")

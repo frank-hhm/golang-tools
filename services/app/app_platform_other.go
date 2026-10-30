@@ -44,7 +44,8 @@ func (a *App) notifyWithTarget(title string, content string, target string) erro
 
 // ensureToastRegistered 非 Windows 没有 WinRT 通知中心，也不需要 AUMID/快捷方式
 // 登记：空实现。与 toast_windows.go 同名函数成对，让 ServiceStartup 能跨平台调用。
-func ensureToastRegistered() {}
+// 参数 a 仅为与 Windows 版签名对齐（那边要取 a 的 logo 图片路径），这里忽略。
+func ensureToastRegistered(a *App) {}
 
 // toastStatusText 非 Windows 无系统通知中心，诊断文本直接回不支持。
 func toastStatusText() string {

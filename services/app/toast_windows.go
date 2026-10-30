@@ -57,7 +57,7 @@ func toastRegistered() bool {
 
 // ensureToastRegistered 启动时调一次：设进程 AUMID + 注册协议 + 注册表登记 AUMID。
 // 全是安全操作（无 COM），就地同步做完。同进程内只做一次。
-func ensureToastRegistered() {
+func ensureToastRegistered(a *App) {
 	toastOnce.Do(func() {
 		setProcessAUMID(toastAUMID)
 		exe, err := selfExePath()
@@ -69,13 +69,19 @@ func ensureToastRegistered() {
 		if err := registerProtocol(exe); err != nil {
 			applog.Warnf("notify", "注册 %s: 协议失败: %v", navigateScheme, err)
 		}
-		if err := registerAUMID(effectiveAppName(), exe); err != nil {
+		// 通知归属图标（IconUri）必须是一张图片：优先用落盘的 logo PNG，取不到才退回 exe。
+		// 给 IconUri 填 .exe 路径时 WinRT 渲染不出，通知只会显示默认地球图标。
+		icon := ""
+		if a != nil {
+			icon = a.toastLogoPath()
+		}
+		if err := registerAUMID(effectiveAppName(), exe, icon); err != nil {
 			setToastDiag("登记 AppUserModelID 失败: " + err.Error())
 			applog.Warnf("notify", "登记 AppUserModelID 失败: %v", err)
 			return
 		}
 		setToastDiag("已登记（注册表 AppUserModelId + 协议），Toast 带 logo、可点击跳转")
-		applog.Infof("notify", "Toast 身份登记完成（注册表）: AUMID=%s", toastAUMID)
+		applog.Infof("notify", "Toast 身份登记完成（注册表）: AUMID=%s icon=%s", toastAUMID, icon)
 	})
 }
 
@@ -116,7 +122,8 @@ func registerProtocol(exe string) error {
 // registerAUMID 在 HKCU\Software\Classes\AppUserModelId\<AUMID> 写 DisplayName/IconUri，
 // 把 AUMID 注册为本机通知应用。这是未打包应用让 Toast 归属本应用（logo/点击前提）的
 // 纯注册表做法——完全不碰 COM，因此不会像 .lnk 快捷方式那样访问违例崩进程。
-func registerAUMID(displayName, exe string) error {
+// iconPath 是通知归属图标的图片路径；为空才退回 exe（exe 当图标 WinRT 渲染不出）。
+func registerAUMID(displayName, exe, iconPath string) error {
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, aumidRegPath(), registry.SET_VALUE)
 	if err != nil {
 		return err
@@ -129,9 +136,13 @@ func registerAUMID(displayName, exe string) error {
 		return err
 	}
 	_ = k.SetDWordValue("ShowInSettings", 0)
-	if exe != "" {
+	icon := iconPath
+	if icon == "" {
+		icon = exe
+	}
+	if icon != "" {
 		// 通知设置列表里的图标；Toast 卡片内的 logo 走 XML 的 appLogoOverride（见 runToast）。
-		_ = k.SetStringValue("IconUri", exe)
+		_ = k.SetStringValue("IconUri", icon)
 	}
 	return nil
 }

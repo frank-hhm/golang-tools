@@ -274,7 +274,7 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	// tools: 协议 / 注册表 AppUserModelId）——全是普通注册表与 shell32 操作，安全，
 	// 就地同步做完（已改用纯注册表登记，不再走会崩的 COM 快捷方式），详见 toast_windows.go。
 	a.mountNavigateHost()
-	ensureToastRegistered()
+	ensureToastRegistered(a)
 	// 预热截图浮层：WebView2 开窗 + 页面 bootstrap 是首次截图最贵的一笔（实测 ~300ms），
 	// 挪到启动空闲期付掉，之后每次截图都只走“推帧 + 复用窗口”。
 	go func() {
