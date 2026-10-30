@@ -13,9 +13,17 @@
                 <span>欢迎回来！</span>
               </template>
               <template #extra>
-                <a-button size="small" :loading="sysLoading" @click="refreshSysInfo">
-                  <template #icon><icon-refresh /></template>
-                </a-button>
+                <a-space :size="8">
+                  <!-- 测试入口：只在 dev 跑的前端服务里显示，打包产物隐藏入口但页面与路由保留（叠加不删） -->
+                  <a-tooltip v-if="showTestHub" content="组件测试（仅开发环境）">
+                    <a-button size="small" @click="openTestHub">
+                      <template #icon><icon-experiment /></template>
+                    </a-button>
+                  </a-tooltip>
+                  <a-button size="small" :loading="sysLoading" @click="refreshSysInfo">
+                    <template #icon><icon-refresh /></template>
+                  </a-button>
+                </a-space>
               </template>
 
               <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
@@ -319,6 +327,19 @@ const orderedAllTools = toolsList;
 
 /** “更多”弹窗（无蒙层）：展示全部工具，点一个即打开并收起 */
 const moreVisible = ref(false);
+
+/**
+ * 测试入口只在开发环境亮：MODE 判定而非只看 DEV，因为 `npm run build:dev` 是
+ * `vite build --mode development`（DEV 也为 true），那样打包出来入口就关不掉了。
+ * 隐藏的是入口，/demo/test 与 /win/demo/test 路由照旧打进产物，需要时手输地址能开。
+ */
+const showTestHub = import.meta.env.DEV && import.meta.env.MODE === "development";
+
+/** 组件测试台：走统一工具窗入口，桌面开原生小窗（single），Web 模式回退页面内路由 */
+function openTestHub() {
+  openToolWindow("/demo/test", "组件测试", { single: true, width: 1180, height: 820 });
+}
+
 function onMoreToolClick(item: ToolRow) {
   moreVisible.value = false;
   onToolClick(item);

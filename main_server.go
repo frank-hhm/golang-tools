@@ -39,7 +39,10 @@ import (
 	"Tools/services/config"
 	"Tools/services/panel"
 	"Tools/services/tasks"
+	"Tools/tools/archive"
 	"Tools/tools/docker"
+	"Tools/tools/downloader"
+	"Tools/tools/fileview"
 	"Tools/tools/ftp"
 	"Tools/tools/guard"
 	"Tools/tools/mysql"
@@ -98,6 +101,10 @@ func init() {
 	application.RegisterEvent[tasks.Task](tasks.UpdateEvent)
 	// 进程守护：守护列表与运行态的实时推送
 	application.RegisterEvent[guard.Snapshot]("guard:status")
+	// 文件压缩：工具页压包的进度（服务端没有右键，转交监听与挂载都用不上）
+	application.RegisterEvent[archive.Progress]("archive:progress")
+	// 下载管理：分块/续传/队列的进度与终态（负载 downloader.Task）
+	application.RegisterEvent[downloader.Task]("download:progress")
 }
 
 func main() {
@@ -155,7 +162,8 @@ func main() {
 		},
 		Assets: application.AssetOptions{
 			// 包一层 gzip：主包 1.6MB，公网直传容易中途被截断导致白屏
-			Handler: gzipAssets(application.AssetFileServerFS(assets), assets),
+			// MediaHandler 包在最外层：/fileview/media 走 ServeContent 不 gzip（音视频已压缩）
+			Handler: fileview.MediaHandler(gzipAssets(application.AssetFileServerFS(assets), assets)),
 		},
 		// 只监听本机：对外的监听、鉴权与限速都由 services/panel 负责
 		Server: application.ServerOptions{Host: "127.0.0.1", Port: innerPort},
@@ -190,6 +198,7 @@ func main() {
 	term.SetEmitter(emit)
 	ftp.SetEmitter(emit)
 	guard.SetEmitter(emit)
+	downloader.SetEmitter(emit)
 	// 面板部署里服务端同样可开：配了自动启动就在进程内拉起
 	ftp.StartAutoServer()
 	// 守护工具：按“启用守护”自动拉起登记的程序

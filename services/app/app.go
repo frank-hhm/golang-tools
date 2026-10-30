@@ -267,6 +267,9 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	if a.launcherMounted() {
 		launcher.EnsureIndex()
 	}
+	// 文件压缩：按开关挂右键 verb / SendTo / 本机转交监听，
+	// 并处理 --archive-panel 带来的“启动即呼出选项小窗”（见 archive.go）
+	a.applyArchiveOnStart()
 	// 预热截图浮层：WebView2 开窗 + 页面 bootstrap 是首次截图最贵的一笔（实测 ~300ms），
 	// 挪到启动空闲期付掉，之后每次截图都只走“推帧 + 复用窗口”。
 	go func() {
@@ -294,6 +297,8 @@ func (a *App) ServiceShutdown() error {
 	php.StopAll()
 	nginx.StopAll()
 	npm.StopAll()
+	// 压缩的本机转交监听：收掉监听与端点文件，别给下一个实例留半个占位
+	a.unmountArchiveHost()
 	// 浏览器空间：销毁 controller 并释放 profile 锁（不然下次启动会报目录被占用）
 	a.BrowserCloseAll()
 	return nil
@@ -474,10 +479,11 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 		}
 		opts.Name = name
 	}
-	// 文件传输页需要原生拖放上传：开启 WebView2 文件拖放。
-	// 落下的文件真实路径由 Wails 回调到 Go，再按目标栏（本地/远程）转给前端触发上传。
+	// 文件传输页与文件压缩页都需要原生拖放：开启 WebView2 文件拖放。
+	// 落下的文件真实路径由 Wails 回调到 Go，再转给前端（传输页要分栏，压缩页只要清单）。
 	isFtp := strings.Contains(path, "/tools/ftp")
-	if isFtp {
+	isArchiveDrop := strings.Contains(path, "/tools/archive")
+	if isFtp || isArchiveDrop {
 		opts.EnableFileDrop = true
 	}
 	// 取色器窗口的实际高度由前端 fitWindow 按内容实测后 SetSize 贴合，
@@ -499,7 +505,11 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 			application.InvokeAsync(func() { win.Show().Focus() })
 		})
 	}
-	if isFtp {
+	if isFtp || isArchiveDrop {
+		eventName := "ftp:files-dropped"
+		if isArchiveDrop {
+			eventName = "archive:files-dropped"
+		}
 		w.OnWindowEvent(events.Common.WindowFilesDropped, func(ev *application.WindowEvent) {
 			files := ev.Context().DroppedFiles()
 			if len(files) == 0 {
@@ -509,7 +519,7 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 			if d := ev.Context().DropTargetDetails(); d != nil {
 				pane = d.Attributes["data-pane"]
 			}
-			w.EmitEvent("ftp:files-dropped", map[string]any{"pane": pane, "files": files})
+			w.EmitEvent(eventName, map[string]any{"pane": pane, "files": files})
 		})
 	}
 	return nil
@@ -2545,6 +2555,10 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	if cfg.Launcher == nil {
 		cfg.Launcher = config.CurrentConfig().Launcher
 	}
+	// 文件压缩段同理发在设置页：payload 里没带就等于“这次不动它”
+	if cfg.Archive == nil {
+		cfg.Archive = config.CurrentConfig().Archive
+	}
 	path, err := config.SaveAppConfig(cfg)
 	if err != nil {
 		applog.Errorf("config", "保存配置失败: %v", err)
@@ -2574,6 +2588,8 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	// 快捷搜索开关随设置即时生效：开着才挂（预热窗口 + 首轮索引），
 	// 关掉就把面板销毁、索引丢弃，不留任何常驻开销
 	a.applyLauncherSwitch()
+	// 右键挂载与转交监听随开关即时生效：开着才挂，关掉就删注册表、停监听
+	a.applyArchiveSwitch()
 	// 广播配置变更：首页等窗口据此刷新工具列表（设置页会自动保存，前端自行去重）
 	if a.app != nil {
 		a.app.Event.Emit("config:saved", path)

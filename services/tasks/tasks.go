@@ -81,25 +81,33 @@ var events = map[string]eventMeta{
 	"docker:setup":    {"docker", "setup"},
 	"docker:pull":     {"docker", "pull"},
 	"docker:imageop":  {"docker", "op"},
+	// 压缩/解压：右键发起时用户早就走了，进度与结果必须能在任务中心回看
+	"archive:progress": {"archive", "op"},
+	// 下载管理：进度与终态跨页可见（负载 downloader.Task，复用 Stage/Percent/Note/Name）
+	"download:progress": {"download", "file"},
 }
 
 // toolNames 工具展示名
 var toolNames = map[string]string{
-	"docker": "Docker",
-	"mysql":  "MySQL",
-	"php":    "PHP",
-	"redis":  "Redis",
-	"nginx":  "Nginx",
-	"npm":    "Node/npm",
+	"docker":   "Docker",
+	"mysql":    "MySQL",
+	"php":      "PHP",
+	"redis":    "Redis",
+	"nginx":    "Nginx",
+	"npm":      "Node/npm",
+	"archive":  "文件压缩",
+	"download": "下载",
 }
 
-// opVerbs 镜像操作动词（docker:imageop 的 op 字段）
+// opVerbs 操作类任务的动词（kind == "op" 的 op 字段）
 var opVerbs = map[string]string{
-	"push":   "推送",
-	"build":  "构建",
-	"import": "导入",
-	"export": "导出",
-	"prune":  "清理",
+	"push":     "推送",
+	"build":    "构建",
+	"import":   "导入",
+	"export":   "导出",
+	"prune":    "清理",
+	"compress": "压缩",
+	"extract":  "解压",
 }
 
 // payload 各工具进度负载的并集
@@ -114,6 +122,11 @@ type payload struct {
 	Percent int    `json:"percent"`
 	Overall int    `json:"overall"` // docker 拉取只有总体百分比
 	Note    string `json:"note"`
+	// Name / Msg 是文件压缩那一路的字段名（成品名 + 最近一句说明）。
+	// 只加两个可选字段、不让各工具改成同一套键名：改存量包的字段名
+	// 会连带改动它们的 emitter 与前端，收益不抵风险。
+	Name string `json:"name"`
+	Msg  string `json:"msg"`
 }
 
 /* ============================ 存储 ============================ */
@@ -254,7 +267,7 @@ func apply(meta eventMeta, p payload) (Task, bool, bool) {
 		t.Status = StatusRunning
 	}
 
-	if note := trimNote(p.Note); note != "" {
+	if note := trimNote(noteOf(p)); note != "" {
 		t.Note = note
 		if stageChanged || p.Stage == "info" || terminalStage {
 			appendLog(t, note)
@@ -266,8 +279,17 @@ func apply(meta eventMeta, p payload) (Task, bool, bool) {
 	snap := clone(t)
 	// 同一终态重复上报只通知一次
 	terminal := terminalStage && before != t.Status
-	changed := before != t.Status || stageChanged || trimNote(p.Note) != "" || pct > 0
+	changed := before != t.Status || stageChanged || trimNote(noteOf(p)) != "" || pct > 0
 	return snap, changed, terminal
+}
+
+// noteOf 取负载里的那句说明：存量工具用的键名是 note，文件压缩用的是 msg，
+// 两个都收，不再要求后来者改名。
+func noteOf(p payload) string {
+	if p.Note != "" {
+		return p.Note
+	}
+	return p.Msg
 }
 
 // identify 由负载推出任务主键、库内名称与展示标题。
@@ -277,6 +299,9 @@ func identify(meta eventMeta, p payload) (id, name, title string) {
 	name = p.Version
 	if name == "" {
 		name = p.Image
+	}
+	if name == "" {
+		name = p.Name // 压缩/解压：任务名就是成品（或归档）的文件名
 	}
 	if name == "" {
 		name = "engine"

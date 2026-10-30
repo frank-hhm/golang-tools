@@ -138,6 +138,29 @@
         d="M4.4 11.2V5.4a1 1 0 0 1 1-1h5.8l7.4 7.4a1.4 1.4 0 0 1 0 2l-4.8 4.8a1.4 1.4 0 0 1-2 0z" />
       <circle class="si-node" cx="8.3" cy="8.3" r="1.3" />
     </template>
+
+    <!-- 下载进行中：下推箭头（往复浮动）+ 底部托盘 -->
+    <template v-else-if="name === 'download'">
+      <g class="si-bob">
+        <path class="si-line" d="M12 3.6v9.4" />
+        <path class="si-line" d="M8 9.4 12 13.4 16 9.4" />
+      </g>
+      <path class="si-line si-dim" d="M4.6 16.4v2.2a1.4 1.4 0 0 0 1.4 1.4h12a1.4 1.4 0 0 0 1.4-1.4v-2.2" />
+    </template>
+
+    <!-- 队列：列表行 + 行首圆点（依次闪烁，表示等待中） -->
+    <template v-else-if="name === 'queue'">
+      <path class="si-line" d="M9 6.4h10M9 12h10M9 17.6h10" />
+      <circle class="si-node si-queue-dot" cx="5.2" cy="6.4" r="1.3" />
+      <circle class="si-node si-queue-dot" cx="5.2" cy="12" r="1.3" />
+      <circle class="si-node si-queue-dot" cx="5.2" cy="17.6" r="1.3" />
+    </template>
+
+    <!-- 已完成：圆圈 + 对勾 -->
+    <template v-else-if="name === 'done'">
+      <circle class="si-line" cx="12" cy="12" r="8.4" />
+      <path class="si-line" d="M7.8 12.3 10.8 15.3 16.2 9.2" />
+    </template>
   </svg>
 </template>
 
@@ -149,7 +172,8 @@ const clipId = `si-cyl-${Math.random().toString(36).slice(2, 8)}`;
 
 const props = withDefaults(defineProps<{
   /** 图标名：cpu / mem / uptime / go / disk / net（首页指标），
-   *  container / compose / image / network / volume / registry（Docker 总览） */
+   *  container / compose / image / network / volume / registry（Docker 总览），
+   *  download / queue / done（下载管理指标） */
   name: string;
   /** 像素尺寸（首页 stat-circle 用 26） */
   size?: number;
@@ -264,6 +288,19 @@ const cssVars = computed<Record<string, string>>(() => ({
 /* 网络：节点依次亮起，像数据包在节点间转发 */
 .si-net-node {
   animation: si-twinkle 2.4s ease-in-out infinite;
+}
+
+/* 队列：行首圆点自上而下依次亮起，像排队等待被取走 */
+.si-queue-dot {
+  animation: si-twinkle 2.2s ease-in-out infinite;
+}
+
+.si-queue-dot:nth-of-type(2) {
+  animation-delay: 0.35s;
+}
+
+.si-queue-dot:nth-of-type(3) {
+  animation-delay: 0.7s;
 }
 
 /* 拓扑连线：有容器接入的网络越多，连线越亮 */

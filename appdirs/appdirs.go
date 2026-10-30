@@ -22,10 +22,11 @@ import (
 )
 
 var (
-	mu          sync.RWMutex
-	pluginsBase string
-	dataBase    string
-	logsBase    string
+	mu            sync.RWMutex
+	pluginsBase   string
+	dataBase      string
+	logsBase      string
+	downloadsBase string
 )
 
 // DefaultRoot 三类目录的默认基准：可执行文件所在目录；取不到时退回用户配置目录 Tools
@@ -109,6 +110,42 @@ func Data(service string) (string, error) { return sub(DataBase(), service) }
 
 // Logs 返回 <日志目录>/<服务名>（不存在则创建）
 func Logs(service string) (string, error) { return sub(LogsBase(), service) }
+
+// SetDownloads 应用下载基目录配置（空值=默认 <应用目录>/downloads），并确保存在。
+// 与 plugins/data/logs 分开：下载目录是单基目录（不按服务名建子目录），
+// 由 ApplyLayout 一并调用，也可在只改下载目录时单独调用。
+func SetDownloads(downloads string) error {
+	d := strings.TrimSpace(downloads)
+	if d == "" {
+		d = filepath.Join(DefaultRoot(), "downloads")
+	} else {
+		d = filepath.Clean(d)
+	}
+	mu.Lock()
+	downloadsBase = d
+	mu.Unlock()
+	return os.MkdirAll(d, 0o755)
+}
+
+// DownloadsBase 下载根目录（未 Set 时回退默认，永不为空）
+func DownloadsBase() string {
+	mu.RLock()
+	b := downloadsBase
+	mu.RUnlock()
+	if b == "" {
+		return filepath.Join(DefaultRoot(), "downloads")
+	}
+	return b
+}
+
+// Downloads 返回下载根目录（不存在则创建），供下载管理器作为默认落点。
+func Downloads() (string, error) {
+	dir := DownloadsBase()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
 
 func sub(base, service string) (string, error) {
 	svc := filepath.Base(filepath.FromSlash(strings.TrimSpace(service)))

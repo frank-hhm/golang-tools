@@ -27,10 +27,13 @@ var (
 	logServices    = []string{"app", "php", "nginx", "mysql", "redis", "npm"}
 )
 
-// ApplyLayout 应用三类基础目录配置并确保标准布局存在（启动与保存配置时调用，幂等）。
-// 空值走默认 <应用目录>/plugins|data|logs。
-func ApplyLayout(plugins, data, logs string) error {
+// ApplyLayout 应用基础目录配置并确保标准布局存在（启动与保存配置时调用，幂等）。
+// 空值走默认 <应用目录>/plugins|data|logs|downloads。
+func ApplyLayout(plugins, data, logs, downloads string) error {
 	if err := Set(plugins, data, logs); err != nil {
+		return err
+	}
+	if err := SetDownloads(downloads); err != nil {
 		return err
 	}
 	migrateLegacy()
@@ -38,7 +41,7 @@ func ApplyLayout(plugins, data, logs string) error {
 	return nil
 }
 
-// ensureLayout 预建 <基础目录>/<服务名> 各级子目录（MkdirAll 幂等）
+// ensureLayout 预建 <基础目录>/<服务名> 各级子目录与下载根目录（MkdirAll 幂等）
 func ensureLayout() {
 	for _, s := range pluginServices {
 		_, _ = Plugins(s)
@@ -49,6 +52,7 @@ func ensureLayout() {
 	for _, s := range logServices {
 		_, _ = Logs(s)
 	}
+	_, _ = Downloads()
 }
 
 // migrateLegacy 旧版布局一次性迁移（MoveIfAbsent 幂等，迁移过即空转）：

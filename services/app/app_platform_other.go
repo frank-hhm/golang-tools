@@ -28,3 +28,9 @@ func workAreaDIP() (int, int, int, int) {
 func (a *App) ShowSystemNotification(title string, content string) error {
 	return fmt.Errorf("%w: %s 上没有系统通知中心，请改用前端提示", sysx.ErrUnsupported, runtime.GOOS)
 }
+
+// notifySync 同步版通知：非 Windows 没有通知中心，一律回 unsupported，
+// 调用方（压缩的无界面分支）只把它当一句日志看。
+func (a *App) notifySync(title string, content string) error {
+	return a.ShowSystemNotification(title, content)
+}

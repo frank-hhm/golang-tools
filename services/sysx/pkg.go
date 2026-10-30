@@ -1,6 +1,7 @@
 package sysx
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,7 +97,7 @@ func (p pkg) Install(service, version, archive string) (string, error) {
 
 	staging := filepath.Join(root, "."+ver+".installing")
 	_ = os.RemoveAll(staging) // 上次失败的残留
-	if err := extractArchive(archive, staging); err != nil {
+	if err := extractArchive(context.Background(), archive, staging, nil); err != nil {
 		_ = os.RemoveAll(staging)
 		return "", err
 	}

@@ -36,8 +36,9 @@
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="general.appName">
                                 <template #label>应用名称</template>
-                                <a-input v-model="form.general.appName" placeholder="Tools" :style="{ maxWidth: '280px' }"
-                                    @blur="scheduleSave(0)" @press-enter="scheduleSave(0)" />
+                                <a-input v-model="form.general.appName" placeholder="Tools"
+                                    :style="{ maxWidth: '280px' }" @blur="scheduleSave(0)"
+                                    @press-enter="scheduleSave(0)" />
                                 <span class="hint">窗口标题、托盘提示显示的名称，修改后立即生效。</span>
                             </a-form-item>
                             <a-form-item field="general.appLogo">
@@ -49,14 +50,16 @@
                                     </div>
                                     <a-space>
                                         <a-button size="small" @click="pickLogo">选择图片</a-button>
-                                        <a-button size="small" status="danger" v-if="form.general.appLogo" @click="clearLogo">清除</a-button>
+                                        <a-button size="small" status="danger" v-if="form.general.appLogo"
+                                            @click="clearLogo">清除</a-button>
                                     </a-space>
                                 </div>
                                 <span class="hint">建议 PNG 正方形（如 128x128），用于浮动球中心图标。留空使用内置默认。</span>
                             </a-form-item>
                             <a-form-item field="general.theme">
                                 <template #label>主题模式</template>
-                                <a-radio-group size="medium" v-model="form.general.theme" type="button" @change="onThemeChange">
+                                <a-radio-group size="medium" v-model="form.general.theme" type="button"
+                                    @change="onThemeChange">
                                     <a-radio value="light">浅色</a-radio>
                                     <a-radio value="dark">暗黑</a-radio>
                                     <a-radio value="auto">跟随系统</a-radio>
@@ -65,7 +68,7 @@
                             </a-form-item>
                             <a-form-item field="autoStart">
                                 <template #label>开机默认启动</template>
-                                <a-switch  type="round" v-model="form.general.autoStart" @change="scheduleSave(0)" />
+                                <a-switch type="round" v-model="form.general.autoStart" @change="scheduleSave(0)" />
                                 <span class="hint">开启后 Windows 登录时自动启动应用。</span>
                             </a-form-item>
                         </a-form>
@@ -78,22 +81,36 @@
                             <a-form-item field="paths.plugins">
                                 <template #label>插件目录（plugins）</template>
                                 <div class="path-row">
-                                    <a-input v-model="form.paths.plugins" placeholder="留空使用默认（应用目录/plugins）"
-                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                    <a-input v-model="form.paths.plugins" placeholder="留空使用默认（应用目录/plugins）" allow-clear
+                                        @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
                                         @clear="scheduleSave(0)" />
                                     <a-button size="small" @click="pickBaseDir('plugins', '选择插件目录')">选择目录</a-button>
                                 </div>
-                                <div class="hint">服务程序安装位置：PHP/Nginx/MySQL/Redis/npm 等按服务名建子目录（plugins/服务名）。修改后新安装/下载的服务落到新目录。</div>
+                                <div class="hint">服务程序安装位置：PHP/Nginx/MySQL/Redis/npm
+                                    等按服务名建子目录（plugins/服务名）。修改后新安装/下载的服务落到新目录。
+                                </div>
                             </a-form-item>
                             <a-form-item field="paths.data">
                                 <template #label>数据目录（data）</template>
                                 <div class="path-row">
-                                    <a-input v-model="form.paths.data" placeholder="留空使用默认（应用目录/data）"
-                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                    <a-input v-model="form.paths.data" placeholder="留空使用默认（应用目录/data）" allow-clear
+                                        @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
                                         @clear="scheduleSave(0)" />
                                     <a-button size="small" @click="pickBaseDir('data', '选择数据目录')">选择目录</a-button>
                                 </div>
-                                <div class="hint">服务配置缓存与实例工作目录（data/服务名）；截图另存、录像、站点根等文件的默认落点（data/screenshots、data/videos、data/www）。保存后各另存对话框默认目录随即使用新路径。</div>
+                                <div class="hint">
+                                    服务配置缓存与实例工作目录（data/服务名）；截图另存、录像、站点根等文件的默认落点（data/screenshots、data/videos、data/www）。保存后各另存对话框默认目录随即使用新路径。
+                                </div>
+                            </a-form-item>
+                            <a-form-item field="paths.downloads">
+                                <template #label>下载目录（downloads）</template>
+                                <div class="path-row">
+                                    <a-input v-model="form.paths.downloads" placeholder="留空使用默认（应用目录/downloads）"
+                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                        @clear="scheduleSave(0)" />
+                                    <a-button size="small" @click="pickBaseDir('downloads', '选择下载目录')">选择目录</a-button>
+                                </div>
+                                <div class="hint">下载管理器新建任务时“保存目录”留空的默认落点。修改保存后，新建下载随即落到新目录（已存在的任务仍留在其原保存路径）。</div>
                             </a-form-item>
                             <a-form-item field="log.enabled">
                                 <template #label>启用文件日志</template>
@@ -103,13 +120,18 @@
                             <a-form-item field="paths.logs">
                                 <template #label>日志目录（logs）</template>
                                 <div class="path-row">
-                                    <a-input v-model="form.paths.logs" placeholder="留空使用默认（应用目录/logs）"
-                                        allow-clear @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
+                                    <a-input v-model="form.paths.logs" placeholder="留空使用默认（应用目录/logs）" allow-clear
+                                        @blur="scheduleSave(0)" @press-enter="scheduleSave(0)"
                                         @clear="scheduleSave(0)" />
                                     <a-button size="small" @click="pickBaseDir('logs', '选择日志目录')">选择目录</a-button>
                                     <a-button size="small" v-if="activePath" @click="openLogDir">打开日志目录</a-button>
                                 </div>
-                                <div class="hint">程序与各服务日志的根目录，按服务名建子目录：logs/app 程序日志、logs/mysql SQL 日志、logs/php 实例服务日志等。开启文件日志后 info / warn / error 全部记录，按“级别 + 当前日期”自动分文件（如 Info20261022.log、Warn20261022.log、Error20261022.log）。当前程序日志目录：{{ activePath || "（未加载）" }}</div>
+                                <div class="hint">程序与各服务日志的根目录，按服务名建子目录：logs/app 程序日志、logs/mysql SQL 日志、logs/php
+                                    实例服务日志等。开启文件日志后
+                                    info / warn / error 全部记录，按“级别 + 当前日期”自动分文件（如
+                                    Info20261022.log、Warn20261022.log、Error20261022.log）。当前程序日志目录：{{ activePath ||
+                                    "（未加载）" }}
+                                </div>
                             </a-form-item>
                         </a-form>
                     </a-card>
@@ -119,8 +141,7 @@
                         <template #title>面板访问</template>
                         <template #extra>
                             <a-space>
-                                <a-tag v-if="panelInfo" size="small"
-                                    :color="panelInfo.enabled ? 'green' : 'orangered'">
+                                <a-tag v-if="panelInfo" size="small" :color="panelInfo.enabled ? 'green' : 'orangered'">
                                     {{ panelInfo.enabled ? "登录保护已开启" : "登录保护已关闭" }}
                                 </a-tag>
                                 <a-link v-if="panelInfo?.accessURL" @click="copyAccess">复制访问地址</a-link>
@@ -169,8 +190,8 @@
                                 <a-form-item field="panelEntry">
                                     <template #label>安全入口</template>
                                     <div class="path-row">
-                                        <a-input v-model="panelForm.entryPath"
-                                            placeholder="留空关闭，例如 /manage-9f3ad2" allow-clear />
+                                        <a-input v-model="panelForm.entryPath" placeholder="留空关闭，例如 /manage-9f3ad2"
+                                            allow-clear />
                                         <a-button size="small" @click="genEntry">随机生成</a-button>
                                     </div>
                                     <span class="hint">
@@ -188,13 +209,15 @@
                                 <a-form-item>
                                     <div class="panel-actions">
                                         <a-space>
-                                            <a-button type="primary" :loading="panelSaving" @click="savePanel">保存并应用</a-button>
+                                            <a-button type="primary" :loading="panelSaving"
+                                                @click="savePanel">保存并应用</a-button>
                                             <a-button @click="loadPanel">还原</a-button>
                                         </a-space>
                                         <div v-if="panelInfo?.accessURL" class="panel-access">
                                             <span class="hint">当前访问地址：</span>
                                             <code>{{ panelInfo.accessURL }}</code>
-                                            <span v-if="panelInfo.listen" class="hint">（进程监听 {{ panelInfo.listen }}）</span>
+                                            <span v-if="panelInfo.listen" class="hint">（进程监听 {{ panelInfo.listen
+                                                }}）</span>
                                         </div>
                                     </div>
                                 </a-form-item>
@@ -244,7 +267,8 @@
                                         :type="isIconfontIcon(form.ball.icon) ? 'iconfont' : 'arco'"
                                         @change="onBallIconChange"></select-icon-modal>
                                 </div>
-                                <span class="hint">浮动球中心图标（图标库或 Arco），颜色自动跟随主题正文色 var(--color-text-1)，球面底色跟随 var(--color-bg-1)。留空使用应用 Logo/内置默认。</span>
+                                <span class="hint">浮动球中心图标（图标库或 Arco），颜色自动跟随主题正文色 var(--color-text-1)，球面底色跟随
+                                    var(--color-bg-1)。留空使用应用 Logo/内置默认。</span>
                             </a-form-item>
                         </a-form>
                     </a-card>
@@ -264,8 +288,9 @@
 
                             <a-form-item field="lkShortcut">
                                 <template #label>呼出热键</template>
-                                <a-input :model-value="form.launcher.shortcut" readonly placeholder="点击后直接按下组合键（默认 Alt+Space）"
-                                    @click="lkStartRecord" @keydown="lkOnShortcutKeydown">
+                                <a-input :model-value="form.launcher.shortcut" readonly
+                                    placeholder="点击后直接按下组合键（默认 Alt+Space）" @click="lkStartRecord"
+                                    @keydown="lkOnShortcutKeydown">
                                     <template #suffix>
                                         <span v-if="lkRecording" class="rec-tip">录制中</span>
                                     </template>
@@ -276,11 +301,17 @@
                             <a-form-item field="lkScopes">
                                 <template #label>检索范围</template>
                                 <a-space wrap>
-                                    <a-checkbox v-model="form.launcher.scopes.apps" @change="scheduleSave(0)">已安装应用</a-checkbox>
-                                    <a-checkbox v-model="form.launcher.scopes.tools" @change="scheduleSave(0)">本程序工具</a-checkbox>
-                                    <a-checkbox v-model="form.launcher.scopes.windows" @change="scheduleSave(0)">运行中的窗口</a-checkbox>
-                                    <a-checkbox v-model="form.launcher.scopes.files" @change="scheduleSave(0)">本地文件</a-checkbox>
-                                    <a-checkbox v-model="form.launcher.scopes.commands" @change="scheduleSave(0)">命令 / 算式 / 网址</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.apps"
+                                        @change="scheduleSave(0)">已安装应用</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.tools"
+                                        @change="scheduleSave(0)">本程序工具</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.windows"
+                                        @change="scheduleSave(0)">运行中的窗口</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.files"
+                                        @change="scheduleSave(0)">本地文件</a-checkbox>
+                                    <a-checkbox v-model="form.launcher.scopes.commands" @change="scheduleSave(0)">命令 /
+                                        算式 /
+                                        网址</a-checkbox>
                                 </a-space>
                             </a-form-item>
 
@@ -294,7 +325,8 @@
                                     <div v-if="!form.launcher.dirs.length" class="hint">未追加目录，仅索引下面列出的已知目录。</div>
                                     <a-button size="small" @click="addLauncherDir">添加目录</a-button>
                                 </div>
-                                <span class="hint">默认已纳入：{{ lkDefaultDirs.join('、') || '（没有可索引的已知目录）' }}；AppData、node_modules、回收站等一律跳过。</span>
+                                <span class="hint">默认已纳入：{{ lkDefaultDirs.join('、') || '（没有可索引的已知目录）'
+                                    }}；AppData、node_modules、回收站等一律跳过。</span>
                             </a-form-item>
 
                             <a-form-item field="lkMaxEntries">
@@ -307,9 +339,11 @@
                             <a-form-item field="lkIndex">
                                 <template #label>索引状态</template>
                                 <a-space>
-                                    <a-button size="small" :loading="lkRebuilding" @click="rebuildLauncherIndex">重建索引</a-button>
+                                    <a-button size="small" :loading="lkRebuilding"
+                                        @click="rebuildLauncherIndex">重建索引</a-button>
                                     <a-button size="small" @click="resetLauncherUsage">清空使用频次</a-button>
-                                    <a-button size="small" :disabled="!form.launcher.enabled" @click="testLauncher">试一下面板</a-button>
+                                    <a-button size="small" :disabled="!form.launcher.enabled"
+                                        @click="testLauncher">试一下面板</a-button>
                                 </a-space>
                                 <div class="lk-idx-line">
                                     条目 {{ lkIdx?.count || 0 }}
@@ -332,14 +366,75 @@
                             </a-form-item>
                         </a-form>
                     </a-card>
+
+                    <!-- ===================== 文件压缩设置 ===================== -->
+                    <a-card v-show="activeTab === 'archive'" class="pane-card card-head-tool">
+                        <template #title>文件压缩（系统右键挂载）</template>
+                        <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
+                            <a-form-item field="arEnabled">
+                                <template #label>启用右键压缩</template>
+                                <a-switch v-model="form.archive.enabled" type="round" @change="onArchiveEnabled" />
+                                <span class="hint">
+                                    开启后才会写注册表（HKCU，不需管理员）、生成「发送到」快捷方式、起本机转交监听。
+                                    关掉时三者一个都不留（自家那几把键删干净、监听停掉），不占系统位置。
+                                </span>
+                            </a-form-item>
+
+                            <a-form-item field="arShell">
+                                <template #label>当前挂载状态</template>
+                                <div class="ar-shell-row">
+                                    <span class="ar-slot">压缩菜单项：<b>{{ slotText(arShell?.compress) }}</b></span>
+                                    <span class="ar-slot">解压菜单项：<b>{{ slotText(arShell?.extract) }}</b></span>
+                                    <span class="ar-slot">发送到：<b>{{ slotText(arShell?.sendTo) }}</b></span>
+                                </div>
+                                <div class="ar-shell-btns">
+                                    <a-button size="small" type="primary" status="success" :loading="arBusy"
+                                        :disabled="!form.archive.enabled" @click="installArchiveShell">安装 /
+                                        修复</a-button>
+                                    <a-button size="small" :loading="arBusy"
+                                        @click="uninstallArchiveShell">卸载</a-button>
+                                </div>
+                                <div v-if="arShell?.stale" class="hint">程序路径与注册表里记的不一致（换过目录），点「安装 / 修复」重写一次。</div>
+                                <div v-else-if="arShell?.detail" class="hint">{{ arShell.detail }}</div>
+                                <span class="hint">Win11 的静态右键菜单项落在「显示更多选项」二级菜单里；菜单文案带 (Tools) 以便与系统自带的「压缩为 ZIP
+                                    文件」区分。</span>
+                            </a-form-item>
+
+                            <a-form-item field="arSendTo">
+                                <template #label>「发送到」快捷方式</template>
+                                <a-switch v-model="form.archive.sendTo" type="round" @change="scheduleSave(0)" />
+                                <span class="hint">多选文件后右键「发送到 → 压缩 (Tools)…」，会先弹一个选项小窗问格式与输出位置。</span>
+                            </a-form-item>
+
+                            <a-form-item field="arFormat">
+                                <template #label>默认格式</template>
+                                <a-radio-group v-model="form.archive.format" type="button" @change="scheduleSave(0)">
+                                    <a-radio value="zip">zip</a-radio>
+                                    <a-radio value="targz">tar.gz</a-radio>
+                                </a-radio-group>
+                                <span class="hint">右键直接压缩时没有界面，用的就是这一档；工具页与小窗里当场选过的不会被它盖掉。</span>
+                            </a-form-item>
+
+                            <a-form-item field="arLevel">
+                                <template #label>默认压缩级别</template>
+                                <a-select v-model="form.archive.level" style="width: 180px" @change="scheduleSave(0)">
+                                    <a-option :value="1">快速（1）</a-option>
+                                    <a-option :value="6">标准（6）</a-option>
+                                    <a-option :value="9">最高（9）</a-option>
+                                </a-select>
+                                <span class="hint">级别只影响体积与耗时；tar.gz 在 Windows 上不带 unix 权限位，跨平台还原权限请用 tar
+                                    类归档在类Unix系统上生成。</span>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
                     <div v-show="activeTab === 'tools'" class="tools-pane">
                         <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }">
                             <template #title>功能列表</template>
                             <template #extra>
                                 <a-space>
                                     <span class="hint hint-inline">快捷键为系统全局热键</span>
-                                    <a-popconfirm content="恢复默认功能列表？自定义的增删与排序会被覆盖。" type="warning"
-                                        position="lt" @ok="resetTools">
+                                    <a-popconfirm content="恢复默认功能列表？自定义的增删与排序会被覆盖。" type="warning" position="lt"
+                                        @ok="resetTools">
                                         <a-button size="small">恢复默认列表</a-button>
                                     </a-popconfirm>
                                     <a-button size="small" @click="openAdd">
@@ -349,8 +444,8 @@
                             </template>
                             <div class="tools-table-wrap" ref="toolsTableRef" @dragover="onToolsWrapDragOver"
                                 @dragleave="onToolsWrapDragLeave" @drop="onToolsWrapDrop">
-                                <a-table :data="tools" :pagination="false" size="small" row-key="id" :column-resizable="true"
-                                    :scroll="tableScroll">
+                                <a-table :data="tools" :pagination="false" size="small" row-key="id"
+                                    :column-resizable="true" :scroll="tableScroll">
                                     <template #columns>
                                         <a-table-column title="排序" :width="112">
                                             <template #cell="{ rowIndex }">
@@ -358,11 +453,13 @@
                                                     <!-- 拖拽把手：按住它在目标行上松手即可换位；上下钮保留做微调 -->
                                                     <a-tooltip content="按住拖动排序">
                                                         <span class="row-drag-handle" draggable="true"
-                                                            @dragstart="toolDragStart(rowIndex, $event)" @dragend="toolDragEnd">
+                                                            @dragstart="toolDragStart(rowIndex, $event)"
+                                                            @dragend="toolDragEnd">
                                                             <icon-drag-dot-vertical />
                                                         </span>
                                                     </a-tooltip>
-                                                    <a-button size="small" :disabled="rowIndex === 0" @click="move(rowIndex, -1)">
+                                                    <a-button size="small" :disabled="rowIndex === 0"
+                                                        @click="move(rowIndex, -1)">
                                                         <icon-up />
                                                     </a-button>
                                                     <a-button size="small" :disabled="rowIndex === tools.length - 1"
@@ -379,7 +476,8 @@
                                                 <span v-if="record.icon" class="icon-cell">
                                                     <i v-if="isIconfontIcon(record.icon)" class="icon iconfont-preview"
                                                         :class="record.icon" />
-                                                    <component v-else :is="iconComp(record.icon)" class="arco-preview" />
+                                                    <component v-else :is="iconComp(record.icon)"
+                                                        class="arco-preview" />
                                                     <a-tooltip :content="record.icon">
                                                         <span class="icon-text">{{ iconLabel(record.icon) }}</span>
                                                     </a-tooltip>
@@ -483,8 +581,9 @@
                                     <a-input v-model="browserForm.proxy" allow-clear
                                         placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
                                         @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)" />
-                                    <a-input v-model="browserForm.proxyBypass" allow-clear placeholder="绕过：localhost,127.0.0.1"
-                                        @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)" />
+                                    <a-input v-model="browserForm.proxyBypass" allow-clear
+                                        placeholder="绕过：localhost,127.0.0.1" @blur="scheduleBrowserSave(0)"
+                                        @press-enter="scheduleBrowserSave(0)" />
                                 </div>
                                 <span class="hint">代理与 UA 是环境级参数，改完需要重新打开浏览器页（或在齿轮里保存）才生效。</span>
                             </a-form-item>
@@ -510,8 +609,8 @@
                                 <icon-question-circle class="bs-help" />
                             </a-tooltip>
                         </div>
-                        <a-table :data="spaceRows" :pagination="false" size="small" row-key="id"
-                            :scroll="{ x: 640 }" class="space-table">
+                        <a-table :data="spaceRows" :pagination="false" size="small" row-key="id" :scroll="{ x: 640 }"
+                            class="space-table">
                             <template #columns>
                                 <a-table-column title="名称" data-index="name" :width="130" ellipsis tooltip />
                                 <a-table-column title="标识" data-index="id" :width="110" ellipsis tooltip />
@@ -540,8 +639,7 @@
                                 <a-button size="small" @click="exportConfig">
                                     <template #icon><icon-export /></template>导出配置
                                 </a-button>
-                                <a-popconfirm
-                                    content="导入会覆盖本机的工具列表、浏览器空间与代理、主题等设置（目录 / Logo / 浮动球位置保留本机值）。继续？"
+                                <a-popconfirm content="导入会覆盖本机的工具列表、浏览器空间与代理、主题等设置（目录 / Logo / 浮动球位置保留本机值）。继续？"
                                     type="warning" position="lt" @ok="importConfig">
                                     <a-button size="small" type="primary">
                                         <template #icon><icon-import /></template>导入配置
@@ -561,88 +659,90 @@
         </a-col>
     </a-row>
 
-        <!-- ===================== 工具编辑弹窗 ===================== -->
-        <a-modal v-model:visible="editVisible" :title="editIndex < 0 ? '新增功能' : '编辑功能'" :width="520" @ok="confirmEdit"
-            @cancel="editVisible = false" ok-text="确定" cancel-text="取消">
-            <a-form :model="editForm" layout="vertical" class="edit-form">
-                <a-form-item field="key" label="内置功能">
-                    <a-select v-model="editForm.key" placeholder="选择要绑定的内置功能" allow-search @change="onBuiltinChange">
-                        <a-option v-for="b in BUILTINS" :key="b.key" :value="b.key" :label="b.name">
-                            <span class="builtin-option">
-                                <i v-if="isIconfontIcon(b.icon)" class="icon builtin-icon" :class="b.icon" />
-                                <component v-else :is="iconComp(b.icon)" class="builtin-icon" />
-                                <span>{{ b.name }}</span>
-                            </span>
-                        </a-option>
-                    </a-select>
-                </a-form-item>
-                <a-form-item field="name" label="标题">
-                    <a-input v-model="editForm.name" placeholder="显示名称" />
-                </a-form-item>
-                <a-form-item field="icon" label="图标">
-                    <a-input v-model="editForm.icon" placeholder="选择图标" allow-clear>
-                        <template #prefix>
-                            <i v-if="isIconfontIcon(editForm.icon)" class="icon form-icon" :class="editForm.icon" />
-                            <component v-else-if="editForm.icon" :is="iconComp(editForm.icon)" class="form-icon" />
-                        </template>
-                        <template #append>
-                            <a-button size="small" @click="() => { proxy?.$refs['selectModalIconRef']?.open(); }">图标</a-button>
-                            <select-icon-modal ref="selectModalIconRef"
-                                :type="isIconfontIcon(editForm.icon) ? 'iconfont' : 'arco'"
-                                @change="iconChange"></select-icon-modal>
-                        </template>
-                    </a-input>
-                    <div class="hint">支持 Arco 图标名（如 camera）与图标库 icon-xxx（如 icon-lianjie），点击右侧“图标”选择。</div>
-                </a-form-item>
-                <a-form-item field="home" label="主页展示">
-                    <a-switch v-model="editForm.home" type="round" />
-                    <div class="hint">开启后在主页“快捷操作”区直接展示；关闭后仍可在该区“更多”弹窗里找到。</div>
-                </a-form-item>
-                <a-row :gutter="12">
-                    <a-col :span="6">
-                        <a-form-item field="quick" label="浮动球快捷">
-                            <a-switch v-model="editForm.quick" />
-                        </a-form-item>
-                    </a-col>
-                    <a-col :span="6">
-                        <a-form-item field="single" label="单例窗口">
-                            <a-switch v-model="editForm.single" />
-                        </a-form-item>
-                    </a-col>
-                    <a-col :span="6">
-                        <a-form-item field="fullscreen" label="全屏启动">
-                            <a-switch v-model="editForm.fullscreen" />
-                        </a-form-item>
-                    </a-col>
-                    <a-col :span="6">
-                        <a-form-item field="disableFullscreen" label="禁用全屏">
-                            <a-switch v-model="editForm.disableFullscreen" />
-                        </a-form-item>
-                    </a-col>
-                </a-row>
-                <a-row :gutter="12">
-                    <a-col :span="12">
-                        <a-form-item field="width" label="视口宽（0=默认）">
-                            <a-input-number v-model="editForm.width" :min="0" :step="10" hide-button />
-                        </a-form-item>
-                    </a-col>
-                    <a-col :span="12">
-                        <a-form-item field="height" label="视口高（0=默认）">
-                            <a-input-number v-model="editForm.height" :min="0" :step="10" hide-button />
-                        </a-form-item>
-                    </a-col>
-                </a-row>
-                <a-form-item field="shortcut" label="全局快捷键">
-                    <a-input :model-value="editForm.shortcut" readonly :placeholder="recording ? '请按下组合键…（Esc 取消）' : '点击后直接按下组合键（如 Ctrl+Alt+S），留空不设置'"
-                        @click="startRecord" @keydown="onShortcutKeydown" allow-clear @clear="editForm.shortcut = ''">
-                        <template #suffix>
-                            <span v-if="recording" class="rec-tip">录制中</span>
-                        </template>
-                    </a-input>
-                    <div class="hint">点击输入框后直接按下你想要的组合键即可自动录入；按 Esc 退出录制。</div>
-                </a-form-item>
-            </a-form>
-        </a-modal>
+    <!-- ===================== 工具编辑弹窗 ===================== -->
+    <a-modal v-model:visible="editVisible" :title="editIndex < 0 ? '新增功能' : '编辑功能'" :width="520" @ok="confirmEdit"
+        @cancel="editVisible = false" ok-text="确定" cancel-text="取消">
+        <a-form :model="editForm" layout="vertical" class="edit-form">
+            <a-form-item field="key" label="内置功能">
+                <a-select v-model="editForm.key" placeholder="选择要绑定的内置功能" allow-search @change="onBuiltinChange">
+                    <a-option v-for="b in BUILTINS" :key="b.key" :value="b.key" :label="b.name">
+                        <span class="builtin-option">
+                            <i v-if="isIconfontIcon(b.icon)" class="icon builtin-icon" :class="b.icon" />
+                            <component v-else :is="iconComp(b.icon)" class="builtin-icon" />
+                            <span>{{ b.name }}</span>
+                        </span>
+                    </a-option>
+                </a-select>
+            </a-form-item>
+            <a-form-item field="name" label="标题">
+                <a-input v-model="editForm.name" placeholder="显示名称" />
+            </a-form-item>
+            <a-form-item field="icon" label="图标">
+                <a-input v-model="editForm.icon" placeholder="选择图标" allow-clear>
+                    <template #prefix>
+                        <i v-if="isIconfontIcon(editForm.icon)" class="icon form-icon" :class="editForm.icon" />
+                        <component v-else-if="editForm.icon" :is="iconComp(editForm.icon)" class="form-icon" />
+                    </template>
+                    <template #append>
+                        <a-button size="small"
+                            @click="() => { proxy?.$refs['selectModalIconRef']?.open(); }">图标</a-button>
+                        <select-icon-modal ref="selectModalIconRef"
+                            :type="isIconfontIcon(editForm.icon) ? 'iconfont' : 'arco'"
+                            @change="iconChange"></select-icon-modal>
+                    </template>
+                </a-input>
+                <div class="hint">支持 Arco 图标名（如 camera）与图标库 icon-xxx（如 icon-lianjie），点击右侧“图标”选择。</div>
+            </a-form-item>
+            <a-form-item field="home" label="主页展示">
+                <a-switch v-model="editForm.home" type="round" />
+                <div class="hint">开启后在主页“快捷操作”区直接展示；关闭后仍可在该区“更多”弹窗里找到。</div>
+            </a-form-item>
+            <a-row :gutter="12">
+                <a-col :span="6">
+                    <a-form-item field="quick" label="浮动球快捷">
+                        <a-switch v-model="editForm.quick" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="6">
+                    <a-form-item field="single" label="单例窗口">
+                        <a-switch v-model="editForm.single" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="6">
+                    <a-form-item field="fullscreen" label="全屏启动">
+                        <a-switch v-model="editForm.fullscreen" />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="6">
+                    <a-form-item field="disableFullscreen" label="禁用全屏">
+                        <a-switch v-model="editForm.disableFullscreen" />
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <a-row :gutter="12">
+                <a-col :span="12">
+                    <a-form-item field="width" label="视口宽（0=默认）">
+                        <a-input-number v-model="editForm.width" :min="0" :step="10" hide-button />
+                    </a-form-item>
+                </a-col>
+                <a-col :span="12">
+                    <a-form-item field="height" label="视口高（0=默认）">
+                        <a-input-number v-model="editForm.height" :min="0" :step="10" hide-button />
+                    </a-form-item>
+                </a-col>
+            </a-row>
+            <a-form-item field="shortcut" label="全局快捷键">
+                <a-input :model-value="editForm.shortcut" readonly
+                    :placeholder="recording ? '请按下组合键…（Esc 取消）' : '点击后直接按下组合键（如 Ctrl+Alt+S），留空不设置'" @click="startRecord"
+                    @keydown="onShortcutKeydown" allow-clear @clear="editForm.shortcut = ''">
+                    <template #suffix>
+                        <span v-if="recording" class="rec-tip">录制中</span>
+                    </template>
+                </a-input>
+                <div class="hint">点击输入框后直接按下你想要的组合键即可自动录入；按 Esc 退出录制。</div>
+            </a-form-item>
+        </a-form>
+    </a-modal>
 </template>
 
 <script setup lang="ts">
@@ -718,18 +818,19 @@ interface ToolRow {
 }
 
 /** 完整配置（保存时整体回传） */
-const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, paths: { plugins: "", data: "", logs: "" }, tools: [] });
+const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, paths: { plugins: "", data: "", logs: "", downloads: "" }, tools: [] });
 const form = reactive<{
     log: { enabled: boolean; level: string; path: string };
     ball: { enabled: boolean; icon: string };
     general: { autoStart: boolean; appName: string; appLogo: string; theme: string };
-    paths: { plugins: string; data: string; logs: string };
+    paths: { plugins: string; data: string; logs: string; downloads: string };
     launcher: LauncherCfg;
+    archive: ArchiveCfg;
 }>({
     log: { enabled: true, level: "info", path: "" },
     ball: { enabled: false, icon: "" },
     general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" },
-    paths: { plugins: "", data: "", logs: "" },
+    paths: { plugins: "", data: "", logs: "", downloads: "" },
     // 默认关闭：与后端 defaultLauncherConfig 一致，除开关外其余字段都是可直接编辑的初值
     launcher: {
         enabled: false,
@@ -737,6 +838,13 @@ const form = reactive<{
         scopes: { apps: true, tools: true, windows: true, files: true, commands: true },
         dirs: [],
         maxEntries: 60000,
+    },
+    // 默认关闭 + zip + 标准（6）：与后端 defaultArchiveConfig 逐项一致
+    archive: {
+        enabled: false,
+        sendTo: false,
+        format: "zip",
+        level: 6,
     },
 });
 const tools = ref<ToolRow[]>([]);
@@ -756,6 +864,7 @@ const SETTING_TABS = computed(() =>
         { key: "panel", label: "访问与安全", icon: "IconLock", desktopOnly: false, webOnly: true },
         { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
         { key: "launcher", label: "快捷搜索", icon: "IconSearch", desktopOnly: true },
+        { key: "archive", label: "文件压缩", icon: "IconArchive", desktopOnly: true },
         { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
         { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
         { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
@@ -881,6 +990,7 @@ async function copyAccess() {
 watch(activeTab, (k) => {
     if (k === "panel" && !panelInfo.value && !panelLoading.value) void loadPanel();
     if (k === "launcher") void loadLauncherInfo();
+    if (k === "archive") void loadArchiveInfo();
 });
 
 /** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
@@ -1121,8 +1231,9 @@ async function load() {
             form.log = { enabled: !!cfg.log?.enabled, level: cfg.log?.level || "info", path: "" };
             form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "" };
             form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
-            form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "" };
+            form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "", downloads: cfg.paths?.downloads || "" };
             form.launcher = normLauncher(cfg.launcher);
+            form.archive = normArchive(cfg.archive);
             if (cfg.browser) {
                 // 整段拷贝：页面上直接绑到 browserForm，保存时整段回传
                 browserForm.value = { ...cfg.browser, spaces: cfg.browser.spaces || [] };
@@ -1295,8 +1406,8 @@ async function syncToolsFromConfig() {
 }
 
 /* ---------------- 日志操作 ---------------- */
-/** 选择全局基础目录（插件/数据/日志）：保存后各服务配置与另存默认目录随即落新路径 */
-async function pickBaseDir(kind: "plugins" | "data" | "logs", title: string) {
+/** 选择全局基础目录（插件/数据/日志/下载）：保存后各服务配置、另存与下载默认目录随即落新路径 */
+async function pickBaseDir(kind: "plugins" | "data" | "logs" | "downloads", title: string) {
     try {
         const dir = await GoTools?.ChooseDir(title);
         if (dir) {
@@ -1330,7 +1441,7 @@ function autoSave(): Promise<void> {
 async function runSave() {
     saving.value = true;
     try {
-        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, launcher: { ...form.launcher, scopes: { ...form.launcher.scopes }, dirs: [...form.launcher.dirs] }, tools: tools.value.map(normTool) };
+        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, launcher: { ...form.launcher, scopes: { ...form.launcher.scopes }, dirs: [...form.launcher.dirs] }, archive: { ...form.archive }, tools: tools.value.map(normTool) };
         const path = await GoTools?.SaveConfig(payload);
         fullConfig.value = payload;
         activePath.value = path || "";
@@ -1362,6 +1473,9 @@ const DEFAULT_TOOLS: ToolRow[] = [
     { id: "disk", key: "disk", name: "磁盘管理", path: "/tools/disk", event: "", icon: "icon-yingpan", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
     { id: "siteclone", key: "siteclone", name: "仿站工具", path: "/tools/siteclone", event: "", icon: "download", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 780, shortcut: "", quick: false, home: false },
     { id: "guard", key: "guard", name: "进程守护", path: "/tools/guard", event: "", icon: "apps", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 720, shortcut: "", quick: false, home: false },
+    { id: "archive", key: "archive", name: "文件压缩", path: "/tools/archive", event: "", icon: "archive", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 760, shortcut: "", quick: false, home: false },
+    { id: "viewer", key: "viewer", name: "文件查看器", path: "/tools/viewer", event: "", icon: "file", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
+    { id: "download", key: "download", name: "下载管理", path: "/tools/download", event: "", icon: "icon-xiazai", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: true },
     { id: "ftp", key: "ftp", name: "文件传输", path: "/tools/ftp", event: "", icon: "icon-ftp", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
     { id: "redis", key: "redis", name: "Redis管理", path: "/tools/redis", event: "", icon: "icon-icon-redis", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
     { id: "mysql", key: "mysql", name: "MySQL管理", path: "/tools/mysql", event: "", icon: "icon-MySQL", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
@@ -1644,6 +1758,102 @@ async function testLauncher() {
     }
 }
 
+/* ===================== 文件压缩（系统右键挂载） =====================
+ * 同样只算这份配置的编辑面：“开关到底挂不挂”在 Go 侧（archive.Enabled 决定
+ * 写不写注册表、起不起转交监听），而且只有桌面版有注册表可写。
+ * 前端只负责落盘 + 把 ArchiveShellStatus 读回来的三态槽位显示出来。
+ */
+
+/** 表单里的一份压缩配置（与 config.ArchiveConfig 同构） */
+interface ArchiveCfg {
+    enabled: boolean;
+    sendTo: boolean;
+    format: string;
+    level: number;
+}
+
+/** 挂载状态（与 archive.ShellInfo 同构，只用到展示得了的几个字段） */
+interface ShellInfo {
+    supported: boolean;
+    exe: string;
+    compress: number;
+    extract: number;
+    sendTo: number;
+    stale: boolean;
+    detail: string;
+}
+
+/** 把配置里的 archive 段规整成表单结构：老配置没这一段（nil）时全走默认值 */
+function normArchive(c: any): ArchiveCfg {
+    return {
+        enabled: !!c?.enabled,
+        sendTo: !!c?.sendTo,
+        format: c?.format === "targz" ? "targz" : "zip",
+        level: c?.level >= 1 && c?.level <= 9 ? Number(c.level) : 6,
+    };
+}
+
+const arShell = ref<ShellInfo | null>(null);
+const arBusy = ref(false);
+
+/** 槽位态文案（与 Go 侧 archive.SlotText 同一口径，两头不能各编一套） */
+function slotText(n: number | undefined): string {
+    switch (n) {
+        case 1: return "已挂载";
+        case 2: return "指向旧路径";
+        case 3: return "读取失败";
+        default: return "未挂载";
+    }
+}
+
+async function loadArchiveInfo() {
+    if (!caps.nativeWindows) return;
+    try {
+        arShell.value = (await GoTools?.ArchiveShellStatus()) || null;
+    } catch { /* 非 Wails 环境或绑定缺失：面板仍可读，只是状态空白 */ }
+}
+
+/**
+ * 总开关：先落盘，SaveConfig 里就会按新状态完成挂载/卸载，
+ * 再把挂载状态读回来显示——避免用户拨完开关看不出发生过什么。
+ */
+async function onArchiveEnabled() {
+    await saveNow();
+    await loadArchiveInfo();
+    if (form.archive.enabled) {
+        Message.success("已开启：右键与「发送到」已挂载，进度可在右下角任务气泡里回看");
+    } else {
+        Message.info("已关闭：注册表里的菜单项与快捷方式已删干净，转交监听已停")
+    }
+}
+
+async function installArchiveShell() {
+    arBusy.value = true;
+    try {
+        await saveNow(); // 装之前先把当前格式/SendTo 选项落盘，Go 侧读的是配置
+        await GoTools?.ArchiveShellInstall();
+        Message.success("已挂载到系统右键");
+    } catch (e: any) {
+        Message.error(`挂载失败：${String(e?.message || e)}`);
+    } finally {
+        arBusy.value = false;
+        await loadArchiveInfo();
+    }
+}
+
+async function uninstallArchiveShell() {
+    arBusy.value = true;
+    try {
+        await GoTools?.ArchiveShellUninstall();
+        Message.success("已卸载：只删了本程序自己写过的那几项");
+    } catch (e: any) {
+        Message.error(`卸载失败：${String(e?.message || e)}`);
+    } finally {
+        arBusy.value = false;
+        await loadArchiveInfo();
+    }
+}
+
 let offConfigSaved: (() => void) | null = null;
 let offLauncherIndex: (() => void) | null = null;
 
@@ -1871,8 +2081,8 @@ onBeforeUnmount(() => {
     row-gap: 2px;
 }
 
-.pane-card :deep(.arco-form-item-content-flex) > .hint,
-.edit-form :deep(.arco-form-item-content-flex) > .hint {
+.pane-card :deep(.arco-form-item-content-flex)>.hint,
+.edit-form :deep(.arco-form-item-content-flex)>.hint {
     flex: 0 0 100%;
     width: 100%;
 }
@@ -2014,6 +2224,7 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 16px;
 }
+
 .logo-preview {
     width: 48px;
     height: 48px;
@@ -2025,11 +2236,13 @@ onBeforeUnmount(() => {
     overflow: hidden;
     background: var(--color-fill-1);
 }
+
 .logo-img {
     width: 100%;
     height: 100%;
     object-fit: contain;
 }
+
 .logo-placeholder {
     font-size: var(--base-size-small);
     color: var(--color-text-4);
@@ -2048,6 +2261,7 @@ onBeforeUnmount(() => {
     justify-content: center;
     overflow: hidden;
 }
+
 .ball-icon-glyph {
     font-size: 26px;
 }
@@ -2115,5 +2329,26 @@ onBeforeUnmount(() => {
 .lk-cmd.danger {
     border-color: rgba(var(--danger-6), 0.5);
     color: rgb(var(--danger-6));
+}
+
+/* ---- 文件压缩：挂载状态行 ---- */
+.ar-shell-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+.ar-slot b {
+    color: var(--color-text-1);
+    font-weight: 600;
+    margin-left: 2px;
+}
+
+.ar-shell-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
 }
 </style>

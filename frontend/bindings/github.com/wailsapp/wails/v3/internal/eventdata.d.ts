@@ -13,7 +13,13 @@ import type * as app$0 from "../../../../../Tools/services/app/models.js";
 import type * as tasks$0 from "../../../../../Tools/services/tasks/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as archive$0 from "../../../../../Tools/tools/archive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as docker$0 from "../../../../../Tools/tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as downloader$0 from "../../../../../Tools/tools/downloader/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as ftp$0 from "../../../../../Tools/tools/ftp/models.js";
@@ -54,11 +60,13 @@ import type * as usbserial$0 from "../../../../../Tools/tools/usbserial/models.j
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "archive:progress": archive$0.Progress;
             "ball:action": string;
             "capture:newframe": screenshot$0.CaptureFrame | null;
             "docker:pull": docker$0.PullProgress;
             "docker:serverlog": docker$0.ContainerLogLine;
             "docker:setup": docker$0.SetupProgress;
+            "download:progress": downloader$0.Task;
             "ftp:server": ftp$0.ServerStatus;
             "ftp:serverlog": ftp$0.ServerLog;
             "ftp:session": ftp$0.SessionEvent;

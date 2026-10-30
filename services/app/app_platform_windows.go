@@ -62,19 +62,25 @@ $notifier.Show($toast)
 // ShowSystemNotification 直接调用 Windows 系统通知中心弹原生 Toast
 // （系统右下角渲染、自动消失、可进入操作中心/专注助手），异步执行不阻塞调用方。
 func (a *App) ShowSystemNotification(title string, content string) error {
+	go func() { _ = a.notifySync(title, content) }()
+	return nil
+}
+
+// notifySync 同步版的系统通知：等 Toast 真的交给系统渲染进程再返回。
+//
+// 无界面那条分支（右键拉起、压完就退出）非用不可：进程在 os.Exit 时把 goroutine
+// 一起带走，异步版的通知十有八九还没弹出来就被杀了。
+func (a *App) notifySync(title string, content string) error {
 	if title == "" {
 		title = effectiveAppName()
 	}
 	appName := effectiveAppName()
-	go func() {
-		// 脚本经 stdin 传入（-Command -），避免命令行引号转义问题
-		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-			"-ExecutionPolicy", "Bypass", "-Command", "-")
-		cmd.Stdin = strings.NewReader(toastPSScript)
-		// 内容经环境变量传递，避免命令行注入/转义问题；TOAST_APP 决定通知卡片上的应用名
-		cmd.Env = append(os.Environ(), "TOAST_TITLE="+title, "TOAST_CONTENT="+content, "TOAST_APP="+appName)
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 不闪现 PowerShell 控制台窗口
-		_ = cmd.Run()
-	}()
-	return nil
+	// 脚本经 stdin 传入（-Command -），避免命令行引号转义问题
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
+		"-ExecutionPolicy", "Bypass", "-Command", "-")
+	cmd.Stdin = strings.NewReader(toastPSScript)
+	// 内容经环境变量传递，避免命令行注入/转义问题；TOAST_APP 决定通知卡片上的应用名
+	cmd.Env = append(os.Environ(), "TOAST_TITLE="+title, "TOAST_CONTENT="+content, "TOAST_APP="+appName)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 不闪现 PowerShell 控制台窗口
+	return cmd.Run()
 }

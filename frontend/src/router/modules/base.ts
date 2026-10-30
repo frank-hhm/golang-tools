@@ -28,6 +28,9 @@ export const TOOLS = [
     { key: "Disk", menu_name: "磁盘管理", path: "tools/disk", component: () => import('@/views/tools/disk/index.vue') },
     { key: "Siteclone", menu_name: "仿站工具", path: "tools/siteclone", component: () => import('@/views/tools/siteclone/index.vue') },
     { key: "Guard", menu_name: "进程守护", path: "tools/guard", component: () => import('@/views/tools/guard/index.vue') },
+    { key: "Archive", menu_name: "文件压缩", path: "tools/archive", component: () => import('@/views/tools/archive/index.vue') },
+    { key: "Viewer", menu_name: "文件查看器", path: "tools/viewer", component: () => import('@/views/tools/viewer/index.vue') },
+    { key: "Download", menu_name: "下载管理", path: "tools/download", component: () => import('@/views/tools/download/index.vue') },
     // 进程管理：不进工具项/设置页，仅首页 CPU/内存 卡片点击唤起（/ 与 /win 两条路由由 TOOLS 自动生成）
     { key: "Procman", menu_name: "进程管理", path: "tools/procman", component: () => import('@/views/tools/procman/index.vue') },
     // 端口管理：同上，不进工具项/设置页，仅首页「网络」卡片点击唤起
@@ -85,6 +88,16 @@ export default [{
             component: () => import('@/views/demo/gomessage/index.vue')
         },
         {
+            // 组件测试台：主页入口仅 dev 显示，路由本身打包后保留（需要时手输地址照样能开）
+            path: '/demo/test',
+            name: '/demo/test',
+            meta: {
+                auth: false,
+                menu_name: "组件测试",
+            },
+            component: () => import('@/views/demo/test/index.vue')
+        },
+        {
             // common-canvas-clock 时钟组件 demo（由 test/clock-by-canvas 插件封装）
             path: '/demo/clock',
             name: '/demo/clock',
@@ -116,6 +129,17 @@ export default [{
                 menu_name: "Go消息Demo",
             },
             component: () => import('@/views/demo/gomessage/index.vue')
+        },
+        {
+            // 组件测试台的新窗口路由（主页 dev 入口经 OpenToolWindow 拼 /win 前缀）
+            path: 'demo/test',
+            name: '/win/demo/test',
+            meta: {
+                auth: false,
+                blank: true,
+                menu_name: "组件测试",
+            },
+            component: () => import('@/views/demo/test/index.vue')
         },
         {
             // Canvas 时钟 demo 的新窗口路由
@@ -191,4 +215,15 @@ export default [{
         menu_name: "快捷搜索",
     },
     component: () => import('@/views/widget/launcher.vue')
+}, {
+    // 压缩前的可选项小窗：无边框透明置顶，由后端 ArchivePanelOpen 开窗/点亮
+    // （「发送到 → 压缩 (Tools)…」那条快捷方式走它）。不注册为工具项。
+    path: '/widget/archive',
+    name: '/widget/archive',
+    meta: {
+        auth: false,
+        blank: true,
+        menu_name: "压缩选项",
+    },
+    component: () => import('@/views/widget/archive.vue')
 }]

@@ -3,6 +3,7 @@
 
 export type {
     AppConfig,
+    ArchiveConfig,
     BallConfig,
     BrowserConfig,
     BrowserSpace,

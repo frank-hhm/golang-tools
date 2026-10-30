@@ -47,12 +47,13 @@ type GeneralConfig struct {
 	Theme     string `json:"theme"`     // 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
 }
 
-// PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/layout.go）；
-// 空 = 默认 <应用目录>/plugins|data|logs。修改保存后，各服务配置与另存文件默认目录随即落新路径。
+// PathsConfig 全局基础目录（plugins/data/logs 各自下按服务名建子目录，downloads 为单基目录，见 appdirs/layout.go）；
+// 空 = 默认 <应用目录>/plugins|data|logs|downloads。修改保存后，各服务配置与另存/下载文件默认目录随即落新路径。
 type PathsConfig struct {
-	Plugins string `json:"plugins"` // 插件目录：服务程序安装位置（php/nginx/mysql/redis/npm）
-	Data    string `json:"data"`    // 数据目录：服务配置缓存/实例工作目录/截图录像等另存默认位置
-	Logs    string `json:"logs"`    // 日志目录：各服务日志与程序日志（logs/<服务名>）
+	Plugins   string `json:"plugins"`   // 插件目录：服务程序安装位置（php/nginx/mysql/redis/npm）
+	Data      string `json:"data"`      // 数据目录：服务配置缓存/实例工作目录/截图录像等另存默认位置
+	Logs      string `json:"logs"`      // 日志目录：各服务日志与程序日志（logs/<服务名>）
+	Downloads string `json:"downloads"` // 下载目录：下载管理器默认落点，空=默认 <应用目录>/downloads
 }
 
 // ToolConfig 单个工具项（首页列表 / 浮动球快捷 / 全局热键 共用）
@@ -176,6 +177,84 @@ func LauncherCfg() LauncherConfig { return LauncherSection(CurrentConfig()) }
 // LauncherEnabled 快捷搜索总开关。false 时宿主不注册热键、不建窗口、不建索引。
 func LauncherEnabled() bool { return LauncherCfg().Enabled }
 
+// ArchiveConfig 文件压缩设置（工具页 + 系统右键挂载）。
+type ArchiveConfig struct {
+	// Enabled 总开关。关掉时整套系统挂载都不存在：不写注册表 verb、不留 SendTo
+	// 快捷方式、不起转交用的回环监听。默认关闭 —— 往用户的右键菜单里加东西
+	// 必须是他主动要的，不能是程序装好就默默出现的。
+	Enabled bool `json:"enabled"`
+	// SendTo 子开关：只在 Enabled 为真时有意义，单独控制「发送到 → 压缩 (Tools)…」
+	// 那条快捷方式。关掉它不会动注册表里的 verb，只删快捷方式。
+	SendTo bool `json:"sendTo"`
+	// Format 默认压缩格式（zip / targz）：右键那一下没有界面可选，用的就是它。
+	Format string `json:"format"`
+	// Level 默认压缩级别 1~9；<=0 用默认值。
+	Level int `json:"level"`
+}
+
+// DefaultArchiveFormat 默认压缩格式。两个短名与 sysx.ArchiveZip / ArchiveTarGz
+// 对齐；本包不导那个包（应用配置层保持零依赖，字面量在两端各定一次、靠单测锁住）。
+const DefaultArchiveFormat = "zip"
+
+// ArchiveFormatTarGz tar.gz 的短名，与 normalizeArchiveConfig 的归一目标同一处写出。
+const ArchiveFormatTarGz = "targz"
+
+// DefaultArchiveLevel 默认压缩级别：与标准库 compress/flate 的默认值一致，
+// 快与压两者都不极端。
+const DefaultArchiveLevel = 6
+
+// defaultArchiveConfig 默认配置：总开关关掉，但格式与级别都填好，
+// 用户第一次打开设置页就能看到完整可编辑的面板（与 launcher 同一套做法）。
+func defaultArchiveConfig() *ArchiveConfig {
+	return &ArchiveConfig{
+		Enabled: false,
+		SendTo:  false,
+		Format:  DefaultArchiveFormat,
+		Level:   DefaultArchiveLevel,
+	}
+}
+
+// ArchiveSection 取文件压缩设置。配置里从未出现过这一段（老配置）时返回默认值，
+// 调用方因此永远不用判空。
+func ArchiveSection(cfg AppConfig) ArchiveConfig {
+	if cfg.Archive == nil {
+		return *defaultArchiveConfig()
+	}
+	return *cfg.Archive
+}
+
+// ArchiveCfg 当前缓存配置里的文件压缩设置，供 tools/archive 直接读。
+func ArchiveCfg() ArchiveConfig { return ArchiveSection(CurrentConfig()) }
+
+// ArchiveEnabled 文件压缩总开关。false 时宿主不挂右键、不起监听。
+func ArchiveEnabled() bool { return ArchiveCfg().Enabled }
+
+// normalizeArchiveConfig 补齐文件压缩设置：格式合法性、级别范围。
+// 全是 idempotent 修正，不会覆盖用户填的值；手改 config.json 把这一段删掉时
+// （读回来是 nil）什么都不做，调用方走 ArchiveSection 拿到默认值。
+func normalizeArchiveConfig(cfg *AppConfig) {
+	a := cfg.Archive
+	if a == nil {
+		return
+	}
+	// 格式收到就归一成两个短名：“tar.gz”“tgz”这些同义词进不了下游，
+	// 因为 archive.ExtFor 只认 sysx.ArchiveTarGz 那一个字，认不出的会默默落到 .zip
+	switch v := strings.ToLower(strings.TrimSpace(a.Format)); v {
+	case "zip", "":
+		a.Format = DefaultArchiveFormat
+	case "targz", "tar.gz", "tgz", "gz":
+		a.Format = ArchiveFormatTarGz
+	default:
+		a.Format = DefaultArchiveFormat
+	}
+	if a.Level <= 0 {
+		a.Level = DefaultArchiveLevel
+	}
+	if a.Level > 9 {
+		a.Level = 9
+	}
+}
+
 // normalizeLauncherConfig 补齐快捷搜索设置：热键兜底、上限兜范围、目录去空去重。
 // 全是 idempotent 修正，不会覆盖用户填的值；手改 config.json 把这一段删掉时
 // （读回来是 nil）什么都不做，调用方走 LauncherSection 拿到默认值。
@@ -220,6 +299,10 @@ type AppConfig struct {
 	// 序列化时也随之省略（omitempty），不会凭空对象污染用户手写的配置。
 	// 关掉时不挂热键、不建窗口、不建索引，见 LauncherConfig.Enabled。
 	Launcher *LauncherConfig `json:"launcher,omitempty"`
+	// Archive 文件压缩设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
+	// 序列化也随之省略，不会凭空给用户的 config.json 添一段他没写过的东西。
+	// 关掉时不写注册表、不留 SendTo 快捷方式、不起转交监听，见 ArchiveConfig.Enabled。
+	Archive *ArchiveConfig `json:"archive,omitempty"`
 }
 
 // DefaultMaxSpaces 浏览器空间数量默认上限。
@@ -256,6 +339,7 @@ func DefaultConfig() AppConfig {
 		General:  GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: "light"},
 		Browser:  defaultBrowserConfig(),
 		Launcher: defaultLauncherConfig(),
+		Archive:  defaultArchiveConfig(),
 		ToolSettings: map[string]ToolSettings{
 			// MySQL：默认开启 SQL 日志，目录留空走 DefaultSQLLogDir
 			"mysql": {SQLLogEnabled: true},
@@ -286,6 +370,9 @@ func DefaultConfig() AppConfig {
 			{ID: "qrcode", Key: "qrcode", Name: "二维码生成", Path: "/tools/qrcode", Icon: "icon-erweima3", Home: homeOff()},
 			{ID: "imageBase64", Key: "imageBase64", Name: "图片base64", Path: "/tools/imageBase64", Icon: "icon-img", Home: homeOff()},
 			{ID: "hexconvert", Key: "hexconvert", Name: "进制转换", Path: "/tools/hexconvert", Icon: "swap", Home: homeOff()},
+			{ID: "archive", Key: "archive", Name: "文件压缩", Path: "/tools/archive", Icon: "archive", Single: true, Width: 1120, Height: 760, Home: homeOff()},
+			{ID: "viewer", Key: "viewer", Name: "文件查看器", Path: "/tools/viewer", Icon: "file", Single: true, Width: 1280, Height: 820, Home: homeOff()},
+			{ID: "download", Key: "download", Name: "下载管理", Path: "/tools/download", Icon: "icon-xiazai", Single: true, Width: 1280, Height: 820},
 		},
 	}
 }
@@ -369,7 +456,7 @@ func BallIconMaskPath() (string, error) {
 // InitAppDirs 应用全局目录配置并预建服务子目录（启动与保存配置时调用，幂等）。
 // 布局本身的解析与迁移规则都在 appdirs 包内（appdirs/layout.go）。
 func InitAppDirs(cfg AppConfig) {
-	if err := appdirs.ApplyLayout(cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs); err != nil {
+	if err := appdirs.ApplyLayout(cfg.Paths.Plugins, cfg.Paths.Data, cfg.Paths.Logs, cfg.Paths.Downloads); err != nil {
 		applog.Errorf("paths", "创建全局目录失败: %v", err)
 	}
 }
@@ -556,6 +643,7 @@ func normalizeConfig(cfg *AppConfig) {
 	cfg.Paths.Logs = strings.TrimSpace(cfg.Paths.Logs)
 	normalizeBrowserConfig(&cfg.Browser)
 	normalizeLauncherConfig(cfg)
+	normalizeArchiveConfig(cfg)
 	switch cfg.General.Theme {
 	case "light", "dark", "auto":
 	default:
@@ -583,6 +671,9 @@ func normalizeConfig(cfg *AppConfig) {
 		{"disk", "disk", "磁盘管理", "/tools/disk", "icon-yingpan"},
 		{"siteclone", "siteclone", "仿站工具", "/tools/siteclone", "download"},
 		{"guard", "guard", "进程守护", "/tools/guard", "apps"},
+		{"archive", "archive", "文件压缩", "/tools/archive", "archive"},
+		{"viewer", "viewer", "文件查看器", "/tools/viewer", "file"},
+		{"download", "download", "下载管理", "/tools/download", "icon-xiazai"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -625,6 +716,19 @@ func normalizeConfig(cfg *AppConfig) {
 			if extra.key == "guard" {
 				newTool.Width, newTool.Height = 1120, 720
 				newTool.Home = homeOff()
+			}
+			if extra.key == "archive" {
+				newTool.Width, newTool.Height = 1120, 760
+				newTool.Home = homeOff()
+			}
+			if extra.key == "viewer" {
+				// 左栏浏览 + 右栏渲染，跟磁盘一样要宽一点的窗口才不挤
+				newTool.Width, newTool.Height = 1280, 820
+				newTool.Home = homeOff()
+			}
+			if extra.key == "download" {
+				// 左分类树 + 右列表/分块详情，宽窗才展得开 FlashGet 式布局
+				newTool.Width, newTool.Height = 1280, 820
 			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}
@@ -673,6 +777,10 @@ func LoadAppConfig() AppConfig {
 				// 快捷搜索：nil 与“已关闭”语义一致，直接拿读回来的那一份覆盖默认值。
 				if loaded.Launcher != nil {
 					cfg.Launcher = loaded.Launcher
+				}
+				// 文件压缩：同上，nil 就保住默认值（总开关默认关）。
+				if loaded.Archive != nil {
+					cfg.Archive = loaded.Archive
 				}
 			}
 		}

@@ -121,8 +121,10 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
+import { Events } from '@wailsio/runtime';
 import { fmtSize } from '@/views/tools/disk/helpers';
 import { paneDrag, resetPaneDrag } from '../drag-state';
+import { useToolWindow } from '@/views/index/useToolWindow';
 import type { FtpDragItem, FtpEntry, FtpListing, FtpPart } from '../types';
 
 /**
@@ -152,6 +154,7 @@ const emit = defineEmits<{
 }>();
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+const { openToolWindow } = useToolWindow();
 
 const paneEl = ref<HTMLElement | null>(null);
 const dragOver = ref(false);
@@ -256,7 +259,7 @@ function cancelPathEdit() {
   pathInput.value = curPath.value;
 }
 
-/** 名称单击：目录进入；远端文件预览，本地文件交给系统默认程序打开 */
+/** 名称单击：目录进入；远端文件预览，本地文件交给自带的文件查看器打开 */
 async function activate(e: FtpEntry) {
   if (e.isDir) {
     await load(e.path);
@@ -266,11 +269,9 @@ async function activate(e: FtpEntry) {
     emit('preview', e);
     return;
   }
-  try {
-    await GoTools.DiskOpenFile(e.path);
-  } catch (err: any) {
-    Message.error({ content: String(err?.message || err || '打开文件失败'), position: 'top', duration: 3000 });
-  }
+  // 本地文件：优先用自带查看器（单例窗口），已开着时靠事件导航到新文件
+  openToolWindow(`/tools/viewer?path=${encodeURIComponent(e.path)}`, '文件查看器', { single: true });
+  try { Events.Emit('viewer:open-path', { path: e.path }); } catch { /* 非 Wails 环境忽略 */ }
 }
 
 /* ==================== 上传 / 下载 ==================== */

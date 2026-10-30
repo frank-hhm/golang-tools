@@ -29,6 +29,41 @@ export interface AppConfig {
      * 关掉时不挂热键、不建窗口、不建索引，见 LauncherConfig.Enabled。
      */
     "launcher"?: LauncherConfig | null;
+
+    /**
+     * Archive 文件压缩设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
+     * 序列化也随之省略，不会凭空给用户的 config.json 添一段他没写过的东西。
+     * 关掉时不写注册表、不留 SendTo 快捷方式、不起转交监听，见 ArchiveConfig.Enabled。
+     */
+    "archive"?: ArchiveConfig | null;
+}
+
+/**
+ * ArchiveConfig 文件压缩设置（工具页 + 系统右键挂载）。
+ */
+export interface ArchiveConfig {
+    /**
+     * Enabled 总开关。关掉时整套系统挂载都不存在：不写注册表 verb、不留 SendTo
+     * 快捷方式、不起转交用的回环监听。默认关闭 —— 往用户的右键菜单里加东西
+     * 必须是他主动要的，不能是程序装好就默默出现的。
+     */
+    "enabled": boolean;
+
+    /**
+     * SendTo 子开关：只在 Enabled 为真时有意义，单独控制「发送到 → 压缩 (Tools)…」
+     * 那条快捷方式。关掉它不会动注册表里的 verb，只删快捷方式。
+     */
+    "sendTo": boolean;
+
+    /**
+     * Format 默认压缩格式（zip / targz）：右键那一下没有界面可选，用的就是它。
+     */
+    "format": string;
+
+    /**
+     * Level 默认压缩级别 1~9；<=0 用默认值。
+     */
+    "level": number;
 }
 
 /**
@@ -282,8 +317,8 @@ export interface LogConfig {
 }
 
 /**
- * PathsConfig 全局三类基础目录（各自下按服务名建子目录，见 appdirs/layout.go）；
- * 空 = 默认 <应用目录>/plugins|data|logs。修改保存后，各服务配置与另存文件默认目录随即落新路径。
+ * PathsConfig 全局基础目录（plugins/data/logs 各自下按服务名建子目录，downloads 为单基目录，见 appdirs/layout.go）；
+ * 空 = 默认 <应用目录>/plugins|data|logs|downloads。修改保存后，各服务配置与另存/下载文件默认目录随即落新路径。
  */
 export interface PathsConfig {
     /**
@@ -300,6 +335,11 @@ export interface PathsConfig {
      * 日志目录：各服务日志与程序日志（logs/<服务名>）
      */
     "logs": string;
+
+    /**
+     * 下载目录：下载管理器默认落点，空=默认 <应用目录>/downloads
+     */
+    "downloads": string;
 }
 
 /**

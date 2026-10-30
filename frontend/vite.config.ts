@@ -32,7 +32,7 @@ export default defineConfig({
     vue(),
     wails("./bindings")
   ],
-  
+
   // css: {
   //   preprocessorOptions: {
   //     less: {

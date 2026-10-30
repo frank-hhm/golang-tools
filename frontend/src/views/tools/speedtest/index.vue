@@ -168,7 +168,7 @@
                 <a-button v-if="editingCustomId" size="small" @click="cancelEdit">取消编辑</a-button>
             </template>
 
-            <a-form ref="customFormRef" :model="customForm" class="st-form" layout="vertical" 
+            <a-form ref="customFormRef" :model="customForm" class="st-form" layout="vertical"
                 @submit-prevent="saveCustom">
                 <a-row :gutter="12" align="end">
                     <a-col :xs="24" :md="6">

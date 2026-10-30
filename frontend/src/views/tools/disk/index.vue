@@ -206,6 +206,8 @@
                                         <a-button size="mini"><icon-more /></a-button>
                                         <template #content>
                                             <a-doption value="cut"><icon-scissor /> 剪切</a-doption>
+                                            <a-doption v-if="!record.isDir" value="viewer"><icon-file /> 在查看器中打开</a-doption>
+                                            <a-doption v-if="!record.isDir" value="system"><icon-launch /> 用系统程序打开</a-doption>
                                             <a-doption v-if="!record.isDir" value="download"><icon-download /> 另存为
                                             </a-doption>
                                             <a-doption value="size"><icon-storage /> 计算大小</a-doption>
@@ -340,9 +342,11 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, onMounted, reactive, ref, watch } from "vue";
 import { Message, Modal } from "@arco-design/web-vue";
+import { Events } from "@wailsio/runtime";
 import DiskOverview from "./components/DiskOverview.vue";
 import CommonBatchRenameModal from "./components/BatchRenameModal.vue";
 import { baseName, driveRootOf, fmtSize } from "./helpers";
+import { useToolWindow } from "@/views/index/useToolWindow";
 
 /**
  * 磁盘管理（资源管理器）
@@ -352,6 +356,7 @@ import { baseName, driveRootOf, fmtSize } from "./helpers";
  */
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+const { openToolWindow } = useToolWindow();
 
 /** 空目录兜底：模板里就不用到处判空 */
 const emptyListing = () => ({
@@ -523,10 +528,21 @@ async function openEntry(r: any) {
         enter(r.path);
         return;
     }
+    // 文件优先用自带的文件查看器打开（单例窗口）；系统默认程序退到行菜单
+    openInViewer(r.path);
+}
+
+// 在查看器中打开本地文件：桌面开原生单例窗 / Web 走路由；已开着时靠事件导航到新文件
+function openInViewer(path: string) {
+    openToolWindow(`/tools/viewer?path=${encodeURIComponent(path)}`, "文件查看器", { single: true });
+    try { Events.Emit("viewer:open-path", { path }); } catch { /* 非 Wails 环境忽略 */ }
+}
+
+async function openWithSystem(path: string) {
     try {
-        await GoTools.DiskOpenFile(r.path);
+        await GoTools.FileOpenSystem(path);
     } catch (e) {
-        Message.error(`打开失败：${errText(e)}`);
+        Message.error(`用系统程序打开失败：${errText(e)}`);
     }
 }
 
@@ -845,6 +861,8 @@ function onRowMore(v: any, r: any) {
         clipboard.value = { mode: "cut", paths: [r.path] };
         Message.success(`已剪切「${r.name}」，切到目标目录后点「粘贴」`);
     } else if (v === "download") downloadOne(r);
+    else if (v === "viewer") openInViewer(r.path);
+    else if (v === "system") openWithSystem(r.path);
     else if (v === "size") calcSize(r);
     else if (v === "props") showProps(r);
     else if (v === "explorer") openExplorer(r.path);

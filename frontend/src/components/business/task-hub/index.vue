@@ -52,30 +52,33 @@
         <a-tag size="small" :color="tagColor(t)">{{ statusText(t) }}</a-tag>
       </template>
 
-      <a-progress v-if="t.status === 'running' || t.status === 'done'" :percent="pct(t) / 100" size="small"
-        :show-text="false" :status="t.status === 'done' ? 'success' : 'normal'"
-        :class="{ 'is-indeterminate': t.status === 'running' && pct(t) === 0 }" />
-
-      <div class="th-note-wrap">
-        <div class="th-note" :class="{ 'is-err': t.status === 'error', 'is-open': openedNotes.has(t.id) }"
-          :title="t.note">{{ t.note || stageText(t.stage) || "—" }}</div>
-        <a-link v-if="(t.note || '').length > 60" class="th-note-toggle" size="mini"
-          @click="toggleNote(t.id)">{{ openedNotes.has(t.id) ? '收起' : '展开' }}</a-link>
-      </div>
-
-      <div class="th-foot">
-        <span class="th-time">{{ t.status === "running" ? since(t.startedAt) + " 前开始" : since(t.updatedAt) + " 前" }}</span>
-        <a-link class="th-link" @click="goTool(t)">
-          <icon-location />打开页面
-        </a-link>
-        <a-link class="th-link" @click="toggleLog(t.id)">
-          <component :is="logsOf.has(t.id) ? IconUp : IconDown" />
-          {{ logsOf.has(t.id) ? '收起日志' : '日志' }}
-        </a-link>
-        <a-link v-if="t.status !== 'running'" class="th-link th-link-del" @click="st.dismiss(t.id)">
-          <icon-delete />移除
-        </a-link>
-      </div>
+      <common-task-progress :status="normalizeStatus(t.status)" :percent="pct(t)" size="small"
+        :show-text="false" :divided="false" variant="bare"
+        :indeterminate="t.status === 'running' && pct(t) === 0">
+        <template #meta>
+          <div class="th-note-wrap">
+            <div class="th-note" :class="{ 'is-err': t.status === 'error', 'is-open': openedNotes.has(t.id) }"
+              :title="t.note">{{ t.note || stageText(t.stage) || "—" }}</div>
+            <a-link v-if="(t.note || '').length > 60" class="th-note-toggle" size="mini"
+              @click="toggleNote(t.id)">{{ openedNotes.has(t.id) ? '收起' : '展开' }}</a-link>
+          </div>
+        </template>
+        <template #left>
+          <span class="th-time">{{ t.status === "running" ? since(t.startedAt) + " 前开始" : since(t.updatedAt) + " 前" }}</span>
+        </template>
+        <template #actions>
+          <a-link class="th-link" @click="goTool(t)">
+            <icon-location />打开页面
+          </a-link>
+          <a-link class="th-link" @click="toggleLog(t.id)">
+            <component :is="logsOf.has(t.id) ? IconUp : IconDown" />
+            {{ logsOf.has(t.id) ? '收起日志' : '日志' }}
+          </a-link>
+          <a-link v-if="t.status !== 'running'" class="th-link th-link-del" @click="st.dismiss(t.id)">
+            <icon-delete />移除
+          </a-link>
+        </template>
+      </common-task-progress>
 
       <div v-if="logsOf.has(t.id)" class="th-logs">
         <div v-for="(l, i) in logsOf.get(t.id)" :key="i" class="th-log-line">{{ l }}</div>
@@ -108,6 +111,7 @@ import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
 import type { Task } from "bindings/Tools/services/tasks/index";
 import { ensureTasks, useTasksStoreHook } from "@/store/modules/tasks";
 import { isNativeWindows } from "@/utils/caps";
+import { normalizeStatus } from "@/utils/taskProgress";
 import { useToolWindow } from "@/views/index/useToolWindow";
 
 const st = useTasksStoreHook();
@@ -234,6 +238,7 @@ const TOOL_LABEL: Record<string, string> = {
   redis: "Redis",
   nginx: "Nginx",
   npm: "npm",
+  archive: "文件压缩",
 };
 
 function toolLabel(tool: string): string {
@@ -490,23 +495,6 @@ defineExpose({ open: () => { open.value = true; } });
   }
 }
 
-/* 下载中但还没收到百分比：进度条画成无限滑动的亮带，比停在 0% 的灰条诚实 */
-.is-indeterminate :deep(.arco-progress-line-bar) {
-  position: relative;
-  width: 36% !important;
-  animation: th-slide 1.3s ease-in-out infinite;
-}
-
-@keyframes th-slide {
-  0% {
-    left: -36%;
-  }
-
-  100% {
-    left: 100%;
-  }
-}
-
 .th-tool {
   flex: none;
   font-size: 11px;
@@ -567,17 +555,7 @@ defineExpose({ open: () => { open.value = true; } });
   font-size: 11px;
 }
 
-.th-foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--color-text-3);
-}
-
 .th-time {
-  flex: 1;
   font-variant-numeric: tabular-nums;
 }
 

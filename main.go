@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -13,7 +14,10 @@ import (
 	"Tools/services/applog"
 	"Tools/services/config"
 	"Tools/services/tasks"
+	"Tools/tools/archive"
 	"Tools/tools/docker"
+	"Tools/tools/downloader"
+	"Tools/tools/fileview"
 	"Tools/tools/ftp"
 	"Tools/tools/guard"
 	"Tools/tools/mysql"
@@ -88,6 +92,10 @@ func init() {
 	application.RegisterEvent[tasks.Task](tasks.UpdateEvent)
 	// 仿站工具：扒站/整站下载与离线改写的进度推送
 	application.RegisterEvent[siteclone.Progress]("siteclone:progress")
+	// 文件压缩：压缩/解压进度（右键发起时用户不在页面上，靠任务中心回看）
+	application.RegisterEvent[archive.Progress]("archive:progress")
+	// 下载管理：分块/续传/队列的进度与终态（负载 downloader.Task）
+	application.RegisterEvent[downloader.Task]("download:progress")
 	// 进程守护：守护列表与运行态（启动/退出/重启）的实时推送
 	application.RegisterEvent[guard.Snapshot]("guard:status")
 }
@@ -107,6 +115,20 @@ func main() {
 
 	// Create an instance of the app structure
 	appInstance := appsvc.NewApp()
+
+	// 右键 verb 与「发送到」拉起来的命令行分流（方案见 docs/plan/计划-文件压缩右键集成）：
+	//   --archive / --extract → 本机有实例在跑就转交，没有就本进程压完退出（不建任何窗口）
+	//   --archive-panel       → 记下来，正常起 GUI，主窗口就绪后开选项小窗
+	// 只认这三个显式标记，普通双击启动零影响 —— 因此不必开 SingleInstance，
+	// wails3 dev 与安装实例照旧能并存。
+	if op, paths, ok := appsvc.ArchiveCLICommand(os.Args); ok {
+		appInstance.RunArchiveCLI(op, paths)
+		os.Exit(0)
+	}
+	if appsvc.IsArchivePanelRequest(os.Args) {
+		appInstance.SetArchiveArgs(os.Args)
+	}
+
 	// Create a new Wails application by providing the necessary options.
 	// Variables 'Name' and 'Description' are for application metadata.
 	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
@@ -121,7 +143,9 @@ func main() {
 			application.NewService(screenshot.NewScreenshotService()),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			// 最外层包一个 Range 端点：查看器的大文件（音视频/大 PDF）不走 base64，
+			// 直接 GET /fileview/media?path=..；其余路径原样透传给资源服务
+			Handler: fileview.MediaHandler(application.AssetFileServerFS(assets)),
 		},
 		Windows: application.WindowsOptions{
 			// 录制期间工具窗口处于隐藏状态，保持其 JS 定时器/捕获回调不被后台节流
@@ -176,6 +200,7 @@ func main() {
 	term.SetEmitter(emit)
 	ftp.SetEmitter(emit)
 	guard.SetEmitter(emit)
+	downloader.SetEmitter(emit)
 	// 服务端若配了“随应用启动”就在这里拉起（失败只记日志，不阻断启动）
 	ftp.StartAutoServer()
 	// 守护工具：按“启用守护”自动拉起登记的程序

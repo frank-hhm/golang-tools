@@ -24,6 +24,9 @@ import * as sysx$0 from "../sysx/models.js";
 import * as tasks$0 from "../tasks/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as archive$0 from "../../tools/archive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as browser$0 from "../../tools/browser/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -31,6 +34,12 @@ import * as disk$0 from "../../tools/disk/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as docker$0 from "../../tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as downloader$0 from "../../tools/downloader/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as fileview$0 from "../../tools/fileview/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as ftp$0 from "../../tools/ftp/models.js";
@@ -93,6 +102,100 @@ export function AppDataDir(sub: string): $CancellablePromise<string> {
  */
 export function ApplyAppName(): $CancellablePromise<void> {
     return $Call.ByID(13956758);
+}
+
+/**
+ * ArchiveCancel 取消一个在跑的任务；jobId 空时取消全部（面板上的"全部停止"）。
+ * 
+ * 第一个返回值是「有没有真的动到一个在跑的任务」：false 表示这一笔其实早就结束了。
+ * 前端必须拿它把"进行中"收回去——解压几个小文件这种毫秒级任务，终态事件常常跑在
+ * 绑定方法的返回值之前，界面一旦错过就没有任何机会自己结束；而取消一个已结束的任务
+ * 按定义不会再产生事件，不把这个信息递回去，那个按钮就永远停在"解压中…"。
+ */
+export function ArchiveCancel(jobID: string): $CancellablePromise<boolean> {
+    return $Call.ByID(332788566, jobID);
+}
+
+/**
+ * ArchiveChooseFiles 多选要打包的文件（目录靠 ChooseDir，拖放走原生 drop）。
+ * 取消当成"没选"处理：返回空列表而不报错，与仓库里其他对话框一致。
+ */
+export function ArchiveChooseFiles(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(297461248);
+}
+
+/**
+ * ArchiveCompress 压缩选定的条目，立即返回 jobId；进度走 archive:progress 事件。
+ */
+export function ArchiveCompress(opts: archive$0.Options): $CancellablePromise<string> {
+    return $Call.ByID(3592806120, opts);
+}
+
+/**
+ * ArchiveExtract 解包，dest 为空时解到归档同级的同名文件夹。
+ */
+export function ArchiveExtract(opts: archive$0.Options): $CancellablePromise<string> {
+    return $Call.ByID(602635765, opts);
+}
+
+/**
+ * ArchivePanelHide 前端按 Esc / 开工之后收起面板（窗口保留复用）。
+ */
+export function ArchivePanelHide(): $CancellablePromise<void> {
+    return $Call.ByID(159180786);
+}
+
+/**
+ * ArchivePanelOpen 呼出选项小窗（SendTo 那条 --archive-panel 走这里，工具页也能调）。
+ * paths 是已经选好的条目，窗口打开就直接填进列表。
+ */
+export function ArchivePanelOpen(paths: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(3684589162, paths);
+}
+
+/**
+ * ArchivePanelPending 面板页挂载时取自带的条目：冷建时 show 事件可能比页面
+ * 就绪更早，页面靠这个兜底拿一次。
+ */
+export function ArchivePanelPending(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1138428005);
+}
+
+/**
+ * ArchiveScan 预扫描选中条目的文件数与总字节，供前端在开工前提示"这一下有多大"。
+ */
+export function ArchiveScan(paths: string[] | null): $CancellablePromise<archive$0.Preflight> {
+    return $Call.ByID(2661295781, paths);
+}
+
+/**
+ * ArchiveShellInstall 按当前设置装上右键（SendTo 那条独立开关决定给不给）。
+ * 幂等：已经挂好的键重写成同一份内容，不会留下半截状态。
+ */
+export function ArchiveShellInstall(): $CancellablePromise<void> {
+    return $Call.ByID(3336816221);
+}
+
+/**
+ * ArchiveShellStatus 当前挂载状态（设置页展示三态；非 Windows 回 supported=false）。
+ */
+export function ArchiveShellStatus(): $CancellablePromise<archive$0.ShellInfo> {
+    return $Call.ByID(1072386440);
+}
+
+/**
+ * ArchiveShellUninstall 删干净自家写过的键与快捷方式，别人的键一律不碰。
+ */
+export function ArchiveShellUninstall(): $CancellablePromise<void> {
+    return $Call.ByID(2167312512);
+}
+
+/**
+ * ArchiveSuggestName 按命名规则预览成品路径（前端改名框旁边的提示、
+ * 选项小窗的默认值都取它）。只算不建，用户还没点开工。
+ */
+export function ArchiveSuggestName(opts: archive$0.Options): $CancellablePromise<string> {
+    return $Call.ByID(1635092141, opts);
 }
 
 /**
@@ -1051,10 +1154,165 @@ export function DockerSuggestPort($from: number): $CancellablePromise<number> {
 }
 
 /**
+ * DownloadAdd 新建下载任务。name/saveDir 留空走默认（从 URL 推名、落数据目录/downloads）。
+ * autoStart=true 立即排队开跑；scheduledAt>0（unix 毫秒）到点自动开始。
+ */
+export function DownloadAdd(url: string, name: string, saveDir: string, connections: number, proxy: string, mirrors: string[] | null, scheduledAt: number, autoStart: boolean): $CancellablePromise<downloader$0.Task | null> {
+    return $Call.ByID(1722991597, url, name, saveDir, connections, proxy, mirrors, scheduledAt, autoStart);
+}
+
+/**
+ * DownloadDefaultDir 当前生效的全局默认下载目录（新建任务 saveDir 留空即落这里）。
+ * 取全局目录配置里的「下载目录」，未配置则 <应用目录>/downloads。
+ */
+export function DownloadDefaultDir(): $CancellablePromise<string> {
+    return $Call.ByID(4060164594);
+}
+
+/**
+ * DownloadDelete 移除任务并删除其文件与续传 meta。
+ */
+export function DownloadDelete(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1696678105, id);
+}
+
+/**
+ * DownloadGlobalStats 顶栏统计：合计下行速度 + 各相位计数 + 全局限速。
+ */
+export function DownloadGlobalStats(): $CancellablePromise<downloader$0.Stats> {
+    return $Call.ByID(396335864);
+}
+
+/**
+ * DownloadList 全部任务快照（按加入顺序）。
+ */
+export function DownloadList(): $CancellablePromise<downloader$0.Task[] | null> {
+    return $Call.ByID(506156122);
+}
+
+/**
+ * DownloadPause 暂停（保留断点）；DownloadStop 停止（清理临时文件）。
+ */
+export function DownloadPause(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1586918248, id);
+}
+
+/**
+ * DownloadProbeProxies 经各代理访问 testURL 测延迟/吞吐/可用性。
+ */
+export function DownloadProbeProxies(list: string[] | null, testURL: string): $CancellablePromise<downloader$0.ProxyStat[] | null> {
+    return $Call.ByID(754742708, list, testURL);
+}
+
+/**
+ * DownloadProbeSources 并发探测多镜像，返回各源延迟/吞吐/可用性（供手动选）。
+ */
+export function DownloadProbeSources(mirrors: string[] | null): $CancellablePromise<downloader$0.SourceStat[] | null> {
+    return $Call.ByID(3416737842, mirrors);
+}
+
+export function DownloadResume(id: string): $CancellablePromise<void> {
+    return $Call.ByID(156155657, id);
+}
+
+export function DownloadRetry(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3190748436, id);
+}
+
+/**
+ * DownloadSelectSource 手动选定实际使用的镜像源（本期唯一的选源方式）。
+ */
+export function DownloadSelectSource(id: string, url: string): $CancellablePromise<void> {
+    return $Call.ByID(315574811, id, url);
+}
+
+/**
+ * DownloadSetConnections 改单任务分块数（下次下载生效）。
+ */
+export function DownloadSetConnections(id: string, n: number): $CancellablePromise<void> {
+    return $Call.ByID(2941544563, id, n);
+}
+
+/**
+ * DownloadSetGlobalLimit 改全局限速（bps，0=解除），即时作用于所有在跑任务。
+ */
+export function DownloadSetGlobalLimit(bps: number): $CancellablePromise<void> {
+    return $Call.ByID(663578544, bps);
+}
+
+/**
+ * DownloadSetProxy 设单任务代理（http/https，下次下载生效）。
+ */
+export function DownloadSetProxy(id: string, proxy: string): $CancellablePromise<void> {
+    return $Call.ByID(3023799922, id, proxy);
+}
+
+/**
+ * DownloadSetSpeed 限速（bps）：id 非空改单任务，id 为空改全局。
+ */
+export function DownloadSetSpeed(id: string, bps: number): $CancellablePromise<void> {
+    return $Call.ByID(1263370281, id, bps);
+}
+
+/**
+ * DownloadStart 立即开始 / DownloadResume 续传 / DownloadRetry 重试：
+ * 三者对引擎而言都是"重新入队"，区别只在语义与前端按钮。
+ */
+export function DownloadStart(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3833183102, id);
+}
+
+export function DownloadStop(id: string): $CancellablePromise<void> {
+    return $Call.ByID(4098189830, id);
+}
+
+/**
  * ExportConfig 弹保存框导出一份配置快照，返回实际写入的路径（取消返回空串）。
  */
 export function ExportConfig(): $CancellablePromise<string> {
     return $Call.ByID(3175938554);
+}
+
+/**
+ * FileClassify 判定文件类型（kind, mime）：前端也有一份表，以后端为准。
+ */
+export function FileClassify(path: string): $CancellablePromise<[string, string]> {
+    return $Call.ByID(1578408338, path);
+}
+
+/**
+ * FileOpenSystem 用系统默认程序打开文件；无图形环境回 sysx.ErrUnsupported。
+ */
+export function FileOpenSystem(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2467469833, path);
+}
+
+/**
+ * FileReadBinary 把小文件读成 data URL（图片/PDF 内联预览），超限回 tooLarge。
+ */
+export function FileReadBinary(path: string, mime: string): $CancellablePromise<fileview$0.FileBinary> {
+    return $Call.ByID(1512676001, path, mime);
+}
+
+/**
+ * FileReadText 读取文本内容（上限 2MB，超限截断；二进制会标记并只回小段）。
+ */
+export function FileReadText(path: string): $CancellablePromise<fileview$0.FileText> {
+    return $Call.ByID(3440830403, path);
+}
+
+/**
+ * FileWriteBinary 把浏览器处理产物（图片/PDF）原子写回磁盘，可新建可覆盖。
+ */
+export function FileWriteBinary(path: string, dataBase64: string): $CancellablePromise<void> {
+    return $Call.ByID(168123522, path, dataBase64);
+}
+
+/**
+ * FileWriteText 覆盖保存文本（仅已存在文件，原子写回）。
+ */
+export function FileWriteText(path: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(2857265368, path, content);
 }
 
 /**
@@ -3151,6 +3409,17 @@ export function RedisTest(cfg: redis$0.ConnConfig): $CancellablePromise<number> 
 }
 
 /**
+ * RunArchiveCLI 右键拉起来的那个进程该干的活：本机有主程序在跑就转交给它
+ * （进度、任务中心、通知都在那边），没有就本进程压完退出。
+ * 
+ * 无界面分支不建窗口、不注册热键、不起托盘、不建索引，结果只靠系统通知交代；
+ * 中途的进度进日志，出事时用户还能翻到。
+ */
+export function RunArchiveCLI(op: string, paths: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2396294979, op, paths);
+}
+
+/**
  * SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
  * Go 侧写入配置目录 ball_icon.png 并通知球线程重载；渲染时只取遮罩形状，颜色跟随主题文字色（text-1）。
  * 图标值本身（icon-xxx / Arco 名）随 ball.icon 由 SaveConfig 持久化，供设置页回显。
@@ -3194,6 +3463,16 @@ export function SetApp(app: application$0.App | null): $CancellablePromise<void>
  */
 export function SetAppTheme(theme: string): $CancellablePromise<void> {
     return $Call.ByID(1233977474, theme);
+}
+
+/**
+ * SetArchiveArgs 主入口把 os.Args 交进来。
+ * 
+ * --archive-panel 的语义是“正常起 GUI，主窗口就绪后开选项小窗”，而
+ * ServiceStartup 拿不到命令行，只能在这一刻递一手。
+ */
+export function SetArchiveArgs(args: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(1926064561, args);
 }
 
 /**
