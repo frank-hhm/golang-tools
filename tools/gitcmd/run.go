@@ -1,6 +1,7 @@
 package gitcmd
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -51,6 +52,60 @@ func Run(ctx context.Context, repoDir string, args ...string) (Out, error) {
 		return out, fmt.Errorf("%s", humanize(out.Stderr, rerr))
 	}
 	return out, nil
+}
+
+// runStream 与 runRaw 同，但 stderr 逐行回调（git 进度用 CR 刷新，按 CR/LF 双分隔切行）。
+// 不兜超时：调用方（长操作）自己给带 deadline 的 ctx，避免 60s 默认值砍断大仓推送。
+func runStream(ctx context.Context, dir string, onLine func(string), args ...string) (Out, error) {
+	path, err := bin()
+	if err != nil {
+		return Out{}, err
+	}
+	full := append(append([]string{}, commonPrefix...), args...)
+	cmd := exec.CommandContext(ctx, path, full...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "GIT_TERMINAL_PROMPT=0")
+	applyHidden(cmd)
+	var ob bytes.Buffer
+	cmd.Stdout = &ob
+	se, perr := cmd.StderrPipe()
+	if perr != nil {
+		return Out{}, perr
+	}
+	if err := cmd.Start(); err != nil {
+		return Out{}, err
+	}
+	var sb bytes.Buffer
+	sc := bufio.NewScanner(se)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	sc.Split(splitCRLF)
+	for sc.Scan() {
+		line := sc.Text()
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+		if onLine != nil && line != "" {
+			onLine(line)
+		}
+	}
+	werr := cmd.Wait()
+	out := Out{Stdout: ob.String(), Stderr: sb.String()}
+	if werr != nil {
+		return out, fmt.Errorf("%s", humanize(out.Stderr, werr))
+	}
+	return out, nil
+}
+
+// splitCRLF 同时以 \r 和 \n 断行：进度行靠 \r 原地刷新，非 TTY 下两者混用。
+func splitCRLF(data []byte, atEOF bool) (int, []byte, error) {
+	if i := bytes.IndexAny(data, "\r\n"); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // RunArgs 与 Run 同，但不注入 commonPrefix（需要精确控制参数时用，如带 -c credential 的推送）。

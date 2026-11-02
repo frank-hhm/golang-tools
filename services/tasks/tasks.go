@@ -93,6 +93,8 @@ var events = map[string]eventMeta{
 	"cloud:progress": {"clouddrive", "op"},
 	// SSH 生成助手：一键部署公钥到远端的进度与终态（负载 sshgen.Progress：Op/Name/Stage/Percent/Note）
 	"sshgen:progress": {"sshgen", "op"},
+	// Git 推送/拉取/抓取：长操作跨页可见（负载 gitcmd.Progress：Op/Name/Stage/Percent/Note）
+	"git:progress": {"git", "op"},
 }
 
 // toolNames 工具展示名
@@ -109,6 +111,7 @@ var toolNames = map[string]string{
 	"lanshare":   "局域网互传",
 	"clouddrive": "云盘",
 	"sshgen":     "SSH 生成助手",
+	"git":        "Git 管理",
 }
 
 // opVerbs 操作类任务的动词（kind == "op" 的 op 字段）
@@ -133,6 +136,13 @@ var cloudOpVerbs = map[string]string{
 	"transfer": "转存",
 	"download": "下载",
 	"upload":   "上传",
+}
+
+// gitOpVerbs Git 长操作动词：推送/拉取/抓取
+var gitOpVerbs = map[string]string{
+	"push":  "推送",
+	"pull":  "拉取",
+	"fetch": "抓取",
 }
 
 // payload 各工具进度负载的并集
@@ -360,6 +370,9 @@ func identify(meta eventMeta, p payload) (id, name, title string) {
 		verb := opVerbs[p.Op]
 		if meta.tool == "clouddrive" {
 			verb = cloudOpVerbs[p.Op]
+		}
+		if meta.tool == "git" {
+			verb = gitOpVerbs[p.Op]
 		}
 		if verb == "" {
 			verb = "镜像操作"

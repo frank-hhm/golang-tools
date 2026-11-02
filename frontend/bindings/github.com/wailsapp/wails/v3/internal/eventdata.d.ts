@@ -31,6 +31,9 @@ import type * as downloader$0 from "../../../../../Tools/tools/downloader/models
 import type * as ftp$0 from "../../../../../Tools/tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as gitcmd$0 from "../../../../../Tools/tools/gitcmd/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as guard$0 from "../../../../../Tools/tools/guard/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -85,6 +88,7 @@ declare module "@wailsio/runtime" {
             "ftp:serverlog": ftp$0.ServerLog;
             "ftp:session": ftp$0.SessionEvent;
             "ftp:transfer": ftp$0.Transfer;
+            "git:progress": gitcmd$0.Progress;
             "guard:status": guard$0.Snapshot;
             "lanshare:progress": lanshare$0.Progress;
             "mysql:install": mysql$0.InstallProgress;

@@ -51,6 +51,9 @@ import * as fileview$0 from "../../tools/fileview/models.js";
 import * as ftp$0 from "../../tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitcmd$0 from "../../tools/gitcmd/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as guard$0 from "../../tools/guard/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -2061,6 +2064,147 @@ export function GetSystemInfo(): $CancellablePromise<sysinfo$0.SystemInfo | null
  */
 export function GetToastStatus(): $CancellablePromise<string> {
     return $Call.ByID(311983711);
+}
+
+/**
+ * GitBranchList 本地 + 远程分支（含领先落后与当前标记）。
+ */
+export function GitBranchList(repo: string): $CancellablePromise<gitcmd$0.Branch[] | null> {
+    return $Call.ByID(3583144522, repo);
+}
+
+/**
+ * GitCheck 探测本机 git（是否存在、版本达标）。永不返回 error，结果在 Info 里，
+ * 前端据此引导安装。
+ */
+export function GitCheck(): $CancellablePromise<gitcmd$0.Info> {
+    return $Call.ByID(750095166);
+}
+
+/**
+ * GitCheckout 切换分支/提交。
+ */
+export function GitCheckout(repo: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(3648806402, repo, name);
+}
+
+/**
+ * GitCommit 提交已暂存改动（amend 改写上一笔），返回新提交短哈希。
+ */
+export function GitCommit(repo: string, message: string, amend: boolean): $CancellablePromise<string> {
+    return $Call.ByID(3263040443, repo, message, amend);
+}
+
+/**
+ * GitCreateBranch 建分支，checkout=true 同时切过去。
+ */
+export function GitCreateBranch(repo: string, name: string, checkout: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1272588434, repo, name, checkout);
+}
+
+/**
+ * GitDeleteBranch 删分支（force=true 未合并也删，前端需二次确认）。
+ */
+export function GitDeleteBranch(repo: string, name: string, force: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2607190753, repo, name, force);
+}
+
+/**
+ * GitDiffFile 变更文件清单（增删行数；opts 决定看 工作区/暂存区/某提交）。
+ */
+export function GitDiffFile(repo: string, opts: gitcmd$0.DiffOpts): $CancellablePromise<gitcmd$0.FileDiff[] | null> {
+    return $Call.ByID(2543139579, repo, opts);
+}
+
+/**
+ * GitDiffText 一个文件或一段差异的 unified diff 文本。
+ */
+export function GitDiffText(repo: string, opts: gitcmd$0.DiffOpts): $CancellablePromise<string> {
+    return $Call.ByID(1550024390, repo, opts);
+}
+
+/**
+ * GitDiscover 从目录向上定位仓库（登记前的校验与基本信息）。
+ */
+export function GitDiscover(path: string): $CancellablePromise<gitcmd$0.Repo> {
+    return $Call.ByID(3251515681, path);
+}
+
+/**
+ * GitFetch 抓取远端并清理陈旧引用。
+ */
+export function GitFetch(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(549983650, repo);
+}
+
+/**
+ * GitPull 拉取并合并（进度经 git:progress 事件）。
+ */
+export function GitPull(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(2496253117, repo);
+}
+
+/**
+ * GitPush 推送当前分支（首次推送自动建立上游）。
+ */
+export function GitPush(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(2395042950, repo);
+}
+
+/**
+ * GitRepoAdd 登记仓库（校验是 git 仓库后按路径去重），返回最新列表。
+ */
+export function GitRepoAdd(path: string): $CancellablePromise<gitcmd$0.RepoRef[] | null> {
+    return $Call.ByID(1656234217, path);
+}
+
+/**
+ * GitRepoRemove 从登记表移除，返回最新列表。
+ */
+export function GitRepoRemove(path: string): $CancellablePromise<gitcmd$0.RepoRef[] | null> {
+    return $Call.ByID(159547542, path);
+}
+
+/**
+ * GitRepos 读仓库登记表。
+ */
+export function GitRepos(): $CancellablePromise<gitcmd$0.RepoRef[] | null> {
+    return $Call.ByID(2227012979);
+}
+
+/**
+ * GitStage 暂存指定路径。
+ */
+export function GitStage(repo: string, paths: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(1844168760, repo, paths);
+}
+
+/**
+ * GitStageAll 全部暂存。
+ */
+export function GitStageAll(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(3338583579, repo);
+}
+
+/**
+ * GitStatus 一次工作区状态快照（手动刷新 / 进仓库时拉一次，不做轮询）。
+ */
+export function GitStatus(repo: string): $CancellablePromise<gitcmd$0.Status> {
+    return $Call.ByID(798723664, repo);
+}
+
+/**
+ * GitUnstage 取消暂存（保留工作区改动）。
+ */
+export function GitUnstage(repo: string, paths: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2290939733, repo, paths);
+}
+
+/**
+ * GitUnstageAll 全部取消暂存。
+ */
+export function GitUnstageAll(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(2298216404, repo);
 }
 
 /**

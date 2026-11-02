@@ -588,6 +588,7 @@ func DefaultConfig() AppConfig {
 			{ID: "docspace", Key: "docspace", Name: "文档中心", Path: "/tools/docspace", Icon: "folder", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "lanshare", Key: "lanshare", Name: "局域网互传", Path: "/tools/lanshare", Icon: "icon-wangluo1", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "clouddrive", Key: "clouddrive", Name: "云盘管理", Path: "/tools/clouddrive", Icon: "icon-yun", Single: true, Width: 1320, Height: 860, Home: homeOff()},
+			{ID: "git", Key: "git", Name: "Git管理", Path: "/tools/git", Icon: "code", Single: true, Width: 1360, Height: 860, Home: homeOff()},
 		},
 	}
 }
@@ -930,6 +931,7 @@ func normalizeConfig(cfg *AppConfig) {
 		{"docspace", "docspace", "文档中心", "/tools/docspace", "folder"},
 		{"lanshare", "lanshare", "局域网互传", "/tools/lanshare", "icon-wangluo1"},
 		{"clouddrive", "clouddrive", "云盘管理", "/tools/clouddrive", "icon-yun"},
+		{"git", "git", "Git管理", "/tools/git", "code"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {

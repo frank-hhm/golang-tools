@@ -33,6 +33,7 @@ export const TOOLS = [
     { key: "Docspace", menu_name: "文档中心", path: "tools/docspace", component: () => import('@/views/tools/docspace/index.vue') },
     { key: "Lanshare", menu_name: "局域网互传", path: "tools/lanshare", component: () => import('@/views/tools/lanshare/index.vue') },
     { key: "Clouddrive", menu_name: "云盘管理", path: "tools/clouddrive", component: () => import('@/views/tools/clouddrive/index.vue') },
+    { key: "Git", menu_name: "Git管理", path: "tools/git", component: () => import('@/views/tools/git/index.vue') },
     // 进程管理：不进工具项/设置页，仅首页 CPU/内存 卡片点击唤起（/ 与 /win 两条路由由 TOOLS 自动生成）
     { key: "Procman", menu_name: "进程管理", path: "tools/procman", component: () => import('@/views/tools/procman/index.vue') },
     // 端口管理：同上，不进工具项/设置页，仅首页「网络」卡片点击唤起

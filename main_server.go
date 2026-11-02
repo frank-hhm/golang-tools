@@ -47,6 +47,7 @@ import (
 	"Tools/tools/downloader"
 	"Tools/tools/fileview"
 	"Tools/tools/ftp"
+	"Tools/tools/gitcmd"
 	"Tools/tools/guard"
 	"Tools/tools/lanshare"
 	"Tools/tools/mysql"
@@ -118,6 +119,8 @@ func init() {
 	application.RegisterEvent[clouddrive.Progress]("cloud:progress")
 	// SSH 生成助手：一键部署公钥到远端的进度与终态（负载 sshgen.Progress）
 	application.RegisterEvent[sshgen.Progress]("sshgen:progress")
+	// Git 推送/拉取/抓取：长操作进度与终态（负载 gitcmd.Progress）
+	application.RegisterEvent[gitcmd.Progress]("git:progress")
 }
 
 func main() {
@@ -218,6 +221,7 @@ func main() {
 	lanshare.SetEmitter(emit)
 	clouddrive.SetEmitter(emit)
 	sshgen.SetEmitter(emit)
+	gitcmd.SetEmitter(emit)
 	// 备份自动调度：全局单协程轮询；总开关关闭时每轮直接返回，不碰任何计划
 	docspace.StartBackupScheduler()
 	// 面板部署里服务端同样可开：配了自动启动就在进程内拉起
