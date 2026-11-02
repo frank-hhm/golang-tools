@@ -10,6 +10,9 @@
             </div>
             <a-space :size="8">
                 <a-tag v-if="readOnlyReason" color="orange" size="small">{{ readOnlyReason }}</a-tag>
+                <a-button v-if="isMd" size="small" @click="showPreview = !showPreview">
+                    {{ showPreview ? "隐藏预览" : "预览" }}
+                </a-button>
                 <a-checkbox v-if="!forcedReadonly" v-model="readOnly" size="small">只读</a-checkbox>
                 <a-button size="small" :disabled="!dirty" @click="revert">放弃</a-button>
                 <a-button size="small" type="primary" :loading="saving" :disabled="!dirty || editorReadonly"
@@ -24,6 +27,10 @@
         <div v-else-if="loadError" class="cp-state cp-err">{{ loadError }}</div>
         <div v-else class="cp-editor-wrap">
             <div ref="editorEl" class="cp-editor"></div>
+            <!-- Markdown 双栏预览（在线笔记）：纯 DOM 渲染，不参与 loading 链路 -->
+            <div v-if="isMd && showPreview" class="cp-preview">
+                <div class="md-body" v-html="previewHtml"></div>
+            </div>
         </div>
     </div>
 </template>
@@ -60,6 +67,9 @@ let view: EditorView | null = null;
 let savedText = "";
 
 const ext = computed(() => (props.path.split(".").pop() || "").toLowerCase());
+const isMd = computed(() => ext.value === "md");
+const showPreview = ref(true);
+const previewHtml = ref("");
 const baseName = computed(() => props.path.replace(/^.*[\\/]/, ""));
 const sizeText = computed(() => fmtSize(sizeBytes.value));
 const editorReadonly = computed(() => forcedReadonly.value || readOnly.value);
@@ -129,7 +139,10 @@ async function mountEditor(text: string) {
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         readonlyComp.of(readonlyExt(editorReadonly.value)),
         EditorView.updateListener.of((up) => {
-            if (up.docChanged) dirty.value = up.state.doc.toString() !== savedText;
+            if (up.docChanged) {
+                dirty.value = up.state.doc.toString() !== savedText;
+                schedulePreview(up.state.doc.toString());
+            }
         }),
     ];
     if (lang) base.push(lang);
@@ -141,6 +154,35 @@ function destroyEditor() {
     if (view) { view.destroy(); view = null; }
 }
 
+/* ---------- Markdown 双栏预览 ---------- */
+// marked + dompurify 只在 .md 时 dynamic import（各自成 chunk，不拖累其它查看器入口）。
+// 本地文件仍过 DOMPurify：防误伤（内嵌 script/onerror）而非防攻击者。
+let mdSeq = 0;
+let mdTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePreview(text: string) {
+    if (!isMd.value || !showPreview.value) return;
+    if (mdTimer) clearTimeout(mdTimer);
+    mdTimer = setTimeout(() => void renderMd(text), 300);
+}
+
+async function renderMd(text: string) {
+    const seq = ++mdSeq;
+    try {
+        const [{ marked }, dompurify] = await Promise.all([import("marked"), import("dompurify")]);
+        const html = marked.parse(text, { async: false }) as string;
+        if (seq !== mdSeq) return; // 只保留最新一次渲染
+        previewHtml.value = dompurify.default.sanitize(html);
+    } catch (e: any) {
+        previewHtml.value = `<span class="md-err">预览渲染失败：${String(e?.message || e)}</span>`;
+    }
+}
+
+// 预览开关关掉再打开时，用编辑器当前内容补渲染一次
+watch(showPreview, (on) => {
+    if (on && view) schedulePreview(view.state.doc.toString());
+});
+
 watch(readOnly, (on) => {
     view?.dispatch({ effects: readonlyComp.reconfigure(readonlyExt(forcedReadonly.value || on)) });
 });
@@ -150,6 +192,7 @@ async function load() {
     loading.value = true;
     loadError.value = "";
     dirty.value = false;
+    previewHtml.value = "";
     forcedReadonly.value = false;
     readOnlyReason.value = "";
     readOnly.value = false;
@@ -171,6 +214,7 @@ async function load() {
         loading.value = false;
         await nextTick();
         await mountEditor(savedText);
+        if (isMd.value) schedulePreview(savedText);
     } catch (e: any) {
         loadError.value = String(e?.message || e || "读取失败");
     } finally {
@@ -202,7 +246,10 @@ function revert() {
 }
 
 watch(() => props.path, load, { immediate: true });
-onBeforeUnmount(destroyEditor);
+onBeforeUnmount(() => {
+    if (mdTimer) clearTimeout(mdTimer);
+    destroyEditor();
+});
 </script>
 
 <style scoped>
@@ -262,10 +309,64 @@ onBeforeUnmount(destroyEditor);
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    display: flex;
 }
 .cp-editor {
+    flex: 1 1 50%;
+    min-width: 0;
     height: 100%;
     overflow: auto;
+}
+.cp-preview {
+    flex: 1 1 50%;
+    min-width: 0;
+    height: 100%;
+    overflow: auto;
+    border-left: 1px solid var(--color-border-2);
+    padding: 12px 16px;
+    background: var(--color-bg-2);
+    box-sizing: border-box;
+}
+.md-body {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-text-1);
+    word-break: break-word;
+}
+.md-body :deep(h1), .md-body :deep(h2) {
+    border-bottom: 1px solid var(--color-border-2);
+    padding-bottom: 4px;
+}
+.md-body :deep(pre) {
+    background: var(--color-fill-2);
+    border-radius: 6px;
+    padding: 8px 10px;
+    overflow: auto;
+}
+.md-body :deep(code) {
+    background: var(--color-fill-2);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-family: Consolas, Menlo, monospace;
+}
+.md-body :deep(table) {
+    border-collapse: collapse;
+}
+.md-body :deep(th), .md-body :deep(td) {
+    border: 1px solid var(--color-border-2);
+    padding: 4px 8px;
+}
+.md-body :deep(blockquote) {
+    margin: 0;
+    padding-left: 12px;
+    border-left: 3px solid var(--color-border-3);
+    color: var(--color-text-2);
+}
+.md-body :deep(img) {
+    max-width: 100%;
+}
+.md-err {
+    color: rgb(var(--danger-6));
 }
 /* CodeMirror 默认字号偏小，贴合本项目阅读习惯 */
 .cp-editor :deep(.cm-editor) {

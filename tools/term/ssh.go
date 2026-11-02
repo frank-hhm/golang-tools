@@ -67,20 +67,20 @@ func (w emitWriter) Write(p []byte) (int, error) {
 
 // OpenSSH 按记录建立 SSH 会话并起一个交互 shell
 func OpenSSH(hostID string, cols, rows int) (SessionInfo, error) {
-	h, pass, err := credential(hostID)
+	h, spec, err := resolve(hostID)
 	if err != nil {
 		return SessionInfo{}, err
 	}
-	if h.Auth == AuthKey && pass == "" && h.KeyPath == "" {
+	if spec.Auth == AuthKey && spec.KeyPath == "" {
 		return SessionInfo{}, fmt.Errorf("该记录缺少私钥文件，请重新编辑")
 	}
-	if h.Auth == AuthPassword && pass == "" {
+	if spec.Auth != AuthKey && spec.Password == "" {
 		return SessionInfo{}, fmt.Errorf("该记录没有保存密码，请编辑后重新输入")
 	}
 
 	cols, rows = clampSize(cols, rows)
 
-	cfg, cerr := clientConfig(h, pass)
+	cfg, cerr := clientConfig(h, spec)
 	if cerr != nil {
 		return SessionInfo{}, cerr
 	}
@@ -143,25 +143,34 @@ func OpenSSH(hostID string, cols, rows int) (SessionInfo, error) {
 	return s.info, nil
 }
 
-// clientConfig 按记录与明文密码组装 ssh.ClientConfig；私钥问题在这里就报出来，不拖到拨号后
-func clientConfig(h Host, pass string) (*ssh.ClientConfig, error) {
+// clientConfig 按记录与建连参数组装 ssh.ClientConfig；私钥问题在这里就报出来，不拖到拨号后。
+func clientConfig(h Host, spec connectSpec) (*ssh.ClientConfig, error) {
 	cfg := &ssh.ClientConfig{
-		User: h.User,
-		// 个人自用工具：不维护 known_hosts，首次连接不做指纹确认
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		User:            spec.User,
+		HostKeyCallback: hostKeyCallback(h.Address, h.Port),
 		Timeout:         12 * time.Second,
 	}
-	if h.Auth == AuthKey {
-		raw, rerr := os.ReadFile(h.KeyPath)
+	if spec.Auth == AuthKey {
+		raw, rerr := os.ReadFile(spec.KeyPath)
 		if rerr != nil {
 			return nil, fmt.Errorf("读取私钥失败: %v", rerr)
 		}
-		signer, perr := ssh.ParsePrivateKey(raw)
+		var signer ssh.Signer
+		var perr error
+		if spec.Passphrase != "" {
+			signer, perr = ssh.ParsePrivateKeyWithPassphrase(raw, []byte(spec.Passphrase))
+		} else {
+			signer, perr = ssh.ParsePrivateKey(raw)
+		}
 		if perr != nil {
-			return nil, fmt.Errorf("私钥解析失败（带口令的私钥暂不支持）: %v", perr)
+			if spec.Passphrase == "" {
+				return nil, fmt.Errorf("私钥解析失败（带口令的私钥请在凭据里填入口令）: %v", perr)
+			}
+			return nil, fmt.Errorf("私钥口令不正确: %v", perr)
 		}
 		cfg.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
 	} else {
+		pass := spec.Password
 		cfg.Auth = []ssh.AuthMethod{ssh.Password(pass), ssh.KeyboardInteractive(
 			func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 				// 部分服务端把密码校验走 keyboard-interactive，答案统一填密码
@@ -177,21 +186,19 @@ func clientConfig(h Host, pass string) (*ssh.ClientConfig, error) {
 }
 
 // Test 连通性测试：按表单参数完成 SSH 认证握手后立刻断开，不建 shell 会话；返回握手耗时毫秒。
-// 编辑已有记录时密码留空则沿用已保存的密码（与 credential 同一套语义）。
+// 表单可能尚未保存（内联密码/私钥），也可能只选了凭据（credID）：两者都经 specFromForm 归一。
 func Test(h Host) (int64, error) {
-	pass := h.Password
-	if pass == "" && h.ID != "" {
-		if _, saved, err := credential(h.ID); err == nil {
-			pass = saved
-		}
+	spec, err := specFromForm(h)
+	if err != nil {
+		return 0, err
 	}
-	if h.Auth == AuthKey && h.KeyPath == "" {
+	if spec.Auth == AuthKey && spec.KeyPath == "" {
 		return 0, fmt.Errorf("请先选择私钥文件")
 	}
-	if h.Auth != AuthKey && pass == "" {
+	if spec.Auth != AuthKey && spec.Password == "" {
 		return 0, fmt.Errorf("请输入密码（或选择密钥验证）")
 	}
-	cfg, cerr := clientConfig(h, pass)
+	cfg, cerr := clientConfig(h, spec)
 	if cerr != nil {
 		return 0, cerr
 	}

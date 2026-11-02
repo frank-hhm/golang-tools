@@ -127,6 +127,14 @@
                         <a-doption value="props"><icon-info-circle /> 属性</a-doption>
                         <a-doption value="explorer"><icon-desktop /> 在资源管理器中打开</a-doption>
                         <a-doption value="shell"><icon-code /> 在此打开终端</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir" value="docadd"><icon-plus /> 纳入文档中心</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir" value="docver"><icon-history /> 文档版本</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir" value="docshare"><icon-share-alt /> 局域网分享</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir" value="cloudpush"><icon-upload /> 推送到云盘</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir" value="docenc"><icon-lock /> 加密</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir" value="doctrash"><icon-archive /> 移入文档回收站</a-doption>
+                        <a-doption v-if="singleSel && singleSel.isDir" value="bksrc"><icon-folder /> 备份设为源</a-doption>
+                        <a-doption v-if="singleSel && singleSel.isDir" value="bkdst"><icon-folder /> 备份设为目标</a-doption>
                         <a-doption value="trash"><icon-archive /> 打开回收站</a-doption>
                     </template>
                 </a-dropdown>
@@ -214,6 +222,13 @@
                                             <a-doption value="props"><icon-info-circle /> 属性</a-doption>
                                             <a-doption value="explorer"><icon-desktop /> 在资源管理器中显示</a-doption>
                                             <a-doption value="shell"><icon-code /> 在此打开终端</a-doption>
+                                            <a-doption v-if="!record.isDir" value="docadd"><icon-plus /> 纳入文档中心</a-doption>
+                                            <a-doption v-if="!record.isDir" value="docver"><icon-history /> 文档版本</a-doption>
+                                            <a-doption v-if="!record.isDir" value="docshare"><icon-share-alt /> 局域网分享</a-doption>
+                                            <a-doption v-if="!record.isDir" value="docenc"><icon-lock /> 加密</a-doption>
+                                            <a-doption v-if="!record.isDir" value="doctrash"><icon-archive /> 移入文档回收站</a-doption>
+                                            <a-doption v-if="record.isDir" value="bksrc"><icon-folder /> 备份设为源</a-doption>
+                                            <a-doption v-if="record.isDir" value="bkdst"><icon-folder /> 备份设为目标</a-doption>
                                             <a-doption value="delete"><icon-delete /> 删除到回收站</a-doption>
                                             <a-doption value="forever"><icon-exclamation-circle /> 永久删除</a-doption>
                                         </template>
@@ -336,6 +351,64 @@
                 </a-table>
             </a-spin>
         </a-modal>
+
+        <!-- ==================== 文档中心：版本列表（只读，归档在文档中心页） ==================== -->
+        <a-modal v-model:visible="docVerModal.open" :title="`版本历史：${docVerModal.name}`" :footer="false"
+            :width="560">
+            <a-spin :loading="docVerModal.loading" style="display: block">
+                <a-empty v-if="!docVerModal.list.length" :image="false"
+                    description="暂无版本快照；可先在文档中心条目上存快照" />
+                <a-table v-else :data="docVerModal.list" :pagination="false" size="small" row-key="n">
+                    <template #columns>
+                        <a-table-column title="版本" data-index="n" :width="70" />
+                        <a-table-column title="备注" data-index="note" :ellipsis="true" :tooltip="true" />
+                        <a-table-column title="大小" :width="100" align="right">
+                            <template #cell="{ record }">{{ fmtSize(record.size) }}</template>
+                        </a-table-column>
+                        <a-table-column title="时间" :width="170">
+                            <template #cell="{ record }">{{ fmtTs(record.createdAt) }}</template>
+                        </a-table-column>
+                    </template>
+                </a-table>
+                <div class="doc-foot">快照与还原在 <a-link @click="openDocSpace">文档中心</a-link> 页面管理</div>
+            </a-spin>
+        </a-modal>
+
+        <!-- ==================== 文档中心：加密（仅本机文件，不可逆） ==================== -->
+        <a-modal v-model:visible="docEncModal.open" title="加密文件（不可逆）" :ok-loading="docEncModal.saving"
+            :mask-closable="false" @ok="submitDocEncrypt">
+            <a-alert type="warning" style="margin-bottom: 12px">
+                将以口令对「{{ docEncModal.name }}」做 AES-256-GCM 加密封装。<strong>加密成功后原明文会被删除</strong>，
+                只保留密文条目；口令不落盘、不可找回，忘记即永久丢失。解锁与取回明文在文档中心「加密库」进行。
+            </a-alert>
+            <a-form :model="docEncModal" layout="vertical">
+                <a-form-item field="pw" label="口令">
+                    <a-input-password v-model="docEncModal.pw" placeholder="设置解密口令" />
+                </a-form-item>
+                <a-form-item field="pw2" label="确认口令">
+                    <a-input-password v-model="docEncModal.pw2" placeholder="再次输入口令" />
+                </a-form-item>
+            </a-form>
+        </a-modal>
+
+        <!-- 局域网分享（复用文档中心的 ShareModal，lanshare 临时链接） -->
+        <ShareModal v-model:visible="docShareModal.open" :item="docShareModal.item" />
+
+        <!-- 推送到云盘（PR4：磁盘本地文件 → 已授权云账号根目录；上传进度进任务中心） -->
+        <a-modal v-model:visible="cloudPush.open" title="推送到云盘" :ok-loading="cloudPush.saving" ok-text="开始上传"
+            @ok="doCloudPush">
+            <a-form :model="cloudPush" layout="vertical">
+                <a-form-item label="本地文件">
+                    <a-input :model-value="cloudPush.file?.name" readonly />
+                </a-form-item>
+                <a-form-item label="目标云盘账号">
+                    <a-select v-model="cloudPush.acct">
+                        <a-option v-for="o in cloudPush.accounts" :key="o.id" :value="o.id">{{ o.label }}</a-option>
+                    </a-select>
+                </a-form-item>
+                <a-alert type="info">将上传到所选云账号的根目录（进去后可在云盘页移入子目录）。超大文件会整段缓冲，进度看右下角任务中心。</a-alert>
+            </a-form>
+        </a-modal>
     </div>
 </template>
 
@@ -345,6 +418,7 @@ import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import DiskOverview from "./components/DiskOverview.vue";
 import CommonBatchRenameModal from "./components/BatchRenameModal.vue";
+import ShareModal from "@/views/tools/docspace/components/ShareModal.vue";
 import { baseName, driveRootOf, fmtSize } from "./helpers";
 import { useToolWindow } from "@/views/index/useToolWindow";
 
@@ -854,6 +928,43 @@ function onMore(v: any) {
     else if (v === "explorer") openExplorer();
     else if (v === "shell") openShell();
     else if (v === "trash") openTrash();
+    else if (v === "docadd") docAdd(singleSel.value);
+    else if (v === "docver") docVersions(singleSel.value);
+    else if (v === "docshare") docShare(singleSel.value);
+    else if (v === "cloudpush") openCloudPush(singleSel.value);
+    else if (v === "docenc") docEncrypt(singleSel.value);
+    else if (v === "doctrash") docTrash(singleSel.value);
+    else if (v === "bksrc") docBackupPick(singleSel.value, "src");
+    else if (v === "bkdst") docBackupPick(singleSel.value, "dst");
+}
+
+/* ---------- 推送到云盘（PR4 与云盘页联动） ---------- */
+const cloudPush = reactive({
+    open: false, saving: false, file: null as any, acct: "", accounts: [] as any[],
+});
+async function openCloudPush(item: any) {
+    if (!item || item.isDir) { Message.warning("只能推送单个文件到云盘"); return; }
+    if (!GoTools?.CloudSettings || !GoTools?.CloudListAccounts) { Message.warning("当前环境不支持云盘"); return; }
+    try {
+        const s = await GoTools.CloudSettings();
+        if (!s?.enabled) { Message.warning("云盘功能未启用，请到 设置 → 云盘管理 打开"); return; }
+        const list = ((await GoTools.CloudListAccounts()) ?? []).filter((a: any) => a.hasToken);
+        if (!list.length) { Message.warning("没有已授权的云盘账号，请先到云盘页添加并授权"); return; }
+        Object.assign(cloudPush, { open: true, saving: false, file: item, accounts: list, acct: list[0].id });
+    } catch (e: any) {
+        Message.error(`读取云盘账号失败：${String(e?.message || e || e)}`);
+    }
+}
+async function doCloudPush() {
+    if (!cloudPush.file || !cloudPush.acct) return;
+    cloudPush.saving = true;
+    try {
+        await GoTools.CloudUpload(cloudPush.acct, "", cloudPush.file.name, cloudPush.file.path);
+        Message.success(`已推送到云盘：${cloudPush.file.name}（进度见任务中心）`);
+        cloudPush.open = false;
+    } catch (e: any) {
+        Message.error(`上传失败：${String(e?.message || e || e)}`);
+    } finally { cloudPush.saving = false; }
 }
 
 function onRowMore(v: any, r: any) {
@@ -869,6 +980,154 @@ function onRowMore(v: any, r: any) {
     else if (v === "shell") openShell(r.isDir ? r.path : parentOf(r.path));
     else if (v === "delete") doDelete(false, [r.path]);
     else if (v === "forever") doDelete(true, [r.path]);
+    else if (v === "docadd") docAdd(r);
+    else if (v === "docver") docVersions(r);
+    else if (v === "docshare") docShare(r);
+    else if (v === "docenc") docEncrypt(r);
+    else if (v === "doctrash") docTrash(r);
+    else if (v === "bksrc") docBackupPick(r, "src");
+    else if (v === "bkdst") docBackupPick(r, "dst");
+}
+
+/* ============================ 文档中心入口（计划 §九） ============================ */
+
+/** 已纳管条目的最小形状（只取这里用得上的字段，与 docspace.Item 对齐） */
+type ManagedItem = { id: string; src: string; path: string; name: string };
+
+/** 路径归一：分隔符统一成 / 再比大小写，Windows 不区分大小写 */
+const pathKey = (p: string) => String(p || "").replace(/[\\/]+/g, "/").toLowerCase();
+
+const fmtTs = (ms: number) => (ms ? new Date(ms).toLocaleString() : "--");
+
+/** 按路径找已纳管条目；未纳管返回 null */
+async function findManaged(path: string): Promise<ManagedItem | null> {
+    try {
+        const list = (await GoTools?.DocSpaceItems()) as ManagedItem[] | null;
+        const key = pathKey(path);
+        return (list || []).find((it) => (it.src || "local") === "local" && pathKey(it.path) === key) || null;
+    } catch {
+        return null;
+    }
+}
+
+async function docAdd(r: any) {
+    try {
+        await GoTools?.DocSpaceAddItem("local", "", r.path, "");
+        Message.success(`已纳管「${r.name}」，可在文档中心查看`);
+    } catch (e) {
+        Message.error(`纳管失败：${errText(e)}`);
+    }
+}
+
+const docVerModal = reactive<{ open: boolean; loading: boolean; name: string; list: any[] }>({
+    open: false,
+    loading: false,
+    name: "",
+    list: [],
+});
+async function docVersions(r: any) {
+    docVerModal.name = r.name;
+    docVerModal.list = [];
+    docVerModal.open = true;
+    docVerModal.loading = true;
+    try {
+        const it = await findManaged(r.path);
+        if (!it) {
+            Message.info(`「${r.name}」尚未纳管，先「纳入文档中心」再存快照`);
+            return;
+        }
+        docVerModal.list = ((await GoTools?.DocSpaceVersions(it.id)) as any[]) || [];
+    } catch (e) {
+        Message.error(`读取版本失败：${errText(e)}`);
+    } finally {
+        docVerModal.loading = false;
+    }
+}
+function openDocSpace() {
+    openToolWindow("/tools/docspace", "文档中心");
+}
+
+// 备份目标互挂（计划 §九 第三项）：把选中目录递给文档中心的备份抽屉预填。
+// 双通道：query 负责「窗口还没开过」（新建时 URL 带入自动开抽屉），
+// 事件负责「窗口已开」（query 不会重新触发 mounted）；两者都发，消费侧自洽。
+function docBackupPick(r: any, mode: "src" | "dst") {
+    if (!r?.isDir) { Message.warning("备份的源/目标都必须是目录"); return; }
+    const q = mode === "src" ? "bkSrc" : "bkDst";
+    openToolWindow(`/tools/docspace?${q}=${encodeURIComponent(r.path)}`, "文档中心");
+    try { Events.Emit(`docspace:backup-${mode}`, { path: r.path }); } catch { /* 非 Wails 环境忽略 */ }
+}
+
+function docTrash(r: any) {
+    Modal.warning({
+        title: "移入文档回收站",
+        content: `将把「${r.name}」的实体移入文档中心回收站（未纳管会先自动纳管），之后可在文档中心页的回收站还原。确认？`,
+        okText: "移入",
+        hideCancel: false,
+        onOk: async () => {
+            try {
+                let it = await findManaged(r.path);
+                if (!it) it = ((await GoTools?.DocSpaceAddItem("local", "", r.path, "")) as ManagedItem) || null;
+                if (!it) {
+                    Message.error("纳管失败，未移入");
+                    return;
+                }
+                await GoTools?.DocSpaceMoveTrash(it.id);
+                Message.success("已移入文档回收站，可在文档中心页还原");
+                selectedKeys.value = [];
+                await reload();
+            } catch (e) {
+                Message.error(`移入文档回收站失败：${errText(e)}`);
+            }
+        },
+    });
+}
+
+const docShareModal = reactive<{ open: boolean; item: { src: string; path: string; name: string } | null }>({
+    open: false,
+    item: null,
+});
+function docShare(r: any) {
+    if (!r || r.isDir) { Message.warning("当前只支持分享文件，目录需打包后分享"); return; }
+    // 磁盘条目没有文档中心 id，ShareModal 只读 src/path/name 三个字段
+    docShareModal.item = { src: "local", path: r.path, name: r.name };
+    docShareModal.open = true;
+}
+
+const docEncModal = reactive<{ open: boolean; saving: boolean; path: string; name: string; pw: string; pw2: string }>({
+    open: false,
+    saving: false,
+    path: "",
+    name: "",
+    pw: "",
+    pw2: "",
+});
+function docEncrypt(r: any) {
+    docEncModal.path = r.path;
+    docEncModal.name = r.name;
+    docEncModal.pw = "";
+    docEncModal.pw2 = "";
+    docEncModal.open = true;
+}
+async function submitDocEncrypt() {
+    if (!docEncModal.pw) {
+        Message.warning("口令不能为空");
+        return;
+    }
+    if (docEncModal.pw !== docEncModal.pw2) {
+        Message.warning("两次口令不一致");
+        return;
+    }
+    docEncModal.saving = true;
+    try {
+        await GoTools?.SecStoreEncrypt(docEncModal.path, docEncModal.pw);
+        Message.success("已加密，原明文已删除；可在文档中心「加密库」查看");
+        docEncModal.open = false;
+        await reload();
+    } catch (e) {
+        Message.error(`加密失败：${errText(e)}`);
+    } finally {
+        docEncModal.saving = false;
+    }
 }
 
 /** 网格视图没有复选框，单击切换选中 */
@@ -1183,6 +1442,13 @@ onMounted(async () => {
     justify-content: flex-end;
     gap: 8px;
     margin-top: 12px;
+}
+
+/* 版本弹窗底部：去文档中心的链接行 */
+.doc-foot {
+    margin-top: 8px;
+    color: var(--color-text-3);
+    font-size: 12px;
 }
 
 .cm-head {

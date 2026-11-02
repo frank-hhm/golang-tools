@@ -38,6 +38,11 @@ export interface Options {
     "userAgent": string;
 
     /**
+     * http/https 代理 URL（http://host:port）；空=直连。共享代理池选一条喂进来
+     */
+    "proxy": string;
+
+    /**
      * 输出根目录（绝对路径）
      */
     "outDir": string;

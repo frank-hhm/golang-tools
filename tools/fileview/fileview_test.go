@@ -42,13 +42,25 @@ func TestClassify(t *testing.T) {
 		{"config.yaml", "code"},
 		{"readme.md", "text"},
 		{"app.log", "text"},
+		{"pack.zip", "archive"},
+		{"log.tar.gz", "archive"},
+		{"pkg.tgz", "archive"},
+		{"report.docx", "doc"},
 		{"mystery.dat", "binary"},
+		{"legacy.doc", "binary"},
 		{"noext", "binary"},
 	}
 	for _, c := range cases {
 		if kind, _ := Classify(c.path); kind != c.kind {
 			t.Errorf("Classify(%q) kind = %q, 期望 %q", c.path, kind, c.kind)
 		}
+	}
+	// 归档 MIME 走显式判定，.tar.gz 不能被误判成裸 gz
+	if _, m := Classify("a.zip"); m != "application/zip" {
+		t.Errorf("zip mime = %q, 期望 application/zip", m)
+	}
+	if k, _ := Classify("x.tar"); k == "archive" {
+		t.Errorf("裸 .tar 本引擎解不了，不应归 archive")
 	}
 	// 图片 MIME 走显式表，不受系统注册表影响
 	if _, m := Classify("a/b.png"); m != "image/png" {

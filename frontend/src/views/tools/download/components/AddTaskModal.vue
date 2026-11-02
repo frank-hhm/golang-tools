@@ -33,8 +33,10 @@
                 </a-input-group>
             </a-form-item>
 
-            <a-form-item field="proxy" label="代理" help="可选，形如 http://127.0.0.1:7890（下次下载生效）">
-                <a-input v-model="form.proxy" placeholder="留空不走代理" allow-clear />
+            <a-form-item field="proxy" label="代理" help="可选，从共享代理池选或直接输入 http://127.0.0.1:7890（下次下载生效）">
+                <a-select v-model="form.proxy" placeholder="留空不走代理" allow-clear allow-search>
+                    <a-option v-for="p in proxyPool" :key="p.id" :value="p.url">{{ p.name || p.url }}</a-option>
+                </a-select>
             </a-form-item>
 
             <a-form-item field="mirrors" label="备用镜像源" help="每行一个 URL，多源时可手动切换">
@@ -68,6 +70,8 @@ const GoTools = (getCurrentInstance() as any)?.appContext.config.globalPropertie
 const submitting = ref(false);
 // 当前生效的全局默认下载目录（设置页“下载目录”，留空则应用目录/downloads），弹窗打开时拉一次用于提示
 const defaultDir = ref("");
+// 共享代理池（config.Download.ProxyPool）：代理下拉候选，与下载页/浏览器同源；仍可手输
+const proxyPool = ref<{ id: string; name: string; url: string }[]>([]);
 const saveDirHelp = computed(() =>
     defaultDir.value ? `留空存到默认下载目录：${defaultDir.value}` : "留空存到默认下载目录（可在“设置-目录”中修改）");
 
@@ -82,7 +86,7 @@ const form = reactive<any>({
 });
 
 // 每次打开复位链接之外的敏感项，保留上次的连接数/目录等偏好，减少重复录入；并刷新默认目录提示
-watch(() => props.visible, (v) => {
+watch(() => props.visible, async (v) => {
     if (v) {
         form.url = "";
         try {
@@ -93,6 +97,10 @@ watch(() => props.visible, (v) => {
                 defaultDir.value = String(p);
             }
         } catch { /* 非桌面环境忽略 */ }
+        try {
+            const st = await GoTools?.DownloadSettings();
+            proxyPool.value = (st?.proxyPool ?? []).map((p: any) => ({ id: String(p.id ?? ""), name: String(p.name ?? ""), url: String(p.url ?? "") }));
+        } catch { /* 静默 */ }
     }
 });
 

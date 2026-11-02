@@ -14,8 +14,8 @@ package app
 // ============================================================
 
 import (
-	"fmt"
 	"Tools/tools/term"
+	"fmt"
 )
 
 // TermChooseKeyFile 弹原生文件选择框选 SSH 私钥，取消返回空串
@@ -81,4 +81,62 @@ func (a *App) TermResize(sessionID string, cols, rows int) error {
 // TermClose 主动关闭会话
 func (a *App) TermClose(sessionID string) error {
 	return term.Close(sessionID)
+}
+
+// ============================================================
+// 凭据体系（P0）：凭据与主机解耦，一处改密多机生效。
+// 口令/私钥 passphrase 经 term 内部 protectSecret 加密落盘，回前端的记录恒为空。
+// ============================================================
+
+// TermListCredentials 凭据列表（不含明文）
+func (a *App) TermListCredentials() ([]term.Credential, error) {
+	return term.ListCredentials()
+}
+
+// TermSaveCredential 新增/更新凭据，返回更新后的完整列表
+func (a *App) TermSaveCredential(c term.Credential) ([]term.Credential, error) {
+	return term.SaveCredential(c)
+}
+
+// TermDeleteCredential 删除凭据（引用它的主机 credID 会被清空），返回更新后的列表
+func (a *App) TermDeleteCredential(id string) ([]term.Credential, error) {
+	return term.DeleteCredential(id)
+}
+
+// ============================================================
+// known_hosts / 主机密钥策略（P1）
+// ============================================================
+
+// TermHostKeyPolicy 当前主机密钥校验策略（strict|tofu|off）
+func (a *App) TermHostKeyPolicy() string {
+	return term.GetHostKeyPolicy()
+}
+
+// TermSetHostKeyPolicy 设置校验策略，返回生效后的值
+func (a *App) TermSetHostKeyPolicy(policy string) (string, error) {
+	return term.SetHostKeyPolicy(policy)
+}
+
+// TermListKnownHosts 已记录的主机密钥（地址/类型/SHA256 指纹）
+func (a *App) TermListKnownHosts() ([]term.KnownHostEntry, error) {
+	return term.ListKnownHosts()
+}
+
+// TermDeleteKnownHost 删除某地址的主机密钥（指纹变化需重新确认时用），返回剩余列表
+func (a *App) TermDeleteKnownHost(address string) ([]term.KnownHostEntry, error) {
+	return term.DeleteKnownHost(address)
+}
+
+// TermImportKnownHosts 导入系统 ~/.ssh/known_hosts（去重不覆盖），返回新增行数
+func (a *App) TermImportKnownHosts() (int, error) {
+	return term.ImportSystemKnownHosts()
+}
+
+// ============================================================
+// ~/.ssh/config 导入（P1）：只返回可编辑草稿，前端勾选后才逐项 SaveHost
+// ============================================================
+
+// TermParseSSHConfig 解析 ~/.ssh/config 为主机草稿列表
+func (a *App) TermParseSSHConfig() ([]term.HostDraft, error) {
+	return term.ParseSSHConfig()
 }

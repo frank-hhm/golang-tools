@@ -1,5 +1,5 @@
 <template>
-  <a-modal :visible="visible" :title="form.id ? '编辑服务器' : '添加服务器'" :width="520" :mask-closable="false"
+  <a-modal :visible="visible" :title="form.id ? '编辑服务器' : '添加服务器'" :width="560" :mask-closable="false"
     ok-text="保存并连接" cancel-text="取消" :ok-loading="busy" :on-before-ok="onBeforeOk"
     @cancel="close" @update:visible="(v: boolean) => emit('update:visible', v)">
     <a-form :model="form" layout="horizontal" :label-col-props="{ span: 5 }" :wrapper-col-props="{ span: 19 }">
@@ -18,29 +18,60 @@
         </div>
       </a-form-item>
 
-      <a-form-item label="SSH账号" required>
-        <a-input v-model="form.user" placeholder="root" allow-clear />
+      <a-form-item label="凭据">
+        <div class="cred-row">
+          <a-select v-model="form.credID" placeholder="选择已保存的凭据（推荐）" allow-clear allow-search
+            @change="onCredChange">
+            <a-option v-for="c in credentials" :key="c.id" :value="c.id">
+              <a-space :size="6">
+                <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
+                  {{ c.auth === 'key' ? '密钥' : '密码' }}
+                </a-tag>
+                <span>{{ c.name }}</span>
+                <span v-if="c.user" class="cred-opt-user">{{ c.user }}</span>
+              </a-space>
+            </a-option>
+          </a-select>
+          <a-button size="small" @click="credVisible = true">管理</a-button>
+        </div>
       </a-form-item>
 
-      <a-form-item label="验证方式">
-        <a-radio-group v-model="form.auth" type="button" size="medium">
-          <a-radio value="password">密码验证</a-radio>
-          <a-radio value="key">密钥验证</a-radio>
-        </a-radio-group>
+      <!-- 选了解锁主机：登录方式取自凭据，这里只作展示 -->
+      <a-form-item v-if="form.credID" label="登录">
+        <a-typography-text type="secondary">{{ credSummary }}</a-typography-text>
       </a-form-item>
 
-      <a-form-item v-if="form.auth === 'password'" label="密码" required>
-        <a-input-password v-model="form.password" :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入SSH密码，必填'"
-          allow-clear />
-      </a-form-item>
+      <!-- 未选凭据：保留旧式内联填写（兼容路径） -->
+      <template v-else>
+        <a-form-item label="SSH账号" required>
+          <a-input v-model="form.user" placeholder="root" allow-clear />
+        </a-form-item>
+        <a-form-item label="验证方式">
+          <a-radio-group v-model="form.auth" type="button" size="medium">
+            <a-radio value="password">密码验证</a-radio>
+            <a-radio value="key">密钥验证</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item v-if="form.auth === 'password'" label="密码" required>
+          <a-input-password v-model="form.password" :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入SSH密码，必填'"
+            allow-clear />
+        </a-form-item>
+        <a-form-item v-else label="私钥文件" required>
+          <a-space :size="8">
+            <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="key-input">
+              <template #prefix><icon-file /></template>
+            </a-input>
+            <a-button size="small" @click="chooseKey">选择</a-button>
+            <a-button size="small" @click="openSshGen">生成密钥</a-button>
+          </a-space>
+        </a-form-item>
+      </template>
 
-      <a-form-item v-else label="私钥文件" required>
-        <a-space :size="8">
-          <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="key-input">
-            <template #prefix><icon-file /></template>
-          </a-input>
-          <a-button size="small" @click="chooseKey">选择</a-button>
-        </a-space>
+      <a-form-item label="分组">
+        <a-input v-model="form.group" placeholder="如：生产 / 测试（左栏按分组导航）" allow-clear />
+      </a-form-item>
+      <a-form-item label="标签">
+        <a-input-tag v-model="form.tags" placeholder="回车添加，可多个" allow-clear :token-separators="[',', '，']" />
       </a-form-item>
 
       <a-form-item label="备注">
@@ -60,12 +91,17 @@
       </div>
     </template>
   </a-modal>
+
+  <credential-modal v-model:visible="credVisible" @changed="credentials = $event" />
+
+  <ssh-gen-modal v-model:visible="sshGenVisible" :context="sshGenCtx" @use-key="onUseKey" />
 </template>
 
 <script setup lang="ts">
-import { getCurrentInstance, reactive, ref, watch } from 'vue';
+import { computed, getCurrentInstance, reactive, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
-import type { TermHost } from '../types';
+import CredentialModal from './CredentialModal.vue';
+import type { TermCredential, TermHost } from '../types';
 
 const props = defineProps<{ visible: boolean; host: TermHost | null }>();
 const emit = defineEmits<{
@@ -76,20 +112,41 @@ const emit = defineEmits<{
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
 const busy = ref(false);
+const credentials = ref<TermCredential[]>([]);
+const credVisible = ref(false);
 
-/** 表单内容：密码不回填（记录里本来就没有明文），编辑时留空即沿用原密码 */
+/** 表单内容：密码/口令不回填（记录里本来就没有明文），编辑时留空即沿用原值 */
 function emptyForm(): TermHost {
-  return { id: '', name: '', system: 'linux', address: '', port: 22, user: 'root', auth: 'password', password: '', keyPath: '', note: '' };
+  return {
+    id: '', name: '', system: 'linux', address: '', port: 22, user: 'root', auth: 'password',
+    password: '', keyPath: '', credID: '', group: '', tags: [], note: '',
+  };
 }
 
 const form = reactive<TermHost>(emptyForm());
+
+const credSummary = computed(() => {
+  const c = credentials.value.find((x) => x.id === form.credID);
+  if (!c) return '所选凭据（保存后生效）';
+  return c.auth === 'key' ? `密钥登录 · ${c.user || '账号沿用主机'} · ${c.name}` : `密码登录 · ${c.user || '账号沿用主机'} · ${c.name}`;
+});
+
+async function loadCreds() {
+  try {
+    credentials.value = (await GoTools?.TermListCredentials()) || [];
+  } catch {
+    credentials.value = [];
+  }
+}
 
 watch(
   () => props.visible,
   (v) => {
     if (!v) return;
+    loadCreds();
     const h = props.host;
-    Object.assign(form, emptyForm(), h ? { ...h, password: '' } : {});
+    Object.assign(form, emptyForm(), h ? { ...h, password: '', tags: h.tags ? [...h.tags] : [] } : {});
+    if (!form.tags) form.tags = [];
     busy.value = false;
     resetTest();
   },
@@ -101,6 +158,14 @@ function onSystemChange() {
   if (!form.port || form.port === 22 || form.port === 3389) form.port = 22;
 }
 
+/** 选/清凭据：选了凭据就不需要内联账号密码；清空则回到旧式内联 */
+function onCredChange() {
+  if (form.credID) {
+    form.password = '';
+    form.keyPath = '';
+  }
+}
+
 async function chooseKey() {
   try {
     const path = await GoTools?.TermChooseKeyFile();
@@ -110,12 +175,24 @@ async function chooseKey() {
   }
 }
 
+/* SSH 生成助手：把当前表单的主机上下文传进去，生成密钥后回填 keyPath */
+const sshGenVisible = ref(false);
+const sshGenCtx = computed(() => ({
+  address: form.address, port: form.port || 22, user: form.user, keyPath: form.keyPath,
+}));
+function openSshGen() {
+  sshGenVisible.value = true;
+}
+function onUseKey(payload: { keyPath: string; pubKey: string }) {
+  if (payload?.keyPath) form.keyPath = payload.keyPath;
+}
+
 function validate(): string {
   if (!form.address.trim()) return '请填写服务器 IP 或域名';
   if (!form.port || form.port < 1 || form.port > 65535) return '端口需在 1-65535 之间';
+  if (form.credID) return ''; // 登录方式取自凭据
   if (!form.user.trim()) return '请填写 SSH 账号';
   if (form.auth === 'password') {
-    // 编辑时留空沿用旧密码；新建必须填
     if (!form.password && !form.id) return '请输入 SSH 密码';
   } else if (!form.keyPath) {
     return '请选择私钥文件';
@@ -132,7 +209,6 @@ async function onBeforeOk(): Promise<boolean> {
   busy.value = true;
   try {
     const list: TermHost[] = await GoTools.TermSaveHost({ ...form });
-    // 新建时后端把记录插在列表最前，保存后的 id 以返回列表为准
     const id = form.id || list[0]?.id || '';
     emit('saved', list, id);
     return true;
@@ -148,7 +224,7 @@ function close() {
   emit('update:visible', false);
 }
 
-/* 底栏“测试连接”：只完成 SSH 认证握手不建会话；编辑时密码留空由后端沿用已存密码 */
+/* 底栏“测试连接”：只完成 SSH 认证握手不建会话；走凭据时后端按 credID 解析 */
 const testing = ref(false);
 const testResult = ref('');
 const testStatus = ref<'ok' | 'err' | ''>('');
@@ -185,7 +261,6 @@ async function onOk() {
 </script>
 
 <style scoped>
-/* IP 与端口同排：IP 占满剩余宽度，端口固定窄列 */
 .ip-row {
   display: flex;
   align-items: center;
@@ -200,7 +275,46 @@ async function onOk() {
   width: 96px;
 }
 
+.cred-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cred-row :deep(.arco-select) {
+  flex: 1;
+}
+
+.cred-opt-user {
+  color: var(--color-text-3);
+  font-size: var(--base-size-small);
+}
+
 .key-input {
   width: 300px;
+}
+
+.conn-test-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.conn-test-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conn-test-msg {
+  font-size: var(--base-size-small);
+}
+
+.conn-test-msg.is-ok {
+  color: rgb(var(--green-6));
+}
+
+.conn-test-msg.is-err {
+  color: rgb(var(--red-6));
 }
 </style>

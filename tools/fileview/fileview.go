@@ -51,7 +51,8 @@ var kindByExt = map[string]string{
 	"webp": "image", "bmp": "image", "svg": "image", "ico": "image",
 	"pdf": "pdf",
 	"xls": "sheet", "xlsx": "sheet", "csv": "sheet",
-	"mp3": "audio", "wav": "audio", "m4a": "audio", "ogg": "audio",
+	"docx": "doc",
+	"mp3":  "audio", "wav": "audio", "m4a": "audio", "ogg": "audio",
 	"mp4": "video", "webm": "video", "mov": "video",
 	"js": "code", "ts": "code", "jsx": "code", "tsx": "code", "vue": "code",
 	"json": "code", "html": "code", "htm": "code", "css": "code",
@@ -75,8 +76,13 @@ var imageMime = map[string]string{
 }
 
 // Classify 按"扩展名 → 系统 MIME → 兜底 binary"三级判定文件类型。
-// kind ∈ image|pdf|sheet|text|code|audio|video|binary；mime 取不到时 octet-stream。
+// kind ∈ image|pdf|sheet|doc|text|code|audio|video|archive|binary；mime 取不到时 octet-stream。
 func Classify(path string) (kind, mimeStr string) {
+	// 归档先判：.tar.gz 的 filepath.Ext 只会拿到 .gz，进不了扩展名表，
+	// 必须按整段后缀识别（与 tools/archive.FormatFor 同口径：仅 zip / tar.gz / tgz）。
+	if k, m, ok := classifyArchive(path); ok {
+		return k, m
+	}
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 	if k, ok := kindByExt[ext]; ok {
 		if m, ok := imageMime[ext]; ok {
@@ -91,6 +97,20 @@ func Classify(path string) (kind, mimeStr string) {
 		return "binary", m
 	}
 	return "binary", "application/octet-stream"
+}
+
+// classifyArchive 识别可在线列举的归档格式（zip / tar.gz / tgz）。
+// 只标这三类：rar / 7z / 裸 .gz / 裸 .tar 本引擎解不了（会归 binary 开本机程序）。
+func classifyArchive(path string) (kind, mime string, ok bool) {
+	low := strings.ToLower(filepath.Base(path))
+	switch {
+	case strings.HasSuffix(low, ".zip"):
+		return "archive", "application/zip", true
+	case strings.HasSuffix(low, ".tar.gz"), strings.HasSuffix(low, ".tgz"):
+		return "archive", "application/gzip", true
+	default:
+		return "", "", false
+	}
 }
 
 // ReadText 读取文本内容：上限 MaxTextInline，超限截断并标记；

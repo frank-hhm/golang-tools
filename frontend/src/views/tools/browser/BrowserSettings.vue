@@ -59,6 +59,12 @@
                 </a-form-item>
 
                 <template v-if="draft.proxyMode === 'custom'">
+                    <a-form-item v-if="proxyPool.length" label="从共享代理池选">
+                        <a-select size="small" placeholder="选一条快速填入（也可手动输）" allow-clear :style="{ width: '320px' }"
+                            @change="(v: any) => { if (v) draft.proxy = String(v); }">
+                            <a-option v-for="p in proxyPool" :key="p.id" :value="p.url">{{ p.name || p.url }}</a-option>
+                        </a-select>
+                    </a-form-item>
                     <a-row :gutter="8">
                         <a-col :span="14">
                             <a-form-item label="代理地址">
@@ -152,6 +158,13 @@
                         </a-row>
 
                         <template v-if="sp.proxyMode === 'custom'">
+                            <a-form-item v-if="proxyPool.length" label="从共享代理池选">
+                                <a-select size="small" placeholder="选一条快速填入（留空=跟随全局）" allow-clear
+                                    :style="{ width: '100%' }"
+                                    @change="(v: any) => { if (v) sp.proxy = String(v); }">
+                                    <a-option v-for="p in proxyPool" :key="p.id" :value="p.url">{{ p.name || p.url }}</a-option>
+                                </a-select>
+                            </a-form-item>
                             <a-row :gutter="8">
                                 <a-col :span="14">
                                     <a-form-item label="代理地址">
@@ -223,6 +236,9 @@ const {
 const saving = ref(false);
 const openKeys = ref<string[]>([]);
 const draft = ref<any>(emptyDraft());
+// 共享代理池（config.Download.ProxyPool）：custom 代理可从这里下拉选，免重复录入。
+// 只读消费，不改下载设置；与下载页、仿站页同一数据源。
+const proxyPool = ref<{ id: string; name: string; url: string }[]>([]);
 
 /** 抽屉可见性转发给父组件的 v-model:visible */
 const innerVisible = computed({
@@ -307,6 +323,19 @@ watch(
     () => props.visible,
     (v) => {
         if (v) resetDraft();
+    },
+    { immediate: true },
+);
+
+// 抽屉打开时载入共享代理池（后端未连时静默，不阻断编辑）
+watch(
+    () => props.visible,
+    async (v) => {
+        if (!v) return;
+        try {
+            const st = await GoTools?.DownloadSettings();
+            proxyPool.value = (st?.proxyPool ?? []).map((p: any) => ({ id: String(p.id ?? ""), name: String(p.name ?? ""), url: String(p.url ?? "") }));
+        } catch { /* 静默 */ }
     },
     { immediate: true },
 );

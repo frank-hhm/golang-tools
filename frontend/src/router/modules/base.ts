@@ -17,7 +17,6 @@ export const TOOLS = [
     { key: "Strrandom", menu_name: "随机字符串生成", path: "tools/strrandom", component: () => import('@/views/tools/strrandom/index.vue') },
     { key: "Encdec", menu_name: "文字加密解密", path: "tools/encdec", component: () => import('@/views/tools/encdec/index.vue') },
     { key: "Hexconvert", menu_name: "进制转换", path: "tools/hexconvert", component: () => import('@/views/tools/hexconvert/index.vue') },
-    { key: "ImageBase64", menu_name: "图片base64编码", path: "tools/imageBase64", component: () => import('@/views/tools/imageBase64/index.vue') },
     { key: "Qrcode", menu_name: "二维码生成", path: "tools/qrcode", component: () => import('@/views/tools/qrcode/index.vue') },
     { key: "Websocket", menu_name: "WebSocket调试", path: "tools/websocket", component: () => import('@/views/tools/websocket/index.vue') },
     { key: "Screenshot", menu_name: "截图预览", path: "tools/screenshot", component: () => import('@/views/tools/screenshot/index.vue') },
@@ -31,6 +30,9 @@ export const TOOLS = [
     { key: "Archive", menu_name: "文件压缩", path: "tools/archive", component: () => import('@/views/tools/archive/index.vue') },
     { key: "Viewer", menu_name: "文件查看器", path: "tools/viewer", component: () => import('@/views/tools/viewer/index.vue') },
     { key: "Download", menu_name: "下载管理", path: "tools/download", component: () => import('@/views/tools/download/index.vue') },
+    { key: "Docspace", menu_name: "文档中心", path: "tools/docspace", component: () => import('@/views/tools/docspace/index.vue') },
+    { key: "Lanshare", menu_name: "局域网互传", path: "tools/lanshare", component: () => import('@/views/tools/lanshare/index.vue') },
+    { key: "Clouddrive", menu_name: "云盘管理", path: "tools/clouddrive", component: () => import('@/views/tools/clouddrive/index.vue') },
     // 进程管理：不进工具项/设置页，仅首页 CPU/内存 卡片点击唤起（/ 与 /win 两条路由由 TOOLS 自动生成）
     { key: "Procman", menu_name: "进程管理", path: "tools/procman", component: () => import('@/views/tools/procman/index.vue') },
     // 端口管理：同上，不进工具项/设置页，仅首页「网络」卡片点击唤起

@@ -36,6 +36,24 @@ export interface AppConfig {
      * 关掉时不写注册表、不留 SendTo 快捷方式、不起转交监听，见 ArchiveConfig.Enabled。
      */
     "archive"?: ArchiveConfig | null;
+
+    /**
+     * DocSpace 文档中心设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
+     * 序列化也随之省略。见 DocSpaceConfig 各字段。
+     */
+    "docSpace"?: DocSpaceConfig | null;
+
+    /**
+     * Cloud 云盘管理设置。指针类型：老配置里没有这一段时读回来是 nil，序列化随之
+     * 省略。见 CloudConfig 各字段（token 不进这里，只进加密账号表）。
+     */
+    "cloud"?: CloudConfig | null;
+
+    /**
+     * Download 下载管理器设置。指针类型：老配置里没有这一段时读回来是 nil，序列化
+     * 随之省略。见 DownloadConfig 各字段（护栏参数 + 全局目录 + 共享代理/镜像池）。
+     */
+    "download"?: DownloadConfig | null;
 }
 
 /**
@@ -210,6 +228,118 @@ export interface BrowserSpace {
 }
 
 /**
+ * CloudConfig 云盘管理设置（计划-云盘管理工具 PR1）。
+ * 敏感 token/BDUSS **不进这里**，只进 tools/secret 加密的账号表；此处只放
+ * OAuth 应用凭证与落地目录等非运行期密钥的配置项。
+ */
+export interface CloudConfig {
+    /**
+     * Enabled 总开关。关掉时前端隐藏「云盘管理」入口、不构造任何 provider。
+     * 默认关闭：联网功能必须用户主动开，不能在老配置里凭空多出网络行为。
+     */
+    "enabled": boolean;
+
+    /**
+     * GoogleClientID / GoogleClientSecret 用户自备的 Google Cloud OAuth 客户端凭证
+     * （不内置，避免密钥随程序泄露/轮换困难）。留空则无法完成 Google 授权。
+     */
+    "googleClientId": string;
+    "googleClientSecret": string;
+
+    /**
+     * GoogleRedirectURI OAuth 授权回调地址，须与 Google 控制台登记的一致。默认本机
+     * 回环：桌面/无头都走「用户粘贴回跳 URL」手工换 token，不依赖系统浏览器。
+     */
+    "googleRedirectUri": string;
+
+    /**
+     * SaveDir 云盘文件下载落地目录；留空走 appdirs.Data("clouddrive")/downloads。
+     */
+    "saveDir": string;
+
+    /**
+     * Concurrency 跨盘转存并发度（<=0 用默认）。本期 PR1 只做单连接，留给后续 PR。
+     */
+    "concurrency": number;
+}
+
+/**
+ * DocSpaceConfig 文档中心设置（分类/版本/回收站的策略参数 + 总开关）。
+ */
+export interface DocSpaceConfig {
+    /**
+     * Enabled 总开关。关掉时查看器左栏只留「本机浏览」、不出现「文档中心」态；
+     * 独立的文档中心工具页仍可打开（入口在工具表，不受此开关隐藏）。
+     */
+    "enabled": boolean;
+
+    /**
+     * VersionKeep 每个条目保留的版本快照数上限：存新快照后裁掉最旧的，<=0 视为不裁剪。
+     */
+    "versionKeep": number;
+
+    /**
+     * TrashKeepDays 回收站保留天数：移入超过该天数的实体在访问回收站时自动彻底清理，<=0 视为不自动清理。
+     */
+    "trashKeepDays": number;
+
+    /**
+     * BackupAuto 备份自动调度总开关：关掉时调度协程每轮直接返回，不碰任何计划；
+     * 打开后仍只跑 Enabled 且 IntervalS>0 的计划。默认 false：老配置等价于关，
+     * 升级不引入隐藏自动行为。
+     */
+    "backupAuto": boolean;
+}
+
+/**
+ * DownloadConfig 下载管理器设置（计划-下载管理器 PR3）。引擎级护栏参数 + 全局
+ * 落地目录 + 共享代理池 / 镜像池。代理 URL 可能内嵌凭据，但这是用户本机配置文件、
+ * 与 Browser.Proxy 同级（明文落 config.json），不额外加密，保持一致。
+ */
+export interface DownloadConfig {
+    /**
+     * Enabled 总开关。关掉时前端隐藏「下载管理」入口、不初始化引擎参数。
+     * 默认开启：下载是本地核心能力（无网络自发行为），不像云盘需用户主动开。
+     */
+    "enabled": boolean;
+
+    /**
+     * SaveDir 全局默认下载目录；留空走 appdirs.Downloads()。改后新建任务即时生效。
+     */
+    "saveDir": string;
+
+    /**
+     * MaxRunningTasks 同时下载的任务数上限，超了排队（<=0 回落默认）。
+     */
+    "maxRunningTasks": number;
+
+    /**
+     * MaxTotalParts 全局并发块数上限（信号量容量，<=0 回落默认）。
+     */
+    "maxTotalParts": number;
+
+    /**
+     * DefaultConnections 单任务默认分块数（<=0 回落默认）。
+     */
+    "defaultConnections": number;
+
+    /**
+     * GlobalSpeedLimitBps 全局下行限速（字节/秒），0=不限。
+     */
+    "globalSpeedLimitBps": number;
+
+    /**
+     * ProxyPool 共享代理池：下载选源与浏览器 custom 代理都从这里挑，减少重复录入。
+     */
+    "proxyPool": ProxyItem[] | null;
+
+    /**
+     * Mirrors 常用镜像模板（新建任务候选）。
+     */
+    "mirrors": MirrorItem[] | null;
+}
+
+/**
  * GeneralConfig 应用通用设置
  */
 export interface GeneralConfig {
@@ -317,6 +447,15 @@ export interface LogConfig {
 }
 
 /**
+ * MirrorItem 常用镜像模板（新建任务时的候选，手动选，不自动切）。
+ */
+export interface MirrorItem {
+    "id": string;
+    "name": string;
+    "url": string;
+}
+
+/**
  * PathsConfig 全局基础目录（plugins/data/logs 各自下按服务名建子目录，downloads 为单基目录，见 appdirs/layout.go）；
  * 空 = 默认 <应用目录>/plugins|data|logs|downloads。修改保存后，各服务配置与另存/下载文件默认目录随即落新路径。
  */
@@ -340,6 +479,16 @@ export interface PathsConfig {
      * 下载目录：下载管理器默认落点，空=默认 <应用目录>/downloads
      */
     "downloads": string;
+}
+
+/**
+ * ProxyItem 共享代理池里的一条代理。ID 稳定供前端 diff，URL 直接喂引擎/浏览器的
+ * --proxy-server（http/https；socks5 视依赖树，本期不保证）。
+ */
+export interface ProxyItem {
+    "id": string;
+    "name": string;
+    "url": string;
 }
 
 /**

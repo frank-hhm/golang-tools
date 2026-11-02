@@ -16,6 +16,12 @@ import type * as tasks$0 from "../../../../../Tools/services/tasks/models.js";
 import type * as archive$0 from "../../../../../Tools/tools/archive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as backup$0 from "../../../../../Tools/tools/backup/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as clouddrive$0 from "../../../../../Tools/tools/clouddrive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as docker$0 from "../../../../../Tools/tools/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -26,6 +32,9 @@ import type * as ftp$0 from "../../../../../Tools/tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as guard$0 from "../../../../../Tools/tools/guard/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as lanshare$0 from "../../../../../Tools/tools/lanshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as mysql$0 from "../../../../../Tools/tools/mysql/models.js";
@@ -52,6 +61,9 @@ import type * as siteclone$0 from "../../../../../Tools/tools/siteclone/models.j
 import type * as sniffer$0 from "../../../../../Tools/tools/sniffer/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as sshgen$0 from "../../../../../Tools/tools/sshgen/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as term$0 from "../../../../../Tools/tools/term/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -61,8 +73,10 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "archive:progress": archive$0.Progress;
+            "backup:progress": backup$0.Progress;
             "ball:action": string;
             "capture:newframe": screenshot$0.CaptureFrame | null;
+            "cloud:progress": clouddrive$0.Progress;
             "docker:pull": docker$0.PullProgress;
             "docker:serverlog": docker$0.ContainerLogLine;
             "docker:setup": docker$0.SetupProgress;
@@ -72,6 +86,7 @@ declare module "@wailsio/runtime" {
             "ftp:session": ftp$0.SessionEvent;
             "ftp:transfer": ftp$0.Transfer;
             "guard:status": guard$0.Snapshot;
+            "lanshare:progress": lanshare$0.Progress;
             "mysql:install": mysql$0.InstallProgress;
             "nginx:install": nginx$0.InstallProgress;
             "npm:install": npm$0.InstallProgress;
@@ -84,6 +99,7 @@ declare module "@wailsio/runtime" {
             "serial:status": usbserial$0.ConnStatusEvent;
             "siteclone:progress": siteclone$0.Progress;
             "sniffer:flow": sniffer$0.Flow;
+            "sshgen:progress": sshgen$0.Progress;
             "task:update": tasks$0.Task;
             "term:data": term$0.DataEvent;
             "term:exit": term$0.ExitEvent;

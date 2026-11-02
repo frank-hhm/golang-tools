@@ -154,17 +154,32 @@
                                     }}</a-option>
                             </a-select>
                         </div>
-                        <div v-if="selected.proxy" class="dl-field">
+                        <div class="dl-field">
                             <span class="dl-k">代理</span>
-                            <span class="dl-v" :title="selected.proxy">{{ selected.proxy }}</span>
+                            <a-select v-model="editProxy" size="small" style="width: 200px" allow-clear
+                                placeholder="直连（不走代理）" @change="applyProxy">
+                                <a-option v-for="p in proxyPool" :key="p.id" :value="p.url">{{ p.name || shortUrl(p.url) }}</a-option>
+                            </a-select>
+                            <span class="dl-hint">下次下载生效</span>
                         </div>
-                        <div v-if="selected.mirrors && selected.mirrors.length" class="dl-field">
+                        <div v-if="mirrorOptions.length > 1" class="dl-field">
                             <span class="dl-k">下载源</span>
                             <a-select :model-value="selected.source || selected.url" size="small" style="width: 220px"
                                 @change="(v: any) => selectSource(v)">
-                                <a-option v-for="(m, i) in mirrorOptions" :key="i" :value="m">{{ shortUrl(m)
-                                    }}</a-option>
+                                <a-option v-for="(m, i) in mirrorOptions" :key="i" :value="m">{{ shortUrl(m) }}</a-option>
                             </a-select>
+                            <a-button size="mini" :loading="probing" @click="probeSources">测速选源</a-button>
+                        </div>
+                    </div>
+
+                    <div v-if="probeRows.length" class="dl-probe">
+                        <div class="dl-probe-title">镜像测速（点一行选定实际源）</div>
+                        <div v-for="(r, i) in probeRows" :key="i" class="dl-probe-row"
+                            :class="{ on: (selected.source || selected.url) === r.url, off: !r.ok }"
+                            @click="r.ok && selectSource(r.url)">
+                            <span class="dl-probe-host" :title="r.url">{{ shortUrl(r.url) }}</span>
+                            <span class="dl-probe-lat">{{ r.ok ? r.latencyMs + ' ms' : (r.err || '不可达') }}</span>
+                            <span class="dl-probe-speed">{{ r.ok ? fmtSpeed(r.speed) : '--' }}</span>
                         </div>
                     </div>
 
@@ -199,7 +214,7 @@
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Message } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
-import type { Task, Stats } from "bindings/Tools/tools/downloader/index";
+import type { SourceStat, Task, Stats } from "bindings/Tools/tools/downloader/index";
 import AddTaskModal from "./components/AddTaskModal.vue";
 import { normalizeStatus } from "@/utils/taskProgress";
 import {
@@ -234,6 +249,12 @@ const globalLimit = ref<number>(0);
 // 详情面板的本地编辑态：随选中任务切换复位
 const editConn = ref(4);
 const editLimit = ref<number>(0);
+const editProxy = ref<string>("");
+// 共享代理池（来自 config.Download.ProxyPool）：详情面板代理下拉候选，本页只读
+const proxyPool = ref<{ id: string; name: string; url: string }[]>([]);
+// 镜像测速（展速）：点「测速选源」触发，结果按延迟/吞吐展示供手动选，不自动切
+const probing = ref(false);
+const probeRows = ref<SourceStat[]>([]);
 
 /** 顶部聚合：计数与合计下行速度都从当前任务列表即时算，省一次 RPC */
 const agg = computed(() => {
@@ -260,6 +281,8 @@ const mirrorOptions = computed(() => {
 watch(selected, (s) => {
     editConn.value = s?.connections || 4;
     editLimit.value = 0;
+    editProxy.value = s?.proxy || "";
+    probeRows.value = [];
 }, { immediate: true });
 
 function catCount(c: string): number {
@@ -349,6 +372,31 @@ function selectSource(url: string) {
     const s = selected.value; if (!s || !url) return;
     call(() => GoTools.DownloadSelectSource(s.id, url), () => { s.source = url; });
 }
+function applyProxy(v: any) {
+    const s = selected.value; if (!s) return;
+    call(() => GoTools.DownloadSetProxy(s.id, String(v || "")), () => { s.proxy = String(v || ""); });
+}
+/** 并发测当前任务的候选镜像（url + mirrors 去重），结果回填 probeRows 供手动选源 */
+async function probeSources() {
+    const s = selected.value; if (!s) return;
+    probing.value = true;
+    try {
+        const rows = await GoTools?.DownloadProbeSources(mirrorOptions.value);
+        probeRows.value = Array.isArray(rows) ? rows : [];
+        if (!probeRows.value.length) Message.warning("测速无结果");
+    } catch (e: any) {
+        Message.error(errText(e));
+    } finally {
+        probing.value = false;
+    }
+}
+/** 载入共享代理池（只读），供详情面板代理下拉选 */
+async function loadProxyPool() {
+    try {
+        const st = await GoTools?.DownloadSettings();
+        proxyPool.value = (st?.proxyPool ?? []).map((p: any) => ({ id: String(p.id ?? ""), name: String(p.name ?? ""), url: String(p.url ?? "") }));
+    } catch { /* 静默：后端未连时不影响主流程 */ }
+}
 function applyGlobalLimit(v: any) {
     const bps = Number(v) || 0;
     call(() => GoTools.DownloadSetGlobalLimit(bps), () => { stats.value.globalLimit = bps; });
@@ -363,6 +411,7 @@ onMounted(() => {
         });
     } catch { /* 非 Wails 环境忽略 */ }
     load();
+    loadProxyPool();
 });
 onUnmounted(() => { if (offProgress) offProgress(); });
 </script>
@@ -748,6 +797,61 @@ onUnmounted(() => { if (offProgress) offProgress(); });
     font-size: 11px;
     color: var(--color-text-4);
     white-space: nowrap;
+}
+
+/* 镜像测速（展速）结果行：host + 延迟 + 吞吐，点行选定实际源 */
+.dl-probe {
+    border-top: 1px dashed var(--color-border-2);
+    padding-top: 8px;
+    margin-top: 8px;
+}
+
+.dl-probe-title {
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+    margin-bottom: 6px;
+}
+
+.dl-probe-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 8px;
+    border-radius: var(--base-radius-default);
+    cursor: pointer;
+    font-size: var(--base-size-small);
+}
+
+.dl-probe-row:hover {
+    background: var(--color-fill-2);
+}
+
+.dl-probe-row.on {
+    background: rgb(var(--primary-1));
+    color: rgb(var(--primary-6));
+}
+
+.dl-probe-row.off {
+    color: var(--color-text-4);
+    cursor: default;
+}
+
+.dl-probe-host {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dl-probe-lat {
+    width: 76px;
+    flex: none;
+}
+
+.dl-probe-speed {
+    width: 88px;
+    flex: none;
+    text-align: right;
 }
 
 .dl-parts {

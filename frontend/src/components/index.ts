@@ -18,6 +18,8 @@ import CommonFileIcon from '@/components/common/file-icon/index.vue'
 import CommonTaskProgress from '@/components/common/task-progress/index.vue'
 import BodyViewer from '@/components/business/body-viewer/index.vue'
 import DockerImages from '@/components/business/docker-images/index.vue'
+import AnnotateCanvas from '@/components/business/annotate-canvas/AnnotateCanvas.vue'
+import SshGenModal from '@/components/business/ssh-gen/SshGenModal.vue'
 
 /**
  * 组件目录约定：
@@ -25,7 +27,8 @@ import DockerImages from '@/components/business/docker-images/index.vue'
  *                公共自绘标题栏（WinTitleBar）、内容区容器（LayoutBody）
  *  - common/     全局通用组件（纯 UI、跨 webview 复用，无后端依赖）：统一注册并加 `common-` 前缀，
  *                如 common-pager 分页、common-theme-switch 主题开关、select-icon-modal 图标选择弹层
- *  - business/   webview 业务组件（特定工具场景）：如 body-viewer 报文查看器（sniffer 专用）
+ *  - business/   webview 业务组件（特定工具场景）：如 body-viewer 报文查看器（sniffer 专用）、
+ *                annotate-canvas 标注编辑画布（截图页 / 文件查看器图片编辑共用）
  */
 export const ComponentsPlugin: Plugin = {
     install(app: App) {
@@ -70,6 +73,12 @@ export const ComponentsPlugin: Plugin = {
         app.component('body-viewer', BodyViewer);
         // docker-images：Docker 镜像当版本管（php/mysql/nginx/redis/npm 版本管理弹窗里用）：镜像列表、快速拉取、建实例、删除，另带本工具容器页签
         app.component('docker-images', DockerImages);
+        // annotate-canvas：标注编辑画布（矩形/椭圆/箭头/画笔/马赛克/文字 + 撤销/旋转/裁剪/缩放），
+        //  截图页预览区与文件查看器的图片编辑模式共用；宿主用 load()/exportDataURL() 收发图片
+        app.component('annotate-canvas', AnnotateCanvas);
+        // ssh-gen-modal：SSH 生成助手（生成密钥对 / 连接片段 / 部署公钥），FTP 连接表单与终端主机表单共用；
+        //  宿主经 context 传主机上下文，生成密钥后 emit useKey 回填 keyPath
+        app.component('ssh-gen-modal', SshGenModal);
     },
 };
-export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, CommonTaskProgress, selectIconModal, BodyViewer, DockerImages };
+export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, CommonTaskProgress, selectIconModal, BodyViewer, DockerImages, AnnotateCanvas, SshGenModal };

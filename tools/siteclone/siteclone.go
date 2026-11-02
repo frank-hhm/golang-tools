@@ -36,6 +36,7 @@ type Options struct {
 	Concurrency int    `json:"concurrency"` // 资源并发下载数；<=0 走默认
 	TimeoutSec  int    `json:"timeoutSec"`  // 单请求超时秒；<=0 走默认
 	UserAgent   string `json:"userAgent"`   // 空走默认 UA
+	Proxy       string `json:"proxy"`       // http/https 代理 URL（http://host:port）；空=直连。共享代理池选一条喂进来
 	OutDir      string `json:"outDir"`      // 输出根目录（绝对路径）
 	Rewrite     bool   `json:"rewrite"`     // 是否把链接改写成本地相对路径（离线可打开）
 }
@@ -132,7 +133,7 @@ func Run(ctx context.Context, opts Options, jobID string, emit func(Progress)) (
 		sem:     make(chan struct{}, opts.Concurrency),
 		local:   map[string]string{},
 		pending: map[string]bool{},
-		client:  newClient(opts.UserAgent, time.Duration(opts.TimeoutSec)*time.Second),
+		client:  newClient(opts.UserAgent, time.Duration(opts.TimeoutSec)*time.Second, opts.Proxy),
 	}
 	c.emitProg(Progress{Stage: "start", URL: opts.URL, Msg: "开始抓取"})
 	c.bfs(entry.String())
@@ -192,10 +193,18 @@ func normalize(o *Options) error {
 	return nil
 }
 
-// newClient 带 UA、超时与跳数上限的 HTTP 客户端。
-func newClient(ua string, timeout time.Duration) *http.Client {
+// newClient 带 UA、超时、跳数上限与可选代理的 HTTP 客户端。
+// proxy 为空或解析不出 scheme 时走直连（Transport 不设 Proxy），与下载引擎 newClient 同形。
+func newClient(ua string, timeout time.Duration, proxy string) *http.Client {
+	tr := &http.Transport{}
+	if proxy != "" {
+		if pu, err := url.Parse(proxy); err == nil && pu.Scheme != "" {
+			tr.Proxy = http.ProxyURL(pu)
+		}
+	}
 	return &http.Client{
-		Timeout: timeout,
+		Transport: tr,
+		Timeout:   timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirect {
 				return http.ErrUseLastResponse

@@ -75,6 +75,15 @@
               <a-input v-model="form.userAgent" placeholder="留空用默认" allow-clear />
             </a-form-item>
           </a-col>
+
+          <a-col :span="24">
+            <a-form-item field="proxy" label="代理"
+              :help="form.proxy ? '本次抓取经该代理访问目站' : '留空直连（可从共享代理池选一条）'">
+              <a-select v-model="form.proxy" size="small" allow-clear placeholder="直连（不走代理）" allow-search>
+                <a-option v-for="p in proxyPool" :key="p.id" :value="p.url">{{ p.name || p.url }}</a-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
         </a-row>
 
         <div class="sc-actions">
@@ -88,15 +97,12 @@
         </div>
       </a-form>
 
-      <!-- 进度 -->
+      <!-- 进度（复用全局任务进度行组件，与下载页/任务抽屉同一套口径） -->
       <div class="sc-progress">
-        <a-progress :percent="percent" :status="progressStatus" size="small" />
-        <div class="sc-stats">
-          <span>状态：<b>{{ statusText }}</b></span>
-          <span v-if="form.mode === 'site'">页数：{{ stats.pagesDone }} / {{ stats.pagesTotal || '?' }}</span>
-          <span>文件：{{ stats.files }}</span>
-          <span>大小：{{ fmtBytes(stats.bytes) }}</span>
-        </div>
+        <common-task-progress variant="bare" size="small" :status="tpStatus" :name="tpName"
+          :percent="percent * 100" :indeterminate="tpIndeterminate" :meta="tpMeta" :divided="false">
+          <template #actions><!-- 取消/打开目录由上方表单按钮承担 --></template>
+        </common-task-progress>
       </div>
 
       <!-- 日志 -->
@@ -131,6 +137,7 @@ interface ScForm {
   concurrency: number;
   timeoutSec: number;
   userAgent: string;
+  proxy: string;
   outDir: string;
   rewrite: boolean;
 }
@@ -143,9 +150,13 @@ const form = reactive<ScForm>({
   concurrency: 6,
   timeoutSec: 20,
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  proxy: '',
   outDir: '',
   rewrite: true,
 });
+
+// 共享代理池（config.Download.ProxyPool）：只读选一条喂进本次抓取，与下载页/浏览器同源
+const proxyPool = ref<{ id: string; name: string; url: string }[]>([]);
 
 const running = ref(false);
 const currentJob = ref('');
@@ -165,14 +176,29 @@ const percent = computed(() => {
   if (stats.pagesTotal > 0) return Math.min(0.99, stats.pagesDone / stats.pagesTotal);
   return running.value ? 0.05 : 0;
 });
-const progressStatus = computed<'normal' | 'success' | 'warning' | 'danger'>(() => {
-  if (result.value) return 'success';
-  return 'normal';
-});
 const statusText = computed(() => {
   if (running.value) return '抓取中…';
   if (result.value) return '已完成';
   return '空闲';
+});
+
+// 终态阶段（done/canceled/error）回填给统一进度行判定颜色/动作；start 时清空。
+const finalStage = ref('');
+const tpStatus = computed<'idle' | 'running' | 'done' | 'error' | 'canceled'>(() => {
+  if (result.value) return 'done';
+  if (finalStage.value === 'error') return 'error';
+  if (finalStage.value === 'canceled') return 'canceled';
+  if (running.value) return 'running';
+  return 'idle';
+});
+// 整站模式总页数未知时画不定进度，不编 5%。
+const tpIndeterminate = computed(() => running.value && stats.pagesTotal <= 0);
+const tpName = computed(() => '仿站：' + (form.url || '未填 URL'));
+const tpMeta = computed(() => {
+  const parts: string[] = [statusText.value];
+  if (form.mode === 'site') parts.push(`页数 ${stats.pagesDone}/${stats.pagesTotal || '?'}`);
+  parts.push(`文件 ${stats.files}`, `大小 ${fmtBytes(stats.bytes)}`);
+  return parts.join(' · ');
 });
 
 function stageText(s: string): string {
@@ -204,12 +230,14 @@ function onProgress(raw: any) {
 
   if (p.stage === 'done' || p.stage === 'canceled') {
     running.value = false;
+    finalStage.value = p.stage;
     result.value = p.root ? { root: p.root } : result.value;
     pushLog({ t: now(), stage: p.stage, url: '', msg: p.root ? `输出目录：${p.root}` : (p.msg || ''), status: 'ok' });
     return;
   }
   if (p.stage === 'error' && p.status === 'fail') {
     running.value = false;
+    finalStage.value = 'error';
     Message.error({ content: p.msg || '抓取失败', position: 'top', duration: 4000 });
   }
   pushLog({ t: now(), stage: p.stage, url: p.url || '', msg: p.msg || '', status: p.status || '' });
@@ -233,6 +261,7 @@ async function start() {
   if (!form.outDir.trim()) { Message.warning({ content: '请先选择输出目录', position: 'top' }); return; }
   running.value = true;
   result.value = null;
+  finalStage.value = '';
   logs.value = [];
   Object.assign(stats, { pagesDone: 0, pagesTotal: 0, files: 0, bytes: 0 });
   try {
@@ -244,6 +273,7 @@ async function start() {
       concurrency: form.concurrency,
       timeoutSec: form.timeoutSec,
       userAgent: form.userAgent,
+      proxy: form.proxy,
       outDir: form.outDir.trim(),
       rewrite: form.rewrite,
     });
@@ -273,7 +303,18 @@ async function openDir() {
 
 onMounted(() => {
   offEvent = Events.On('siteclone:progress', onProgress);
+  loadProxyPool();
 });
+
+/** 载入共享代理池（只读），供代理下拉选；后端未连时静默不阻断表单 */
+async function loadProxyPool() {
+  try {
+    const st = await GoTools?.DownloadSettings();
+    proxyPool.value = (st?.proxyPool ?? []).map((p: any) => ({ id: String(p.id ?? ''), name: String(p.name ?? ''), url: String(p.url ?? '') }));
+  } catch {
+    /* 静默 */
+  }
+}
 onBeforeUnmount(() => {
   offEvent?.();
 });

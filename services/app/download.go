@@ -1,6 +1,11 @@
 package app
 
 import (
+	"fmt"
+	"strings"
+
+	"Tools/services/applog"
+	"Tools/services/config"
 	"Tools/tools/downloader"
 )
 
@@ -88,12 +93,87 @@ func (a *App) DownloadGlobalStats() downloader.Stats {
 }
 
 // DownloadDefaultDir 当前生效的全局默认下载目录（新建任务 saveDir 留空即落这里）。
-// 取全局目录配置里的「下载目录」，未配置则 <应用目录>/downloads。
+// 优先取下载设置里的「下载目录」，未配置则 appdirs.Downloads()。
 func (a *App) DownloadDefaultDir() string {
-	return downloader.DefaultSaveDir()
+	return downloader.Instance().DefaultSaveDir()
 }
 
 // DownloadSetGlobalLimit 改全局限速（bps，0=解除），即时作用于所有在跑任务。
 func (a *App) DownloadSetGlobalLimit(bps int64) {
 	downloader.Instance().SetGlobalLimit(bps)
+}
+
+// DownloadSettings 返回下载设置段（老配置无此段时返回默认值）。
+// 供设置页回填：护栏参数 + 全局目录 + 共享代理池 / 镜像池。
+func (a *App) DownloadSettings() config.DownloadConfig {
+	return config.DownloadCfg()
+}
+
+// SaveDownloadSettings 保存下载设置：总开关 + 全局目录 + 并发/默认连接/限速 +
+// 代理池/镜像池。落盘后立即回灌引擎单例（ApplyConfig），改目录/并发无需重启即生效。
+// 共享代理池经 Browser.ProxyPoolCandidates 暴露给浏览器 custom 选单（仅 Windows 生效）。
+func (a *App) SaveDownloadSettings(in config.DownloadConfig) error {
+	_, err := config.Update(func(cfg *config.AppConfig) {
+		if cfg.Download == nil {
+			cfg.Download = &config.DownloadConfig{}
+		}
+		cfg.Download.Enabled = in.Enabled
+		cfg.Download.SaveDir = strings.TrimSpace(in.SaveDir)
+		cfg.Download.MaxRunningTasks = in.MaxRunningTasks
+		cfg.Download.MaxTotalParts = in.MaxTotalParts
+		cfg.Download.DefaultConnections = in.DefaultConnections
+		cfg.Download.GlobalSpeedLimitBps = in.GlobalSpeedLimitBps
+		cfg.Download.ProxyPool = normalizeProxyPool(in.ProxyPool)
+		cfg.Download.Mirrors = normalizeMirrorPool(in.Mirrors)
+	})
+	if err != nil {
+		applog.Errorf("download", "保存下载设置失败: %v", err)
+		return err
+	}
+	// 落盘成功后配置已刷新，回灌引擎：新目录/并发/限速即时对单例生效。
+	ApplyDownloadConfig()
+	applog.Infof("download", "已保存下载设置: enabled=%v", in.Enabled)
+	return nil
+}
+
+// ApplyDownloadConfig 把当前 config.Download 回灌下载引擎单例（全局目录 + 护栏）。
+// main / main_server 在接线 emitter 后调一次完成启动期初始化，SaveDownloadSettings 保存后再调。
+func ApplyDownloadConfig() {
+	d := config.DownloadCfg()
+	downloader.ApplyConfig(d.SaveDir, d.MaxRunningTasks, d.MaxTotalParts, d.DefaultConnections, d.GlobalSpeedLimitBps)
+}
+
+// normalizeProxyPool 去掉代理池里 URL 为空的条目并就地 TrimSpace，ID 缺失时按序号补。
+// 前端可能传回带空行的草稿，落盘前清一遍，免得空条目喂进选单/测速。
+func normalizeProxyPool(list []config.ProxyItem) []config.ProxyItem {
+	out := make([]config.ProxyItem, 0, len(list))
+	for i, p := range list {
+		p.URL = strings.TrimSpace(p.URL)
+		if p.URL == "" {
+			continue
+		}
+		p.Name = strings.TrimSpace(p.Name)
+		if p.ID == "" {
+			p.ID = fmt.Sprintf("proxy-%d", i+1)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// normalizeMirrorPool 同 normalizeProxyPool，去掉空 URL、补 ID。
+func normalizeMirrorPool(list []config.MirrorItem) []config.MirrorItem {
+	out := make([]config.MirrorItem, 0, len(list))
+	for i, m := range list {
+		m.URL = strings.TrimSpace(m.URL)
+		if m.URL == "" {
+			continue
+		}
+		m.Name = strings.TrimSpace(m.Name)
+		if m.ID == "" {
+			m.ID = fmt.Sprintf("mirror-%d", i+1)
+		}
+		out = append(out, m)
+	}
+	return out
 }

@@ -40,17 +40,22 @@ import (
 	"Tools/services/panel"
 	"Tools/services/tasks"
 	"Tools/tools/archive"
+	"Tools/tools/backup"
+	"Tools/tools/clouddrive"
 	"Tools/tools/docker"
+	"Tools/tools/docspace"
 	"Tools/tools/downloader"
 	"Tools/tools/fileview"
 	"Tools/tools/ftp"
 	"Tools/tools/guard"
+	"Tools/tools/lanshare"
 	"Tools/tools/mysql"
 	"Tools/tools/nginx"
 	"Tools/tools/npm"
 	"Tools/tools/php"
 	"Tools/tools/redis"
 	"Tools/tools/sniffer"
+	"Tools/tools/sshgen"
 	"Tools/tools/term"
 	"Tools/tools/usbserial"
 
@@ -105,6 +110,14 @@ func init() {
 	application.RegisterEvent[archive.Progress]("archive:progress")
 	// 下载管理：分块/续传/队列的进度与终态（负载 downloader.Task）
 	application.RegisterEvent[downloader.Task]("download:progress")
+	// 文档中心备份：增量目录拷贝的进度与终态（负载 backup.Progress）
+	application.RegisterEvent[backup.Progress]("backup:progress")
+	// 局域网互传：上传/下载/目录打包的进度与终态（负载 lanshare.Progress）
+	application.RegisterEvent[lanshare.Progress]("lanshare:progress")
+	// 云盘管理：跨盘转存/下载/上传的进度与终态（负载 clouddrive.Progress）
+	application.RegisterEvent[clouddrive.Progress]("cloud:progress")
+	// SSH 生成助手：一键部署公钥到远端的进度与终态（负载 sshgen.Progress）
+	application.RegisterEvent[sshgen.Progress]("sshgen:progress")
 }
 
 func main() {
@@ -199,6 +212,14 @@ func main() {
 	ftp.SetEmitter(emit)
 	guard.SetEmitter(emit)
 	downloader.SetEmitter(emit)
+	// 下载引擎回灌配置：启动期把 config.Download 的全局目录/并发/限速落到单例
+	appsvc.ApplyDownloadConfig()
+	backup.SetEmitter(emit)
+	lanshare.SetEmitter(emit)
+	clouddrive.SetEmitter(emit)
+	sshgen.SetEmitter(emit)
+	// 备份自动调度：全局单协程轮询；总开关关闭时每轮直接返回，不碰任何计划
+	docspace.StartBackupScheduler()
 	// 面板部署里服务端同样可开：配了自动启动就在进程内拉起
 	ftp.StartAutoServer()
 	// 守护工具：按“启用守护”自动拉起登记的程序

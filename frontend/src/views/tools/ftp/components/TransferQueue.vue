@@ -20,25 +20,28 @@
     <div v-show="!collapsed" class="tq-body">
       <div v-if="!transfers.length" class="tq-empty">暂无传输任务</div>
       <div v-for="t in transfers" :key="t.id" class="tq-row">
-        <div class="tq-line">
-          <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
-          <a-tooltip :content="t.dir === 'up' ? `${t.local} → ${t.remote}` : `${t.remote} → ${t.local}`">
-            <span class="tq-name">{{ t.name }}</span>
-          </a-tooltip>
-          <a-tooltip v-if="t.err" :content="t.err">
-            <span class="tq-err"><icon-exclamation-circle-fill /> {{ t.err }}</span>
-          </a-tooltip>
-          <span class="tq-flex" />
-          <span class="tq-num">{{ percentText(t) }}</span>
-          <span class="tq-state" :class="'s-' + t.state">{{ t.state === 'running' ? fmtSpeed(t.speed) : stateText(t.state) }}</span>
-          <a-space :size="2" class="tq-actions">
+        <common-task-progress variant="bare" size="small" :status="tpStatus(t)" :percent="percent(t)"
+          :show-text="false" :divided="false" :speed="t.state === 'running' ? fmtSpeed(t.speed) : ''">
+          <template #name>
+            <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
+            <a-tooltip :content="t.dir === 'up' ? `${t.local} → ${t.remote}` : `${t.remote} → ${t.local}`">
+              <span class="tq-name">{{ t.name }}</span>
+            </a-tooltip>
+            <a-tooltip v-if="t.err" :content="t.err">
+              <span class="tq-err"><icon-exclamation-circle-fill /> {{ t.err }}</span>
+            </a-tooltip>
+          </template>
+          <template #extra>
+            <span class="tq-num">{{ percentText(t) }}</span>
+            <span class="tq-state" :class="'s-' + t.state">{{ stateText(t.state) }}</span>
+          </template>
+          <template #actions>
             <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" type="text" status="danger"
               @click="emit('cancel', t.id)">取消</a-button>
             <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" type="text"
               @click="emit('retry', t.id)">重试</a-button>
-          </a-space>
-        </div>
-        <a-progress class="tq-bar" :percent="percent(t) / 100" size="small" :show-text="false" :status="progressStatus(t)" />
+          </template>
+        </common-task-progress>
       </div>
     </div>
   </div>
@@ -74,10 +77,15 @@ function percentText(t: FtpTransfer): string {
   return '—';
 }
 
-function progressStatus(t: FtpTransfer): 'normal' | 'success' | 'danger' {
-  if (t.state === 'done') return 'success';
-  if (t.state === 'failed') return 'danger';
-  return 'normal';
+// ftp 传输态 → 统一进度行 status（queued→idle、running→running、done→done、failed→error、canceled→canceled）。
+function tpStatus(t: FtpTransfer): 'idle' | 'running' | 'done' | 'error' | 'canceled' {
+  switch (t.state) {
+    case 'running': return 'running';
+    case 'done': return 'done';
+    case 'failed': return 'error';
+    case 'canceled': return 'canceled';
+    default: return 'idle';
+  }
 }
 
 function stateText(state: FtpTransfer['state']): string {

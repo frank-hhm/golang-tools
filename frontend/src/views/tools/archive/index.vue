@@ -108,15 +108,12 @@
         </div>
       </a-form>
 
-      <!-- 进度 -->
+      <!-- 进度（复用全局任务进度行组件，与下载页/任务抽屉同一套口径） -->
       <div class="ar-progress">
-        <a-progress :percent="percent" :status="progressStatus" size="small" />
-        <div class="ar-stats">
-          <span>状态：<b>{{ statusText }}</b></span>
-          <span>已处理：{{ stats.files }} 项</span>
-          <span>{{ fmtBytes(stats.bytes) }}<template v-if="stats.total"> / {{ fmtBytes(stats.total) }}</template></span>
-          <span v-if="stats.skipped">跳过 {{ stats.skipped }} 项（读不动或符号链接）</span>
-        </div>
+        <common-task-progress variant="bare" size="small" :status="tpStatus" :name="tpName"
+          :percent="percent * 100" :indeterminate="tpIndeterminate" :meta="tpMeta" :divided="false">
+          <template #actions><!-- 取消/打开由上方表单按钮承担，这里只作进度展示 --></template>
+        </common-task-progress>
       </div>
 
       <!-- 日志 -->
@@ -196,14 +193,29 @@ const percent = computed(() => {
   if (form.op === 'extract') return running.value ? 0.5 : 0;
   return Math.min(0.99, (stats.percent || 0) / 100);
 });
-const progressStatus = computed<'normal' | 'success' | 'warning' | 'danger'>(() => {
-  if (doneOut.value) return 'success';
-  return 'normal';
-});
 const statusText = computed(() => {
   if (running.value) return stageText(stats.stage) || '进行中…';
   if (doneOut.value) return '已完成';
   return '空闲';
+});
+
+// 统一进度行（common-task-progress）的派生态：把本页 running/doneOut/stage 映射成组件语义。
+const tpStatus = computed<'idle' | 'running' | 'done' | 'error' | 'canceled'>(() => {
+  if (doneOut.value) return 'done';
+  if (stats.stage === 'error') return 'error';
+  if (stats.stage === 'canceled') return 'canceled';
+  if (running.value) return 'running';
+  return 'idle';
+});
+// 解压拿不到真百分比（Go 侧不猜），运行中画不定进度亮带而非假 50%。
+const tpIndeterminate = computed(() => running.value && form.op === 'extract');
+const tpName = computed(() => (form.op === 'compress' ? '压缩' : '解压') + (paths.value.length ? `：${baseName(paths.value[0])}` : ''));
+const tpMeta = computed(() => {
+  const parts: string[] = [statusText.value];
+  if (stats.files) parts.push(`已处理 ${stats.files} 项`);
+  parts.push(`${fmtBytes(stats.bytes)}${stats.total ? ' / ' + fmtBytes(stats.total) : ''}`);
+  if (stats.skipped) parts.push(`跳过 ${stats.skipped} 项（读不动或符号链接）`);
+  return parts.join(' · ');
 });
 
 function stageText(s: string): string {

@@ -7,11 +7,16 @@ export type {
     BallConfig,
     BrowserConfig,
     BrowserSpace,
+    CloudConfig,
+    DocSpaceConfig,
+    DownloadConfig,
     GeneralConfig,
     LauncherConfig,
     LauncherScopes,
     LogConfig,
+    MirrorItem,
     PathsConfig,
+    ProxyItem,
     ToolConfig,
     ToolSettings
 } from "./models.js";

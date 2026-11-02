@@ -427,6 +427,139 @@
                             </a-form-item>
                         </a-form>
                     </a-card>
+
+                    <!-- ===================== 文档中心 ===================== -->
+                    <a-card v-show="activeTab === 'docspace'" class="pane-card card-head-tool">
+                        <template #title>文档中心</template>
+                        <a-form :model="{}" :style="{ maxWidth: '720px' }" layout="vertical">
+                            <a-alert type="normal" style="margin-bottom: 16px">
+                                P1 已接入：分类树与标签、版本快照/还原、回收站（仅本机 local 源移实体）。加密/备份/分享/远程在后续期接入。
+                            </a-alert>
+                            <a-form-item label="启用文档中心">
+                                <a-switch v-model="docspaceForm.enabled" />
+                                <span class="hint" style="margin-left: 10px">关闭后文件查看器左栏只保留“本机浏览”，不再展示“文档中心”态。</span>
+                            </a-form-item>
+                            <a-form-item label="每条目版本保留数">
+                                <a-input-number v-model="docspaceForm.versionKeep" :min="0" :max="1000" :step="1" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">存新快照后自动裁掉最旧的超额版本；0 表示不裁剪。</span>
+                            </a-form-item>
+                            <a-form-item label="回收站保留天数">
+                                <a-input-number v-model="docspaceForm.trashKeepDays" :min="0" :max="3650" :step="1" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">移入超过该天数的实体在打开回收站时自动彻底清理；0 表示不自动清理。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <a-space>
+                                    <a-button type="primary" :loading="docspaceSaving" @click="saveDocspace">保存设置</a-button>
+                                    <a-button @click="loadDocspace">重载</a-button>
+                                </a-space>
+                            </a-form-item>
+                            <a-divider style="margin: 4px 0 16px" />
+                            <a-form-item label="库目录（元数据与实体快照落点）">
+                                <a-input :model-value="docspaceRoot" read-only />
+                            </a-form-item>
+                            <a-form-item label="概览">
+                                <a-space wrap>
+                                    <a-tag>分类 {{ docspaceCounts.categories }}</a-tag>
+                                    <a-tag>条目 {{ docspaceCounts.items }}</a-tag>
+                                    <a-tag>回收站 {{ docspaceCounts.trash }}</a-tag>
+                                    <a-tag>加密 {{ docspaceCounts.secure }}</a-tag>
+                                    <a-tag>分享 {{ docspaceCounts.shares }}</a-tag>
+                                    <a-tag>备份计划 {{ docspaceCounts.backups }}</a-tag>
+                                </a-space>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
+
+                    <!-- ===================== 云盘管理 ===================== -->
+                    <a-card v-show="activeTab === 'cloud'" class="pane-card card-head-tool">
+                        <template #title>云盘管理</template>
+                        <a-form :model="{}" :style="{ maxWidth: '720px' }" layout="vertical">
+                            <a-alert type="warning" style="margin-bottom: 16px">
+                                本期（PR1）仅支持 <strong>Google Drive</strong>（官方 OAuth2）；阿里/百度与跨盘转存属后续。
+                                授权令牌经 tools/secret 加密落盘（Windows DPAPI / Linux 0600 文件），回前端的账号列表不含任何密钥。
+                                Google 的 client_id/secret 请自备并在下方填写，不内置。
+                            </a-alert>
+                            <a-form-item label="启用云盘管理">
+                                <a-switch v-model="cloudForm.enabled" />
+                                <span class="hint" style="margin-left: 10px">关闭时云盘页不发起任何网络请求、不构造 provider。</span>
+                            </a-form-item>
+                            <a-form-item label="Google 客户端 ID">
+                                <a-input v-model="cloudForm.clientId" placeholder="xxxx.apps.googleusercontent.com" allow-clear />
+                            </a-form-item>
+                            <a-form-item label="Google 客户端密钥">
+                                <a-input-password v-model="cloudForm.clientSecret" placeholder="留空表示保持不变" allow-clear />
+                                <span class="hint">为桌面应用性质，非真正的机密；留空则不覆盖已保存的值。</span>
+                            </a-form-item>
+                            <a-form-item label="OAuth 回调地址">
+                                <a-input v-model="cloudForm.redirect" placeholder="http://localhost:8458/callback" allow-clear />
+                                <span class="hint">须与 Google 控制台登记的“已授权的重定向 URI”逐字一致。</span>
+                            </a-form-item>
+                            <a-form-item label="下载落地目录">
+                                <a-input v-model="cloudForm.saveDir" placeholder="留空走数据目录下 clouddrive/downloads" allow-clear />
+                            </a-form-item>
+                            <a-form-item label="转存并发度">
+                                <a-input-number v-model="cloudForm.concurrency" :min="1" :max="16" :step="1" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">本期为单连接，值留给后续跨盘转存。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <a-space>
+                                    <a-button type="primary" :loading="cloudSaving" @click="saveCloud">保存设置</a-button>
+                                    <a-button @click="loadCloud">重载</a-button>
+                                </a-space>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
+
+                    <!-- ===================== 下载管理 ===================== -->
+                    <a-card v-show="activeTab === 'download'" class="pane-card card-head-tool">
+                        <template #title>下载管理</template>
+                        <a-form :model="{}" :style="{ maxWidth: '760px' }" layout="vertical">
+                            <a-alert type="info" style="margin-bottom: 16px">
+                                分块/续传/限速/重试引擎全跨平台（Linux 面板下载的是服务器本机目录）。
+                                这里的<strong>共享代理池</strong>供下载选源、仿站抓代理与浏览器 custom 代理（仅桌面）复用，减少重复录入。
+                            </a-alert>
+                            <a-form-item label="启用下载管理">
+                                <a-switch v-model="downloadForm.enabled" />
+                                <span class="hint" style="margin-left: 10px">关闭时前端隐藏「下载管理」入口。</span>
+                            </a-form-item>
+                            <a-form-item label="默认下载目录">
+                                <a-input v-model="downloadForm.saveDir" placeholder="留空走系统下载目录" allow-clear />
+                                <span class="hint">新建任务未指定目录时落这里，保存后对新建任务即时生效。</span>
+                            </a-form-item>
+                            <a-form-item label="同时下载任务数">
+                                <a-input-number v-model="downloadForm.maxRunningTasks" :min="1" :max="32" :step="1" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">超出的任务排队等额度。</span>
+                            </a-form-item>
+                            <a-form-item label="全局并发块数上限">
+                                <a-input-number v-model="downloadForm.maxTotalParts" :min="1" :max="256" :step="1" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">所有在跑任务合计的分块并发闸门。</span>
+                            </a-form-item>
+                            <a-form-item label="单任务默认分块数">
+                                <a-input-number v-model="downloadForm.defaultConnections" :min="1" :max="32" :step="1" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">新建任务未指定连接数时用此值。</span>
+                            </a-form-item>
+                            <a-form-item label="全局下行限速（MB/s）">
+                                <a-input-number v-model="downloadForm.speedLimitMB" :min="0" :step="0.5" style="width: 200px" />
+                                <span class="hint" style="margin-left: 10px">0 = 不限速。即时作用于所有在跑任务。</span>
+                            </a-form-item>
+                            <a-form-item label="共享代理池">
+                                <pool-editor :rows="proxyPool" name-placeholder="名称" url-placeholder="http://127.0.0.1:7890"
+                                    add-label="添加代理" />
+                                <span class="hint">http/https 代理（socks5 本期不保证）。浏览器 custom 代理可从这里下拉选。</span>
+                            </a-form-item>
+                            <a-form-item label="常用镜像模板">
+                                <pool-editor :rows="mirrorPool" name-placeholder="名称" url-placeholder="https://mirror.example.com/file.zip"
+                                    add-label="添加镜像" />
+                                <span class="hint">新建下载任务时的多源候选，手动选 + 测速，不自动切换。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <a-space>
+                                    <a-button type="primary" :loading="downloadSaving" @click="saveDownload">保存设置</a-button>
+                                    <a-button @click="loadDownload">重载</a-button>
+                                </a-space>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
                     <div v-show="activeTab === 'tools'" class="tools-pane">
                         <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }">
                             <template #title>功能列表</template>
@@ -754,6 +887,7 @@ import iconData from "@/components/common/select-icon-modal/icon.json";
 import { applyTheme, type ThemeMode } from "@/utils/theme";
 import { useCaps } from "@/utils/caps";
 import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
+import PoolEditor, { type PoolRow } from "./PoolEditor.vue";
 import {
     arcoIconComp as iconComp,
     DEFAULT_TOOL_ICONS,
@@ -799,7 +933,6 @@ const BUILTINS: BuiltinDef[] = [
     builtin("strrandom", "随机字符串生成", { path: "/tools/strrandom" }),
     builtin("encdec", "文字加密解密", { path: "/tools/encdec" }),
     builtin("hexconvert", "进制转换", { path: "/tools/hexconvert" }),
-    builtin("imageBase64", "图片base64", { path: "/tools/imageBase64" }),
     builtin("sniffer", "抓包工具", { path: "/tools/sniffer", single: true, fullscreen: true, quick: true }),
     builtin("websocket", "WebSocket调试", { path: "/tools/websocket", fullscreen: true }),
     builtin("usbserial", "USB调试", { path: "/tools/usbserial" }),
@@ -865,6 +998,9 @@ const SETTING_TABS = computed(() =>
         { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
         { key: "launcher", label: "快捷搜索", icon: "IconSearch", desktopOnly: true },
         { key: "archive", label: "文件压缩", icon: "IconArchive", desktopOnly: true },
+        { key: "docspace", label: "文档中心", icon: "IconFolderOpen", desktopOnly: false },
+        { key: "cloud", label: "云盘管理", icon: "IconCloud", desktopOnly: false },
+        { key: "download", label: "下载管理", icon: "IconSave", desktopOnly: false },
         { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
         { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
         { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
@@ -874,6 +1010,133 @@ const SETTING_TABS = computed(() =>
 );
 const activeTab = ref("general");
 const activeTabMeta = computed(() => SETTING_TABS.value.find((t) => t.key === activeTab.value) || SETTING_TABS.value[0]);
+
+/* ===================== 文档中心（设置 + 概览） =====================
+ * 库目录与计数只读展示；总开关 / 版本保留数 / 回收站保留天数可编辑保存
+ * （跨平台：配置段与绑定均无 build tag，Linux 面板同样可读写）。 */
+const docspaceRoot = ref("");
+const docspaceCounts = ref({ categories: 0, items: 0, trash: 0, secure: 0, shares: 0, backups: 0 });
+const docspaceSaving = ref(false);
+const docspaceForm = reactive({ enabled: true, versionKeep: 20, trashKeepDays: 30 });
+async function loadDocspace() {
+    try {
+        const [r, c, s] = await Promise.all([GoTools?.DocSpaceRoot(), GoTools?.DocSpaceCounts(), GoTools?.DocSpaceSettings()]);
+        docspaceRoot.value = String(r ?? "");
+        if (c) docspaceCounts.value = c as typeof docspaceCounts.value;
+        if (s) {
+            docspaceForm.enabled = !!s.enabled;
+            docspaceForm.versionKeep = Number(s.versionKeep ?? 0);
+            docspaceForm.trashKeepDays = Number(s.trashKeepDays ?? 0);
+        }
+    } catch {
+        /* 静默：后端未连时不刷屏 */
+    }
+}
+async function saveDocspace() {
+    docspaceSaving.value = true;
+    try {
+        await GoTools?.SaveDocSpaceSettings(docspaceForm.enabled, docspaceForm.versionKeep, docspaceForm.trashKeepDays);
+        Message.success("文档中心设置已保存");
+        await loadDocspace();
+    } catch (e: any) {
+        Message.error(`保存失败：${String(e?.message ?? e ?? "操作失败")}`);
+    } finally {
+        docspaceSaving.value = false;
+    }
+}
+watch(activeTab, (k) => { if (k === "docspace") void loadDocspace(); });
+
+/* ===================== 云盘管理（设置） =====================
+ * Google OAuth 客户端凭证与落地目录；clientSecret 不回显（留空=保持不变）。
+ * 跨平台：配置段与绑定均无 build tag，Linux 面板同样可读写。 */
+const cloudForm = reactive({ enabled: false, clientId: "", clientSecret: "", redirect: "", saveDir: "", concurrency: 3 });
+const cloudSaving = ref(false);
+async function loadCloud() {
+    try {
+        const s = await GoTools?.CloudSettings();
+        if (s) {
+            cloudForm.enabled = !!s.enabled;
+            cloudForm.clientId = String(s.googleClientId ?? "");
+            cloudForm.redirect = String(s.googleRedirectUri ?? "");
+            cloudForm.saveDir = String(s.saveDir ?? "");
+            cloudForm.concurrency = Number(s.concurrency ?? 3);
+        }
+        cloudForm.clientSecret = "";
+    } catch {
+        /* 静默：后端未连时不刷屏 */
+    }
+}
+async function saveCloud() {
+    cloudSaving.value = true;
+    try {
+        await GoTools?.SaveCloudSettings(
+            cloudForm.enabled, cloudForm.clientId, cloudForm.clientSecret,
+            cloudForm.redirect, cloudForm.saveDir, cloudForm.concurrency,
+        );
+        Message.success("云盘设置已保存");
+        cloudForm.clientSecret = "";
+        await loadCloud();
+    } catch (e: any) {
+        Message.error(`保存失败：${String(e?.message ?? e ?? "操作失败")}`);
+    } finally {
+        cloudSaving.value = false;
+    }
+}
+watch(activeTab, (k) => { if (k === "cloud") void loadCloud(); });
+
+/* ===================== 下载管理（设置） =====================
+ * 引擎护栏参数（并发/默认分块/全局限速）+ 全局下载目录 + 共享代理池/镜像池。
+ * 跨平台：配置段与绑定均无 build tag，Linux 面板同样可读写；限速按 MB/s 编辑、落 bps。
+ * 保存后端会回灌引擎单例（ApplyConfig），改目录/并发无需重启即对新建任务生效。 */
+const downloadSaving = ref(false);
+const downloadForm = reactive({
+    enabled: true,
+    saveDir: "",
+    maxRunningTasks: 3,
+    maxTotalParts: 32,
+    defaultConnections: 4,
+    speedLimitMB: 0, // 0 = 不限速
+});
+const proxyPool = ref<PoolRow[]>([]);
+const mirrorPool = ref<PoolRow[]>([]);
+async function loadDownload() {
+    try {
+        const s = await GoTools?.DownloadSettings();
+        if (!s) return;
+        downloadForm.enabled = !!s.enabled;
+        downloadForm.saveDir = String(s.saveDir ?? "");
+        downloadForm.maxRunningTasks = Number(s.maxRunningTasks ?? 3);
+        downloadForm.maxTotalParts = Number(s.maxTotalParts ?? 32);
+        downloadForm.defaultConnections = Number(s.defaultConnections ?? 4);
+        downloadForm.speedLimitMB = Number(s.globalSpeedLimitBps ?? 0) / 1048576;
+        proxyPool.value = (s.proxyPool ?? []).map((p: any) => ({ id: String(p.id ?? ""), name: String(p.name ?? ""), url: String(p.url ?? "") }));
+        mirrorPool.value = (s.mirrors ?? []).map((m: any) => ({ id: String(m.id ?? ""), name: String(m.name ?? ""), url: String(m.url ?? "") }));
+    } catch {
+        /* 静默：后端未连时不刷屏 */
+    }
+}
+async function saveDownload() {
+    downloadSaving.value = true;
+    try {
+        await GoTools?.SaveDownloadSettings({
+            enabled: downloadForm.enabled,
+            saveDir: downloadForm.saveDir,
+            maxRunningTasks: downloadForm.maxRunningTasks,
+            maxTotalParts: downloadForm.maxTotalParts,
+            defaultConnections: downloadForm.defaultConnections,
+            globalSpeedLimitBps: Math.round(downloadForm.speedLimitMB * 1048576),
+            proxyPool: proxyPool.value.filter((p) => p.url.trim() !== ""),
+            mirrors: mirrorPool.value.filter((m) => m.url.trim() !== ""),
+        } as any);
+        Message.success("下载设置已保存，目录/并发/限速已即时生效");
+        await loadDownload();
+    } catch (e: any) {
+        Message.error(`保存失败：${String(e?.message ?? e ?? "操作失败")}`);
+    } finally {
+        downloadSaving.value = false;
+    }
+}
+watch(activeTab, (k) => { if (k === "download") void loadDownload(); });
 
 /* ===================== 面板访问（仅 Web / 服务模式） =====================
  * 这些配置存在服务端的 panel.json 里，桌面版没有这个文件，也没有登录概念，
@@ -1476,6 +1739,9 @@ const DEFAULT_TOOLS: ToolRow[] = [
     { id: "archive", key: "archive", name: "文件压缩", path: "/tools/archive", event: "", icon: "archive", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 760, shortcut: "", quick: false, home: false },
     { id: "viewer", key: "viewer", name: "文件查看器", path: "/tools/viewer", event: "", icon: "file", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
     { id: "download", key: "download", name: "下载管理", path: "/tools/download", event: "", icon: "icon-xiazai", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
+    { id: "docspace", key: "docspace", name: "文档中心", path: "/tools/docspace", event: "", icon: "folder", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
+    { id: "lanshare", key: "lanshare", name: "局域网互传", path: "/tools/lanshare", event: "", icon: "icon-wangluo1", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
+    { id: "clouddrive", key: "clouddrive", name: "云盘管理", path: "/tools/clouddrive", event: "", icon: "icon-yun", single: true, fullscreen: false, disableFullscreen: false, width: 1320, height: 860, shortcut: "", quick: false, home: false },
     { id: "ftp", key: "ftp", name: "文件传输", path: "/tools/ftp", event: "", icon: "icon-ftp", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
     { id: "redis", key: "redis", name: "Redis管理", path: "/tools/redis", event: "", icon: "icon-icon-redis", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
     { id: "mysql", key: "mysql", name: "MySQL管理", path: "/tools/mysql", event: "", icon: "icon-MySQL", single: true, fullscreen: false, disableFullscreen: false, width: 1360, height: 860, shortcut: "", quick: false, home: true },
@@ -1492,7 +1758,6 @@ const DEFAULT_TOOLS: ToolRow[] = [
     { id: "encdec", key: "encdec", name: "文字加密解密", path: "/tools/encdec", event: "", icon: "lock", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
     { id: "strrandom", key: "strrandom", name: "随机字符串生成", path: "/tools/strrandom", event: "", icon: "icon-zifuchuan", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
     { id: "qrcode", key: "qrcode", name: "二维码生成", path: "/tools/qrcode", event: "", icon: "icon-erweima3", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
-    { id: "imageBase64", key: "imageBase64", name: "图片base64", path: "/tools/imageBase64", event: "", icon: "icon-img", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
     { id: "hexconvert", key: "hexconvert", name: "进制转换", path: "/tools/hexconvert", event: "", icon: "swap", single: false, fullscreen: false, disableFullscreen: false, width: 0, height: 0, shortcut: "", quick: false, home: false },
 ];
 

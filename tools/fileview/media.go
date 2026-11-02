@@ -1,12 +1,15 @@
 package fileview
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
+
+	"Tools/services/sysx"
+	"Tools/tools/docspace"
 )
 
 // MediaPath 音视频/大文件的流式端点路径。
@@ -36,45 +39,70 @@ func MediaHandler(next http.Handler) http.Handler {
 	})
 }
 
-// serveMedia 真正把文件交出去：只承认"单个已存在的文件"，目录与不存在都拒绝。
+// serveMedia 真正把文件交出去：经 docref 按源类型分发（local 走 os，sftp 走会话
+// 访问器），只承认"单个已存在的文件"，目录与不存在都拒绝。
+//
+// 兼容：旧调用只带 ?path=（无 src）时，docspace.Parse 缺省按 local 处理，行为不变；
+// 新调用 ?src=&sid=&path= 让远端文件同样走 Range 流式预览。
 func serveMedia(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	p := strings.TrimSpace(q.Get("path"))
-	if p == "" {
-		http.Error(w, "缺少 path 参数", http.StatusBadRequest)
+	ref, err := docspace.ParseQuery(q)
+	if err != nil {
+		if errors.Is(err, sysx.ErrUnsupported) {
+			http.Error(w, "该源类型暂不支持在线预览", http.StatusNotImplemented)
+			return
+		}
+		http.Error(w, "缺少或非法的 path/src 参数", http.StatusBadRequest)
 		return
 	}
-	abs, err := filepath.Abs(p)
+
+	f, err := ref.OpenRead()
 	if err != nil {
-		http.Error(w, "路径不合法", http.StatusBadRequest)
+		if os.IsNotExist(err) {
+			http.Error(w, "文件不存在", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "打开文件失败: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	st, err := os.Stat(abs)
+	defer f.Close()
+
+	st, err := f.Stat()
 	if err != nil {
-		http.Error(w, "文件不存在", http.StatusNotFound)
+		http.Error(w, "读取文件信息失败", http.StatusInternalServerError)
 		return
 	}
 	if st.IsDir() {
 		http.Error(w, "目标是目录", http.StatusBadRequest)
 		return
 	}
-	f, err := os.Open(abs)
-	if err != nil {
-		http.Error(w, "打开文件失败", http.StatusInternalServerError)
-		return
-	}
-	defer f.Close()
 
 	// dl=1 强制浏览器下载：server 构建没有原生保存对话框，靠这个头触发
+	name := strings.TrimSpace(q.Get("name"))
+	if name == "" {
+		name = baseName(ref.Path)
+	}
 	if q.Get("dl") == "1" {
-		name := strings.TrimSpace(q.Get("name"))
-		if name == "" {
-			name = filepath.Base(abs)
-		}
 		w.Header().Set("Content-Disposition", contentDisposition(name))
 	}
-	// 文件名决定 MIME（扩展名判定与 Classify 同口径），ServeContent 不会再猜
-	http.ServeContent(w, r, filepath.Base(abs), st.ModTime(), f)
+	// 文件名决定 MIME（扩展名判定与 Classify 同口径），ServeContent 不会再猜；
+	// docspace.File 内嵌 io.ReadSeeker，local 与 sftp 都能直接交 Range 流式。
+	http.ServeContent(w, r, name, st.ModTime(), f)
+}
+
+// baseName 取路径末段：同时按 / 与 \ 切，兼容 local（Windows 反斜杠）与 sftp（POSIX 正斜杠）。
+func baseName(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "download"
+	}
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		p = p[i+1:]
+	}
+	if p == "" {
+		return "download"
+	}
+	return p
 }
 
 // contentDisposition 拼下载头：filename 走 ASCII 兜底，中文原名用 RFC 5987。

@@ -85,18 +85,30 @@ var events = map[string]eventMeta{
 	"archive:progress": {"archive", "op"},
 	// 下载管理：进度与终态跨页可见（负载 downloader.Task，复用 Stage/Percent/Note/Name）
 	"download:progress": {"download", "file"},
+	// 文档中心备份：增量拷贝进度与终态（负载 backup.Progress：ID/Name/Stage/Percent/Note）
+	"backup:progress": {"backup", "op"},
+	// 局域网互传：上传/下载/目录打包的进度（负载 lanshare.Progress：Op/Name/Stage/Percent/Note）
+	"lanshare:progress": {"lanshare", "op"},
+	// 云盘管理：跨盘转存/下载/上传的进度与终态（负载 clouddrive.Progress：Op/ID/Name/Stage/Percent/Note）
+	"cloud:progress": {"clouddrive", "op"},
+	// SSH 生成助手：一键部署公钥到远端的进度与终态（负载 sshgen.Progress：Op/Name/Stage/Percent/Note）
+	"sshgen:progress": {"sshgen", "op"},
 }
 
 // toolNames 工具展示名
 var toolNames = map[string]string{
-	"docker":   "Docker",
-	"mysql":    "MySQL",
-	"php":      "PHP",
-	"redis":    "Redis",
-	"nginx":    "Nginx",
-	"npm":      "Node/npm",
-	"archive":  "文件压缩",
-	"download": "下载",
+	"docker":     "Docker",
+	"mysql":      "MySQL",
+	"php":        "PHP",
+	"redis":      "Redis",
+	"nginx":      "Nginx",
+	"npm":        "Node/npm",
+	"archive":    "文件压缩",
+	"download":   "下载",
+	"backup":     "备份",
+	"lanshare":   "局域网互传",
+	"clouddrive": "云盘",
+	"sshgen":     "SSH 生成助手",
 }
 
 // opVerbs 操作类任务的动词（kind == "op" 的 op 字段）
@@ -108,6 +120,19 @@ var opVerbs = map[string]string{
 	"prune":    "清理",
 	"compress": "压缩",
 	"extract":  "解压",
+	"backup":   "备份",
+	"upload":   "接收上传",
+	"download": "下载",
+	"pack":     "打包",
+	"deploy":   "部署公钥",
+}
+
+// cloudOpVerbs 云盘三类长任务的动词（覆盖 opVerbs：lanshare 的 upload 是
+// 「接收上传」，云盘的 upload 是用户主动「上传」，语义不同，按工具单独映射）。
+var cloudOpVerbs = map[string]string{
+	"transfer": "转存",
+	"download": "下载",
+	"upload":   "上传",
 }
 
 // payload 各工具进度负载的并集
@@ -318,9 +343,9 @@ func identify(meta eventMeta, p payload) (id, name, title string) {
 		name = "engine"
 	}
 	id = meta.tool + "|" + meta.kind + "|" + name
-	// 下载任务：台账主键直接用引擎任务 id，抽屉才能就地操作；
+	// 下载/云盘任务：台账主键直接用引擎/转存 id，抽屉才能就地操作；
 	// 同名多任务（重名避让出的 (1)(2)…）也不会被误并成一行。
-	if meta.tool == "download" && p.ID != "" {
+	if (meta.tool == "download" || meta.tool == "clouddrive") && p.ID != "" {
 		id = p.ID
 	}
 
@@ -333,6 +358,9 @@ func identify(meta eventMeta, p payload) (id, name, title string) {
 		return id, name, "Docker 镜像 " + name
 	case "op":
 		verb := opVerbs[p.Op]
+		if meta.tool == "clouddrive" {
+			verb = cloudOpVerbs[p.Op]
+		}
 		if verb == "" {
 			verb = "镜像操作"
 		}

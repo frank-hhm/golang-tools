@@ -30,10 +30,16 @@ import * as archive$0 from "../../tools/archive/models.js";
 import * as browser$0 from "../../tools/browser/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as clouddrive$0 from "../../tools/clouddrive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as disk$0 from "../../tools/disk/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as docker$0 from "../../tools/docker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as docspace$0 from "../../tools/docspace/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as downloader$0 from "../../tools/downloader/models.js";
@@ -46,6 +52,9 @@ import * as ftp$0 from "../../tools/ftp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as guard$0 from "../../tools/guard/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as lanshare$0 from "../../tools/lanshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as launcher$0 from "../../tools/launcher/models.js";
@@ -79,6 +88,9 @@ import * as siteclone$0 from "../../tools/siteclone/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as sniffer$0 from "../../tools/sniffer/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as sshgen$0 from "../../tools/sshgen/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as term$0 from "../../tools/term/models.js";
@@ -139,6 +151,24 @@ export function ArchiveExtract(opts: archive$0.Options): $CancellablePromise<str
 }
 
 /**
+ * ArchiveExtractEntry 把归档内单个条目提取到临时目录，返回提取后的本地绝对路径；
+ * 前端再对该临时路径走既有的 FileClassify/FileRead* /media 端点预览。
+ * 每次按「归档名哈希/条目相对路径」落盘，不同归档的同名条目互不覆盖。
+ */
+export function ArchiveExtractEntry(path: string, entry: string): $CancellablePromise<string> {
+    return $Call.ByID(698186659, path, entry);
+}
+
+/**
+ * ArchiveListEntries 列出本地归档（zip/tar.gz/tgz）内条目，供查看器「压缩包」kind 浏览。
+ * 只认这三类（与 tools/fileview.Classify 的 archive 判定同口径）；rar/7z/裸 tar 回明确错误。
+ * 方法不加 build tag：Linux 面板里浏览的是服务器本机文件，语义一致。
+ */
+export function ArchiveListEntries(path: string): $CancellablePromise<archive$0.Entry[] | null> {
+    return $Call.ByID(1434719300, path);
+}
+
+/**
  * ArchivePanelHide 前端按 Esc / 开工之后收起面板（窗口保留复用）。
  */
 export function ArchivePanelHide(): $CancellablePromise<void> {
@@ -196,6 +226,50 @@ export function ArchiveShellUninstall(): $CancellablePromise<void> {
  */
 export function ArchiveSuggestName(opts: archive$0.Options): $CancellablePromise<string> {
     return $Call.ByID(1635092141, opts);
+}
+
+/**
+ * BackupAdd 新增备份计划：src 必须是已存在目录，dst 允许暂不存在（跑时创建）。
+ */
+export function BackupAdd(name: string, src: string, dst: string): $CancellablePromise<docspace$0.BackupPlan> {
+    return $Call.ByID(1148754707, name, src, dst);
+}
+
+/**
+ * BackupList 返回全部备份计划（按 id 稳定序）。
+ */
+export function BackupList(): $CancellablePromise<docspace$0.BackupPlan[] | null> {
+    return $Call.ByID(3479593976);
+}
+
+/**
+ * BackupRemove 删除备份计划（只删登记，不动已备份出去的实体）。
+ */
+export function BackupRemove(id: string): $CancellablePromise<void> {
+    return $Call.ByID(76006648, id);
+}
+
+/**
+ * BackupRunNow 异步执行一次增量备份，立即返回；进度看任务中心。
+ * 同一计划正在跑时报错，避免叠跑。纯增量拷贝、绝不删目标。
+ */
+export function BackupRunNow(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2760145687, id);
+}
+
+/**
+ * BackupSetEnabled 切换计划启用位（自动调度的计划级闸门之一；手动备份不受它限制）。
+ */
+export function BackupSetEnabled(id: string, on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4082912705, id, on);
+}
+
+/**
+ * BackupSetInterval 设置计划的自动调度间隔（秒）；<=0 表示「仅手动」。
+ * 真正会不会自动跑，还受全局开关（SetDocSpaceBackupAuto）与启用位约束。
+ */
+export function BackupSetInterval(id: string, secs: number): $CancellablePromise<void> {
+    return $Call.ByID(2391552505, id, secs);
 }
 
 /**
@@ -526,6 +600,175 @@ export function ClosePinnedImage(id: number): $CancellablePromise<void> {
 }
 
 /**
+ * CloudAddAccount 新增一个未授权的账号（kind 目前只支持 google）。
+ */
+export function CloudAddAccount(kind: string, label: string): $CancellablePromise<clouddrive$0.AccountView> {
+    return $Call.ByID(343015657, kind, label);
+}
+
+/**
+ * CloudAuthURL 生成 Google 授权 URL，供用户点开授权（需先启用云盘并配好客户端凭证）。
+ */
+export function CloudAuthURL(acctID: string): $CancellablePromise<string> {
+    return $Call.ByID(1939324166, acctID);
+}
+
+/**
+ * CloudCancelTransfer 取消一笔进行中的转存。
+ */
+export function CloudCancelTransfer(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2494411254, id);
+}
+
+/**
+ * CloudChooseFile 弹原生文件选择框（上传源），取消/不可用时返回空串。
+ * server 模式下 Wails Dialog 为空实现，前端应允许手输路径。
+ */
+export function CloudChooseFile(title: string): $CancellablePromise<string> {
+    return $Call.ByID(2297592112, title);
+}
+
+/**
+ * CloudClientReady 用户是否已在设置里填好 Google OAuth 客户端凭证。
+ */
+export function CloudClientReady(): $CancellablePromise<boolean> {
+    return $Call.ByID(2235191667);
+}
+
+/**
+ * CloudDelete 删除（云端实体，非仅本地登记）。
+ */
+export function CloudDelete(acctID: string, id: string): $CancellablePromise<void> {
+    return $Call.ByID(2819959888, acctID, id);
+}
+
+/**
+ * CloudDownload 把云端文件流式下载到本地目录 dstDir 下并命名 name。
+ * dstDir 留空走 config.Cloud.SaveDir 或 appdirs.Data("clouddrive")/downloads。
+ * 返回落盘的绝对路径。
+ */
+export function CloudDownload(acctID: string, fileID: string, name: string, dstDir: string): $CancellablePromise<string> {
+    return $Call.ByID(208582919, acctID, fileID, name, dstDir);
+}
+
+/**
+ * CloudExchange 用授权后回跳的整串 URL（或裸授权码）为账号换取并保存 token。
+ */
+export function CloudExchange(acctID: string, codeOrRedirect: string): $CancellablePromise<void> {
+    return $Call.ByID(2138149594, acctID, codeOrRedirect);
+}
+
+/**
+ * CloudList 列目录，dirID 空表示根目录。
+ */
+export function CloudList(acctID: string, dirID: string): $CancellablePromise<clouddrive$0.Entry[] | null> {
+    return $Call.ByID(692304475, acctID, dirID);
+}
+
+/**
+ * CloudListAccounts 全部云盘账号（不含任何密文）。
+ */
+export function CloudListAccounts(): $CancellablePromise<clouddrive$0.AccountView[] | null> {
+    return $Call.ByID(1880743623);
+}
+
+/**
+ * CloudListTransfers 最近若干条转存记录（新的在前）。
+ */
+export function CloudListTransfers(): $CancellablePromise<clouddrive$0.Transfer[] | null> {
+    return $Call.ByID(3607772025);
+}
+
+/**
+ * CloudMkdir 新建目录。
+ */
+export function CloudMkdir(acctID: string, parentID: string, name: string): $CancellablePromise<clouddrive$0.Entry> {
+    return $Call.ByID(1850474050, acctID, parentID, name);
+}
+
+/**
+ * CloudMove 移动到目标目录。
+ */
+export function CloudMove(acctID: string, id: string, dstParentID: string): $CancellablePromise<void> {
+    return $Call.ByID(1856721754, acctID, id, dstParentID);
+}
+
+/**
+ * CloudQuota 容量配额。
+ */
+export function CloudQuota(acctID: string): $CancellablePromise<clouddrive$0.Quota> {
+    return $Call.ByID(693498121, acctID);
+}
+
+/**
+ * CloudRemoveAccount 删除账号（连带 token；不动云端实体）。
+ */
+export function CloudRemoveAccount(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3955707594, id);
+}
+
+/**
+ * CloudRename 重命名。
+ */
+export function CloudRename(acctID: string, id: string, newName: string): $CancellablePromise<void> {
+    return $Call.ByID(1728856937, acctID, id, newName);
+}
+
+/**
+ * CloudRenameAccount 修改账号显示名。
+ */
+export function CloudRenameAccount(id: string, label: string): $CancellablePromise<void> {
+    return $Call.ByID(1272462328, id, label);
+}
+
+/**
+ * CloudSetCredential 为「粘贴式」长期凭证的云盘写入凭据：阿里 refresh_token /
+ * 百度 BDUSS。google 不走这里（它用 CloudExchange 换 token）。value 只进加密账号表，
+ * 永不回前端。
+ */
+export function CloudSetCredential(acctID: string, value: string): $CancellablePromise<void> {
+    return $Call.ByID(1338128964, acctID, value);
+}
+
+/**
+ * CloudSettings 返回云盘设置段（老配置无此段时返回默认值）。
+ * token 不在此列，只进加密账号表。
+ */
+export function CloudSettings(): $CancellablePromise<config$0.CloudConfig> {
+    return $Call.ByID(2633431646);
+}
+
+/**
+ * CloudShareLink 生成对外分享链接。
+ */
+export function CloudShareLink(acctID: string, id: string): $CancellablePromise<string> {
+    return $Call.ByID(1347410914, acctID, id);
+}
+
+/**
+ * CloudTestAccount 校验账号可用（拉一次配额）。
+ */
+export function CloudTestAccount(acctID: string): $CancellablePromise<void> {
+    return $Call.ByID(1125440802, acctID);
+}
+
+/**
+ * CloudTransfer 发起一笔跨盘转存（源账号文件 → 目标账号目录），
+ * 不阻塞：立刻回一条 Transfer 快照（含 id），后台推进并靠 cloud:progress 事件 +
+ * CloudListTransfers 刷新。srcDir 是源条目所在目录 id（用于取大小/显示名，取不到不阻断）。
+ */
+export function CloudTransfer(srcAcct: string, srcID: string, srcDir: string, dstAcct: string, dstParent: string, name: string): $CancellablePromise<clouddrive$0.Transfer> {
+    return $Call.ByID(2612275000, srcAcct, srcID, srcDir, dstAcct, dstParent, name);
+}
+
+/**
+ * CloudUpload 把本机文件 localPath 上传到 parentID 目录下，命名 name。
+ */
+export function CloudUpload(acctID: string, parentID: string, name: string, localPath: string): $CancellablePromise<clouddrive$0.Entry> {
+    return $Call.ByID(106726054, acctID, parentID, name, localPath);
+}
+
+/**
  * ConnectionStatus 返回当前连接状态
  */
 export function ConnectionStatus(): $CancellablePromise<usbserial$0.ConnStatus> {
@@ -680,6 +923,168 @@ export function DiskUpload(dstDir: string): $CancellablePromise<string[] | null>
  */
 export function DiskUploadFolder(dstDir: string): $CancellablePromise<string> {
     return $Call.ByID(3355180758, dstDir);
+}
+
+/**
+ * DocSpaceAddCategory 新增分类（parent 空表示根节点），返回带 id 的节点。
+ */
+export function DocSpaceAddCategory(name: string, parent: string): $CancellablePromise<docspace$0.Category> {
+    return $Call.ByID(4249446409, name, parent);
+}
+
+/**
+ * DocSpaceAddItem 纳管一个文件（原地为主，不拷贝）。src 空视为 local；
+ * sftp 源需带 sid（会话 id）。返回登记后的条目元数据。
+ */
+export function DocSpaceAddItem(src: string, sid: string, path: string, category: string): $CancellablePromise<docspace$0.Item> {
+    return $Call.ByID(3827560318, src, sid, path, category);
+}
+
+/**
+ * DocSpaceAllTags 返回全部条目派生的标签词表（有序去重）。
+ */
+export function DocSpaceAllTags(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2021439784);
+}
+
+/**
+ * DocSpaceCategories 返回分类树（按 Sort 稳定排序）。
+ */
+export function DocSpaceCategories(): $CancellablePromise<docspace$0.Category[] | null> {
+    return $Call.ByID(677049086);
+}
+
+/**
+ * DocSpaceCounts 汇总各类条目数（前端概览与「是否已启用」判断用）。
+ */
+export function DocSpaceCounts(): $CancellablePromise<docspace$0.Counts> {
+    return $Call.ByID(3798073130);
+}
+
+/**
+ * DocSpaceDeleteTrash 彻底删除一个回收站条目（连带实体）。
+ */
+export function DocSpaceDeleteTrash(entryID: string): $CancellablePromise<void> {
+    return $Call.ByID(3041540905, entryID);
+}
+
+/**
+ * DocSpaceEmptyTrash 清空回收站。
+ */
+export function DocSpaceEmptyTrash(): $CancellablePromise<void> {
+    return $Call.ByID(359182543);
+}
+
+/**
+ * DocSpaceItems 返回全部被纳管条目（按创建时间升序）。
+ */
+export function DocSpaceItems(): $CancellablePromise<docspace$0.Item[] | null> {
+    return $Call.ByID(463708810);
+}
+
+/**
+ * DocSpaceMoveTrash 把 local 条目实体移入回收站（sftp 返回不支持）。
+ */
+export function DocSpaceMoveTrash(itemID: string): $CancellablePromise<void> {
+    return $Call.ByID(1409127463, itemID);
+}
+
+/**
+ * DocSpaceNewNote 在库内 notes/ 新建一篇 .md 笔记并归入「笔记」分类，
+ * 返回已纳管的条目（前端拿 path 去查看器双栏编辑）。同名报错不覆盖。
+ */
+export function DocSpaceNewNote(name: string): $CancellablePromise<docspace$0.Item> {
+    return $Call.ByID(3249176068, name);
+}
+
+/**
+ * DocSpacePreviewURL 把一条引用拼成预览端点 URL（?src=&sid=&path=），
+ * 供查看器 <video>/<iframe>/图片 直接指向。src 空按 local 处理，
+ * 与 media 端点旧参数（仅 ?path=）保持兼容。
+ */
+export function DocSpacePreviewURL(src: string, sid: string, path: string, download: boolean): $CancellablePromise<string> {
+    return $Call.ByID(3407568347, src, sid, path, download);
+}
+
+/**
+ * DocSpaceRemoveCategory 删除分类，其下条目退为未分类。
+ */
+export function DocSpaceRemoveCategory(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3566854994, id);
+}
+
+/**
+ * DocSpaceRemoveItem 取消纳管（不动磁盘上的原文件）。
+ */
+export function DocSpaceRemoveItem(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3619299665, id);
+}
+
+/**
+ * DocSpaceRestore 把某版本写回原路径（写回前自动存当前版）。
+ */
+export function DocSpaceRestore(itemID: string, n: number): $CancellablePromise<void> {
+    return $Call.ByID(3346485356, itemID, n);
+}
+
+/**
+ * DocSpaceRestoreTrash 从回收站还原实体到原路径并重新登记条目。
+ */
+export function DocSpaceRestoreTrash(entryID: string): $CancellablePromise<docspace$0.Item> {
+    return $Call.ByID(227931046, entryID);
+}
+
+/**
+ * DocSpaceRoot 文档中心库根目录（设置页展示实体落点用）。
+ */
+export function DocSpaceRoot(): $CancellablePromise<string> {
+    return $Call.ByID(3627584362);
+}
+
+/**
+ * DocSpaceSearch 按元数据条件过滤纳管条目（分类含子级/标签 AND/有无版本/
+ * 最近更新/大小区间），按更新时间降序。大小条件仅 local 源可判定。
+ * 整盘/内容检索复用既有 DiskSearch/DiskSearchContent，前端命中后可一键纳管。
+ */
+export function DocSpaceSearch(f: docspace$0.SearchFilter): $CancellablePromise<docspace$0.Item[] | null> {
+    return $Call.ByID(1848113774, f);
+}
+
+/**
+ * DocSpaceSetItemTags 覆盖设置某条目的标签。
+ */
+export function DocSpaceSetItemTags(itemID: string, tags: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(1791849728, itemID, tags);
+}
+
+/**
+ * DocSpaceSettings 返回文档中心设置段（老配置无此段时返回默认值）。
+ */
+export function DocSpaceSettings(): $CancellablePromise<config$0.DocSpaceConfig> {
+    return $Call.ByID(2744583883);
+}
+
+/**
+ * DocSpaceSnapshot 为某条目当前内容存一版快照，返回新版本。
+ * 保留数取配置的 versionKeep（<=0 不裁剪）。
+ */
+export function DocSpaceSnapshot(itemID: string, note: string): $CancellablePromise<docspace$0.Version> {
+    return $Call.ByID(2109381442, itemID, note);
+}
+
+/**
+ * DocSpaceTrash 返回回收站条目（最近删除在前）。
+ * 先按配置的保留天数自动清理超期实体，再列出。
+ */
+export function DocSpaceTrash(): $CancellablePromise<docspace$0.TrashEntry[] | null> {
+    return $Call.ByID(291166404);
+}
+
+/**
+ * DocSpaceVersions 返回某条目的全部版本快照（按版本号升序）。
+ */
+export function DocSpaceVersions(itemID: string): $CancellablePromise<docspace$0.Version[] | null> {
+    return $Call.ByID(3120098115, itemID);
 }
 
 /**
@@ -1163,7 +1568,7 @@ export function DownloadAdd(url: string, name: string, saveDir: string, connecti
 
 /**
  * DownloadDefaultDir 当前生效的全局默认下载目录（新建任务 saveDir 留空即落这里）。
- * 取全局目录配置里的「下载目录」，未配置则 <应用目录>/downloads。
+ * 优先取下载设置里的「下载目录」，未配置则 appdirs.Downloads()。
  */
 export function DownloadDefaultDir(): $CancellablePromise<string> {
     return $Call.ByID(4060164594);
@@ -1252,6 +1657,14 @@ export function DownloadSetProxy(id: string, proxy: string): $CancellablePromise
  */
 export function DownloadSetSpeed(id: string, bps: number): $CancellablePromise<void> {
     return $Call.ByID(1263370281, id, bps);
+}
+
+/**
+ * DownloadSettings 返回下载设置段（老配置无此段时返回默认值）。
+ * 供设置页回填：护栏参数 + 全局目录 + 共享代理池 / 镜像池。
+ */
+export function DownloadSettings(): $CancellablePromise<config$0.DownloadConfig> {
+    return $Call.ByID(1319113435);
 }
 
 /**
@@ -1750,6 +2163,103 @@ export function GuardUpsert(e: guard$0.Entry): $CancellablePromise<void> {
  */
 export function ImportConfig(): $CancellablePromise<string> {
     return $Call.ByID(649187289);
+}
+
+/**
+ * LanShareAddGrant 授权一个本机路径供门户长期下载。目录可给 recursive
+ * （是否允许逐项浏览）；hours<=0 表示长期有效。
+ */
+export function LanShareAddGrant(path: string, recursive: boolean, hours: number): $CancellablePromise<lanshare$0.Grant> {
+    return $Call.ByID(1003992815, path, recursive, hours);
+}
+
+/**
+ * LanShareChoosePath 弹原生文件/目录选择框（授权下载源），取消/不可用时返回空串。
+ * server 模式下 Wails Dialog 为空实现，前端应允许手输路径。
+ */
+export function LanShareChoosePath(title: string): $CancellablePromise<string> {
+    return $Call.ByID(3306575086, title);
+}
+
+/**
+ * LanShareCreateLink 为本机文件登记一条分享链接：hours<=0 不过期，
+ * maxDownloads<=0 不限次数。返回体含 token，URL 由前端用 LanShareStatus 拼。
+ */
+export function LanShareCreateLink(path: string, hours: number, maxDownloads: number): $CancellablePromise<lanshare$0.Link> {
+    return $Call.ByID(1913953592, path, hours, maxDownloads);
+}
+
+/**
+ * LanShareGrantURL 拼一条可直接发送的授权下载 URL（服务未运行时报错）。
+ * 设了 PIN 时附 ?pin=，否则裸链。
+ */
+export function LanShareGrantURL(id: string): $CancellablePromise<string> {
+    return $Call.ByID(3356942923, id);
+}
+
+/**
+ * LanShareInboxFiles 列出收件箱已收到的文件（名/大小/修改时间，倒序）。
+ */
+export function LanShareInboxFiles(): $CancellablePromise<lanshare$0.InboxFile[] | null> {
+    return $Call.ByID(1048491363);
+}
+
+/**
+ * LanShareListGrants 全部授权（含已失效项，前端标灰）。
+ */
+export function LanShareListGrants(): $CancellablePromise<lanshare$0.Grant[] | null> {
+    return $Call.ByID(54074651);
+}
+
+/**
+ * LanShareListLinks 全部链接（含已失效项，前端标灰）。
+ */
+export function LanShareListLinks(): $CancellablePromise<lanshare$0.Link[] | null> {
+    return $Call.ByID(3212575269);
+}
+
+/**
+ * LanShareRevokeGrant 撤销一条授权（只删登记，不动实体）。
+ */
+export function LanShareRevokeGrant(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2067744384, id);
+}
+
+/**
+ * LanShareRevokeLink 撤销一条链接（只删登记，不动实体文件）。
+ */
+export function LanShareRevokeLink(token: string): $CancellablePromise<void> {
+    return $Call.ByID(748322282, token);
+}
+
+/**
+ * LanShareStart 启动服务：port<=0 用默认端口（占用自动 +1，最多试 20 个）；
+ * host 传 "127.0.0.1" 只供本机，空串监听全部网卡；autoStopMin>0 到点自停；
+ * pin 非空时下载/链接需带对 PIN（仅挡无意访问，不是访问控制）。
+ */
+export function LanShareStart(port: number, host: string, autoStopMin: number, pin: string): $CancellablePromise<lanshare$0.Status> {
+    return $Call.ByID(3923418224, port, host, autoStopMin, pin);
+}
+
+/**
+ * LanShareStatus 当前服务运行态（未运行也返回，Running=false）。
+ */
+export function LanShareStatus(): $CancellablePromise<lanshare$0.Status> {
+    return $Call.ByID(1254919302);
+}
+
+/**
+ * LanShareStop 停止服务并释放端口。
+ */
+export function LanShareStop(): $CancellablePromise<void> {
+    return $Call.ByID(723216884);
+}
+
+/**
+ * LanShareURL 拼一条可直接发送的完整链接（服务未运行时报错）。
+ */
+export function LanShareURL(token: string): $CancellablePromise<string> {
+    return $Call.ByID(3949745333, token);
 }
 
 /**
@@ -3437,6 +3947,48 @@ export function RunArchiveCLI(op: string, paths: string[] | null): $CancellableP
 }
 
 /**
+ * SSHCommands 由主机上下文生成 ssh/scp/sftp 命令与 config 片段。
+ */
+export function SSHCommands(h: sshgen$0.HostRef): $CancellablePromise<sshgen$0.Commands> {
+    return $Call.ByID(4116355338, h);
+}
+
+/**
+ * SSHDefaultDir 密钥默认保存目录 <data>/ssh。
+ */
+export function SSHDefaultDir(): $CancellablePromise<string> {
+    return $Call.ByID(1238188120);
+}
+
+/**
+ * SSHDeploy 一键部署公钥到远端（SFTP 写 authorized_keys，幂等）。
+ */
+export function SSHDeploy(req: sshgen$0.DeployReq): $CancellablePromise<sshgen$0.DeployResult> {
+    return $Call.ByID(2342713815, req);
+}
+
+/**
+ * SSHExportConn 导出可分享/导入的连接凭据（不含机密）。
+ */
+export function SSHExportConn(h: sshgen$0.HostRef): $CancellablePromise<string> {
+    return $Call.ByID(1254083424, h);
+}
+
+/**
+ * SSHGenKey 生成密钥对并落盘，返回路径与公钥信息（不含私钥正文）。
+ */
+export function SSHGenKey(o: sshgen$0.KeyOptions): $CancellablePromise<sshgen$0.KeyPair> {
+    return $Call.ByID(772098725, o);
+}
+
+/**
+ * SSHImportConn 解析连接凭据。
+ */
+export function SSHImportConn(text: string): $CancellablePromise<sshgen$0.HostRef> {
+    return $Call.ByID(3279514187, text);
+}
+
+/**
  * SaveBallIcon 保存浮动球球心图标：前端把选中图标（图标库/Arco）渲染成黑色 alpha 遮罩 PNG（base64）上传，
  * Go 侧写入配置目录 ball_icon.png 并通知球线程重载；渲染时只取遮罩形状，颜色跟随主题文字色（text-1）。
  * 图标值本身（icon-xxx / Arco 名）随 ball.icon 由 SaveConfig 持久化，供设置页回显。
@@ -3454,10 +4006,86 @@ export function SaveCaptureFile(data: string): $CancellablePromise<string> {
 }
 
 /**
+ * SaveCloudSettings 保存云盘设置：总开关 + Google 客户端凭证 + 回调/落地目录/并发。
+ * clientSecret 传空串表示“沿用已保存的”，避免前端回显密钥与误抹。
+ */
+export function SaveCloudSettings(enabled: boolean, clientID: string, clientSecret: string, redirect: string, saveDir: string, concurrency: number): $CancellablePromise<void> {
+    return $Call.ByID(1683911205, enabled, clientID, clientSecret, redirect, saveDir, concurrency);
+}
+
+/**
  * SaveConfig 保存配置：写入用户配置目录 JSON + 重新初始化日志器 + 热键重载 + 浮动球显隐；返回日志目录。
  */
 export function SaveConfig(cfg: config$0.AppConfig): $CancellablePromise<string> {
     return $Call.ByID(2313836705, cfg);
+}
+
+/**
+ * SaveDocSpaceSettings 保存文档中心设置：启用开关 + 版本保留数 + 回收站保留天数。
+ * 保留数/天数的合法性由 config 规范化兜底，这里只负责写入。
+ */
+export function SaveDocSpaceSettings(enabled: boolean, versionKeep: number, trashKeepDays: number): $CancellablePromise<void> {
+    return $Call.ByID(3966393774, enabled, versionKeep, trashKeepDays);
+}
+
+/**
+ * SaveDownloadSettings 保存下载设置：总开关 + 全局目录 + 并发/默认连接/限速 +
+ * 代理池/镜像池。落盘后立即回灌引擎单例（ApplyConfig），改目录/并发无需重启即生效。
+ * 共享代理池经 Browser.ProxyPoolCandidates 暴露给浏览器 custom 选单（仅 Windows 生效）。
+ */
+export function SaveDownloadSettings($in: config$0.DownloadConfig): $CancellablePromise<void> {
+    return $Call.ByID(4008086506, $in);
+}
+
+/**
+ * SecStoreChangePassword 校验旧口令后重新加密（新盐新 nonce）。
+ */
+export function SecStoreChangePassword(id: string, oldPw: string, newPw: string): $CancellablePromise<void> {
+    return $Call.ByID(431212849, id, oldPw, newPw);
+}
+
+/**
+ * SecStoreEncrypt 加密一个本机文件：成功后原明文被删除，只留密文条目。
+ * 不可逆操作，前端必须先二次确认并告知会删除原文件。
+ */
+export function SecStoreEncrypt(path: string, password: string): $CancellablePromise<docspace$0.SecureEntry> {
+    return $Call.ByID(1591243897, path, password);
+}
+
+/**
+ * SecStoreExtractTo 用口令解密并把明文永久写到 destPath（取回明文）。
+ */
+export function SecStoreExtractTo(id: string, password: string, destPath: string): $CancellablePromise<void> {
+    return $Call.ByID(2505885392, id, password, destPath);
+}
+
+/**
+ * SecStoreList 返回保险库全部条目（最近加密在前）。
+ */
+export function SecStoreList(): $CancellablePromise<docspace$0.SecureEntry[] | null> {
+    return $Call.ByID(2078090888);
+}
+
+/**
+ * SecStoreLock 删除某条目的解锁明文临时视图（锁上即删）。
+ */
+export function SecStoreLock(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2984265543, id);
+}
+
+/**
+ * SecStoreRemove 彻底删除密文条目（实体+临时视图+登记），不可恢复。
+ */
+export function SecStoreRemove(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1341301192, id);
+}
+
+/**
+ * SecStoreUnlock 用口令解密并写出明文临时视图，返回其绝对路径（供查看器打开）。
+ * 口令错回 ErrWrongPassword。用完必须调 SecStoreLock 删除明文。
+ */
+export function SecStoreUnlock(id: string, password: string): $CancellablePromise<string> {
+    return $Call.ByID(738374940, id, password);
 }
 
 /**
@@ -3497,6 +4125,14 @@ export function SetArchiveArgs(args: string[] | null): $CancellablePromise<void>
  */
 export function SetDefaultLogo(b: string | null): $CancellablePromise<void> {
     return $Call.ByID(763630052, b);
+}
+
+/**
+ * SetDocSpaceBackupAuto 开/关备份自动调度全局总闸（默认关）。
+ * 关掉后调度协程每轮直接返回；重新打开无需重启，下一轮轮询即生效。
+ */
+export function SetDocSpaceBackupAuto(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3393925687, on);
 }
 
 /**
@@ -3701,6 +4337,13 @@ export function TermClose(sessionID: string): $CancellablePromise<void> {
 }
 
 /**
+ * TermDeleteCredential 删除凭据（引用它的主机 credID 会被清空），返回更新后的列表
+ */
+export function TermDeleteCredential(id: string): $CancellablePromise<term$0.Credential[] | null> {
+    return $Call.ByID(294830086, id);
+}
+
+/**
  * TermDeleteHost 删除记录，返回更新后的完整列表
  */
 export function TermDeleteHost(id: string): $CancellablePromise<term$0.Host[] | null> {
@@ -3708,10 +4351,45 @@ export function TermDeleteHost(id: string): $CancellablePromise<term$0.Host[] | 
 }
 
 /**
+ * TermDeleteKnownHost 删除某地址的主机密钥（指纹变化需重新确认时用），返回剩余列表
+ */
+export function TermDeleteKnownHost(address: string): $CancellablePromise<term$0.KnownHostEntry[] | null> {
+    return $Call.ByID(104706232, address);
+}
+
+/**
+ * TermHostKeyPolicy 当前主机密钥校验策略（strict|tofu|off）
+ */
+export function TermHostKeyPolicy(): $CancellablePromise<string> {
+    return $Call.ByID(2979881159);
+}
+
+/**
+ * TermImportKnownHosts 导入系统 ~/.ssh/known_hosts（去重不覆盖），返回新增行数
+ */
+export function TermImportKnownHosts(): $CancellablePromise<number> {
+    return $Call.ByID(3901592059);
+}
+
+/**
+ * TermListCredentials 凭据列表（不含明文）
+ */
+export function TermListCredentials(): $CancellablePromise<term$0.Credential[] | null> {
+    return $Call.ByID(1402813850);
+}
+
+/**
  * TermListHosts 终端连接记录列表（密码字段恒为空）
  */
 export function TermListHosts(): $CancellablePromise<term$0.Host[] | null> {
     return $Call.ByID(4038055895);
+}
+
+/**
+ * TermListKnownHosts 已记录的主机密钥（地址/类型/SHA256 指纹）
+ */
+export function TermListKnownHosts(): $CancellablePromise<term$0.KnownHostEntry[] | null> {
+    return $Call.ByID(1921860322);
 }
 
 /**
@@ -3729,6 +4407,13 @@ export function TermOpenSSH(hostID: string, cols: number, rows: number): $Cancel
 }
 
 /**
+ * TermParseSSHConfig 解析 ~/.ssh/config 为主机草稿列表
+ */
+export function TermParseSSHConfig(): $CancellablePromise<term$0.HostDraft[] | null> {
+    return $Call.ByID(2401069793);
+}
+
+/**
  * TermResize 前端终端尺寸变化时同步远端 PTY
  */
 export function TermResize(sessionID: string, cols: number, rows: number): $CancellablePromise<void> {
@@ -3736,10 +4421,24 @@ export function TermResize(sessionID: string, cols: number, rows: number): $Canc
 }
 
 /**
+ * TermSaveCredential 新增/更新凭据，返回更新后的完整列表
+ */
+export function TermSaveCredential(c: term$0.Credential): $CancellablePromise<term$0.Credential[] | null> {
+    return $Call.ByID(911357332, c);
+}
+
+/**
  * TermSaveHost 新增/更新一条记录，返回更新后的完整列表
  */
 export function TermSaveHost(h: term$0.Host): $CancellablePromise<term$0.Host[] | null> {
     return $Call.ByID(467523099, h);
+}
+
+/**
+ * TermSetHostKeyPolicy 设置校验策略，返回生效后的值
+ */
+export function TermSetHostKeyPolicy(policy: string): $CancellablePromise<string> {
+    return $Call.ByID(744435263, policy);
 }
 
 /**

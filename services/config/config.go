@@ -192,6 +192,207 @@ type ArchiveConfig struct {
 	Level int `json:"level"`
 }
 
+// DocSpaceConfig 文档中心设置（分类/版本/回收站的策略参数 + 总开关）。
+type DocSpaceConfig struct {
+	// Enabled 总开关。关掉时查看器左栏只留「本机浏览」、不出现「文档中心」态；
+	// 独立的文档中心工具页仍可打开（入口在工具表，不受此开关隐藏）。
+	Enabled bool `json:"enabled"`
+	// VersionKeep 每个条目保留的版本快照数上限：存新快照后裁掉最旧的，<=0 视为不裁剪。
+	VersionKeep int `json:"versionKeep"`
+	// TrashKeepDays 回收站保留天数：移入超过该天数的实体在访问回收站时自动彻底清理，<=0 视为不自动清理。
+	TrashKeepDays int `json:"trashKeepDays"`
+	// BackupAuto 备份自动调度总开关：关掉时调度协程每轮直接返回，不碰任何计划；
+	// 打开后仍只跑 Enabled 且 IntervalS>0 的计划。默认 false：老配置等价于关，
+	// 升级不引入隐藏自动行为。
+	BackupAuto bool `json:"backupAuto"`
+}
+
+// 文档中心默认策略：默认可见（功能已注册且跨平台安全），每条目留 20 版，回收站留 30 天。
+const (
+	DefaultDocSpaceVersionKeep = 20
+	DefaultDocSpaceTrashDays   = 30
+)
+
+// defaultDocSpaceConfig 返回带默认策略、默认启用的文档中心设置（自动调度默认关）。
+func defaultDocSpaceConfig() *DocSpaceConfig {
+	return &DocSpaceConfig{Enabled: true, VersionKeep: DefaultDocSpaceVersionKeep, TrashKeepDays: DefaultDocSpaceTrashDays, BackupAuto: false}
+}
+
+// DocSpaceSection 取文档中心设置。配置里从未出现过这一段（老配置）时返回默认值，
+// 调用方因此永远不用判空。
+func DocSpaceSection(cfg AppConfig) DocSpaceConfig {
+	if cfg.DocSpace == nil {
+		return *defaultDocSpaceConfig()
+	}
+	return *cfg.DocSpace
+}
+
+// DocSpaceCfg 当前缓存配置里的文档中心设置，供 services/app 绑定层读取。
+func DocSpaceCfg() DocSpaceConfig { return DocSpaceSection(CurrentConfig()) }
+
+// normalizeDocSpaceConfig 补齐文档中心设置的合法范围（保留数/天数非正回落默认，不覆盖用户填的合法值）。
+func normalizeDocSpaceConfig(cfg *AppConfig) {
+	d := cfg.DocSpace
+	if d == nil {
+		return
+	}
+	if d.VersionKeep < 0 {
+		d.VersionKeep = DefaultDocSpaceVersionKeep
+	}
+	if d.VersionKeep > 1000 {
+		d.VersionKeep = 1000
+	}
+	if d.TrashKeepDays < 0 {
+		d.TrashKeepDays = DefaultDocSpaceTrashDays
+	}
+	if d.TrashKeepDays > 3650 {
+		d.TrashKeepDays = 3650
+	}
+}
+
+// CloudConfig 云盘管理设置（计划-云盘管理工具 PR1）。
+// 敏感 token/BDUSS **不进这里**，只进 tools/secret 加密的账号表；此处只放
+// OAuth 应用凭证与落地目录等非运行期密钥的配置项。
+type CloudConfig struct {
+	// Enabled 总开关。关掉时前端隐藏「云盘管理」入口、不构造任何 provider。
+	// 默认关闭：联网功能必须用户主动开，不能在老配置里凭空多出网络行为。
+	Enabled bool `json:"enabled"`
+	// GoogleClientID / GoogleClientSecret 用户自备的 Google Cloud OAuth 客户端凭证
+	// （不内置，避免密钥随程序泄露/轮换困难）。留空则无法完成 Google 授权。
+	GoogleClientID     string `json:"googleClientId"`
+	GoogleClientSecret string `json:"googleClientSecret"`
+	// GoogleRedirectURI OAuth 授权回调地址，须与 Google 控制台登记的一致。默认本机
+	// 回环：桌面/无头都走「用户粘贴回跳 URL」手工换 token，不依赖系统浏览器。
+	GoogleRedirectURI string `json:"googleRedirectUri"`
+	// SaveDir 云盘文件下载落地目录；留空走 appdirs.Data("clouddrive")/downloads。
+	SaveDir string `json:"saveDir"`
+	// Concurrency 跨盘转存并发度（<=0 用默认）。本期 PR1 只做单连接，留给后续 PR。
+	Concurrency int `json:"concurrency"`
+}
+
+// DefaultCloudRedirectURI 默认 OAuth 回调：本机回环，用户在浏览器授权后把
+// 回跳 URL 粘回来换 token（桌面与无头面板同一套做法，不靠系统浏览器自动回调）。
+const DefaultCloudRedirectURI = "http://localhost:8458/callback"
+
+// defaultCloudConfig 云盘默认设置：默认关闭、回调填好、并发取 3。
+func defaultCloudConfig() *CloudConfig {
+	return &CloudConfig{Enabled: false, GoogleRedirectURI: DefaultCloudRedirectURI, Concurrency: 3}
+}
+
+// CloudSection 取云盘设置。老配置从未有这一段时返回默认值，调用方不用判空。
+func CloudSection(cfg AppConfig) CloudConfig {
+	if cfg.Cloud == nil {
+		return *defaultCloudConfig()
+	}
+	return *cfg.Cloud
+}
+
+// CloudCfg 当前缓存配置里的云盘设置，供 tools/clouddrive 与绑定层读取。
+func CloudCfg() CloudConfig { return CloudSection(CurrentConfig()) }
+
+// normalizeCloudConfig 补齐云盘设置合法范围：并发非正回落默认，回调留空回落默认。
+func normalizeCloudConfig(cfg *AppConfig) {
+	c := cfg.Cloud
+	if c == nil {
+		return
+	}
+	if c.Concurrency <= 0 {
+		c.Concurrency = 3
+	}
+	if c.Concurrency > 16 {
+		c.Concurrency = 16
+	}
+	if c.GoogleRedirectURI == "" {
+		c.GoogleRedirectURI = DefaultCloudRedirectURI
+	}
+}
+
+// ProxyItem 共享代理池里的一条代理。ID 稳定供前端 diff，URL 直接喂引擎/浏览器的
+// --proxy-server（http/https；socks5 视依赖树，本期不保证）。
+type ProxyItem struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+// MirrorItem 常用镜像模板（新建任务时的候选，手动选，不自动切）。
+type MirrorItem struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+// DownloadConfig 下载管理器设置（计划-下载管理器 PR3）。引擎级护栏参数 + 全局
+// 落地目录 + 共享代理池 / 镜像池。代理 URL 可能内嵌凭据，但这是用户本机配置文件、
+// 与 Browser.Proxy 同级（明文落 config.json），不额外加密，保持一致。
+type DownloadConfig struct {
+	// Enabled 总开关。关掉时前端隐藏「下载管理」入口、不初始化引擎参数。
+	// 默认开启：下载是本地核心能力（无网络自发行为），不像云盘需用户主动开。
+	Enabled bool `json:"enabled"`
+	// SaveDir 全局默认下载目录；留空走 appdirs.Downloads()。改后新建任务即时生效。
+	SaveDir string `json:"saveDir"`
+	// MaxRunningTasks 同时下载的任务数上限，超了排队（<=0 回落默认）。
+	MaxRunningTasks int `json:"maxRunningTasks"`
+	// MaxTotalParts 全局并发块数上限（信号量容量，<=0 回落默认）。
+	MaxTotalParts int `json:"maxTotalParts"`
+	// DefaultConnections 单任务默认分块数（<=0 回落默认）。
+	DefaultConnections int `json:"defaultConnections"`
+	// GlobalSpeedLimitBps 全局下行限速（字节/秒），0=不限。
+	GlobalSpeedLimitBps int64 `json:"globalSpeedLimitBps"`
+	// ProxyPool 共享代理池：下载选源与浏览器 custom 代理都从这里挑，减少重复录入。
+	ProxyPool []ProxyItem `json:"proxyPool"`
+	// Mirrors 常用镜像模板（新建任务候选）。
+	Mirrors []MirrorItem `json:"mirrors"`
+}
+
+// 下载引擎默认护栏：与 tools/downloader 内部默认对齐（两端各写一次，靠注释锁定）。
+const (
+	defaultDownloadMaxRunning  = 3
+	defaultDownloadMaxParts    = 32
+	defaultDownloadConnections = 4
+)
+
+// defaultDownloadConfig 下载默认设置：开启、护栏取默认、池为空。
+func defaultDownloadConfig() *DownloadConfig {
+	return &DownloadConfig{
+		Enabled:            true,
+		MaxRunningTasks:    defaultDownloadMaxRunning,
+		MaxTotalParts:      defaultDownloadMaxParts,
+		DefaultConnections: defaultDownloadConnections,
+	}
+}
+
+// DownloadSection 取下载设置。老配置从未有这一段时返回默认值，调用方不用判空。
+func DownloadSection(cfg AppConfig) DownloadConfig {
+	if cfg.Download == nil {
+		return *defaultDownloadConfig()
+	}
+	return *cfg.Download
+}
+
+// DownloadCfg 当前缓存配置里的下载设置，供 tools/downloader 与绑定层读取。
+func DownloadCfg() DownloadConfig { return DownloadSection(CurrentConfig()) }
+
+// normalizeDownloadConfig 补齐下载设置合法范围：护栏非正回落默认，限速负值归零。
+func normalizeDownloadConfig(cfg *AppConfig) {
+	d := cfg.Download
+	if d == nil {
+		return
+	}
+	if d.MaxRunningTasks <= 0 {
+		d.MaxRunningTasks = defaultDownloadMaxRunning
+	}
+	if d.MaxTotalParts <= 0 {
+		d.MaxTotalParts = defaultDownloadMaxParts
+	}
+	if d.DefaultConnections <= 0 {
+		d.DefaultConnections = defaultDownloadConnections
+	}
+	if d.GlobalSpeedLimitBps < 0 {
+		d.GlobalSpeedLimitBps = 0
+	}
+}
+
 // DefaultArchiveFormat 默认压缩格式。两个短名与 sysx.ArchiveZip / ArchiveTarGz
 // 对齐；本包不导那个包（应用配置层保持零依赖，字面量在两端各定一次、靠单测锁住）。
 const DefaultArchiveFormat = "zip"
@@ -303,6 +504,15 @@ type AppConfig struct {
 	// 序列化也随之省略，不会凭空给用户的 config.json 添一段他没写过的东西。
 	// 关掉时不写注册表、不留 SendTo 快捷方式、不起转交监听，见 ArchiveConfig.Enabled。
 	Archive *ArchiveConfig `json:"archive,omitempty"`
+	// DocSpace 文档中心设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
+	// 序列化也随之省略。见 DocSpaceConfig 各字段。
+	DocSpace *DocSpaceConfig `json:"docSpace,omitempty"`
+	// Cloud 云盘管理设置。指针类型：老配置里没有这一段时读回来是 nil，序列化随之
+	// 省略。见 CloudConfig 各字段（token 不进这里，只进加密账号表）。
+	Cloud *CloudConfig `json:"cloud,omitempty"`
+	// Download 下载管理器设置。指针类型：老配置里没有这一段时读回来是 nil，序列化
+	// 随之省略。见 DownloadConfig 各字段（护栏参数 + 全局目录 + 共享代理/镜像池）。
+	Download *DownloadConfig `json:"download,omitempty"`
 }
 
 // DefaultMaxSpaces 浏览器空间数量默认上限。
@@ -340,6 +550,9 @@ func DefaultConfig() AppConfig {
 		Browser:  defaultBrowserConfig(),
 		Launcher: defaultLauncherConfig(),
 		Archive:  defaultArchiveConfig(),
+		DocSpace: defaultDocSpaceConfig(),
+		Cloud:    defaultCloudConfig(),
+		Download: defaultDownloadConfig(),
 		ToolSettings: map[string]ToolSettings{
 			// MySQL：默认开启 SQL 日志，目录留空走 DefaultSQLLogDir
 			"mysql": {SQLLogEnabled: true},
@@ -368,11 +581,13 @@ func DefaultConfig() AppConfig {
 			{ID: "encdec", Key: "encdec", Name: "文字加密解密", Path: "/tools/encdec", Icon: "lock", Home: homeOff()},
 			{ID: "strrandom", Key: "strrandom", Name: "随机字符串生成", Path: "/tools/strrandom", Icon: "icon-zifuchuan", Home: homeOff()},
 			{ID: "qrcode", Key: "qrcode", Name: "二维码生成", Path: "/tools/qrcode", Icon: "icon-erweima3", Home: homeOff()},
-			{ID: "imageBase64", Key: "imageBase64", Name: "图片base64", Path: "/tools/imageBase64", Icon: "icon-img", Home: homeOff()},
 			{ID: "hexconvert", Key: "hexconvert", Name: "进制转换", Path: "/tools/hexconvert", Icon: "swap", Home: homeOff()},
 			{ID: "archive", Key: "archive", Name: "文件压缩", Path: "/tools/archive", Icon: "archive", Single: true, Width: 1120, Height: 760, Home: homeOff()},
 			{ID: "viewer", Key: "viewer", Name: "文件查看器", Path: "/tools/viewer", Icon: "file", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "download", Key: "download", Name: "下载管理", Path: "/tools/download", Icon: "icon-xiazai", Single: true, Width: 1280, Height: 820, Home: homeOff()},
+			{ID: "docspace", Key: "docspace", Name: "文档中心", Path: "/tools/docspace", Icon: "folder", Single: true, Width: 1280, Height: 820, Home: homeOff()},
+			{ID: "lanshare", Key: "lanshare", Name: "局域网互传", Path: "/tools/lanshare", Icon: "icon-wangluo1", Single: true, Width: 1280, Height: 820, Home: homeOff()},
+			{ID: "clouddrive", Key: "clouddrive", Name: "云盘管理", Path: "/tools/clouddrive", Icon: "icon-yun", Single: true, Width: 1320, Height: 860, Home: homeOff()},
 		},
 	}
 }
@@ -619,6 +834,10 @@ var legacyToolIcons = map[string]string{
 	"usb":          "icon-xinpian",
 }
 
+// retiredToolKeys 已下线的内置工具 id：前端路由与页面都删了，存量配置里残留的条目必须剔除，
+// 否则工具表/主页会出现一个点开白页的幽灵入口。imageBase64 的能力已并入文件查看器的图片编辑。
+var retiredToolKeys = []string{"imageBase64"}
+
 // normalizeConfig 补齐缺省值（级别非法回退 info；工具 ID 缺失用 Key 兜底；旧图标修正；AppName 空回退 "Tools"；工具设置表非空）。
 func normalizeConfig(cfg *AppConfig) {
 	if cfg.Order == nil {
@@ -644,6 +863,9 @@ func normalizeConfig(cfg *AppConfig) {
 	normalizeBrowserConfig(&cfg.Browser)
 	normalizeLauncherConfig(cfg)
 	normalizeArchiveConfig(cfg)
+	normalizeDocSpaceConfig(cfg)
+	normalizeCloudConfig(cfg)
+	normalizeDownloadConfig(cfg)
 	switch cfg.General.Theme {
 	case "light", "dark", "auto":
 	default:
@@ -663,6 +885,31 @@ func normalizeConfig(cfg *AppConfig) {
 			cfg.Tools[i].Home = homeOff()
 		}
 	}
+	// 剔掉已下线工具的条目与排序 id（不先滤就会被下面的补录当成“用户手动移过”残留）
+	for _, retired := range retiredToolKeys {
+		kept := cfg.Tools[:0:0]
+		for _, t := range cfg.Tools {
+			if t.Key == retired || t.ID == retired {
+				continue
+			}
+			kept = append(kept, t)
+		}
+		cfg.Tools = kept
+		for k, ids := range cfg.Order {
+			fs := ids[:0:0]
+			for _, id := range ids {
+				if id != retired {
+					fs = append(fs, id)
+				}
+			}
+			if len(fs) == 0 {
+				delete(cfg.Order, k)
+				continue
+			}
+			cfg.Order[k] = fs
+		}
+		delete(cfg.ToolSettings, retired)
+	}
 	// 补齐存量配置中缺失的新增默认工具（仅限下面列出的，尊重用户手动移除的其他工具）
 	// 图标与 DefaultConfig 的基线保持一致，别让补录出来的工具长回旧样子
 	for _, extra := range []struct{ id, key, name, path, icon string }{
@@ -680,6 +927,9 @@ func normalizeConfig(cfg *AppConfig) {
 		{"archive", "archive", "文件压缩", "/tools/archive", "archive"},
 		{"viewer", "viewer", "文件查看器", "/tools/viewer", "file"},
 		{"download", "download", "下载管理", "/tools/download", "icon-xiazai"},
+		{"docspace", "docspace", "文档中心", "/tools/docspace", "folder"},
+		{"lanshare", "lanshare", "局域网互传", "/tools/lanshare", "icon-wangluo1"},
+		{"clouddrive", "clouddrive", "云盘管理", "/tools/clouddrive", "icon-yun"},
 	} {
 		found := false
 		for _, t := range cfg.Tools {
@@ -738,6 +988,11 @@ func normalizeConfig(cfg *AppConfig) {
 				// 入口在任务抽屉标题栏，不占主页快捷操作一格
 				newTool.Home = homeOff()
 			}
+			if extra.key == "docspace" {
+				// 左分类树 + 右条目列表，跟查看器/下载一样要宽窗才不挤；主页不占格，走工具表进入
+				newTool.Width, newTool.Height = 1280, 820
+				newTool.Home = homeOff()
+			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
 		}
 	}
@@ -789,6 +1044,19 @@ func LoadAppConfig() AppConfig {
 				// 文件压缩：同上，nil 就保住默认值（总开关默认关）。
 				if loaded.Archive != nil {
 					cfg.Archive = loaded.Archive
+				}
+				// 文档中心：同上，nil 就保住默认值（默认启用 + 保留数/天数走默认）。
+				if loaded.DocSpace != nil {
+					cfg.DocSpace = loaded.DocSpace
+				}
+				// 云盘：同上，nil 就保住默认值（默认关闭）。此前漏了这一段，导致
+				// 重启后用户已保存的云盘设置被默认值抹回，这里补上（一并修复持久化）。
+				if loaded.Cloud != nil {
+					cfg.Cloud = loaded.Cloud
+				}
+				// 下载：同上，nil 就保住默认值（默认开启 + 护栏走默认）。
+				if loaded.Download != nil {
+					cfg.Download = loaded.Download
 				}
 			}
 		}

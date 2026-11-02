@@ -8,25 +8,46 @@
         <template #extra>
           <div class="srv-head-actions">
             <a-input-search v-model="keyword" size="small" placeholder="搜索 IP/备注" allow-clear
-              style="width: 124px" />
-            <a-button size="small" @click="openForm(null)">
-              <template #icon><icon-plus /></template>添加
+              style="width: 110px" />
+            <a-button size="small" type="text" @click="openForm(null)">
+              <template #icon><icon-plus /></template>
             </a-button>
+            <a-dropdown trigger="click" @select="(v: any) => onToolAction(String(v))">
+              <a-button size="small" type="text"><icon-settings /></a-button>
+              <template #content>
+                <a-doption value="cred"><icon-lock /> 凭据管理</a-doption>
+                <a-doption value="key"><icon-safe /> 主机密钥</a-doption>
+                <a-doption value="import"><icon-import /> 导入 SSH 配置</a-doption>
+              </template>
+            </a-dropdown>
           </div>
         </template>
+
+        <div class="conn-filter">
+          <a-select v-model="groupFilter" size="mini" placeholder="分组" allow-clear style="width: 100px">
+            <a-option value="__none">未分组</a-option>
+            <a-option v-for="g in groups" :key="g" :value="g">{{ g }}</a-option>
+          </a-select>
+          <a-select v-model="tagFilter" size="mini" placeholder="标签" allow-clear style="width: 100px">
+            <a-option v-for="t in allTags" :key="t" :value="t">{{ t }}</a-option>
+          </a-select>
+          <a-typography-text type="secondary" class="conn-count">{{ filtered.length }}/{{ hosts.length }}</a-typography-text>
+        </div>
 
         <a-list :bordered="false" size="small">
           <!-- 选中高亮跟着右侧卡片走：当前会话的主机永远与右边对得上 -->
           <a-list-item v-for="h in filtered" :key="h.id" :class="{ 'inst-active': (activeTab?.hostId || activeHostId) === h.id }"
             @click="activeHostId = h.id" @dblclick="connect(h)">
             <a-space>
-              <!-- 圆点只在「这条记录有存活的会话」时点亮，和实例列表一套语义 -->
-              <com-badge :status="alive(h.id) ? 'success' : 'normal'" :animated="alive(h.id)" />
-              <a-tooltip :content="`${h.name} ${h.user}@${h.address}:${h.port}`">
+              <!-- 配color时用自定义色小圈，否则回退存活/普通状态 -->
+              <span v-if="h.color" class="color-dot" :style="{ background: h.color }" />
+              <com-badge v-else :status="alive(h.id) ? 'success' : 'normal'" :animated="alive(h.id)" />
+              <a-tooltip :content="`${h.name} ${credUserOf(h)}@${h.address}:${h.port}`">
                 <span class="conn-name">{{ h.name }}</span>
               </a-tooltip>
               <!-- 列表窄：标签只放地址，端口在悬停提示里（和原来 [IP] 的写法一致） -->
               <a-tag size="small" color="arcoblue">{{ h.address }}</a-tag>
+              <a-tag v-for="t in (h.tags || []).slice(0, 2)" :key="t" size="small">{{ t }}</a-tag>
             </a-space>
             <template #actions>
               <a-dropdown trigger="hover" @select="(v: any) => onHostAction(v, h)">
@@ -76,7 +97,7 @@
             </a-dropdown>
             <span v-else>{{ activeHost?.name || '终端' }}</span>
             <a-tag v-if="activeHost" size="small" color="arcoblue">
-              {{ activeHost.user }}@{{ activeHost.address }}:{{ activeHost.port }}
+              {{ credUserOf(activeHost) }}@{{ activeHost.address }}:{{ activeHost.port }}
             </a-tag>
             <a-tag v-if="activeTab?.dead" size="small" color="gray">已断开</a-tag>
           </a-space>
@@ -107,6 +128,9 @@
   </a-row>
 
   <host-form-modal v-model:visible="formVisible" :host="editingHost" @saved="onSaved" />
+  <credential-modal v-model:visible="credVisible" @changed="credentials = $event" />
+  <host-key-modal v-model:visible="keyVisible" />
+  <import-config-modal v-model:visible="importVisible" @imported="onImported" />
 </template>
 
 <script setup lang="ts">
@@ -114,22 +138,74 @@ import { computed, getCurrentInstance, onMounted, ref } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
 import TermConsole from '@/components/business/term-console/index.vue';
 import HostFormModal from './components/HostFormModal.vue';
-import type { TermHost, TermTab } from './types';
+import CredentialModal from './components/CredentialModal.vue';
+import HostKeyModal from './components/HostKeyModal.vue';
+import ImportConfigModal from './components/ImportConfigModal.vue';
+import type { TermCredential, TermHost, TermTab } from './types';
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
 /* ==================== 连接记录 ==================== */
 const hosts = ref<TermHost[]>([]);
+const credentials = ref<TermCredential[]>([]);
 const loading = ref(false);
 const keyword = ref('');
 const activeHostId = ref('');
+const groupFilter = ref('');
+const tagFilter = ref('');
+
+/** 凭据管理/主机密钥/导入配置 三个弹窗 */
+const credVisible = ref(false);
+const keyVisible = ref(false);
+const importVisible = ref(false);
+
+function onToolAction(v: string) {
+  if (v === 'cred') credVisible.value = true;
+  else if (v === 'key') keyVisible.value = true;
+  else if (v === 'import') importVisible.value = true;
+}
+
+/** 所有非空分组（去重） */
+const groups = computed(() => {
+  const set = new Set<string>();
+  for (const h of hosts.value) if (h.group) set.add(h.group);
+  return [...set];
+});
+
+/** 所有标签（去重） */
+const allTags = computed(() => {
+  const set = new Set<string>();
+  for (const h of hosts.value) for (const t of h.tags || []) set.add(t);
+  return [...set];
+});
+
+/** 主机展示账号：自身旧字段优先，否则取关联凭据的账号 */
+function credUserOf(h: TermHost): string {
+  if (h.user) return h.user;
+  if (h.credID) {
+    const c = credentials.value.find((x) => x.id === h.credID);
+    if (c?.user) return c.user;
+  }
+  return '?';
+}
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase();
-  if (!k) return hosts.value;
-  return hosts.value.filter(
-    (h) => (h.name || '').toLowerCase().includes(k) || (h.address || '').toLowerCase().includes(k),
-  );
+  return hosts.value.filter((h) => {
+    if (groupFilter.value) {
+      if (groupFilter.value === '__none') {
+        if (h.group) return false;
+      } else if (h.group !== groupFilter.value) {
+        return false;
+      }
+    }
+    if (tagFilter.value && !(h.tags || []).includes(tagFilter.value)) return false;
+    if (k) {
+      const hay = `${h.name || ''} ${h.address || ''} ${h.note || ''}`.toLowerCase();
+      if (!hay.includes(k)) return false;
+    }
+    return true;
+  });
 });
 
 async function loadHosts() {
@@ -141,6 +217,20 @@ async function loadHosts() {
   } finally {
     loading.value = false;
   }
+}
+
+async function loadCredentials() {
+  try {
+    credentials.value = (await GoTools?.TermListCredentials()) || [];
+  } catch {
+    credentials.value = [];
+  }
+}
+
+/** 导入配置后刷新列表 */
+function onImported(list: TermHost[]) {
+  hosts.value = list && list.length ? list : hosts.value;
+  loadCredentials();
 }
 
 /* ==================== 表单 ==================== */
@@ -283,7 +373,10 @@ function syncActive() {
   activeKey.value = tabs.value[0]?.key || '';
 }
 
-onMounted(loadHosts);
+onMounted(() => {
+  loadHosts();
+  loadCredentials();
+});
 </script>
 
 <style scoped>
@@ -331,6 +424,28 @@ onMounted(loadHosts);
 .srv-head-actions {
   display: flex;
   gap: 6px;
+  align-items: center;
+}
+
+.conn-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
+.conn-count {
+  margin-left: auto;
+  font-size: var(--base-size-small);
+}
+
+.color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
 }
 
 .conn-name {

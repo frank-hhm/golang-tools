@@ -78,20 +78,14 @@
               :description="remoteLoading ? '加载中…' : '点「刷新」获取版本列表'" />
           </div>
           <div v-for="(p, ver) in installProgress" :key="'p' + ver" class="inst-prog">
-            <div class="inst-prog-row">
-              <span class="ver-name">{{ ver }}</span>
-              <a-progress :percent="(p.percent || 0) / 100" size="small"
-                :status="p.stage === 'error' ? 'danger' : 'normal'" style="flex: 1" />
-              <span class="inst-stage">{{ stageText(p) }}</span>
-              <a-button v-if="p.stage === 'error'" size="small" status="danger" @click="retryInstall(ver as string)">
-                <template #icon><icon-refresh /></template>重试
-              </a-button>
-            </div>
-            <div v-if="p.stage === 'error' && p.note" class="inst-err">
-              <a-tooltip :content="p.note" position="tl">
-                <a-alert type="error" :show-icon="false">{{ p.note }}</a-alert>
-              </a-tooltip>
-            </div>
+            <common-task-progress variant="bare" size="small" :status="instStatus(p)" :name="String(ver)"
+              :percent="p.percent || 0" :meta="instMeta(p)">
+              <template #actions>
+                <a-button v-if="p.stage === 'error'" size="mini" @click="retryInstall(ver as string)">
+                  <template #icon><icon-refresh /></template>重试
+                </a-button>
+              </template>
+            </common-task-progress>
           </div>
         </a-card>
 
@@ -351,11 +345,22 @@ function srcLabel(s: string): string {
 
 function stageText(p: any): string {
   if (!p) return "";
-  // 百分比由行内 a-progress 自带文本显示，这里只报阶段，别再重复带一次数字
+  // 百分比由统一进度行自带文本显示，这里只报阶段，别再重复带一次数字
   if (p.stage === "downloading") return "下载中";
   if (p.stage === "extracting") return "解压中";
   if (p.stage === "done") return "完成";
   return "失败";
+}
+
+// 安装进度 → common-task-progress 语义：done→done、error→error、其余→running。
+function instStatus(p: any): 'running' | 'done' | 'error' {
+  if (p?.stage === 'done') return 'done';
+  if (p?.stage === 'error') return 'error';
+  return 'running';
+}
+function instMeta(p: any): string {
+  if (p?.stage === 'error') return p.note || '安装失败';
+  return stageText(p);
 }
 
 async function loadLocalVersions() {

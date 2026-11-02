@@ -40,6 +40,9 @@ type Manager struct {
 	emitter func(name string, data ...any)
 	store   *Store
 	saveDir string
+	// saveDirCfg 配置层给的全局默认下载目录（优先级低于实例锁定的 saveDir，
+	// 高于 appdirs.Downloads 兜底）。单例由 ApplyConfig 从 config.Download 注入。
+	saveDirCfg string
 
 	wake    chan struct{} // 唤起调度器
 	running int
@@ -683,23 +686,79 @@ func (m *Manager) persistLocked() {
 func (m *Manager) defaultSaveDir() string {
 	m.mu.Lock()
 	d := m.saveDir
+	cfg := m.saveDirCfg
 	m.mu.Unlock()
 	if d != "" {
 		return d
 	}
-	// 未锁定（单例）：实时取配置的全局下载目录，设置页改后立即对新建任务生效
+	// 配置层给了全局下载目录：优先用它（设置页改后立即对新建任务生效）。
+	if cfg != "" {
+		return cfg
+	}
+	// 未锁定也未配：实时取系统下载目录兜底，设置页改后立即对新建任务生效
 	if dir, err := appdirs.Downloads(); err == nil {
 		return dir
 	}
 	return ""
 }
 
-// DefaultSaveDir 当前生效的全局默认下载目录（供前端展示「留空则存到…」）。
-func DefaultSaveDir() string {
-	if dir, err := appdirs.Downloads(); err == nil {
-		return dir
+// DefaultSaveDir 当前实例生效的全局默认下载目录（供前端展示「留空则存到…」）：
+// 优先配置层给的全局目录，其次系统下载目录。
+func (m *Manager) DefaultSaveDir() string { return m.defaultSaveDir() }
+
+// SetSaveDirOverride 注入配置层的全局默认下载目录（空串=回落 appdirs.Downloads 兜底）。
+// 只影响未锁定 saveDir 的实例（即单例）；测试里 New 传了具体 saveDir 的实例不受影响。
+func (m *Manager) SetSaveDirOverride(dir string) {
+	m.mu.Lock()
+	m.saveDirCfg = dir
+	m.mu.Unlock()
+}
+
+// SetOptions 应用配置层的引擎护栏参数（并发/默认分块数/全局限速），
+// 即时生效：提速上限走令牌桶 setRate，MaxRunningTasks 抬高后唤醒调度器放行排队任务。
+// MaxTotalParts 只影响后续新建闸门的预期容量（既有 sem 不重建，保守取原值）。
+func (m *Manager) SetOptions(o Options) {
+	m.mu.Lock()
+	prevRunning := m.opts.MaxRunningTasks
+	if o.MaxRunningTasks > 0 {
+		m.opts.MaxRunningTasks = o.MaxRunningTasks
 	}
-	return ""
+	if o.MaxTotalParts > 0 {
+		m.opts.MaxTotalParts = o.MaxTotalParts
+	}
+	if o.DefaultConnections > 0 {
+		m.opts.DefaultConnections = o.DefaultConnections
+	}
+	if o.GlobalSpeedLimitBps >= 0 {
+		m.opts.GlobalSpeedLimitBps = o.GlobalSpeedLimitBps
+	}
+	limit := m.opts.GlobalSpeedLimitBps
+	raised := m.opts.MaxRunningTasks > prevRunning
+	m.mu.Unlock()
+	m.tb.setRate(limit)
+	if raised {
+		m.signal()
+	}
+}
+
+// SetOptions 包级：应用到进程单例。
+func SetOptions(o Options) { Instance().SetOptions(o) }
+
+// SetSaveDirOverride 包级：注入单例的全局默认下载目录。
+func SetSaveDirOverride(dir string) { Instance().SetSaveDirOverride(dir) }
+
+// ApplyConfig 把下载设置一次性落到进程单例：全局目录 + 引擎护栏参数。
+// 在 main / main_server 接线 emitter 后、以及设置页保存后各调一次，改目录/并发即时生效。
+// 拆开传原始值而非 config 结构体，保持 tools/* 零反向依赖 services/config。
+func ApplyConfig(saveDir string, maxRunning, maxTotalParts, defaultConns int, globalLimitBps int64) {
+	m := Instance()
+	m.SetSaveDirOverride(saveDir)
+	m.SetOptions(Options{
+		MaxRunningTasks:     maxRunning,
+		MaxTotalParts:       maxTotalParts,
+		DefaultConnections:  defaultConns,
+		GlobalSpeedLimitBps: globalLimitBps,
+	})
 }
 
 // cleanupFiles 删除目标文件、.part 与续传 meta。

@@ -40,6 +40,7 @@
             <template #prefix><icon-file /></template>
           </a-input>
           <a-button size="small" @click="chooseKey">选择</a-button>
+          <a-button size="small" @click="openSshGen">生成密钥</a-button>
         </a-space>
       </a-form-item>
 
@@ -64,10 +65,12 @@
       </div>
     </template>
   </a-modal>
+
+  <ssh-gen-modal v-model:visible="sshGenVisible" :context="sshGenCtx" @use-key="onUseKey" />
 </template>
 
 <script setup lang="ts">
-import { getCurrentInstance, reactive, ref, watch } from 'vue';
+import { computed, getCurrentInstance, reactive, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import type { FtpConnection } from '../types';
 
@@ -118,6 +121,18 @@ async function chooseKey() {
   } catch (e: any) {
     Message.error({ content: String(e?.message || e || '选择文件失败'), position: 'top', duration: 2000 });
   }
+}
+
+/* SSH 生成助手：把当前连接的主机上下文传进去，生成密钥后回填 keyPath */
+const sshGenVisible = ref(false);
+const sshGenCtx = computed(() => ({
+  address: form.host, port: form.port || 22, user: form.user, keyPath: form.keyPath,
+}));
+function openSshGen() {
+  sshGenVisible.value = true;
+}
+function onUseKey(payload: { keyPath: string; pubKey: string }) {
+  if (payload?.keyPath) form.keyPath = payload.keyPath;
 }
 
 function validate(): string {

@@ -259,13 +259,28 @@ function cancelPathEdit() {
   pathInput.value = curPath.value;
 }
 
-/** 名称单击：目录进入；远端文件预览，本地文件交给自带的文件查看器打开 */
+/** 可在查看器里流式播放/预览的类型（走 docref 端点，远端音视频可拖进度）；文本等仍走轻量弹窗 */
+function isStreamable(name: string): boolean {
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  return ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "pdf",
+    "mp3", "wav", "m4a", "ogg", "mp4", "webm", "mov"].includes(ext);
+}
+
+/** 名称单击：目录进入；远端流式类型交查看器经 docref 播放，其余远端文件走预览弹窗，本地文件用自带查看器 */
 async function activate(e: FtpEntry) {
   if (e.isDir) {
     await load(e.path);
     return;
   }
   if (isRemote()) {
+    if (isStreamable(e.name)) {
+      // 远端流式类型：带 src+sid+path 进查看器，media 端点按三元组走 Range 流式
+      const ref = { src: "sftp", sid: props.sessionId, path: e.path, name: e.name };
+      const qs = `?src=sftp&sid=${encodeURIComponent(props.sessionId)}&path=${encodeURIComponent(e.path)}&name=${encodeURIComponent(e.name)}`;
+      openToolWindow(`/tools/viewer${qs}`, '文件查看器', { single: true });
+      try { Events.Emit('viewer:open-path', ref); } catch { /* 非 Wails 环境忽略 */ }
+      return;
+    }
     emit('preview', e);
     return;
   }

@@ -28,19 +28,27 @@ const (
 	AuthKey      = "key"
 )
 
-// Host 一条连接记录（前端列表/表单共用；Password 只在“保存并连接”时带上来）
+// Host 一条连接记录（前端列表/表单共用）。
+//
+// 凭据体系（P0）后，登录方式优先取自 CredID 指向的 Credential；
+// Password/KeyPath/Auth/User 仍是旧字段，保留读取以兼容迁移前的存量记录，
+// 新记录由前端「选凭据」填写 CredID，不再内联密码。
 type Host struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	System    string `json:"system"`             // linux | windows
-	Address   string `json:"address"`            // IP 或域名
-	Port      int    `json:"port"`               // SSH 端口
-	User      string `json:"user"`               // SSH 账号
-	Auth      string `json:"auth"`               // password | key
-	Password  string `json:"password,omitempty"` // 明文只在此刻出现，落盘前即加密
-	KeyPath   string `json:"keyPath,omitempty"`  // 私钥文件路径（auth=key）
-	Note      string `json:"note,omitempty"`     // 备注，列表里显示为“名称”
-	UpdatedAt int64  `json:"updatedAt"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	System    string   `json:"system"`             // linux | windows
+	Address   string   `json:"address"`            // IP 或域名
+	Port      int      `json:"port"`               // SSH 端口
+	User      string   `json:"user"`               // SSH 账号（旧字段，凭据未给账号时兜底）
+	Auth      string   `json:"auth"`               // password | key（旧字段）
+	Password  string   `json:"password,omitempty"` // 明文只在此刻出现，落盘前即加密（旧字段）
+	KeyPath   string   `json:"keyPath,omitempty"`  // 私钥文件路径（旧字段，auth=key）
+	CredID    string   `json:"credID,omitempty"`   // 关联的凭据 id（P0：一处改密多机生效）
+	Group     string   `json:"group,omitempty"`    // 分组名（左栏分组树）
+	Tags      []string `json:"tags,omitempty"`     // 标签（列表筛选）
+	Color     string   `json:"color,omitempty"`    // 列表圆点/标签配色
+	Note      string   `json:"note,omitempty"`     // 备注，列表里显示为“名称”
+	UpdatedAt int64    `json:"updatedAt"`
 }
 
 // SessionInfo 打开终端后回给前端的句柄
@@ -70,9 +78,14 @@ type hostRecord struct {
 
 var storeMu sync.Mutex
 
+// dataDir <data>/term 目录（hosts.json / credentials.json / known_hosts 同放一处）
+func dataDir() (string, error) {
+	return appdirs.Data("term")
+}
+
 // storePath <data>/term/hosts.json（目录随全局 data 基础目录走）
 func storePath() (string, error) {
-	dir, err := appdirs.Data("term")
+	dir, err := dataDir()
 	if err != nil {
 		return "", err
 	}
@@ -97,6 +110,8 @@ func readRecords() ([]hostRecord, error) {
 			return nil, fmt.Errorf("终端记录文件损坏: %w", err)
 		}
 	}
+	// 旧记录升格为凭据（幂等，失败原样返回不阻塞启动）
+	recs = migrateHostCreds(recs)
 	return recs, nil
 }
 
@@ -134,35 +149,47 @@ func ListHosts() ([]Host, error) {
 	return out, nil
 }
 
-// SaveHost 新建或更新一条记录；密码留空表示“沿用原密码”（编辑时不改密码）
+// SaveHost 新建或更新一条记录。
+// 关联凭据（CredID 非空）时登录方式取自凭据，不再校验内联 User/密码/私钥；
+// 未关联凭据而直接填了密码/私钥的旧式记录照旧落 PassEnc（保留兼容路径）。
 func SaveHost(in Host) ([]Host, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Address = strings.TrimSpace(in.Address)
 	in.User = strings.TrimSpace(in.User)
 	in.KeyPath = strings.TrimSpace(in.KeyPath)
 	in.Note = strings.TrimSpace(in.Note)
+	in.CredID = strings.TrimSpace(in.CredID)
+	in.Group = strings.TrimSpace(in.Group)
+	in.Color = strings.TrimSpace(in.Color)
+	in.Tags = normalizeTags(in.Tags)
 	if in.System != SystemWindows {
 		in.System = SystemLinux
-	}
-	if in.Auth != AuthKey {
-		in.Auth = AuthPassword
 	}
 	if in.Address == "" {
 		return nil, fmt.Errorf("请填写服务器 IP 或域名")
 	}
-	if in.User == "" {
-		return nil, fmt.Errorf("请填写 SSH 账号")
-	}
 	if in.Port <= 0 || in.Port > 65535 {
 		return nil, fmt.Errorf("端口需在 1-65535 之间")
 	}
-	if in.Auth == AuthKey {
-		if in.KeyPath == "" {
-			return nil, fmt.Errorf("请选择私钥文件")
+	if in.CredID == "" {
+		// 旧式内联凭据：仍按原规则校验账号与认证方式
+		if in.Auth != AuthKey {
+			in.Auth = AuthPassword
 		}
-		if _, err := os.Stat(in.KeyPath); err != nil {
-			return nil, fmt.Errorf("私钥文件不可读: %v", err)
+		if in.User == "" {
+			return nil, fmt.Errorf("请填写 SSH 账号")
 		}
+		if in.Auth == AuthKey {
+			if in.KeyPath == "" {
+				return nil, fmt.Errorf("请选择私钥文件")
+			}
+			if _, err := os.Stat(in.KeyPath); err != nil {
+				return nil, fmt.Errorf("私钥文件不可读: %v", err)
+			}
+		}
+	} else {
+		// 走凭据：主机自身不再存内联密码，认证细节全部交给凭据表
+		in.Password = ""
 	}
 
 	storeMu.Lock()
@@ -250,28 +277,4 @@ func DeleteHost(id string) ([]Host, error) {
 		out = append(out, r.toHost())
 	}
 	return out, nil
-}
-
-// credential 取出建连所需的记录与明文密码（密码只在内存里存在这一小会儿）
-func credential(id string) (Host, string, error) {
-	storeMu.Lock()
-	defer storeMu.Unlock()
-	recs, err := readRecords()
-	if err != nil {
-		return Host{}, "", err
-	}
-	for _, r := range recs {
-		if r.ID != id {
-			continue
-		}
-		pass := ""
-		if r.PassEnc != "" {
-			pass, err = unprotectSecret(r.PassEnc)
-			if err != nil {
-				return Host{}, "", err
-			}
-		}
-		return r.toHost(), pass, nil
-	}
-	return Host{}, "", fmt.Errorf("连接记录不存在，可能已被删除")
 }

@@ -1,6 +1,13 @@
 package app
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"path/filepath"
+
+	"Tools/appdirs"
+	"Tools/tools/archive"
 	"Tools/tools/fileview"
 )
 
@@ -41,4 +48,28 @@ func (a *App) FileOpenSystem(path string) error {
 // FileClassify 判定文件类型（kind, mime）：前端也有一份表，以后端为准。
 func (a *App) FileClassify(path string) (string, string) {
 	return fileview.Classify(path)
+}
+
+// ArchiveListEntries 列出本地归档（zip/tar.gz/tgz）内条目，供查看器「压缩包」kind 浏览。
+// 只认这三类（与 tools/fileview.Classify 的 archive 判定同口径）；rar/7z/裸 tar 回明确错误。
+// 方法不加 build tag：Linux 面板里浏览的是服务器本机文件，语义一致。
+func (a *App) ArchiveListEntries(path string) ([]archive.Entry, error) {
+	return archive.List(path)
+}
+
+// ArchiveExtractEntry 把归档内单个条目提取到临时目录，返回提取后的本地绝对路径；
+// 前端再对该临时路径走既有的 FileClassify/FileRead*/media 端点预览。
+// 每次按「归档名哈希/条目相对路径」落盘，不同归档的同名条目互不覆盖。
+func (a *App) ArchiveExtractEntry(path, entry string) (string, error) {
+	base, err := appdirs.Data("archive-preview")
+	if err != nil {
+		return "", err
+	}
+	scope := md5.Sum([]byte(filepath.Clean(path)))
+	destDir := filepath.Join(base, hex.EncodeToString(scope[:]))
+	got, err := archive.ExtractOne(path, entry, destDir)
+	if err != nil {
+		return "", fmt.Errorf("提取条目失败: %w", err)
+	}
+	return got, nil
 }
