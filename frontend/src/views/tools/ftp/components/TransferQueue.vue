@@ -8,8 +8,9 @@
         <a-tag v-if="done" size="small" color="green">{{ done }} 完成</a-tag>
       </div>
       <a-space :size="4">
-        <a-button v-if="finished" size="mini" type="text" @click="emit('clear')">清空已完成</a-button>
-        <a-button size="mini" type="text" @click="collapsed = !collapsed">
+        <a-button v-if="failed" size="mini" class="btn-quiet" @click="retryAll">重试全部失败</a-button>
+        <a-button v-if="finished" size="mini" class="btn-quiet" @click="emit('clear')">清空已完成</a-button>
+        <a-button size="mini" class="btn-quiet" @click="collapsed = !collapsed">
           <template #icon><component :is="collapsed ? 'icon-down' : 'icon-up'" /></template>
         </a-button>
       </a-space>
@@ -36,9 +37,9 @@
             <span class="tq-state" :class="'s-' + t.state">{{ stateText(t.state) }}</span>
           </template>
           <template #actions>
-            <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" type="text" status="danger"
+            <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" class="btn-quiet" status="danger"
               @click="emit('cancel', t.id)">取消</a-button>
-            <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" type="text"
+            <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" class="btn-quiet"
               @click="emit('retry', t.id)">重试</a-button>
           </template>
         </common-task-progress>
@@ -65,6 +66,13 @@ const running = computed(() => props.transfers.filter((t) => t.state === 'runnin
 const failed = computed(() => props.transfers.filter((t) => t.state === 'failed').length);
 const done = computed(() => props.transfers.filter((t) => t.state === 'done').length);
 const finished = computed(() => props.transfers.some((t) => t.state === 'done' || t.state === 'failed' || t.state === 'canceled'));
+
+// 重试全部失败/取消项：逐个 emit retry，父页按 id 调 FtpRetryTransfer。
+function retryAll() {
+  props.transfers
+    .filter((t) => t.state === 'failed' || t.state === 'canceled')
+    .forEach((t) => emit('retry', t.id));
+}
 
 function percent(t: FtpTransfer): number {
   if (t.total > 0) return Math.min(100, Math.round((t.done / t.total) * 100));
@@ -221,5 +229,29 @@ function fmtSpeed(n: number): string {
 
 .tq-actions {
   flex: none;
+}
+
+/* 弱化操作按钮：替代被禁用的 type="text"，常态无底无框，hover 只变字色不加深边框/底色 */
+.arco-btn.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-2);
+  padding: 0 4px;
+}
+
+.arco-btn.btn-quiet:hover {
+  background: transparent;
+  border-color: transparent;
+  color: rgb(var(--primary-6));
+}
+
+.arco-btn.btn-quiet.arco-btn-status-danger {
+  color: rgb(var(--red-6));
+}
+
+.arco-btn.btn-quiet.arco-btn-status-danger:hover {
+  background: transparent;
+  border-color: transparent;
+  color: rgb(var(--red-5));
 }
 </style>

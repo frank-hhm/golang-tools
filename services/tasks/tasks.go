@@ -307,9 +307,9 @@ func apply(meta eventMeta, p payload) (Task, bool, bool) {
 		t.Status = StatusRunning
 	}
 
-	// 下载任务：把引擎的细粒度状态记进 Stage，供抽屉渲染状态点与就地操作按钮。
+	// 下载/云盘/互传切片上传任务：把引擎的细粒度状态记进 Stage，供抽屉渲染状态点与就地操作按钮。
 	// Status 仍是粗粒度（running / 终态），不影响浮标计数、终态通知与「清理已结束」。
-	if meta.tool == "download" && p.Status != "" {
+	if (meta.tool == "download" || meta.tool == "clouddrive" || meta.tool == "lanshare") && p.Status != "" {
 		t.Stage = p.Status
 	}
 
@@ -353,9 +353,9 @@ func identify(meta eventMeta, p payload) (id, name, title string) {
 		name = "engine"
 	}
 	id = meta.tool + "|" + meta.kind + "|" + name
-	// 下载/云盘任务：台账主键直接用引擎/转存 id，抽屉才能就地操作；
+	// 下载/云盘/互传切片上传任务：台账主键直接用引擎/转存/会话 id，抽屉才能就地操作；
 	// 同名多任务（重名避让出的 (1)(2)…）也不会被误并成一行。
-	if (meta.tool == "download" || meta.tool == "clouddrive") && p.ID != "" {
+	if (meta.tool == "download" || meta.tool == "clouddrive" || meta.tool == "lanshare") && p.ID != "" {
 		id = p.ID
 	}
 

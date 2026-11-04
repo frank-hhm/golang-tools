@@ -64,6 +64,12 @@ type App struct {
 	// nativeNotify 当前构建能否弹原生通知卡（面板模式为 false，见 SetNativeNotify）
 	nativeNotify atomic.Bool
 
+	// 「显示/隐藏全部窗口」全局热键：按下时把可见窗口全部 Hide 并存快照
+	// （窗口 ID → 收起时是否已最小化），再按一次按快照 Show 回来。
+	// 用 ID 而不是名字：非单例窗口没有名字，ID 每个窗口实例唯一且递增。
+	hideAllMu  sync.Mutex
+	hiddenWins map[uint]bool
+
 	// 快捷搜索面板（Alt+Space）：单个隐藏窗口，热键呼出/收起，失焦自动收起。
 	// 整套生命周期受设置里的总开关约束（见 launcher.go 文件头）：没开启就
 	// 不建窗口、不挂热键、不扫盘建索引，也不留一个常驻的隐藏 WebView2 实例。
@@ -270,6 +276,9 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	// 文件压缩：按开关挂右键 verb / SendTo / 本机转交监听，
 	// 并处理 --archive-panel 带来的“启动即呼出选项小窗”（见 archive.go）
 	a.applyArchiveOnStart()
+	// Git 右键集成：按开关挂 ToolsGit* verb 与本机转交监听（见 git_shell.go）。
+	// 冷启动定位（无实例时 HandleGitCLI 记的 pending）由前端挂载后经 GetPendingGit 取走。
+	a.applyGitOnStart()
 	// 系统通知点击跳转：起导航转交监听（仅桌面）。再登记通知身份（进程 AUMID /
 	// tools: 协议 / 注册表 AppUserModelId）——全是普通注册表与 shell32 操作，安全，
 	// 就地同步做完（已改用纯注册表登记，不再走会崩的 COM 快捷方式），详见 toast_windows.go。
@@ -304,6 +313,8 @@ func (a *App) ServiceShutdown() error {
 	npm.StopAll()
 	// 压缩的本机转交监听：收掉监听与端点文件，别给下一个实例留半个占位
 	a.unmountArchiveHost()
+	// Git 的本机转交监听：同样收干净
+	a.unmountGitHost()
 	// 导航转交监听：同样收干净
 	a.unmountNavigateHost()
 	// 浏览器空间：销毁 controller 并释放 profile 锁（不然下次启动会报目录被占用）
@@ -380,6 +391,57 @@ func (a *App) showMainWindow() {
 	a.mainWindow.Focus()
 }
 
+// toggleAllWindows 是「显示/隐藏全部窗口」全局热键的入口（DeskBox 一键显隐的简配版）：
+// 有可见窗口 → 全部收起并存快照；全部不可见 → 按快照恢复并聚焦主窗口。
+// 托盘与浮动球不受影响（它们不是 Wails 窗口）；收起期间从托盘/球又点开过的，
+// 下次按下会以新快照为准一并收起；收起期间被关掉的窗口恢复时自动跳过，不留悬引用。
+// 最小化中的窗口也算可见（收起后恢复时保持最小化原状，不擅自弹大）。
+// 热键回调从热键线程进来，窗口操作一律 InvokeAsync 回主线程。
+func (a *App) toggleAllWindows() {
+	if a.app == nil {
+		return
+	}
+	application.InvokeAsync(func() {
+		a.hideAllMu.Lock()
+		defer a.hideAllMu.Unlock()
+		var visible []application.Window
+		for _, w := range a.app.Window.GetAll() {
+			if w != nil && w.IsVisible() {
+				visible = append(visible, w)
+			}
+		}
+		if len(visible) > 0 {
+			snap := make(map[uint]bool, len(visible))
+			for _, w := range visible {
+				snap[w.ID()] = w.IsMinimised()
+				w.Hide()
+			}
+			a.hiddenWins = snap
+			applog.Infof("win", "隐藏全部窗口：%d 个", len(snap))
+			return
+		}
+		snap := a.hiddenWins
+		a.hiddenWins = nil
+		restored := 0
+		for id, wasMin := range snap {
+			w, ok := a.app.Window.GetByID(id)
+			if !ok {
+				continue // 收起期间已被销毁，跳过
+			}
+			w.Show()
+			if !wasMin {
+				w.UnMinimise()
+			}
+			restored++
+		}
+		if a.mainWindow != nil && snap[a.mainWindow.ID()] {
+			// 主窗口在这批被收的记录里才抢焦：本来没被收的（如只收过工具窗）不捣乱
+			a.mainWindow.Focus()
+		}
+		applog.Infof("win", "恢复全部窗口：%d 个", restored)
+	})
+}
+
 // openSettingsFromTray 从托盘打开“设置”（单例工具窗口）。
 // 注意：需走 /win 前缀的空白布局路由（BlankLayout 自绘标题栏+菜单栏），
 // 与前端 useToolWindow 的 "/win"+path 约定保持一致，否则新窗口没有原有菜单栏。
@@ -408,6 +470,21 @@ func (a *App) RealQuit() {
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
+}
+
+// WindowBackground 返回与前端页面底色同档的窗口底色（r, g, b，取 uint8 直接喂 NewRGB）。
+//
+// WebView2 首帧合成之前，Win32 会用 BackgroundColour 擦客户区：以前这里写死
+// (6,7,15) 的近黑，于是每次开工具窗都先亮一整块带 Win11 圆角投影的黑板，
+// 浅色主题下尤其刺眼。改成按主题取 Arco 的 --color-bg-1（浅色 #FFFFFF /
+// 暗黑 #17171A），也就是 BlankLayout 的 .blank-layout 底色，从底色过渡到
+// 页面看不出来。首帧前那一段前端画不了东西（JS 还没执行），只能靠这里对齐；
+// 再往后「窗口已亮但内容未画好」由 index.html 的内联骨架层接管。
+func WindowBackground() (uint8, uint8, uint8) {
+	if windowDark() {
+		return 23, 23, 26
+	}
+	return 255, 255, 255
 }
 
 // OpenToolWindow 在新的 Wails 原生窗口中打开指定前端路由（hash 路由）。
@@ -447,11 +524,12 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 	if height <= 0 {
 		height = 718
 	}
+	bgR, bgG, bgB := WindowBackground()
 	opts := application.WebviewWindowOptions{
 		Title:            title,
 		Width:            width,
 		Height:           height,
-		BackgroundColour: application.NewRGB(6, 7, 15),
+		BackgroundColour: application.NewRGB(bgR, bgG, bgB),
 		StartState:       startState,
 		// 无边框：标题栏与“视图”菜单均由前端 BlankLayout 自绘（菜单在标题右侧）
 		Frameless: true,
@@ -2394,6 +2472,13 @@ func (h nativeHost) BallPosition() (int, int, bool) {
 
 func (h nativeHost) SaveBallPosition(x, y int) error { return config.SaveBallPos(x, y) }
 
+// BallDock 把 ball.dockEdge 的「nil = 开启」兜底收在这里：winui 包不读配置，
+// 指针解引用与缺省判断都归主程序适配层。
+func (h nativeHost) BallDock() bool {
+	d := config.CurrentConfig().Ball.DockEdge
+	return d == nil || *d
+}
+
 func (h nativeHost) BadgeCount() int { return h.a.activeBackgroundCount() }
 
 func (h nativeHost) OnBallAction(id string) { h.a.handleBallAction(id) }
@@ -2418,6 +2503,10 @@ func (h nativeHost) Hotkeys() []winui.Hotkey {
 	if sc := launcher.ShortcutFromConfig(); sc != "" && h.a.launcherMounted() {
 		out = append(out, winui.Hotkey{ID: winui.LauncherHotkeyID, Shortcut: sc})
 	}
+	// 「显示/隐藏全部窗口」：配了才给这一条（空串 = 关闭），与快捷搜索同一套重载注销机制
+	if sc := strings.TrimSpace(config.CurrentConfig().Ball.HideAllShortcut); sc != "" {
+		out = append(out, winui.Hotkey{ID: winui.HideAllHotkeyID, Shortcut: sc})
+	}
 	return out
 }
 
@@ -2434,6 +2523,11 @@ func (h nativeHost) DispatchTool(id string) {
 			// 开不出来也得给个响：否则按下热键像坏了，用户无从知道是没开启还是没窗口
 			h.a.ShowMessage("warning", err.Error())
 		}
+		return
+	}
+	// 「显示/隐藏全部窗口」也是伪工具项：同样在这里特判
+	if id == winui.HideAllHotkeyID {
+		h.a.toggleAllWindows()
 		return
 	}
 	h.a.dispatchToolID(id)
@@ -2597,6 +2691,8 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	a.applyLauncherSwitch()
 	// 右键挂载与转交监听随开关即时生效：开着才挂，关掉就删注册表、停监听
 	a.applyArchiveSwitch()
+	// Git 右键集成同上：开 → 挂 verb + 起转交监听；关 → 删 ToolsGit* 键、停监听
+	a.applyGitSwitch()
 	// 广播配置变更：首页等窗口据此刷新工具列表（设置页会自动保存，前端自行去重）
 	if a.app != nil {
 		a.app.Event.Emit("config:saved", path)

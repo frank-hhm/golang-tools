@@ -145,6 +145,12 @@ export interface KeyPair {
     "pubKeyLine": string;
     "fingerprintSHA256": string;
     "fingerprintMD5": string;
+
+    /**
+     * ACLWarning 非空表示私钥的 NTFS 权限没收紧成功。Windows 版 OpenSSH 会拒用权限
+     * 宽松的私钥（报 UNPROTECTED PRIVATE KEY FILE），所以这不是提示，是功能可能失效。
+     */
+    "aclWarning": string;
 }
 
 /**

@@ -3,25 +3,14 @@
          版式对齐首页：区块用 a-card（标题走 #title，筛选/搜索/版本提示走 #extra），
          指标用首页同款 stat-card（彩色圆角图标 + 标签 + 大号数值 + 明细） -->
     <div class="ov">
-        <a-card class="card-head-tool ov-card">
-            <template #title>
-                <span class="ov-title">资源概览</span>
-            </template>
-            <template #extra>
-                <!-- 引擎版本属于「这一屏数据从哪来」，放卡片右上角，不占正文 -->
-                <a-tooltip :content="engineLabel || '引擎版本未知'">
-                    <span class="ov-note">{{ engineLabel || '—' }}</span>
-                </a-tooltip>
-            </template>
 
-            <a-row :gutter="[12, 12]">
-                <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
-                    <common-stat-card :icon="c.icon" :icon-value="c.p" :tone="c.tone" :label="c.title" :value="c.value"
-                        :detail="c.sub" :tip="c.tip" :ready="c.ready" />
-                </a-col>
-            </a-row>
-        </a-card>
 
+        <a-row :gutter="[12, 12]">
+            <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
+                <common-stat-card :icon="c.icon" :icon-value="c.p" :tone="c.tone" :label="c.title" :value="c.value"
+                    :detail="c.sub" :tip="c.tip" :ready="c.ready" />
+            </a-col>
+        </a-row>
         <!-- fill：容器列表吃掉可视区剩下的高度，卡片墙过多时在卡片内部滚，卡片下沿不会悬空 -->
         <a-card class="card-head-tool ov-card fill">
             <template #title>
@@ -68,7 +57,8 @@
                         <!-- 卡片整体可点：一句“监控/日志 →”把去向说清楚，别让人靠猜 -->
                         <a-button class="cc-open" size="mini">{{ isRunning(c) ? '监控' : '日志' }}</a-button>
                         <!-- 终端单独一个入口（会拦掉冒泡，不然卡片点击会盖过去） -->
-                        <a-button v-if="isRunning(c)" class="cc-open" size="mini" @click.stop="emit('open-term', c)">终端</a-button>
+                        <a-button v-if="isRunning(c)" class="cc-open" size="mini"
+                            @click.stop="emit('open-term', c)">终端</a-button>
                     </a-space>
 
                     <div class="cc-bars">

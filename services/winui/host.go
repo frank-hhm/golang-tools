@@ -26,6 +26,11 @@ const BallHomeItemID = "__home__"
 // 不进清单，热键线程重载后自然就把原来那条注销了。
 const LauncherHotkeyID = "__launcher__"
 
+// HideAllHotkeyID 「显示/隐藏全部窗口」的内置热键 ID：不对应工具项，由主程序
+// DispatchTool 特判成一键收起/按快照恢复（借鉴 DeskBox 的胶囊一键显隐）。
+// 数据源是 ball.hideAllShortcut，空串不进清单——注销同理由重载机制天然完成。
+const HideAllHotkeyID = "__hideall__"
+
 // Hotkey 一条全局热键绑定：ID 为工具标识，Shortcut 形如 "Ctrl+Alt+S"。
 type Hotkey struct {
 	ID       string
@@ -57,6 +62,7 @@ type Host interface {
 	BadgeCount() int        // 球面红点角标：后台运行中的任务数
 	OnBallAction(id string) // 菜单选中项交回主程序派发
 	ShowMainWindow()        // 单击球体唤起主界面
+	BallDock() bool         // 贴边自动收缩成胶囊 tab 是否开启（nil 默认开，由主程序兜底）
 
 	// —— 全局热键 ——
 	Hotkeys() []Hotkey      // 当前配置里所有设了 Shortcut 的工具

@@ -13,13 +13,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"mime"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
 	"Tools/services/sysx"
+	"Tools/tools/filekind"
 )
 
 // 内容上限：读走 Wails 事件/返回值，灌太满会把绑定层噎住；
@@ -45,72 +45,15 @@ type FileBinary struct {
 	Size    int64  `json:"size"`    // 文件实际字节数
 }
 
-// 类型判定的扩展名表：三级"扩展名 → MIME → 兜底 binary"，前端与后端同口径。
-var kindByExt = map[string]string{
-	"png": "image", "jpg": "image", "jpeg": "image", "gif": "image",
-	"webp": "image", "bmp": "image", "svg": "image", "ico": "image",
-	"pdf": "pdf",
-	"xls": "sheet", "xlsx": "sheet", "csv": "sheet",
-	"docx": "doc",
-	"mp3":  "audio", "wav": "audio", "m4a": "audio", "ogg": "audio",
-	"mp4": "video", "webm": "video", "mov": "video",
-	"js": "code", "ts": "code", "jsx": "code", "tsx": "code", "vue": "code",
-	"json": "code", "html": "code", "htm": "code", "css": "code",
-	"go": "code", "py": "code", "php": "code", "sh": "code",
-	"yaml": "code", "yml": "code", "toml": "code",
-	"txt": "text", "md": "text", "log": "text", "ini": "text",
-	"conf": "text", "env": "text",
-}
-
-// imageMime 图片扩展名的显式 MIME：系统注册表不可靠（Windows 上 .ico 等
-// 可能被别的软件改写过），且 Linux 容器经常没有 /etc/mime.types。
-var imageMime = map[string]string{
-	"png":  "image/png",
-	"jpg":  "image/jpeg",
-	"jpeg": "image/jpeg",
-	"gif":  "image/gif",
-	"webp": "image/webp",
-	"bmp":  "image/bmp",
-	"svg":  "image/svg+xml",
-	"ico":  "image/x-icon",
-}
-
 // Classify 按"扩展名 → 系统 MIME → 兜底 binary"三级判定文件类型。
 // kind ∈ image|pdf|sheet|doc|text|code|audio|video|archive|binary；mime 取不到时 octet-stream。
+//
+// 判定表已下沉到 tools/filekind：文档中心（tools/docspace）要用同一口径给条目
+// 打类型标签，而 docspace 反过来 import fileview 会成环（本包已依赖 docref）。
+// 这里保留原双返回值签名，本包调用方与绑定层不受影响。
 func Classify(path string) (kind, mimeStr string) {
-	// 归档先判：.tar.gz 的 filepath.Ext 只会拿到 .gz，进不了扩展名表，
-	// 必须按整段后缀识别（与 tools/archive.FormatFor 同口径：仅 zip / tar.gz / tgz）。
-	if k, m, ok := classifyArchive(path); ok {
-		return k, m
-	}
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
-	if k, ok := kindByExt[ext]; ok {
-		if m, ok := imageMime[ext]; ok {
-			return k, m
-		}
-		if m := mime.TypeByExtension("." + ext); m != "" {
-			return k, m
-		}
-		return k, "application/octet-stream"
-	}
-	if m := mime.TypeByExtension("." + ext); m != "" {
-		return "binary", m
-	}
-	return "binary", "application/octet-stream"
-}
-
-// classifyArchive 识别可在线列举的归档格式（zip / tar.gz / tgz）。
-// 只标这三类：rar / 7z / 裸 .gz / 裸 .tar 本引擎解不了（会归 binary 开本机程序）。
-func classifyArchive(path string) (kind, mime string, ok bool) {
-	low := strings.ToLower(filepath.Base(path))
-	switch {
-	case strings.HasSuffix(low, ".zip"):
-		return "archive", "application/zip", true
-	case strings.HasSuffix(low, ".tar.gz"), strings.HasSuffix(low, ".tgz"):
-		return "archive", "application/gzip", true
-	default:
-		return "", "", false
-	}
+	k, m, _ := filekind.Classify(path)
+	return k, m
 }
 
 // ReadText 读取文本内容：上限 MaxTextInline，超限截断并标记；

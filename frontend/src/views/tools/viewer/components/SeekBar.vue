@@ -7,7 +7,7 @@
             <div class="seek-knob" :style="vertical ? { bottom: pct(ratio) } : { left: pct(ratio) }"
                 :class="{ on: dragging }"></div>
         </div>
-        <div v-if="tip && !vertical && hover !== null" class="seek-tip" :style="{ left: pct(hover) }">
+        <div v-if="tip && !vertical && hover !== null && !preview" class="seek-tip" :style="{ left: pct(hover) }">
             {{ fmtTime(hover * (duration || 0)) }}
         </div>
     </div>
@@ -18,7 +18,9 @@
 可拖拽进度/音量条：pointer 事件 + setPointerCapture，按下即跳转、拖动实时跟随，
 支持点击定位与「快进」式拖动。ratio / buffered 都是 0..1，父组件负责换算成秒。
 vertical=true 时渲染成竖向条（音量弹层用，自底向上），指针按 Y 轴换算。
-tip=true 且传 duration 时，悬停显示目标时间点气泡。
+tip=true 且传 duration 时，悬停显示目标时间点气泡；preview=true 时气泡让位
+给父组件的悬停预览缩略图（VideoPlayer 用），并把悬停位置 (0..1|null)
+通过 hover-ratio 事件报给父组件。
 配色走 --sb-track/--sb-buffered/--sb-fill/--sb-knob 四个 CSS 变量，默认是深底
 （半透明白）配色；浅色卡片里由父组件覆盖成 Arco 语义变量，自动跟随明暗主题。
 */
@@ -31,9 +33,13 @@ const props = defineProps<{
     large?: boolean;
     vertical?: boolean;
     tip?: boolean;
+    preview?: boolean;
     duration?: number;
 }>();
-const emit = defineEmits<{ (e: "update:ratio", v: number): void }>();
+const emit = defineEmits<{
+    (e: "update:ratio", v: number): void;
+    (e: "hover-ratio", v: number | null): void;
+}>();
 
 const el = ref<HTMLElement | null>(null);
 const dragging = ref(false);
@@ -65,7 +71,10 @@ function onDown(e: PointerEvent) {
 function onMove(e: PointerEvent) {
     const r = ratioFrom(e);
     if (dragging.value && r !== null) emit("update:ratio", r);
-    if (props.tip && !props.vertical) hover.value = r;
+    if (!props.vertical) {
+        if (props.tip) hover.value = r;
+        emit("hover-ratio", r);
+    }
 }
 function onUp(e: PointerEvent) {
     if (!dragging.value) return;
@@ -78,6 +87,7 @@ function onUp(e: PointerEvent) {
 }
 function onLeave() {
     hover.value = null;
+    emit("hover-ratio", null);
 }
 </script>
 
@@ -92,6 +102,12 @@ function onLeave() {
 }
 .seek-lg {
     padding: 9px 0;
+}
+/* 贴底全宽（B 站式）：拉大命中区，轨道保持细线 */
+.seek-plain {
+    flex: none;
+    width: 100%;
+    padding: 8px 0 6px;
 }
 .seek-track {
     position: relative;

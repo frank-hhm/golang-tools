@@ -276,6 +276,10 @@ func pruneVersions(vers []Version, keep int) ([]Version, []Version) {
 
 // MoveToTrash 把 local 条目的实体移入库内回收站并记 origin，条目从 items 移除。
 // sftp 源不支持（远端文件不能移进本机回收站），返回 sysx.ErrUnsupported。
+//
+// 安全契约（借鉴 DeskBox 的文件安全口径）：是移动不是删除——实体只换位置，
+// 内容不动、不写副本；除用户显式彻底删除/超龄清理外永不删源；
+// 还原时原路径被占用则拒绝覆盖，实体保留在回收站里等用户处置。
 func (s *Store) MoveToTrash(itemID string) error {
 	if err := s.Load(); err != nil {
 		return err

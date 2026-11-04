@@ -16,26 +16,35 @@ import (
 // 前端 <video>/<audio>/<iframe> 直接 src 指过来，桌面 WebView2 与 server 构建同域可用。
 const MediaPath = "/fileview/media"
 
-// MediaHandler 在最外层拦 GET /fileview/media?path=..&name=..&dl=0|1，
-// 其余路径原样透传 next（不影响 assets、绑定与 WS）。
+// MediaHandler 在最外层拦 GET /fileview/media?path=..&name=..&dl=0|1 与
+// GET /fileview/thumb?src=&sid=&path=&w=..，其余路径原样透传 next
+// （不影响 assets、绑定与 WS）。
 //
 // 为什么要它：大文件不适合 base64 灌进绑定（ReadBinaryDataURL 到 25MB 就回
 // tooLarge），音视频边下边播、PDF 交给浏览器内置查看器都要靠 Range 请求；
 // http.ServeContent 自带 Range/206/Content-Type/Last-Modified，不必手写。
+// 缩略图同域同机制：一次列表页可能几百张图，只能靠 <img> 并发懒加载。
 //
 // 安全口径与磁盘工具一致：可整卷浏览、无 root 约束。桌面版请求只来自内嵌
 // WebView（同源）；server 构建所有对外流量先过 services/panel 登录墙。
 func MediaHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != MediaPath {
+		switch r.URL.Path {
+		case MediaPath:
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				http.Error(w, "仅支持 GET/HEAD", http.StatusMethodNotAllowed)
+				return
+			}
+			serveMedia(w, r)
+		case ThumbPath:
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				http.Error(w, "仅支持 GET/HEAD", http.StatusMethodNotAllowed)
+				return
+			}
+			serveThumb(w, r)
+		default:
 			next.ServeHTTP(w, r)
-			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			http.Error(w, "仅支持 GET/HEAD", http.StatusMethodNotAllowed)
-			return
-		}
-		serveMedia(w, r)
 	})
 }
 

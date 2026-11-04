@@ -22,6 +22,13 @@ func (a *App) GuardRemove(id string) error { return guard.Remove(id) }
 // GuardClear 清空全部登记项（先停止全部进程）。
 func (a *App) GuardClear() error { return guard.Clear() }
 
+// GuardReadLog 读取某守护项日志末尾内容（tailKB<=0 时默认 64KB），供前端「查看日志」弹窗。
+// 跨平台存在：非桌面构建同样能读本机数据目录下的日志文件。
+func (a *App) GuardReadLog(id string, tailKB int) (string, error) { return guard.ReadLog(id, tailKB) }
+
+// GuardLogPath 返回某守护项日志文件的绝对路径，供前端「打开/定位日志」。
+func (a *App) GuardLogPath(id string) (string, error) { return guard.LogPath(id) }
+
 // GuardSetEnabled 切换某项「启用守护」。
 func (a *App) GuardSetEnabled(id string, enabled bool) error { return guard.SetEnabled(id, enabled) }
 

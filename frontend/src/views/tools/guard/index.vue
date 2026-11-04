@@ -74,13 +74,14 @@
             <a-button v-if="!record.running" size="mini" @click="startOne(record)">启动</a-button>
             <a-button v-else size="mini" @click="stopOne(record)">停止</a-button>
             <a-button size="mini" @click="openEdit(record)">编辑</a-button>
+            <a-button size="mini" @click="openLog(record)">日志</a-button>
             <a-popconfirm content="删除该守护项？正在运行会先停止。" @ok="remove(record)">
               <a-button size="mini" status="danger">删除</a-button>
             </a-popconfirm>
           </a-space>
         </template>
         <template #empty>
-          <div class="gd-empty">暂无守护程序，点击「新增」添加要守护的程序</div>
+          <a-empty description="暂无守护程序，点「新增」添加要守护的程序" />
         </template>
       </a-table>
     </a-card>
@@ -113,11 +114,29 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 日志查看弹窗：读子进程 stdout/stderr 落盘文件的尾部 -->
+    <a-modal v-model:visible="logVisible" :title="logTitle" :footer="false" width="860px" class="gd-log-modal">
+      <div class="gd-log-bar">
+        <a-tooltip :content="logPathText">
+          <span class="gd-log-path">{{ logPathText || '（暂无日志路径）' }}</span>
+        </a-tooltip>
+        <a-space :size="6">
+          <a-button size="mini" :loading="logLoading" @click="loadLog">
+            <template #icon><icon-refresh /></template>刷新
+          </a-button>
+          <a-button size="mini" :disabled="!logPathText" @click="openLogFile">
+            <template #icon><icon-folder /></template>打开日志文件
+          </a-button>
+        </a-space>
+      </div>
+      <pre class="gd-log-body">{{ logText || '暂无日志输出' }}</pre>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { Events } from '@wailsio/runtime';
 
@@ -154,7 +173,7 @@ const columns: any[] = [
   { title: '程序路径', slotName: 'path', ellipsis: true },
   { title: '运行状态', slotName: 'state', width: 220 },
   { title: '启用守护', slotName: 'enabled', width: 96, align: 'center' },
-  { title: '操作', slotName: 'ops', width: 200, align: 'center' },
+  { title: '操作', slotName: 'ops', width: 250, align: 'center' },
 ];
 
 const modalVisible = ref(false);
@@ -282,6 +301,50 @@ async function saveSettings() {
   Message.success({ content: '守护设置已保存', position: 'top', duration: 1500 });
 }
 
+/* ==================== 日志查看 ==================== */
+// 子进程输出落盘在 <数据目录>/guard/<id>.log，弹窗只读尾部 64KB（GuardReadLog）。
+const logVisible = ref(false);
+const logLoading = ref(false);
+const logRow = ref<GuardRow | null>(null);
+const logText = ref('');
+const logPathText = ref('');
+const logTitle = computed(() => (logRow.value ? `守护日志：${logRow.value.name}` : '守护日志'));
+
+async function openLog(row: GuardRow) {
+  logRow.value = row;
+  logText.value = '';
+  logPathText.value = '';
+  logVisible.value = true;
+  try {
+    logPathText.value = String((await GoTools.GuardLogPath(row.id)) || '');
+  } catch {
+    /* 路径拿不到不阻断读内容 */
+  }
+  await loadLog();
+}
+
+async function loadLog() {
+  if (!logRow.value) return;
+  logLoading.value = true;
+  try {
+    logText.value = String((await GoTools.GuardReadLog(logRow.value.id, 0)) || '');
+  } catch (e) {
+    Message.error({ content: errText(e), position: 'top', duration: 3000 });
+  } finally {
+    logLoading.value = false;
+  }
+}
+
+// 优先用系统默认程序打开日志；不支持时退回在资源管理器/文件管理器中定位。
+async function openLogFile() {
+  if (!logPathText.value) return;
+  try {
+    await GoTools.FileOpenSystem(logPathText.value);
+  } catch {
+    call(() => GoTools.DiskOpenInExplorer(logPathText.value));
+  }
+}
+
 onMounted(() => {
   offEvent = Events.On('guard:status', onStatus);
   refresh();
@@ -378,10 +441,39 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.gd-empty {
-  color: var(--color-text-4);
-  padding: 40px 0;
-  text-align: center;
+/* 日志弹窗：路径行 + 可滚动尾部日志体（等宽） */
+.gd-log-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.gd-log-path {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
+}
+
+.gd-log-body {
+  max-height: 58vh;
+  overflow: auto;
+  margin: 0;
+  padding: var(--base-padding);
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--base-radius-default);
+  background: var(--color-bg-1);
+  color: var(--color-text-1);
+  font-family: Consolas, Menlo, monospace;
+  font-size: var(--base-size-small);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .gd-hint-inline {

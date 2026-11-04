@@ -165,6 +165,9 @@ onUnmounted(() => { off?.(); offHome?.(); offNav?.(); offNotify?.(); });
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    
+/* 整窗实色底：以前这块底色由 Wails 窗口底色 (6,7,15) 充当，改由 CSS 画才能跟随浅色/暗黑 */
+    background: var(--color-bg-1);
 }
 
 /* 顶部进度条：只在路由解析期间出现，走一条流动高光 */

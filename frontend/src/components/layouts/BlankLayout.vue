@@ -22,6 +22,9 @@
         <div class="win-content" :class="{ 'no-pad': noPadding }">
             <router-view />
         </div>
+        <!-- 全局任务中心浮标：任务在 Go 侧独立跑，接收/上传进度一行跨页可见。
+             组件自带 ensureTasks 订阅 task:update，hasTasks 时才露头，不占自绘标题栏。 -->
+        <task-hub />
     </div>
 </template>
 
@@ -31,6 +34,7 @@ import { useRoute } from "vue-router";
 import { Window } from "@wailsio/runtime";
 import { DEFAULT_TOOL_ICONS, normalizeToolIcon } from "@/utils/tool-icon";
 import WinTitleBar from "@/components/layouts/WinTitleBar.vue";
+import TaskHub from "@/components/business/task-hub/index.vue";
 
 /**
  * 空白布局：用于 Wails 原生新窗口（/win 前缀）。

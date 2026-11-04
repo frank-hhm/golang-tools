@@ -1949,8 +1949,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 父级 .arco-card-body 是 flex column：这里吃掉剩余高度，
+     空态就落在列表区正中，而不是贴在 tab 栏底下、下面留一大片空白 */
+  flex: 1;
+  min-height: 0;
   gap: 10px;
-  padding: 28px 0;
+  padding: 28px 12px;
   border-radius: var(--base-radius-large);
 }
 
@@ -1965,6 +1969,11 @@ onUnmounted(() => {
   font-size: 16px;
   color: var(--color-text-3);
   background: var(--color-fill-2);
+}
+
+.op-empty-text {
+  /* flex 子项默认 min-width:auto，副标题那行很长，窄窗下会把整组顶出去；给 0 才允许收缩换行 */
+  min-width: 0;
 }
 
 .op-empty-title {

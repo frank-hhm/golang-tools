@@ -18,7 +18,34 @@ import (
 	"Tools/tools/screenshot"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
+
+// windowDark 判定窗口底色该走深色档。
+//
+// 主题 light/dark 直接照搬配置；auto 时读系统的 AppsUseLightTheme（0=深色应用模式），
+// 与浮动球面板的 ballEffectiveDark 同一口径。读不到注册表就当浅色，
+// 宁可底色偏亮也不要给老机器开出一窗黑。
+func windowDark() bool {
+	switch config.CurrentConfig().General.Theme {
+	case "dark":
+		return true
+	case "light":
+		return false
+	default:
+		k, err := registry.OpenKey(registry.CURRENT_USER,
+			`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, registry.QUERY_VALUE)
+		if err != nil {
+			return false
+		}
+		defer k.Close()
+		v, _, err := k.GetIntegerValue("AppsUseLightTheme")
+		if err != nil {
+			return false
+		}
+		return v == 0
+	}
+}
 
 // platformState 汇总 App 里只在 Windows 上才有意义的字段。
 //

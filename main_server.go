@@ -219,6 +219,8 @@ func main() {
 	appsvc.ApplyDownloadConfig()
 	backup.SetEmitter(emit)
 	lanshare.SetEmitter(emit)
+	// 局域网互传接收策略回灌：把 config.LanShare 的接收类型黑名单落到单例（默认空=全收）
+	appsvc.ApplyLanShareConfig()
 	clouddrive.SetEmitter(emit)
 	sshgen.SetEmitter(emit)
 	gitcmd.SetEmitter(emit)

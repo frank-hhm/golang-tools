@@ -91,6 +91,17 @@ type FileDiff struct {
 	Binary  bool   `json:"binary"`
 }
 
+// BlameSegment `git blame` 聚合出的连续同提交一段（计划 P2 BlamePane）。
+type BlameSegment struct {
+	Hash      string `json:"hash"`
+	Short     string `json:"short"`
+	Author    string `json:"author"`
+	Time      int64  `json:"time"`      // 作者时间 Unix 秒
+	Summary   string `json:"summary"`   // 该提交的 subject
+	StartLine int    `json:"startLine"` // 起始行号（1-based）
+	Count     int    `json:"count"`     // 连续行数
+}
+
 // Branch 一条本地/远程分支。
 type Branch struct {
 	Name          string `json:"name"`
@@ -101,6 +112,48 @@ type Branch struct {
 	Subject       string `json:"subject"`
 	Remote        bool   `json:"remote"`
 	CommitterTime int64  `json:"committerTime"`
+}
+
+// StashEntry 暂存栈里一条记录（P3）。Index 是 stash@{N} 的 N，可直接用于 apply/pop/drop。
+type StashEntry struct {
+	Index   int    `json:"index"`
+	Message string `json:"message"` // %gs：形如 "On master: 我的说明" 或 "WIP on master: abc subj"
+	Date    string `json:"date"`    // %ci：ISO 时间串
+}
+
+// Tag 一个标签（P3）。Annotated=true 为附注标签（objecttype==tag）；
+// Commit 指向标签最终落到的提交短哈希（附注标签由 %(*objectname) 剥离而来）。
+type Tag struct {
+	Name      string `json:"name"`
+	Annotated bool   `json:"annotated"`
+	Subject   string `json:"subject"` // 附注标签为标签说明首行；轻量标签为提交标题
+	Date      string `json:"date"`    // %(creatordate:iso)
+	Commit    string `json:"commit"`  // 剥离后的提交短哈希
+}
+
+// Remote 一个远端（P3）。PushURL 为空表示推送沿用 FetchURL。
+type Remote struct {
+	Name     string `json:"name"`
+	FetchURL string `json:"fetchUrl"`
+	PushURL  string `json:"pushUrl"`
+}
+
+// ConflictSides 一个冲突文件的三方内容（P3）。文本按 blob 原样取回；
+// 某一侧不存在（add/add 无基线等）时对应字段为空串。
+type ConflictSides struct {
+	Path   string `json:"path"`
+	Base   string `json:"base"`   // stage1 共同祖先
+	Ours   string `json:"ours"`   // stage2 我方
+	Theirs string `json:"theirs"` // stage3 对方
+}
+
+// OpState 仓库当前是否处于某个多阶段操作的中断态（供前端决定是否显示冲突/继续条）。
+type OpState struct {
+	Merge      bool `json:"merge"`
+	Rebase     bool `json:"rebase"`
+	CherryPick bool `json:"cherryPick"`
+	Revert     bool `json:"revert"`
+	Bisect     bool `json:"bisect"` // 本期只探测展示，不做交互式 bisect
 }
 
 // trimGitErr 从 git 的 stderr 里取一句人话错误：优先 fatal:/error: 首行。

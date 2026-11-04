@@ -41,10 +41,10 @@
     "@babel/types" "^7.12.12"
     "@types/node" "^16.11.10"
 
-"@arco-themes/vue-dev-frank-brank@^0.0.7":
-  version "0.0.7"
-  resolved "https://registry.npmjs.org/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.7.tgz"
-  integrity sha512-g9t2WeT6U62xVCBW3BkNN9jYW1sSRo/rufPCb5F3JuSrvG3uEfZD0Ofxvh51qP2DRkGEC0uoiQovEHaFfpslJQ==
+"@arco-themes/vue-dev-frank-brank@^0.0.8":
+  version "0.0.8"
+  resolved "https://registry.npmmirror.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.8.tgz#3c2639824905872b1e06950f427ebbc1cd320d9c"
+  integrity sha512-Ynp5/MztpVeLjRPjxbu4WvJ8dH6TO4SBiWbF4NG1D+OcTAz/wNx3/vxG0QfxPRAK+IQ+PgRKGIvVYOQ6w1z5UQ==
 
 "@babel/code-frame@^7.27.1", "@babel/code-frame@^7.29.7":
   version "7.29.7"
@@ -445,6 +445,17 @@
     "@codemirror/state" "^6.0.0"
     "@codemirror/view" "^6.42.0"
     crelt "^1.0.5"
+
+"@codemirror/merge@^6.12.3":
+  version "6.12.3"
+  resolved "https://registry.npmmirror.com/@codemirror/merge/-/merge-6.12.3.tgz#09ad9a6f24813dca7d580f0c315323be39358dd6"
+  integrity sha512-Wq9wXrp41cW/nIpi1CQPyNwD+36kg8KIX676ym0Hyfn3Dpr+XQHNAIsZYVNlaivuVB4SAASbreG3V0VXinbqZA==
+  dependencies:
+    "@codemirror/language" "^6.0.0"
+    "@codemirror/state" "^6.0.0"
+    "@codemirror/view" "^6.17.0"
+    "@lezer/highlight" "^1.0.0"
+    style-mod "^4.1.0"
 
 "@codemirror/search@^6.0.0":
   version "6.7.2"

@@ -21,7 +21,10 @@ func TestParseStatus(t *testing.T) {
 		"1 M. N... 100644 100644 100644 abc def staged.txt",
 		"1 .M N... 100644 100644 100644 abc def unstaged.txt",
 		"1 A. N... 100644 100644 100644 0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 new 目录/带 空格.txt",
-		"2 R. N... 100644 100644 100644 abc def R100\trenamed/new path.txt\trenamed/old path.txt",
+		// 下面这行的分隔方式是跟真机 `git status --porcelain=v2` 对拍过的：score（R100）
+		// 与前面各段一样用空格分隔，只有新旧两条路径之间才是 TAB。以前这里写成全 TAB
+		// 三段，代码照着它写反而把原路径当成了 Path，真机上重命名全错而单测全绿。
+		"2 R. N... 100644 100644 100644 abc def R100 renamed/new path.txt\trenamed/old path.txt",
 		"u UU. N... 100644 100644 100644 100644 abc def ghi conflicted.txt",
 		"? untracked/文件夹/中文 名.txt",
 	}, "\n")
@@ -49,6 +52,10 @@ func TestParseStatus(t *testing.T) {
 	}
 	if rn.OrigPath != "renamed/old path.txt" {
 		t.Fatalf("rename orig wrong: %+v", rn)
+	}
+	// score 与原路径都不许泄进 Path：字段数切错时正是这两样串过来。
+	if strings.HasPrefix(rn.Path, "R100") || strings.Contains(rn.Path, "renamed/old") {
+		t.Fatalf("rename 把 score 或原路径读进了 Path: %+v", rn)
 	}
 }
 
@@ -240,7 +247,7 @@ func TestLogDiffE2E(t *testing.T) {
 	mustRun(t, ctx, dir, "commit", "-qm", "main")
 	mustRun(t, ctx, dir, "merge", "-q", "--no-ff", "-m", "merge", "feature")
 
-	list, err := Log(ctx, dir, 0)
+	list, err := Log(ctx, dir, "", "", 0)
 	if err != nil {
 		t.Fatalf("log: %v", err)
 	}
@@ -312,5 +319,202 @@ func TestRepoRegistry(t *testing.T) {
 	out, err := RemoveRepo(dir)
 	if err != nil || len(out) != 0 {
 		t.Fatalf("remove: %+v err=%v", out, err)
+	}
+}
+
+// ---------- P2：blame 解析 / 冲突去重 / 单文件历史 / 变更操作 ----------
+
+// TestParseBlame 校验 --line-porcelain 聚合：连续同提交行合成一段，跨提交切段。
+func TestParseBlame(t *testing.T) {
+	text := strings.Join([]string{
+		"aa11111111111111111111111111111111111111 1 1 2",
+		"author Alice",
+		"author-mail <a@example.com>",
+		"author-time 1700000000",
+		"summary first commit",
+		"\tline one",
+		"aa11111111111111111111111111111111111111 2 2",
+		"author Alice",
+		"author-time 1700000000",
+		"summary first commit",
+		"\tline two",
+		"bb22222222222222222222222222222222222222 3 3",
+		"author Bob",
+		"author-time 1700000100",
+		"summary second commit",
+		"\tline three",
+		"",
+	}, "\n")
+	segs := parseBlame(text)
+	if len(segs) != 2 {
+		t.Fatalf("want 2 segs, got %+v", segs)
+	}
+	if segs[0].Short != "aa111111" || segs[0].Author != "Alice" || segs[0].Count != 2 || segs[0].StartLine != 1 || segs[0].Summary != "first commit" {
+		t.Fatalf("seg0=%+v", segs[0])
+	}
+	if segs[1].Short != "bb222222" || segs[1].Author != "Bob" || segs[1].Count != 1 || segs[1].StartLine != 3 || segs[1].Time != 1700000100 {
+		t.Fatalf("seg1=%+v", segs[1])
+	}
+}
+
+// TestParseNumstatConflict 校验同路径多行（按 stage）合并成一条，避免前端 v-for key 撞车。
+func TestParseNumstatConflict(t *testing.T) {
+	text := "5\t2\tconflict.txt\n1\t0\tconflict.txt\n3\t1\tone.txt\n"
+	list := parseNumstat(text)
+	if len(list) != 2 {
+		t.Fatalf("want 2, got %+v", list)
+	}
+	var c FileDiff
+	for _, d := range list {
+		if d.Path == "conflict.txt" {
+			c = d
+		}
+	}
+	if c.Added != 5 || c.Deleted != 2 { // 各 stage 取最大增删
+		t.Fatalf("conflict=%+v", c)
+	}
+}
+
+// TestLogFollowE2E 校验单文件历史 --follow 跨重命名回溯到改名前的提交。
+func TestLogFollowE2E(t *testing.T) {
+	ctx := requireGit(t)
+	dir := newRepo(t, ctx)
+	write(t, filepath.Join(dir, "a.txt"), "1\n")
+	write(t, filepath.Join(dir, "b.txt"), "b\n")
+	mustRun(t, ctx, dir, "add", ".")
+	mustRun(t, ctx, dir, "commit", "-qm", "root")
+	// 纯重命名（不改内容）→ 相似度 100%，git 必判为 rename，--follow 才能跨名回溯
+	mustRun(t, ctx, dir, "mv", "a.txt", "c.txt")
+	mustRun(t, ctx, dir, "commit", "-qm", "rename")
+
+	list, err := Log(ctx, dir, "", "c.txt", 0)
+	if err != nil {
+		t.Fatalf("log follow: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("--follow 应回溯改名前提交: %+v", list)
+	}
+	if list[0].Subject != "rename" || list[1].Subject != "root" {
+		t.Fatalf("order=%+v", list)
+	}
+}
+
+// TestHistoryOpsE2E 覆盖 P2 历史节点变更操作：建分支/cherry-pick/revert/reset/游离检出/blame。
+func TestHistoryOpsE2E(t *testing.T) {
+	ctx := requireGit(t)
+	dir := newRepo(t, ctx)
+	write(t, filepath.Join(dir, "a.txt"), "1\n")
+	mustRun(t, ctx, dir, "add", ".")
+	mustRun(t, ctx, dir, "commit", "-qm", "c1")
+
+	// CreateBranchAt 在 c1 建 at-c1（不检出）
+	if err := CreateBranchAt(ctx, dir, "at-c1", "HEAD", false); err != nil {
+		t.Fatalf("CreateBranchAt: %v", err)
+	}
+	bl, err := Branches(ctx, dir)
+	if err != nil {
+		t.Fatalf("branches: %v", err)
+	}
+	found := false
+	for _, b := range bl {
+		if b.Name == "at-c1" && !b.Remote {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("at-c1 未建出: %+v", bl)
+	}
+
+	// feature 分支上提交 feat，回 master 后 cherry-pick 该提交
+	mustRun(t, ctx, dir, "checkout", "-qb", "feature")
+	write(t, filepath.Join(dir, "f.txt"), "f\n")
+	mustRun(t, ctx, dir, "add", ".")
+	mustRun(t, ctx, dir, "commit", "-qm", "feat")
+	featHash := mustRun(t, ctx, dir, "rev-parse", "HEAD")
+	mustRun(t, ctx, dir, "checkout", "-q", "master")
+	if err := CherryPick(ctx, dir, featHash); err != nil {
+		t.Fatalf("CherryPick: %v", err)
+	}
+	if !exists(filepath.Join(dir, "f.txt")) {
+		t.Fatalf("cherry-pick 后 f.txt 未落地")
+	}
+
+	// Revert 最新（cherry-pick 出来的）提交，产生一笔反向提交
+	if err := Revert(ctx, dir, "HEAD"); err != nil {
+		t.Fatalf("Revert: %v", err)
+	}
+	if exists(filepath.Join(dir, "f.txt")) {
+		t.Fatalf("revert 后 f.txt 应被删除")
+	}
+
+	// Reset soft：回到 c1，工作区文件保留
+	if err := Reset(ctx, dir, "soft", "HEAD~2"); err != nil {
+		t.Fatalf("Reset soft: %v", err)
+	}
+	if !exists(filepath.Join(dir, "a.txt")) {
+		t.Fatalf("reset soft 后 a.txt 应仍在工作区")
+	}
+	// 非法 mode 被白名单挡下
+	if err := Reset(ctx, dir, "nope", "HEAD"); err == nil {
+		t.Fatalf("非法 reset mode 应报错")
+	}
+
+	// Reset hard：清掉 soft 遗留的暂存/工作区改动，回到干净的 c1
+	if err := Reset(ctx, dir, "hard", "HEAD"); err != nil {
+		t.Fatalf("Reset hard: %v", err)
+	}
+	logAll, _ := Log(ctx, dir, "", "", 0)
+	if len(logAll) != 1 || logAll[0].Subject != "c1" {
+		t.Fatalf("reset hard 后应只剩 c1: %+v", logAll)
+	}
+
+	// Checkout 到具体提交（游离 HEAD）
+	if err := Checkout(ctx, dir, "at-c1"); err != nil {
+		t.Fatalf("Checkout commit: %v", err)
+	}
+
+	// Blame 单文件逐行归属
+	segs, err := Blame(ctx, dir, "a.txt", "")
+	if err != nil {
+		t.Fatalf("Blame: %v", err)
+	}
+	if len(segs) == 0 || segs[0].Author != "tester" {
+		t.Fatalf("blame segs=%+v", segs)
+	}
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// TestShowBlobE2E 校验并排 diff 取两栏内容：HEAD/index/工作区/首提交的父（不存在→空）。
+func TestShowBlobE2E(t *testing.T) {
+	ctx := requireGit(t)
+	dir := newRepo(t, ctx)
+	write(t, filepath.Join(dir, "a.txt"), "old\n")
+	mustRun(t, ctx, dir, "add", ".")
+	mustRun(t, ctx, dir, "commit", "-qm", "c1")
+
+	got, err := ShowBlob(ctx, dir, "HEAD", "a.txt")
+	if err != nil || got != "old\n" {
+		t.Fatalf("HEAD blob=%q err=%v", got, err)
+	}
+	// 首提交的父不存在 → 空串不报错
+	parent, err := ShowBlob(ctx, dir, "HEAD^", "a.txt")
+	if err != nil || parent != "" {
+		t.Fatalf("root parent blob=%q err=%v", parent, err)
+	}
+	// 改工作区 + 暂存：index 与 HEAD 不致
+	write(t, filepath.Join(dir, "a.txt"), "new\n")
+	mustRun(t, ctx, dir, "add", "a.txt")
+	idx, err := ShowBlob(ctx, dir, "", "a.txt") // rev 空 = index
+	if err != nil || idx != "new\n" {
+		t.Fatalf("index blob=%q err=%v", idx, err)
+	}
+	// 该版本无此文件（未提交的新文件）→ 空
+	miss, err := ShowBlob(ctx, dir, "HEAD", "zz.txt")
+	if err != nil || miss != "" {
+		t.Fatalf("missing blob=%q err=%v", miss, err)
 	}
 }

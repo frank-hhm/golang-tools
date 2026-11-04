@@ -1,9 +1,12 @@
 package app
 
 import (
+	"fmt"
+
 	"Tools/services/applog"
 	"Tools/services/config"
 	"Tools/tools/docspace"
+	"Tools/tools/filekind"
 	"Tools/tools/fileview"
 )
 
@@ -79,6 +82,20 @@ func (a *App) DocSpaceRemoveCategory(id string) error {
 		return err
 	}
 	applog.Infof("docspace", "删除分类: id=%s", id)
+	return nil
+}
+
+// DocSpaceRenameCategory 改分类名。id 是条目引用的外键，只动 Name 不动 id。
+func (a *App) DocSpaceRenameCategory(id, name string) error {
+	s, err := docspace.Global()
+	if err != nil {
+		return err
+	}
+	if err := s.RenameCategory(id, name); err != nil {
+		applog.Errorf("docspace", "重命名分类失败 id=%s: %v", id, err)
+		return err
+	}
+	applog.Infof("docspace", "重命名分类: id=%s -> %s", id, name)
 	return nil
 }
 
@@ -164,6 +181,168 @@ func (a *App) DocSpaceSetItemTags(itemID string, tags []string) error {
 		return err
 	}
 	return nil
+}
+
+// ---------- 分类归属调整 ----------
+
+// DocSpaceSetItemCategory 设置单个条目的分类（category 空表示未分类）。
+func (a *App) DocSpaceSetItemCategory(itemID, category string) error {
+	s, err := docspace.Global()
+	if err != nil {
+		return err
+	}
+	if err := s.SetItemCategory(itemID, category); err != nil {
+		applog.Errorf("docspace", "设置分类失败 id=%s: %v", itemID, err)
+		return err
+	}
+	return nil
+}
+
+// ---------- 派生元数据与总览 ----------
+
+// DocSpaceMetas 返回全部条目的类型/大小/修改时间，顺序与 DocSpaceItems 一致。
+// 前端按下标对齐拼成一张表，因此这两个方法必须同序（都来自 Store.Items()）。
+// 缩略图 URL 在这一轮里顺手填好：网格视图下几百张图逐条求 URL 就是几百次往返。
+func (a *App) DocSpaceMetas() ([]docspace.ItemMeta, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return nil, err
+	}
+	metas, err := s.Metas()
+	if err != nil {
+		return nil, err
+	}
+	// 引用三元组（src/sid/path）在条目里而不在元数据里：再取一次 Items()
+	// 按下标对齐就够了（Metas 就是根据 Items 生成的，两者同序），
+	// 不必把同一事实再存一份到 ItemMeta。
+	items, err := s.Items()
+	if err != nil {
+		return nil, err
+	}
+	for i := range metas {
+		// 两次取表之间条目可能被并发增删，下标就会错行——错行拼出的
+		// 是“别人的缩略图”，比不给图更难发现，所以逐位校 id 一致才用。
+		if !metas[i].Thumbable || i >= len(items) || metas[i].ID != items[i].ID {
+			continue
+		}
+		ref, err := docspace.Parse(items[i].Src, items[i].SessionID, items[i].Path)
+		if err != nil {
+			// 拼不出引用就不给图，前端回退类型图标，不把整批元数据抖掉
+			continue
+		}
+		metas[i].Thumb = thumbURLFor(ref, 0)
+	}
+	return metas, nil
+}
+
+// DocSpaceOverview 一次给出统计卡、类型分布、分类徽标与源分布。
+// 合并成一个入口而不是四个：都是同一份元数据的汇总，拆开只会把同一批 Stat 拖成四轮往返。
+func (a *App) DocSpaceOverview() (docspace.Overview, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return docspace.Overview{}, err
+	}
+	return s.Overview()
+}
+
+// DocSpaceThumbURL 把一条引用拼成缩略图端点 URL。
+// 走 HTTP 而不是把字节从绑定里返回：几百张图一次灌进来会把调用层拖垮，
+// 而 <img> 天然并发懒加载 + 浏览器缓存。
+// dim<=0 用后端默认尺寸；不可出图的类型直接报错，让前端回退到类型图标。
+func (a *App) DocSpaceThumbURL(src, sid, path string, dim int) (string, error) {
+	ref, err := docspace.Parse(src, sid, path)
+	if err != nil {
+		return "", err
+	}
+	if !filekind.Thumbable(ref.Path) {
+		return "", fmt.Errorf("该类型不生成缩略图: %s", filekind.Ext(ref.Path))
+	}
+	return thumbURLFor(ref, dim), nil
+}
+
+// thumbURLFor 拼缩略图 URL。dim<=0 时不写 w，交给端点默认尺寸。
+func thumbURLFor(ref docspace.Ref, dim int) string {
+	q := ref.Query()
+	if dim > 0 {
+		q.Set("w", fmt.Sprintf("%d", dim))
+	}
+	return fileview.ThumbPath + "?" + q.Encode()
+}
+
+// ---------- 批量操作 ----------
+
+// DocSpaceMoveItemsCategory 批量改分类，返回实际改动条数。
+func (a *App) DocSpaceMoveItemsCategory(ids []string, category string) (int, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return 0, err
+	}
+	n, err := s.MoveItemsCategory(ids, category)
+	if err != nil {
+		applog.Errorf("docspace", "批量改分类失败: %v", err)
+		return 0, err
+	}
+	applog.Infof("docspace", "批量改分类: %d 条 → %s", n, category)
+	return n, nil
+}
+
+// DocSpaceTagItems 批量加/减标签，返回实际改动条数。
+func (a *App) DocSpaceTagItems(ids, add, remove []string) (int, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return 0, err
+	}
+	n, err := s.TagItems(ids, add, remove)
+	if err != nil {
+		applog.Errorf("docspace", "批量改标签失败: %v", err)
+		return 0, err
+	}
+	return n, nil
+}
+
+// DocSpaceRemoveItems 批量取消纳管（不动磁盘原文件）。
+func (a *App) DocSpaceRemoveItems(ids []string) (int, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return 0, err
+	}
+	n, err := s.RemoveItems(ids)
+	if err != nil {
+		applog.Errorf("docspace", "批量取消纳管失败: %v", err)
+		return 0, err
+	}
+	applog.Infof("docspace", "批量取消纳管: %d 条", n)
+	return n, nil
+}
+
+// DocSpaceTrashItems 批量移入回收站。非本机源逐条跳过，失败 id 如实回传。
+func (a *App) DocSpaceTrashItems(ids []string) (docspace.BatchResult, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return docspace.BatchResult{}, err
+	}
+	res, err := s.TrashItems(ids)
+	if err != nil {
+		applog.Errorf("docspace", "批量移入回收站失败: %v", err)
+		return res, err
+	}
+	applog.Infof("docspace", "批量移入回收站: 成功 %d，失败 %d", res.Done, len(res.Failed))
+	return res, nil
+}
+
+// DocSpaceSnapshotItems 批量存快照，保留数取配置。
+func (a *App) DocSpaceSnapshotItems(ids []string, note string) (docspace.BatchResult, error) {
+	s, err := docspace.Global()
+	if err != nil {
+		return docspace.BatchResult{}, err
+	}
+	res, err := s.SnapshotItems(ids, note, config.DocSpaceCfg().VersionKeep)
+	if err != nil {
+		applog.Errorf("docspace", "批量快照失败: %v", err)
+		return res, err
+	}
+	applog.Infof("docspace", "批量快照: 成功 %d，失败 %d", res.Done, len(res.Failed))
+	return res, nil
 }
 
 // ---------- P1 版本 ----------

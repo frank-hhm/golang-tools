@@ -4,10 +4,178 @@
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Tools</title>
+    <style>
+        /*
+          启动骨架层：盖在 #app 之外的一块自绘「玻璃」，接管「窗口已经亮出来、
+          但 Vue 还没挂载完」那段时间。没有它，这段时间露的是裸底色。
+          底色由 Go 侧 WindowBackground() 按主题取，与这里的两套底色同档
+          （Arco --color-bg-1：浅色 #FFFFFF / 暗黑 #17171A），所以衔接处看不出来。
+          说是玻璃，其实是自绘质感：柔和高光 + 细斜纹颗粒 + 骨架条扫光，
+          盖不住也模糊不了窗口外的东西——真要透视只能走 Win32 分层透明。
+        */
+        #boot {
+            position: fixed;
+            inset: 0;
+            z-index: 2147483000;
+            overflow: hidden;
+            /* 骨架期间没有可交互内容，别挡点击 */
+            pointer-events: none;
+            background-color: #fff;
+            background-image:
+                radial-gradient(120% 90% at 18% 0%, rgba(22, 93, 255, .07), transparent 60%),
+                radial-gradient(100% 80% at 100% 100%, rgba(120, 120, 140, .10), transparent 55%),
+                repeating-linear-gradient(135deg, rgba(128, 128, 140, .035) 0 6px, transparent 6px 12px);
+            /* 兜底：万一 JS 出错没走到淡出，3.2s 后骨架自己退场，绝不永久盖着页面 */
+            animation: bootGuard .4s ease 3.2s forwards;
+        }
+
+        #boot.dk {
+            background-color: #17171a;
+            background-image:
+                radial-gradient(120% 90% at 18% 0%, rgba(90, 140, 255, .10), transparent 60%),
+                radial-gradient(100% 80% at 100% 100%, rgba(255, 255, 255, .05), transparent 55%),
+                repeating-linear-gradient(135deg, rgba(255, 255, 255, .028) 0 6px, transparent 6px 12px);
+        }
+
+        /* 版式对齐工具窗：自绘标题栏一条 + 内容区一组卡片 */
+        #boot .boot-tb {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            height: 40px;
+            padding: 0 14px;
+            box-sizing: border-box;
+        }
+
+        #boot .boot-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+        }
+
+        #boot .boot-bar {
+            width: 150px;
+            height: 12px;
+            border-radius: 6px;
+        }
+
+        #boot .boot-body {
+            padding: 18px 20px;
+        }
+
+        #boot .boot-line {
+            width: 220px;
+            height: 14px;
+            border-radius: 7px;
+            margin-bottom: 16px;
+        }
+
+        #boot .boot-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+            max-width: 920px;
+        }
+
+        #boot .boot-cards i {
+            display: block;
+            height: 96px;
+            border-radius: 10px;
+        }
+
+        #boot .boot-dot,
+        #boot .boot-bar,
+        #boot .boot-line,
+        #boot .boot-cards i {
+            position: relative;
+            overflow: hidden;
+            background: rgba(128, 128, 140, .14);
+        }
+
+        #boot.dk .boot-dot,
+        #boot.dk .boot-bar,
+        #boot.dk .boot-line,
+        #boot.dk .boot-cards i {
+            background: rgba(255, 255, 255, .06);
+        }
+
+        #boot .boot-dot::after,
+        #boot .boot-bar::after,
+        #boot .boot-line::after,
+        #boot .boot-cards i::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, .38) 50%, transparent 75%);
+            transform: translateX(-100%);
+            animation: bootShine 1.35s ease-in-out infinite;
+        }
+
+        #boot.dk .boot-dot::after,
+        #boot.dk .boot-bar::after,
+        #boot.dk .boot-line::after,
+        #boot.dk .boot-cards i::after {
+            background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, .10) 50%, transparent 75%);
+        }
+
+        @keyframes bootShine {
+            to {
+                transform: translateX(100%);
+            }
+        }
+
+        @keyframes bootGuard {
+            to {
+                opacity: 0;
+                visibility: hidden;
+            }
+        }
+
+        /* 前端挂载完成后走这条路径淡出（比兜底动画早得多） */
+        #boot.off {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity .2s ease, visibility .2s ease;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+            #boot .boot-dot::after,
+            #boot .boot-bar::after,
+            #boot .boot-line::after,
+            #boot .boot-cards i::after {
+                animation: none;
+            }
+        }
+    </style>
 </head>
 <body>
 <div id="app"></div>
+<!--
+  骨架层放在 #app 之外：Vue 挂载会整体替换 #app 的内容，写在里面会被连根拔掉。
+  主题在打包资源之前就要定下来，所以这里用一小段内联脚本读 localStorage 的
+  app-theme-mode（与 utils/theme.ts 的 THEME_STORAGE_KEY 同一个键），
+  auto 时问系统的 prefers-color-scheme。
+-->
+<div id="boot" aria-hidden="true">
+    <div class="boot-tb"><i class="boot-dot"></i><i class="boot-bar"></i></div>
+    <div class="boot-body">
+        <div class="boot-line"></div>
+        <div class="boot-cards"><i></i><i></i><i></i><i></i></div>
+    </div>
+</div>
+<script>
+    (function () {
+        try {
+            var mode = localStorage.getItem("app-theme-mode") || "light";
+            var dark = mode === "dark" ||
+                (mode !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+            if (dark) document.getElementById("boot").className = "dk";
+        } catch (e) {
+            /* 隐私模式读不到 localStorage 就按浅色画，不影响后续挂载 */
+        }
+    })();
+</script>
 <script src="./src/main.ts" type="module"></script>
 </body>
 </html>
-

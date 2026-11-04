@@ -135,6 +135,8 @@
                         <a-doption v-if="singleSel && !singleSel.isDir" value="doctrash"><icon-archive /> 移入文档回收站</a-doption>
                         <a-doption v-if="singleSel && singleSel.isDir" value="bksrc"><icon-folder /> 备份设为源</a-doption>
                         <a-doption v-if="singleSel && singleSel.isDir" value="bkdst"><icon-folder /> 备份设为目标</a-doption>
+                        <a-doption v-if="selectedPaths.length" value="compress"><icon-archive /> 压缩为压缩包</a-doption>
+                        <a-doption v-if="singleSel && !singleSel.isDir && isArchiveFile(singleSel)" value="extract"><icon-folder /> 解压到同级文件夹</a-doption>
                         <a-doption value="trash"><icon-archive /> 打开回收站</a-doption>
                     </template>
                 </a-dropdown>
@@ -229,6 +231,8 @@
                                             <a-doption v-if="!record.isDir" value="doctrash"><icon-archive /> 移入文档回收站</a-doption>
                                             <a-doption v-if="record.isDir" value="bksrc"><icon-folder /> 备份设为源</a-doption>
                                             <a-doption v-if="record.isDir" value="bkdst"><icon-folder /> 备份设为目标</a-doption>
+                                            <a-doption value="compress"><icon-archive /> 压缩为压缩包</a-doption>
+                                            <a-doption v-if="!record.isDir && isArchiveFile(record)" value="extract"><icon-folder /> 解压到同级文件夹</a-doption>
                                             <a-doption value="delete"><icon-delete /> 删除到回收站</a-doption>
                                             <a-doption value="forever"><icon-exclamation-circle /> 永久删除</a-doption>
                                         </template>
@@ -408,6 +412,28 @@
                 </a-form-item>
                 <a-alert type="info">将上传到所选云账号的根目录（进去后可在云盘页移入子目录）。超大文件会整段缓冲，进度看右下角任务中心。</a-alert>
             </a-form>
+        </a-modal>
+
+        <!-- 压缩为压缩包（复用 tools/archive 引擎，与压缩工具页/系统右键同一套；进度与取消见任务中心） -->
+        <a-modal v-model:visible="cmp.open" title="压缩为压缩包" :ok-loading="cmp.saving" ok-text="开始压缩" @ok="doCompress">
+            <a-form :model="cmp" layout="vertical">
+                <a-form-item label="格式">
+                    <a-radio-group v-model="cmp.format" type="button">
+                        <a-radio value="zip">zip（Deflate）</a-radio>
+                        <a-radio value="targz">tar.gz</a-radio>
+                    </a-radio-group>
+                </a-form-item>
+                <a-form-item label="压缩级别（1 最快 ~ 9 最小）">
+                    <a-input-number v-model="cmp.level" :min="1" :max="9" style="width: 120px" />
+                </a-form-item>
+                <a-form-item label="输出文件名（不含扩展名）">
+                    <a-input v-model="cmp.name" placeholder="留空按所选自动取名" />
+                </a-form-item>
+                <a-form-item label="输出目录">
+                    <a-input v-model="cmp.outDir" placeholder="留空放在当前目录" />
+                </a-form-item>
+            </a-form>
+            <div style="color: var(--color-text-3); font-size: 12px; margin-top: 4px">已选 {{ cmp.count }} 项{{ cmp.bytes ? `，约 ${fmtSize(cmp.bytes)}` : "" }}。进度与取消见右下角任务中心。</div>
         </a-modal>
     </div>
 </template>
@@ -936,6 +962,8 @@ function onMore(v: any) {
     else if (v === "doctrash") docTrash(singleSel.value);
     else if (v === "bksrc") docBackupPick(singleSel.value, "src");
     else if (v === "bkdst") docBackupPick(singleSel.value, "dst");
+    else if (v === "compress") openCompress();
+    else if (v === "extract") doExtract(singleSel.value);
 }
 
 /* ---------- 推送到云盘（PR4 与云盘页联动） ---------- */
@@ -987,6 +1015,49 @@ function onRowMore(v: any, r: any) {
     else if (v === "doctrash") docTrash(r);
     else if (v === "bksrc") docBackupPick(r, "src");
     else if (v === "bkdst") docBackupPick(r, "dst");
+    else if (v === "compress") openCompress([r.path]);
+    else if (v === "extract") doExtract(r);
+}
+
+/* ---------- 压缩 / 解压（复用 tools/archive 引擎，与压缩工具页/系统右键同一套；进度走 archive:progress 进任务中心） ---------- */
+const ARCHIVE_EXTS = [".zip", ".tar.gz", ".tgz"]; // 引擎 FormatFor 只认这三种
+function isArchiveFile(r: any): boolean {
+    if (!r || r.isDir) return false;
+    const low = String(r.name || "").toLowerCase();
+    return ARCHIVE_EXTS.some((e) => low.endsWith(e));
+}
+const cmp = reactive({ open: false, saving: false, format: "zip", level: 6, name: "", outDir: "", paths: [] as string[], count: 0, bytes: 0 });
+function buildCmpOptions() {
+    return { op: "compress", paths: cmp.paths, format: cmp.format, level: cmp.level, outDir: cmp.outDir.trim(), name: cmp.name.trim() };
+}
+async function openCompress(explicit?: string[]) {
+    const paths = explicit && explicit.length ? explicit : selectedPaths.value;
+    if (!paths.length) { Message.warning("先勾选要压缩的文件/目录"); return; }
+    Object.assign(cmp, { open: true, saving: false, format: "zip", level: 6, name: "", outDir: current.value, paths, count: paths.length, bytes: 0 });
+    try { const pf = await GoTools?.ArchiveScan(paths); cmp.bytes = pf?.bytes || 0; } catch { /* 预扫描失败只是少个提示 */ }
+    try {
+        const out = await GoTools?.ArchiveSuggestName(buildCmpOptions());
+        cmp.name = out ? baseName(out).replace(/\.(zip|tar\.gz|tgz)$/i, "") : "";
+    } catch { /* 取不到建议名则留空由引擎自动取名 */ }
+}
+async function doCompress() {
+    cmp.saving = true;
+    try {
+        await GoTools?.ArchiveCompress(buildCmpOptions());
+        Message.success(`已开始压缩 ${cmp.count} 项（进度见任务中心）`);
+        cmp.open = false;
+    } catch (e: any) {
+        Message.error(`压缩失败：${String(e?.message || e)}`);
+    } finally { cmp.saving = false; }
+}
+async function doExtract(r: any) {
+    if (!isArchiveFile(r)) { Message.warning("只能解压 zip / tar.gz / tgz"); return; }
+    try {
+        await GoTools?.ArchiveExtract({ op: "extract", paths: [r.path], format: "", level: 0, outDir: "", name: "" });
+        Message.success(`已开始解压「${r.name}」到同级文件夹（进度见任务中心）`);
+    } catch (e: any) {
+        Message.error(`解压失败：${String(e?.message || e)}`);
+    }
 }
 
 /* ============================ 文档中心入口（计划 §九） ============================ */

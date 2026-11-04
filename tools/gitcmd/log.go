@@ -14,13 +14,24 @@ const logFieldSep = "\x00"
 // Windows/CreateProcess 直接拒绝（fork/exec: invalid argument）。
 const logFmt = "%H%x00%h%x00%an%x00%ae%x00%at%x00%d%x00%s%x00%P%x00"
 
-// Log 取最近 limit 条提交（limit<=0 取默认 200），带父信息与布局列号 lane。
-// 前端 canvas 只按 lane/行号画 DAG，不再自己算。
-func Log(ctx context.Context, repoDir string, limit int) ([]Commit, error) {
+// Log 取提交历史，带父信息与布局列号 lane（前端 canvas 只按 lane/行号画，不再自己算）。
+//   - revision 非空：从该 ref/区间起算（空 = HEAD）。
+//   - path 非空：只看这一个文件的历史，附 --follow 跨重命名回溯（git 要求 --follow 仅配单个路径）。
+//   - limit<=0 取默认 200。
+func Log(ctx context.Context, repoDir, revision, path string, limit int) ([]Commit, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	args := []string{"log", "--decorate=short", "--pretty=format:" + logFmt, "-n", strconv.Itoa(limit)}
+	if path != "" {
+		args = append(args, "--follow")
+	}
+	if revision != "" {
+		args = append(args, revision)
+	}
+	if path != "" {
+		args = append(args, "--", path)
+	}
 	out, err := Run(ctx, repoDir, args...)
 	if err != nil {
 		return nil, err

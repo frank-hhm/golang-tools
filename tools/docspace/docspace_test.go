@@ -168,6 +168,35 @@ func TestStoreCategoryAndItemLifecycle(t *testing.T) {
 		t.Fatalf("删除分类后条目应退为未分类, got %q", after[0].Category)
 	}
 
+	// 重命名只改 Name、id 不动：条目靠 id 引用分类，改 id 会把归属冲掉
+	if err := s.RenameCategory(root.ID, "客户资料"); err != nil {
+		t.Fatal(err)
+	}
+	cats, err = s.Categories()
+	if err != nil || len(cats) != 1 || cats[0].Name != "客户资料" || cats[0].ID != root.ID {
+		t.Fatalf("重命名后应 id 不变、名为「客户资料」，得到 %+v err=%v", cats, err)
+	}
+	if err := s.RenameCategory(root.ID, "   "); err == nil {
+		t.Fatal("空分类名应报错")
+	}
+
+	// 删父分类时子分类要上提一级：旧实现只把条目退成未分类、不管子节点，
+	// 子分类的 Parent 会指向已删 id，前端建树时整棵子树变成取不到的孤儿
+	grand, err := s.AddCategory("2026年", root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveCategory(root.ID); err != nil {
+		t.Fatal(err)
+	}
+	cats, err = s.Categories()
+	if err != nil || len(cats) != 1 {
+		t.Fatalf("删父分类后应只剩子分类，得到 %d err=%v", len(cats), err)
+	}
+	if cats[0].ID != grand.ID || cats[0].Parent != "" {
+		t.Fatalf("子分类应上提为顶级（Parent 为空），得到 %+v", cats[0])
+	}
+
 	// 取消纳管：条目消失，但磁盘原文件（这里不存在也无妨）不受影响
 	if err := s.RemoveItem(it.ID); err != nil {
 		t.Fatal(err)

@@ -37,6 +37,12 @@ type BallConfig struct {
 	X       int    `json:"x"`       // 上次拖动后的窗口左上角 X（物理像素，含阴影留白）
 	Y       int    `json:"y"`       // 上次拖动后的窗口左上角 Y
 	HasPos  bool   `json:"hasPos"`  // 是否已记录位置；false 时启动停靠工作区右下角
+	// HideAllShortcut 「显示/隐藏全部窗口」全局热键（形如 Ctrl+Alt+H），空 = 不注册。
+	// 老配置没这段：读进来是空串（不注册），避免默默抢占用户自定义过的组合键；新默认带 Ctrl+Alt+H。
+	HideAllShortcut string `json:"hideAllShortcut"`
+	// DockEdge 拖到屏幕边缘时自动收缩成胶囊 tab；指针型：nil = 开启（与 ToolConfig.Home 同一套路），
+	// 只有显式 false 才关闭，normalizeConfig 把 nil 兜成 true。
+	DockEdge *bool `json:"dockEdge"`
 }
 
 // GeneralConfig 应用通用设置
@@ -190,6 +196,15 @@ type ArchiveConfig struct {
 	Format string `json:"format"`
 	// Level 默认压缩级别 1~9；<=0 用默认值。
 	Level int `json:"level"`
+}
+
+// GitConfig Git 可视化设置（工作台 + 系统右键挂载）。
+type GitConfig struct {
+	// ShellEnabled 右键集成总开关。关掉时整套系统挂载都不存在：不写注册表 verb、
+	// 不起转交监听。默认关闭 —— 往用户的右键菜单里加东西必须是他主动要的，
+	// 不能是程序装好就默默出现的。Git 工作台页本身不受此开关影响（它是普通工具，
+	// 一直可打开）；此开关只管「挂进资源管理器右键」这一段。
+	ShellEnabled bool `json:"shellEnabled"`
 }
 
 // DocSpaceConfig 文档中心设置（分类/版本/回收站的策略参数 + 总开关）。
@@ -393,6 +408,57 @@ func normalizeDownloadConfig(cfg *AppConfig) {
 	}
 }
 
+// LanShareConfig 局域网互传接收设置（计划-局域网互传接收优化 §3.2）。
+// 只放接收侧的类型策略参数；端口/host/PIN 等运行期参数仍是启动入参，不落这里。
+type LanShareConfig struct {
+	// BlockExt 收件箱拒收的扩展名黑名单（如 "exe"/".ps1"）。空 = 全类型全收，
+	// 契合「默认全类型所有文件」；用户可「一键填入常见危险类型」找回安全默认。
+	// 落盘/读取前由 normalizeLanShareConfig 统一成小写带前导点、去重去空。
+	BlockExt []string `json:"blockExt,omitempty"`
+}
+
+// defaultLanShareConfig 互传默认设置：黑名单为空 = 全类型全收。
+func defaultLanShareConfig() *LanShareConfig {
+	return &LanShareConfig{}
+}
+
+// LanShareSection 取互传接收设置。老配置从未有这一段时返回默认值（空黑名单），调用方不用判空。
+func LanShareSection(cfg AppConfig) LanShareConfig {
+	if cfg.LanShare == nil {
+		return *defaultLanShareConfig()
+	}
+	return *cfg.LanShare
+}
+
+// LanShareCfg 当前缓存配置里的互传接收设置，供 services/app 绑定层读取回灌。
+func LanShareCfg() LanShareConfig { return LanShareSection(CurrentConfig()) }
+
+// normalizeLanShareConfig 清洗互传接收黑名单：每项去空、小写、补前导点、去重。
+// nil 段跳过（调用方走 LanShareSection 拿默认值）；不覆盖用户填的合法值。
+func normalizeLanShareConfig(cfg *AppConfig) {
+	l := cfg.LanShare
+	if l == nil {
+		return
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(l.BlockExt))
+	for _, e := range l.BlockExt {
+		e = strings.ToLower(strings.TrimSpace(e))
+		if e == "" || e == "." {
+			continue
+		}
+		if !strings.HasPrefix(e, ".") {
+			e = "." + e
+		}
+		if seen[e] {
+			continue
+		}
+		seen[e] = true
+		out = append(out, e)
+	}
+	l.BlockExt = out
+}
+
 // DefaultArchiveFormat 默认压缩格式。两个短名与 sysx.ArchiveZip / ArchiveTarGz
 // 对齐；本包不导那个包（应用配置层保持零依赖，字面量在两端各定一次、靠单测锁住）。
 const DefaultArchiveFormat = "zip"
@@ -429,6 +495,26 @@ func ArchiveCfg() ArchiveConfig { return ArchiveSection(CurrentConfig()) }
 
 // ArchiveEnabled 文件压缩总开关。false 时宿主不挂右键、不起监听。
 func ArchiveEnabled() bool { return ArchiveCfg().Enabled }
+
+// defaultGitConfig Git 设置默认值：右键集成默认关（不往用户菜单里默默加东西）。
+func defaultGitConfig() *GitConfig {
+	return &GitConfig{ShellEnabled: false}
+}
+
+// GitSection 取 Git 设置。配置里从未出现过这一段（老配置）时返回默认值，
+// 调用方因此永远不用判空。
+func GitSection(cfg AppConfig) GitConfig {
+	if cfg.Git == nil {
+		return *defaultGitConfig()
+	}
+	return *cfg.Git
+}
+
+// GitCfg 当前缓存配置里的 Git 设置，供 tools/gitcmd 直接读。
+func GitCfg() GitConfig { return GitSection(CurrentConfig()) }
+
+// GitShellEnabled Git 右键集成总开关。false 时宿主不挂 verb、不起转交监听。
+func GitShellEnabled() bool { return GitCfg().ShellEnabled }
 
 // normalizeArchiveConfig 补齐文件压缩设置：格式合法性、级别范围。
 // 全是 idempotent 修正，不会覆盖用户填的值；手改 config.json 把这一段删掉时
@@ -504,6 +590,9 @@ type AppConfig struct {
 	// 序列化也随之省略，不会凭空给用户的 config.json 添一段他没写过的东西。
 	// 关掉时不写注册表、不留 SendTo 快捷方式、不起转交监听，见 ArchiveConfig.Enabled。
 	Archive *ArchiveConfig `json:"archive,omitempty"`
+	// Git Git 可视化设置。指针类型：老配置里没有这一段时读回来是 nil，序列化随之省略。
+	// 关掉时不写注册表 verb、不起转交监听，见 GitConfig.ShellEnabled。
+	Git *GitConfig `json:"git,omitempty"`
 	// DocSpace 文档中心设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
 	// 序列化也随之省略。见 DocSpaceConfig 各字段。
 	DocSpace *DocSpaceConfig `json:"docSpace,omitempty"`
@@ -513,6 +602,9 @@ type AppConfig struct {
 	// Download 下载管理器设置。指针类型：老配置里没有这一段时读回来是 nil，序列化
 	// 随之省略。见 DownloadConfig 各字段（护栏参数 + 全局目录 + 共享代理/镜像池）。
 	Download *DownloadConfig `json:"download,omitempty"`
+	// LanShare 局域网互传接收设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
+	// 序列化随之省略。见 LanShareConfig（接收类型黑名单，默认空=全收）。
+	LanShare *LanShareConfig `json:"lanShare,omitempty"`
 }
 
 // DefaultMaxSpaces 浏览器空间数量默认上限。
@@ -545,14 +637,16 @@ var (
 func DefaultConfig() AppConfig {
 	return AppConfig{
 		Log:      LogConfig{Enabled: true, Level: "info", Path: ""},
-		Ball:     BallConfig{Enabled: true},
+		Ball:     BallConfig{Enabled: true, HideAllShortcut: "Ctrl+Alt+H", DockEdge: dockOn()},
 		General:  GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: "light"},
 		Browser:  defaultBrowserConfig(),
 		Launcher: defaultLauncherConfig(),
 		Archive:  defaultArchiveConfig(),
+		Git:      defaultGitConfig(),
 		DocSpace: defaultDocSpaceConfig(),
 		Cloud:    defaultCloudConfig(),
 		Download: defaultDownloadConfig(),
+		LanShare: defaultLanShareConfig(),
 		ToolSettings: map[string]ToolSettings{
 			// MySQL：默认开启 SQL 日志，目录留空走 DefaultSQLLogDir
 			"mysql": {SQLLogEnabled: true},
@@ -583,7 +677,6 @@ func DefaultConfig() AppConfig {
 			{ID: "qrcode", Key: "qrcode", Name: "二维码生成", Path: "/tools/qrcode", Icon: "icon-erweima3", Home: homeOff()},
 			{ID: "hexconvert", Key: "hexconvert", Name: "进制转换", Path: "/tools/hexconvert", Icon: "swap", Home: homeOff()},
 			{ID: "archive", Key: "archive", Name: "文件压缩", Path: "/tools/archive", Icon: "archive", Single: true, Width: 1120, Height: 760, Home: homeOff()},
-			{ID: "viewer", Key: "viewer", Name: "文件查看器", Path: "/tools/viewer", Icon: "file", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "download", Key: "download", Name: "下载管理", Path: "/tools/download", Icon: "icon-xiazai", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "docspace", Key: "docspace", Name: "文档中心", Path: "/tools/docspace", Icon: "folder", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "lanshare", Key: "lanshare", Name: "局域网互传", Path: "/tools/lanshare", Icon: "icon-wangluo1", Single: true, Width: 1280, Height: 820, Home: homeOff()},
@@ -598,6 +691,13 @@ func DefaultConfig() AppConfig {
 func homeOff() *bool {
 	f := false
 	return &f
+}
+
+// dockOn 给 DockEdge 这类“nil = 开启”的指针型开关造一个 true：
+// 与 homeOff 同套路，存量配置缺字段时由 normalizeConfig 兜成默认开启。
+func dockOn() *bool {
+	t := true
+	return &t
 }
 
 // ApplogConfig 把配置里的 LogConfig 转成 applog 自己的配置类型，使日志包不反向依赖应用层。
@@ -835,9 +935,10 @@ var legacyToolIcons = map[string]string{
 	"usb":          "icon-xinpian",
 }
 
-// retiredToolKeys 已下线的内置工具 id：前端路由与页面都删了，存量配置里残留的条目必须剔除，
-// 否则工具表/主页会出现一个点开白页的幽灵入口。imageBase64 的能力已并入文件查看器的图片编辑。
-var retiredToolKeys = []string{"imageBase64"}
+// retiredToolKeys 已下线入口的内置工具 id，存量配置里残留的条目必须剔除，否则工具表/主页会多出一个条目。
+// 剔除原因分两类：imageBase64 前端路由与页面都删了（不删会点开白页），能力已并入文件查看器的图片编辑；
+// viewer 只撤工具列表入口、模块功能保留（路由与页面都在，由磁盘/FTP/文档中心/局域网互传“在查看器中打开”程序化拉起）。
+var retiredToolKeys = []string{"imageBase64", "viewer"}
 
 // normalizeConfig 补齐缺省值（级别非法回退 info；工具 ID 缺失用 Key 兜底；旧图标修正；AppName 空回退 "Tools"；工具设置表非空）。
 func normalizeConfig(cfg *AppConfig) {
@@ -858,6 +959,9 @@ func normalizeConfig(cfg *AppConfig) {
 	if cfg.General.AppName == "" {
 		cfg.General.AppName = "Tools"
 	}
+	if cfg.Ball.DockEdge == nil {
+		cfg.Ball.DockEdge = dockOn()
+	}
 	cfg.Paths.Plugins = strings.TrimSpace(cfg.Paths.Plugins)
 	cfg.Paths.Data = strings.TrimSpace(cfg.Paths.Data)
 	cfg.Paths.Logs = strings.TrimSpace(cfg.Paths.Logs)
@@ -867,6 +971,7 @@ func normalizeConfig(cfg *AppConfig) {
 	normalizeDocSpaceConfig(cfg)
 	normalizeCloudConfig(cfg)
 	normalizeDownloadConfig(cfg)
+	normalizeLanShareConfig(cfg)
 	switch cfg.General.Theme {
 	case "light", "dark", "auto":
 	default:
@@ -926,7 +1031,6 @@ func normalizeConfig(cfg *AppConfig) {
 		{"siteclone", "siteclone", "仿站工具", "/tools/siteclone", "download"},
 		{"guard", "guard", "进程守护", "/tools/guard", "apps"},
 		{"archive", "archive", "文件压缩", "/tools/archive", "archive"},
-		{"viewer", "viewer", "文件查看器", "/tools/viewer", "file"},
 		{"download", "download", "下载管理", "/tools/download", "icon-xiazai"},
 		{"docspace", "docspace", "文档中心", "/tools/docspace", "folder"},
 		{"lanshare", "lanshare", "局域网互传", "/tools/lanshare", "icon-wangluo1"},
@@ -977,11 +1081,6 @@ func normalizeConfig(cfg *AppConfig) {
 			}
 			if extra.key == "archive" {
 				newTool.Width, newTool.Height = 1120, 760
-				newTool.Home = homeOff()
-			}
-			if extra.key == "viewer" {
-				// 左栏浏览 + 右栏渲染，跟磁盘一样要宽一点的窗口才不挤
-				newTool.Width, newTool.Height = 1280, 820
 				newTool.Home = homeOff()
 			}
 			if extra.key == "download" {
@@ -1047,6 +1146,10 @@ func LoadAppConfig() AppConfig {
 				if loaded.Archive != nil {
 					cfg.Archive = loaded.Archive
 				}
+				// Git：同上，nil 就保住默认值（右键集成默认关）。
+				if loaded.Git != nil {
+					cfg.Git = loaded.Git
+				}
 				// 文档中心：同上，nil 就保住默认值（默认启用 + 保留数/天数走默认）。
 				if loaded.DocSpace != nil {
 					cfg.DocSpace = loaded.DocSpace
@@ -1059,6 +1162,10 @@ func LoadAppConfig() AppConfig {
 				// 下载：同上，nil 就保住默认值（默认开启 + 护栏走默认）。
 				if loaded.Download != nil {
 					cfg.Download = loaded.Download
+				}
+				// 互传接收：同上，nil 就保住默认值（黑名单空=全收）。
+				if loaded.LanShare != nil {
+					cfg.LanShare = loaded.LanShare
 				}
 			}
 		}

@@ -11,6 +11,7 @@ import "@/styles/index.scss"
 import * as Utils from '@/utils'
 import { setupGoMessage } from '@/utils/gomessage'
 import { initTheme, syncThemeFromConfig } from '@/utils/theme'
+import { dismissBootSplash } from '@/utils/boot'
 import { loadCaps } from '@/utils/caps'
 import { installPanelGuard } from '@/utils/panel'
 import { bindPrefetchRouter, prefetchAllRoutes } from '@/router/prefetch'
@@ -62,13 +63,17 @@ router.isReady().then(async () => {
     app.mount("#app")
     // 主题：同步应用本地记忆（多窗口即时同步），再用后端配置作为首次运行回退
     initTheme()
+    // 主题落定后再撤启动骨架，避免「浅色骨架淡出 -> 露出没换肤的页面」这一跳
+    dismissBootSplash()
     if (!caps.nativeWindows) {
         // Web 模式：登录态过期自动回登录页；随后空闲预热各工具页 chunk
         installPanelGuard()
         prefetchAllRoutes()
     }
     GoToolsBindings.App.GetConfig?.()
-        .then((cfg: any) => syncThemeFromConfig(cfg?.general?.theme))
+        .then((cfg: any) => {
+            syncThemeFromConfig(cfg?.general?.theme)
+        })
         .catch(() => { /* */ })
 }).catch(err => {
     console.log(err)

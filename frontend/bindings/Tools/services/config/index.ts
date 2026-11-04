@@ -11,6 +11,8 @@ export type {
     DocSpaceConfig,
     DownloadConfig,
     GeneralConfig,
+    GitConfig,
+    LanShareConfig,
     LauncherConfig,
     LauncherScopes,
     LogConfig,

@@ -40,9 +40,9 @@
         <a-table-column title="操作" :width="130">
           <template #cell="{ record }">
             <a-space :size="4">
-              <a-button v-if="!record.current && !record.remote" size="mini" type="text"
+              <a-button v-if="!record.current && !record.remote" size="mini" type="secondary"
                 @click="doCheckout(record.name)">切换</a-button>
-              <a-button v-if="!record.remote" size="mini" type="text" status="danger"
+              <a-button v-if="!record.remote" size="mini" type="secondary" status="danger"
                 @click="doDelete(record.name)">删除</a-button>
             </a-space>
           </template>

@@ -2,6 +2,7 @@ package gitcmd
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -146,6 +147,52 @@ func DeleteBranch(ctx context.Context, repoDir, name string, force bool) error {
 		flag = "-D"
 	}
 	_, err := Run(ctx, repoDir, "branch", flag, name)
+	return err
+}
+
+// ---------- P2：历史节点上的变更操作 ----------
+
+// CreateBranchAt 在指定起点（提交哈希/分支/ref）建分支；checkout=true 同时切过去。
+// 与 CreateBranch 的区在于多了 startRef，供历史面板「在某笔提交上建分支」。
+func CreateBranchAt(ctx context.Context, repoDir, name, startRef string, checkout bool) error {
+	args := []string{"branch", name}
+	if startRef != "" {
+		args = append(args, startRef)
+	}
+	if _, err := Run(ctx, repoDir, args...); err != nil {
+		return err
+	}
+	if checkout {
+		return Checkout(ctx, repoDir, name)
+	}
+	return nil
+}
+
+// CherryPick 把某笔提交应用到当前分支。冲突时 git 返回非零，错误人话透出，
+// 工作区进入 cherry-pick 中断态（本期只发起，不做图形化 continue/abort）。
+func CherryPick(ctx context.Context, repoDir, hash string) error {
+	_, err := Run(ctx, repoDir, "cherry-pick", "--empty=drop", hash)
+	return err
+}
+
+// Revert 生成一笔反向提交（--no-edit 防弹编辑器）。
+func Revert(ctx context.Context, repoDir, hash string) error {
+	_, err := Run(ctx, repoDir, "revert", "--no-edit", hash)
+	return err
+}
+
+// Reset 按 mode（soft|mixed|hard）回退到 target（提交/ref，空=HEAD）。
+// hard 会丢弃工作区改动，调用方（前端）必须二次确认；mode 走白名单，防注入额外旗标。
+func Reset(ctx context.Context, repoDir, mode, target string) error {
+	switch mode {
+	case "soft", "mixed", "hard":
+	default:
+		return fmt.Errorf("非法的 reset 模式: %s", mode)
+	}
+	if target == "" {
+		target = "HEAD"
+	}
+	_, err := Run(ctx, repoDir, "reset", "--"+mode, target)
 	return err
 }
 

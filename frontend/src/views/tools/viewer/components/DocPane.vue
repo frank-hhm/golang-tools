@@ -26,11 +26,15 @@
 <script setup lang="ts">
 /*
 docx 预览与在线编辑（kind = doc）：
-- 只读：docx-preview 动态 import 忠实渲染（独立 chunk，不进主包）。
+- 只读：docx-preview 动态 import 忠实渲染（独立 chunk，不进主包）。调的是
+  `renderAsync(data, bodyContainer, styleContainer, options)`（0.4.1 没有名为 render 的导出，
+  而且第三个位子是 styleContainer 不是 options —— 传错位会把样式节点当容器清空）。
 - 编辑：mammoth 把 docx 转 HTML 放进 contenteditable；保存时遍历 DOM 用 `docx`（纯 JS，
   浏览器安全）重建为**合法 OOXML** .docx，再 base64 → FileWriteBinary 写回，emit('changed')。
-  这是「保真有限」的往返：段落/标题/列表/粗斜体下划线能保住，表格尽量，图片/域代码/母版/批注会丢——
-  UI 已明示，复杂文档仍走父级「系统程序打开」。
+  实测保真边界（拿一份含各类排版的 docx 跑完整往返后回读比对得出）：保住的是标题层级、
+  段落、粗体、斜体、有序/无序列表、表格与中文；**在 mammoth 转 HTML 那一步就消失的是
+  下划线、删除线、字体颜色、超链接与图片**（不是保存时丢的，是编辑根本看不到），所以
+  UI 文案只说「仅保基本文字/标题/列表」，不再承诺下划线。复杂文档仍走「系统程序打开」。
 - 非本机可写文件（sftp 托管）canWrite=false，只读。
 */
 import { getCurrentInstance, nextTick, ref, watch } from "vue";
@@ -65,11 +69,12 @@ async function renderRead() {
         const buf = await ensureBuffer();
         if (!buf) throw new Error("无内容");
         const mod: any = await import("docx-preview");
-        const render = mod.render || mod.default?.render;
+        const render = mod.renderAsync || mod.default?.renderAsync;
+        if (typeof render !== "function") throw new Error("docx-preview 未导出 renderAsync");
         await nextTick();
         if (readEl.value) {
-            readEl.value.innerHTML = "";
-            await render(buf, readEl.value, { inWrapper: true, ignoreLastRenderedPageBreak: true, experimental: false });
+            // styleContainer 传 undefined：库内部会回退成 bodyContainer，样式与正文落在同一个容器
+            await render(buf, readEl.value, undefined, { inWrapper: true, ignoreLastRenderedPageBreak: true, experimental: false });
         }
     } catch (e: any) {
         err.value = "文档渲染失败：" + String(e?.message || e);

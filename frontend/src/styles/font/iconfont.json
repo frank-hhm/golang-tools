@@ -6,6 +6,62 @@
   "description": "",
   "glyphs": [
     {
+      "icon_id": "2027678",
+      "name": "80-80px图标-扩展-99",
+      "font_class": "-pxtubiao-kuozhan-",
+      "unicode": "e68a",
+      "unicode_decimal": 59018
+    },
+    {
+      "icon_id": "41631997",
+      "name": "局域网_填充",
+      "font_class": "juyuwang_tianchong",
+      "unicode": "e660",
+      "unicode_decimal": 58976
+    },
+    {
+      "icon_id": "42807719",
+      "name": "局域网",
+      "font_class": "juyuwang",
+      "unicode": "e661",
+      "unicode_decimal": 58977
+    },
+    {
+      "icon_id": "431778",
+      "name": "git",
+      "font_class": "git-1",
+      "unicode": "e7c3",
+      "unicode_decimal": 59331
+    },
+    {
+      "icon_id": "836607",
+      "name": "git",
+      "font_class": "git3",
+      "unicode": "e7c4",
+      "unicode_decimal": 59332
+    },
+    {
+      "icon_id": "7457677",
+      "name": "Git#2",
+      "font_class": "Git",
+      "unicode": "e614",
+      "unicode_decimal": 58900
+    },
+    {
+      "icon_id": "7457678",
+      "name": "Git#1",
+      "font_class": "Git1",
+      "unicode": "e619",
+      "unicode_decimal": 58905
+    },
+    {
+      "icon_id": "7457682",
+      "name": "Git#4",
+      "font_class": "Git2",
+      "unicode": "e61c",
+      "unicode_decimal": 58908
+    },
+    {
       "icon_id": "3370349",
       "name": "作业_FTP作业",
       "font_class": "zuoye_FTPzuoye",

@@ -54,7 +54,7 @@ type Options struct {
 	Level  int      `json:"level"`  // 1~9，<=0 走默认
 	OutDir string   `json:"outDir"` // 输出目录；空=就地放在首个条目所在目录
 	Name   string   `json:"name"`   // 输出文件名（不含扩展名）；空=按规则自动取名
-	Dest   string   `json:"dest"`   // 解压目标目录；空=归档同级的同名文件夹
+	Dest   string   `json:"dest"`   // 解压目标目录；空=归档同级的同名文件夹（已被占用则加序号）
 }
 
 // Progress 进度事件负载，同时也是任务中心那一份的原料。
@@ -373,6 +373,23 @@ func pathSegments(dir string) []string {
 	return segs
 }
 
+// uniqueDirPath 目录版重名避让：x → "x (1)" → "x (2)"。
+//
+// 不复用 uniquePath：那个把最后一段当扩展名切开（x.zip → "x (1).zip"），而目录名里
+// 的点不是扩展名（叫 "v1.2" 的文件夹会被切成 "v1 (1).2"）。序号直接缀在整段名字后面。
+func uniqueDirPath(p string) string {
+	if _, err := os.Stat(p); err != nil {
+		return p
+	}
+	dir, base := filepath.Dir(p), filepath.Base(p)
+	for n := 1; ; n++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s (%d)", base, n))
+		if _, err := os.Stat(candidate); err != nil {
+			return candidate
+		}
+	}
+}
+
 // uniquePath 重名避让：x.zip → "x (1).zip" → "x (2).zip"
 func uniquePath(p string) string {
 	if _, err := os.Stat(p); err != nil {
@@ -487,6 +504,17 @@ func runExtract(ctx context.Context, o Options, begin time.Time, notify func(Pro
 		if dest == filepath.Dir(archive) { // 去扩展名后撞回自己所在目录（"a" 这种无扩展名归档）
 			dest = dest + "-解包"
 		}
+		// 这个目录是我们替用户挑的，所以不能挑到一个已经存在的文件夹上去：解包是
+		// 逐个条目往里写，同名文件夹会被就地合并进去。而压缩时包内是带顶层目录名的
+		// （压 proj 得到包内 proj/…），于是右键「压缩 → 解压」正好把 proj 套进 proj 里，
+		// 用户的原目录凭空多出一份副本且毫无提示。撞名就加序号，让人一眼看出是两个目录。
+		//
+		// 用户自己指定了 Dest 时不做避让：挑一个已有目录正是那一下选择的语义（往这个
+		// 文件夹里解），擅自改名反而把东西放到了意料之外的位置。
+		//
+		// 安全契约（借鉴 DeskBox 的文件安全口径）：解压只写不删——源归档与目标侧
+		// 已有内容都不会因解压被改动或删除，撞名让开而不是静默合并。
+		dest = uniqueDirPath(dest)
 	}
 	if abs, err := filepath.Abs(dest); err == nil {
 		dest = abs

@@ -1,11 +1,16 @@
-﻿<template>
+<template>
     <!-- 布局参考 Redis 工具页：整页左右分栏，左侧分类导航 + 右侧主面板 -->
     <a-row class="settings-page" :gutter="6">
         <!-- 左侧：设置分类 -->
-        <a-col :span="6" class="side-col">
+        <a-col :span="5" class="side-col">
             <a-card class="side-card card-head-tool" size="small" :body-style="{ padding: 0 }">
-                <template #title>设置</template>
-                <div class="cat-list">
+                
+                <div class="side-search">
+                    <a-input-search v-model="searchKw" placeholder="搜索设置项" allow-clear
+                        @keydown.esc="searchKw = ''" />
+                </div>
+                <!-- 有关键词时左栏整体切换成结果列表（DeskBox 式「搜到任意设置」），清空后恢复分类导航 -->
+                <div v-if="!searchKw.trim()" class="cat-list">
                     <div v-for="t in SETTING_TABS" :key="t.key" class="cat-item"
                         :class="{ active: activeTab === t.key }" @click="activeTab = t.key">
                         <component :is="t.icon" class="cat-icon" />
@@ -13,11 +18,22 @@
                         <icon-right v-if="activeTab === t.key" class="cat-arrow" />
                     </div>
                 </div>
+                <div v-else class="cat-list search-list">
+                    <div v-for="r in searchResults" :key="r.skey" class="cat-item s-item"
+                        @click="jumpToSetting(r.skey)">
+                        <div class="s-main">
+                            <span class="s-label" v-html="hlHtml(r.label)"></span>
+                            <span class="s-tab">{{ tabLabel(r.tab) }}</span>
+                        </div>
+                        <div v-if="r.hint" class="s-hint" v-html="hlHtml(r.hint)"></div>
+                    </div>
+                    <div v-if="!searchResults.length" class="s-empty">没有匹配的设置项</div>
+                </div>
             </a-card>
         </a-col>
 
         <!-- 右侧：主区域，所有设置项修改后自动保存 -->
-        <a-col :span="18" class="main-col">
+        <a-col :span="19" class="main-col">
             <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
                 <template #title>
                     <a-space>
@@ -26,7 +42,10 @@
                     </a-space>
                 </template>
                 <template #extra>
-                    <span class="auto-save-tip">{{ saving ? "正在保存…" : "修改后自动保存" }}</span>
+                    <span class="auto-save-tip">
+                        <span class="save-dot" :class="{ busy: saving }" />
+                        {{ saving ? "正在保存…" : "修改后自动保存" }}
+                    </span>
                 </template>
 
                 <div class="tab-content">
@@ -34,14 +53,14 @@
                     <a-card v-show="activeTab === 'general'" class="pane-card card-head-tool">
                         <template #title>应用与外观</template>
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
-                            <a-form-item field="general.appName">
+                            <a-form-item field="general.appName" data-skey="general.appName">
                                 <template #label>应用名称</template>
                                 <a-input v-model="form.general.appName" placeholder="Tools"
                                     :style="{ maxWidth: '280px' }" @blur="scheduleSave(0)"
                                     @press-enter="scheduleSave(0)" />
                                 <span class="hint">窗口标题、托盘提示显示的名称，修改后立即生效。</span>
                             </a-form-item>
-                            <a-form-item field="general.appLogo">
+                            <a-form-item field="general.appLogo" data-skey="general.appLogo">
                                 <template #label>应用 Logo</template>
                                 <div class="logo-picker">
                                     <div class="logo-preview">
@@ -56,7 +75,7 @@
                                 </div>
                                 <span class="hint">建议 PNG 正方形（如 128x128），用于浮动球中心图标。留空使用内置默认。</span>
                             </a-form-item>
-                            <a-form-item field="general.theme">
+                            <a-form-item field="general.theme" data-skey="general.theme">
                                 <template #label>主题模式</template>
                                 <a-radio-group size="medium" v-model="form.general.theme" type="button"
                                     @change="onThemeChange">
@@ -66,7 +85,7 @@
                                 </a-radio-group>
                                 <span class="hint">切换后立即生效，所有窗口同步。</span>
                             </a-form-item>
-                            <a-form-item field="autoStart">
+                            <a-form-item field="autoStart" data-skey="general.autoStart">
                                 <template #label>开机默认启动</template>
                                 <a-switch type="round" v-model="form.general.autoStart" @change="scheduleSave(0)" />
                                 <span class="hint">开启后 Windows 登录时自动启动应用。</span>
@@ -78,7 +97,7 @@
                     <a-card v-show="activeTab === 'paths'" class="pane-card card-head-tool">
                         <template #title>全局目录布局</template>
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
-                            <a-form-item field="paths.plugins">
+                            <a-form-item field="paths.plugins" data-skey="paths.plugins">
                                 <template #label>插件目录（plugins）</template>
                                 <div class="path-row">
                                     <a-input v-model="form.paths.plugins" placeholder="留空使用默认（应用目录/plugins）" allow-clear
@@ -90,7 +109,7 @@
                                     等按服务名建子目录（plugins/服务名）。修改后新安装/下载的服务落到新目录。
                                 </div>
                             </a-form-item>
-                            <a-form-item field="paths.data">
+                            <a-form-item field="paths.data" data-skey="paths.data">
                                 <template #label>数据目录（data）</template>
                                 <div class="path-row">
                                     <a-input v-model="form.paths.data" placeholder="留空使用默认（应用目录/data）" allow-clear
@@ -102,7 +121,7 @@
                                     服务配置缓存与实例工作目录（data/服务名）；截图另存、录像、站点根等文件的默认落点（data/screenshots、data/videos、data/www）。保存后各另存对话框默认目录随即使用新路径。
                                 </div>
                             </a-form-item>
-                            <a-form-item field="paths.downloads">
+                            <a-form-item field="paths.downloads" data-skey="paths.downloads">
                                 <template #label>下载目录（downloads）</template>
                                 <div class="path-row">
                                     <a-input v-model="form.paths.downloads" placeholder="留空使用默认（应用目录/downloads）"
@@ -112,12 +131,12 @@
                                 </div>
                                 <div class="hint">下载管理器新建任务时“保存目录”留空的默认落点。修改保存后，新建下载随即落到新目录（已存在的任务仍留在其原保存路径）。</div>
                             </a-form-item>
-                            <a-form-item field="log.enabled">
+                            <a-form-item field="log.enabled" data-skey="log.enabled">
                                 <template #label>启用文件日志</template>
                                 <a-switch type="round" v-model="form.log.enabled" @change="scheduleSave(0)" />
                                 <span class="hint">关闭后不再写入日志文件（仅开发控制台可见）。</span>
                             </a-form-item>
-                            <a-form-item field="paths.logs">
+                            <a-form-item field="paths.logs" data-skey="paths.logs">
                                 <template #label>日志目录（logs）</template>
                                 <div class="path-row">
                                     <a-input v-model="form.paths.logs" placeholder="留空使用默认（应用目录/logs）" allow-clear
@@ -152,14 +171,14 @@
                             <a-form :model="panelForm" :style="{ maxWidth: '720px' }" layout="vertical">
                                 <a-row :gutter="12">
                                     <a-col :span="12">
-                                        <a-form-item field="panelUsername">
+                                        <a-form-item field="panelUsername" data-skey="panel.username">
                                             <template #label>登录账号</template>
                                             <a-input v-model="panelForm.username" placeholder="admin"
                                                 :style="{ maxWidth: '260px' }" allow-clear />
                                         </a-form-item>
                                     </a-col>
                                     <a-col :span="12">
-                                        <a-form-item field="panelSession">
+                                        <a-form-item field="panelSession" data-skey="panel.sessionHours">
                                             <template #label>登录有效期（小时）</template>
                                             <a-input-number v-model="panelForm.sessionHours" :min="1" :max="720"
                                                 :style="{ width: '140px' }" />
@@ -170,7 +189,7 @@
 
                                 <a-row :gutter="12" :style="{ marginTop: '16px' }">
                                     <a-col :span="14">
-                                        <a-form-item field="panelHost">
+                                        <a-form-item field="panelHost" data-skey="panel.host">
                                             <template #label>监听地址</template>
                                             <a-select v-model="panelForm.host" allow-create allow-search>
                                                 <a-option value="0.0.0.0">0.0.0.0（所有网卡）</a-option>
@@ -179,7 +198,7 @@
                                         </a-form-item>
                                     </a-col>
                                     <a-col :span="10">
-                                        <a-form-item field="panelPort">
+                                        <a-form-item field="panelPort" data-skey="panel.port">
                                             <template #label>端口</template>
                                             <a-input-number v-model="panelForm.port" :min="1" :max="65535"
                                                 :style="{ width: '140px' }" />
@@ -187,7 +206,7 @@
                                     </a-col>
                                 </a-row>
 
-                                <a-form-item field="panelEntry">
+                                <a-form-item field="panelEntry" data-skey="panel.entryPath">
                                     <template #label>安全入口</template>
                                     <div class="path-row">
                                         <a-input v-model="panelForm.entryPath" placeholder="留空关闭，例如 /manage-9f3ad2"
@@ -200,7 +219,7 @@
                                     </span>
                                 </a-form-item>
 
-                                <a-form-item field="panelEnabled">
+                                <a-form-item field="panelEnabled" data-skey="panel.enabled">
                                     <template #label>登录保护</template>
                                     <a-switch v-model="panelForm.enabled" type="round" />
                                     <span class="hint">关闭后任何人访问面板地址都不需要登录，仅适合完全可信的内网临时排障。</span>
@@ -224,7 +243,7 @@
 
                                 <a-divider :margin="8" />
 
-                                <a-form-item field="pwdCurrent">
+                                <a-form-item field="pwdCurrent" data-skey="panel.password">
                                     <template #label>修改登录密码</template>
                                     <a-input-password v-model="pwdForm.current" placeholder="当前密码"
                                         :style="{ maxWidth: '260px', marginBottom: '8px' }" />
@@ -243,12 +262,12 @@
                     <a-card v-show="activeTab === 'ball'" class="pane-card card-head-tool">
                         <template #title>桌面浮动球</template>
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
-                            <a-form-item field="ballEnabled">
+                            <a-form-item field="ballEnabled" data-skey="ball.enabled">
                                 <template #label>显示桌面浮动球</template>
                                 <a-switch v-model="form.ball.enabled" type="round" @change="scheduleSave(0)" />
                                 <span class="hint">开启后浮动球常驻屏幕右下角（独立原生小窗，置顶、可拖动，点击展开快捷功能）。修改后立即显隐，并在下次启动时自动恢复。</span>
                             </a-form-item>
-                            <a-form-item field="ballIcon">
+                            <a-form-item field="ballIcon" data-skey="ball.icon">
                                 <template #label>浮动球图标</template>
                                 <div class="logo-picker">
                                     <div class="ball-icon-preview">
@@ -270,6 +289,22 @@
                                 <span class="hint">浮动球中心图标（图标库或 Arco），颜色自动跟随主题正文色 var(--color-text-1)，球面底色跟随
                                     var(--color-bg-1)。留空使用应用 Logo/内置默认。</span>
                             </a-form-item>
+                            <a-form-item field="ballHideAll" data-skey="ball.hideAllShortcut">
+                                <template #label>显示/隐藏全部窗口热键</template>
+                                <a-input :model-value="form.ball.hideAllShortcut" readonly allow-clear
+                                    :placeholder="ballHaRecording ? '请按下组合键…（Esc 取消）' : '点击后直接按下组合键（如 Ctrl+Alt+H），清空即停用'"
+                                    @click="ballHaStartRecord" @keydown="ballHaOnKeydown" @clear="ballHaClear">
+                                    <template #suffix>
+                                        <span v-if="ballHaRecording" class="rec-tip">录制中</span>
+                                    </template>
+                                </a-input>
+                                <span class="hint">借鉴 DeskBox 的一键显隐：按下收起主窗口与所有工具窗口，再按恢复本次收起的那些；托盘与浮动球不受影响。</span>
+                            </a-form-item>
+                            <a-form-item field="ballDock" data-skey="ball.dockEdge">
+                                <template #label>贴边自动收缩</template>
+                                <a-switch type="round" v-model="form.ball.dockEdge" @change="scheduleSave(0)" />
+                                <span class="hint">把浮动球拖到屏幕边缘时自动收成小胶囊 tab，指针碰到弹回完整球；拖离边缘即解除停靠。</span>
+                            </a-form-item>
                         </a-form>
                     </a-card>
 
@@ -277,7 +312,7 @@
                     <a-card v-show="activeTab === 'launcher'" class="pane-card card-head-tool">
                         <template #title>快捷搜索（Alt+Space 面板）</template>
                         <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
-                            <a-form-item field="lkEnabled">
+                            <a-form-item field="lkEnabled" data-skey="launcher.enabled">
                                 <template #label>启用快捷搜索</template>
                                 <a-switch v-model="form.launcher.enabled" type="round" @change="onLauncherEnabled" />
                                 <span class="hint">
@@ -286,7 +321,7 @@
                                 </span>
                             </a-form-item>
 
-                            <a-form-item field="lkShortcut">
+                            <a-form-item field="lkShortcut" data-skey="launcher.shortcut">
                                 <template #label>呼出热键</template>
                                 <a-input :model-value="form.launcher.shortcut" readonly
                                     placeholder="点击后直接按下组合键（默认 Alt+Space）" @click="lkStartRecord"
@@ -298,7 +333,7 @@
                                 <span class="hint">与工具热键撞车时以先注册者为准，注册失败会在日志里记一条告警。按 Esc 退出录制。</span>
                             </a-form-item>
 
-                            <a-form-item field="lkScopes">
+                            <a-form-item field="lkScopes" data-skey="launcher.scopes">
                                 <template #label>检索范围</template>
                                 <a-space wrap>
                                     <a-checkbox v-model="form.launcher.scopes.apps"
@@ -315,7 +350,7 @@
                                 </a-space>
                             </a-form-item>
 
-                            <a-form-item field="lkDirs">
+                            <a-form-item field="lkDirs" data-skey="launcher.dirs">
                                 <template #label>额外索引目录</template>
                                 <div class="lk-dirs">
                                     <div v-for="(d, i) in form.launcher.dirs" :key="i" class="lk-dir-row">
@@ -329,14 +364,14 @@
                                     }}；AppData、node_modules、回收站等一律跳过。</span>
                             </a-form-item>
 
-                            <a-form-item field="lkMaxEntries">
+                            <a-form-item field="lkMaxEntries" data-skey="launcher.maxEntries">
                                 <template #label>索引条目上限</template>
                                 <a-input-number v-model="form.launcher.maxEntries" :min="1000" :step="10000" hide-button
                                     @change="scheduleSave(600)" />
                                 <span class="hint">撞顶时索引标记为“不全”，新文件可能搜不到；可提高上限，或把过深的目录从索引里移出去。</span>
                             </a-form-item>
 
-                            <a-form-item field="lkIndex">
+                            <a-form-item field="lkIndex" data-skey="launcher.index">
                                 <template #label>索引状态</template>
                                 <a-space>
                                     <a-button size="small" :loading="lkRebuilding"
@@ -356,7 +391,7 @@
                                 <span class="hint">未启用时不扫盘、不建索引，这里的条数会归零；“重建索引”会顺带刷新应用清单（刚装的程序搜不到就用它）。</span>
                             </a-form-item>
 
-                            <a-form-item field="lkCommands">
+                            <a-form-item field="lkCommands" data-skey="launcher.commands">
                                 <template #label>可搜的内置命令</template>
                                 <div class="lk-cmds">
                                     <span v-for="c in lkCmds" :key="c.id" class="lk-cmd" :class="{ danger: c.danger }"
@@ -371,7 +406,7 @@
                     <a-card v-show="activeTab === 'archive'" class="pane-card card-head-tool">
                         <template #title>文件压缩（系统右键挂载）</template>
                         <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
-                            <a-form-item field="arEnabled">
+                            <a-form-item field="arEnabled" data-skey="archive.enabled">
                                 <template #label>启用右键压缩</template>
                                 <a-switch v-model="form.archive.enabled" type="round" @change="onArchiveEnabled" />
                                 <span class="hint">
@@ -380,7 +415,7 @@
                                 </span>
                             </a-form-item>
 
-                            <a-form-item field="arShell">
+                            <a-form-item field="arShell" data-skey="archive.shell">
                                 <template #label>当前挂载状态</template>
                                 <div class="ar-shell-row">
                                     <span class="ar-slot">压缩菜单项：<b>{{ slotText(arShell?.compress) }}</b></span>
@@ -397,16 +432,16 @@
                                 <div v-if="arShell?.stale" class="hint">程序路径与注册表里记的不一致（换过目录），点「安装 / 修复」重写一次。</div>
                                 <div v-else-if="arShell?.detail" class="hint">{{ arShell.detail }}</div>
                                 <span class="hint">Win11 的静态右键菜单项落在「显示更多选项」二级菜单里；菜单文案带 (Tools) 以便与系统自带的「压缩为 ZIP
-                                    文件」区分。</span>
+                                    文件」区分。解压冲突策略：目标已存在同名文件夹时自动让开为「名称 (1)」，只写入、绝不合并或覆盖原目录。</span>
                             </a-form-item>
 
-                            <a-form-item field="arSendTo">
+                            <a-form-item field="arSendTo" data-skey="archive.sendTo">
                                 <template #label>「发送到」快捷方式</template>
                                 <a-switch v-model="form.archive.sendTo" type="round" @change="scheduleSave(0)" />
                                 <span class="hint">多选文件后右键「发送到 → 压缩 (Tools)…」，会先弹一个选项小窗问格式与输出位置。</span>
                             </a-form-item>
 
-                            <a-form-item field="arFormat">
+                            <a-form-item field="arFormat" data-skey="archive.format">
                                 <template #label>默认格式</template>
                                 <a-radio-group v-model="form.archive.format" type="button" @change="scheduleSave(0)">
                                     <a-radio value="zip">zip</a-radio>
@@ -415,7 +450,7 @@
                                 <span class="hint">右键直接压缩时没有界面，用的就是这一档；工具页与小窗里当场选过的不会被它盖掉。</span>
                             </a-form-item>
 
-                            <a-form-item field="arLevel">
+                            <a-form-item field="arLevel" data-skey="archive.level">
                                 <template #label>默认压缩级别</template>
                                 <a-select v-model="form.archive.level" style="width: 180px" @change="scheduleSave(0)">
                                     <a-option :value="1">快速（1）</a-option>
@@ -428,22 +463,51 @@
                         </a-form>
                     </a-card>
 
-                    <!-- ===================== 文档中心 ===================== -->
+                    <!-- ===================== Git 右键集成 ===================== -->
+                    <a-card v-show="activeTab === 'git'" class="pane-card card-head-tool">
+                        <template #title>Git（系统右键挂载）</template>
+                        <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
+                            <a-form-item field="gitEnabled" data-skey="git.shellEnabled">
+                                <template #label>启用 Git 右键集成</template>
+                                <a-switch v-model="form.git.shellEnabled" type="round" @change="onGitEnabled" />
+                                <span class="hint">
+                                    开启后才会写注册表（HKCU，不需管理员）并起本机转交监听。关掉时一个都不留（自家 ToolsGit* 那几把键删干净、监听停），不占系统位置。
+                                    Git 管理工具页本身不受此开关影响，一直可以在首页打开。
+                                </span>
+                            </a-form-item>
+
+                            <a-form-item field="gitShell" data-skey="git.shell">
+                                <template #label>当前挂载状态</template>
+                                <div class="ar-shell-row">
+                                    <span class="ar-slot">Git 菜单项：<b>{{ slotText(gitShell?.slot) }}</b></span>
+                                </div>
+                                <div class="ar-shell-btns">
+                                    <a-button size="small" type="primary" status="success" :loading="gitBusy"
+                                        :disabled="!form.git.shellEnabled" @click="installGitShell">安装 / 修复</a-button>
+                                    <a-button size="small" :loading="gitBusy" @click="uninstallGitShell">卸载</a-button>
+                                </div>
+                                <div v-if="gitShell?.stale" class="hint">程序路径与注册表里记的不一致（换过目录），点「安装 / 修复」重写一次。</div>
+                                <div v-else-if="gitShell?.detail" class="hint">{{ gitShell.detail }}</div>
+                                <span class="hint">挂载「仓库状态 / 提交 / 推送 / 拉取 / 分支」五个菜单项于文件夹、文件与空白处三类位置；Win11 的静态右键项落在「显示更多选项」二级菜单里。
+                                    菜单文案带 (Tools) 以便与 TortoiseGit 等别家区分。点某项时若该位置不在 Git 仓库内，会弹系统通知说明；命中仓库则在已运行的实例里打开 Git 工作台并定位到该仓库（推送/拉取/提交不盲跑，仍需你在工作台里确认）。</span>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
                     <a-card v-show="activeTab === 'docspace'" class="pane-card card-head-tool">
                         <template #title>文档中心</template>
                         <a-form :model="{}" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-alert type="normal" style="margin-bottom: 16px">
                                 P1 已接入：分类树与标签、版本快照/还原、回收站（仅本机 local 源移实体）。加密/备份/分享/远程在后续期接入。
                             </a-alert>
-                            <a-form-item label="启用文档中心">
+                            <a-form-item label="启用文档中心" data-skey="docspace.enabled">
                                 <a-switch v-model="docspaceForm.enabled" />
                                 <span class="hint" style="margin-left: 10px">关闭后文件查看器左栏只保留“本机浏览”，不再展示“文档中心”态。</span>
                             </a-form-item>
-                            <a-form-item label="每条目版本保留数">
+                            <a-form-item label="每条目版本保留数" data-skey="docspace.versionKeep">
                                 <a-input-number v-model="docspaceForm.versionKeep" :min="0" :max="1000" :step="1" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">存新快照后自动裁掉最旧的超额版本；0 表示不裁剪。</span>
                             </a-form-item>
-                            <a-form-item label="回收站保留天数">
+                            <a-form-item label="回收站保留天数" data-skey="docspace.trashKeepDays">
                                 <a-input-number v-model="docspaceForm.trashKeepDays" :min="0" :max="3650" :step="1" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">移入超过该天数的实体在打开回收站时自动彻底清理；0 表示不自动清理。</span>
                             </a-form-item>
@@ -454,10 +518,10 @@
                                 </a-space>
                             </a-form-item>
                             <a-divider style="margin: 4px 0 16px" />
-                            <a-form-item label="库目录（元数据与实体快照落点）">
+                            <a-form-item label="库目录（元数据与实体快照落点）" data-skey="docspace.root">
                                 <a-input :model-value="docspaceRoot" read-only />
                             </a-form-item>
-                            <a-form-item label="概览">
+                            <a-form-item label="概览" data-skey="docspace.counts">
                                 <a-space wrap>
                                     <a-tag>分类 {{ docspaceCounts.categories }}</a-tag>
                                     <a-tag>条目 {{ docspaceCounts.items }}</a-tag>
@@ -479,25 +543,25 @@
                                 授权令牌经 tools/secret 加密落盘（Windows DPAPI / Linux 0600 文件），回前端的账号列表不含任何密钥。
                                 Google 的 client_id/secret 请自备并在下方填写，不内置。
                             </a-alert>
-                            <a-form-item label="启用云盘管理">
+                            <a-form-item label="启用云盘管理" data-skey="cloud.enabled">
                                 <a-switch v-model="cloudForm.enabled" />
                                 <span class="hint" style="margin-left: 10px">关闭时云盘页不发起任何网络请求、不构造 provider。</span>
                             </a-form-item>
-                            <a-form-item label="Google 客户端 ID">
+                            <a-form-item label="Google 客户端 ID" data-skey="cloud.clientId">
                                 <a-input v-model="cloudForm.clientId" placeholder="xxxx.apps.googleusercontent.com" allow-clear />
                             </a-form-item>
-                            <a-form-item label="Google 客户端密钥">
+                            <a-form-item label="Google 客户端密钥" data-skey="cloud.clientSecret">
                                 <a-input-password v-model="cloudForm.clientSecret" placeholder="留空表示保持不变" allow-clear />
                                 <span class="hint">为桌面应用性质，非真正的机密；留空则不覆盖已保存的值。</span>
                             </a-form-item>
-                            <a-form-item label="OAuth 回调地址">
+                            <a-form-item label="OAuth 回调地址" data-skey="cloud.redirect">
                                 <a-input v-model="cloudForm.redirect" placeholder="http://localhost:8458/callback" allow-clear />
                                 <span class="hint">须与 Google 控制台登记的“已授权的重定向 URI”逐字一致。</span>
                             </a-form-item>
-                            <a-form-item label="下载落地目录">
+                            <a-form-item label="下载落地目录" data-skey="cloud.saveDir">
                                 <a-input v-model="cloudForm.saveDir" placeholder="留空走数据目录下 clouddrive/downloads" allow-clear />
                             </a-form-item>
-                            <a-form-item label="转存并发度">
+                            <a-form-item label="转存并发度" data-skey="cloud.concurrency">
                                 <a-input-number v-model="cloudForm.concurrency" :min="1" :max="16" :step="1" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">本期为单连接，值留给后续跨盘转存。</span>
                             </a-form-item>
@@ -518,36 +582,36 @@
                                 分块/续传/限速/重试引擎全跨平台（Linux 面板下载的是服务器本机目录）。
                                 这里的<strong>共享代理池</strong>供下载选源、仿站抓代理与浏览器 custom 代理（仅桌面）复用，减少重复录入。
                             </a-alert>
-                            <a-form-item label="启用下载管理">
+                            <a-form-item label="启用下载管理" data-skey="download.enabled">
                                 <a-switch v-model="downloadForm.enabled" />
                                 <span class="hint" style="margin-left: 10px">关闭时前端隐藏「下载管理」入口。</span>
                             </a-form-item>
-                            <a-form-item label="默认下载目录">
+                            <a-form-item label="默认下载目录" data-skey="download.saveDir">
                                 <a-input v-model="downloadForm.saveDir" placeholder="留空走系统下载目录" allow-clear />
                                 <span class="hint">新建任务未指定目录时落这里，保存后对新建任务即时生效。</span>
                             </a-form-item>
-                            <a-form-item label="同时下载任务数">
+                            <a-form-item label="同时下载任务数" data-skey="download.maxRunningTasks">
                                 <a-input-number v-model="downloadForm.maxRunningTasks" :min="1" :max="32" :step="1" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">超出的任务排队等额度。</span>
                             </a-form-item>
-                            <a-form-item label="全局并发块数上限">
+                            <a-form-item label="全局并发块数上限" data-skey="download.maxTotalParts">
                                 <a-input-number v-model="downloadForm.maxTotalParts" :min="1" :max="256" :step="1" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">所有在跑任务合计的分块并发闸门。</span>
                             </a-form-item>
-                            <a-form-item label="单任务默认分块数">
+                            <a-form-item label="单任务默认分块数" data-skey="download.defaultConnections">
                                 <a-input-number v-model="downloadForm.defaultConnections" :min="1" :max="32" :step="1" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">新建任务未指定连接数时用此值。</span>
                             </a-form-item>
-                            <a-form-item label="全局下行限速（MB/s）">
+                            <a-form-item label="全局下行限速（MB/s）" data-skey="download.speedLimitMB">
                                 <a-input-number v-model="downloadForm.speedLimitMB" :min="0" :step="0.5" style="width: 200px" />
                                 <span class="hint" style="margin-left: 10px">0 = 不限速。即时作用于所有在跑任务。</span>
                             </a-form-item>
-                            <a-form-item label="共享代理池">
+                            <a-form-item label="共享代理池" data-skey="download.proxyPool">
                                 <pool-editor :rows="proxyPool" name-placeholder="名称" url-placeholder="http://127.0.0.1:7890"
                                     add-label="添加代理" />
                                 <span class="hint">http/https 代理（socks5 本期不保证）。浏览器 custom 代理可从这里下拉选。</span>
                             </a-form-item>
-                            <a-form-item label="常用镜像模板">
+                            <a-form-item label="常用镜像模板" data-skey="download.mirrorPool">
                                 <pool-editor :rows="mirrorPool" name-placeholder="名称" url-placeholder="https://mirror.example.com/file.zip"
                                     add-label="添加镜像" />
                                 <span class="hint">新建下载任务时的多源候选，手动选 + 测速，不自动切换。</span>
@@ -561,7 +625,7 @@
                         </a-form>
                     </a-card>
                     <div v-show="activeTab === 'tools'" class="tools-pane">
-                        <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }">
+                        <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }" data-skey="tools.list">
                             <template #title>功能列表</template>
                             <template #extra>
                                 <a-space>
@@ -675,7 +739,7 @@
                             </a-space>
                         </template>
                         <a-form :model="browserForm" :style="{ maxWidth: '720px' }" layout="vertical">
-                            <a-form-item>
+                            <a-form-item data-skey="browser.maxSpaces">
                                 <template #label>空间数量上限</template>
                                 <a-input-number v-model="browserForm.maxSpaces" :min="spaceMin" :max="20"
                                     @change="scheduleBrowserSave(0)" />
@@ -684,21 +748,21 @@
                                     一个空间 = 一套独立 profile（登录态/缓存）+ 一套独立代理，空间内多标签共享登录态。
                                 </span>
                             </a-form-item>
-                            <a-form-item>
+                            <a-form-item data-skey="browser.homepage">
                                 <template #label>默认首页</template>
                                 <a-input v-model="browserForm.homepage" placeholder="about:blank" allow-clear
                                     @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)"
                                     @clear="scheduleBrowserSave(0)" />
                                 <span class="hint">空间里留空首页时用这个；新标签与“关光标签自动补一个”都用它。</span>
                             </a-form-item>
-                            <a-form-item>
+                            <a-form-item data-skey="browser.searchURL">
                                 <template #label>地址栏搜索模板</template>
                                 <a-input v-model="browserForm.searchURL" placeholder="https://www.bing.com/search?q=%s"
                                     allow-clear @blur="scheduleBrowserSave(0)" @press-enter="scheduleBrowserSave(0)"
                                     @clear="scheduleBrowserSave(0)" />
                                 <span class="hint">地址栏输入的不是网址时走这个地址，<code>%s</code> 会被替换成搜索词。</span>
                             </a-form-item>
-                            <a-form-item>
+                            <a-form-item data-skey="browser.proxyMode">
                                 <template #label>默认代理</template>
                                 <a-radio-group size="medium" v-model="browserForm.proxyMode" type="button"
                                     @change="scheduleBrowserSave(0)">
@@ -708,7 +772,7 @@
                                 </a-radio-group>
                                 <span class="hint">空间里没单独设置代理时用这档；“跟随系统”就是系统代理设置，不做任何覆盖。</span>
                             </a-form-item>
-                            <a-form-item v-if="browserForm.proxyMode === 'custom'">
+                            <a-form-item v-if="browserForm.proxyMode === 'custom'" data-skey="browser.proxy">
                                 <template #label>代理地址与绕过列表</template>
                                 <div class="bs-pair">
                                     <a-input v-model="browserForm.proxy" allow-clear
@@ -720,12 +784,12 @@
                                 </div>
                                 <span class="hint">代理与 UA 是环境级参数，改完需要重新打开浏览器页（或在齿轮里保存）才生效。</span>
                             </a-form-item>
-                            <a-form-item>
+                            <a-form-item data-skey="browser.userAgent">
                                 <template #label>默认 User-Agent</template>
                                 <a-textarea v-model="browserForm.userAgent" :auto-size="{ minRows: 1, maxRows: 3 }"
                                     placeholder="留空使用内置默认 UA" allow-clear @blur="scheduleBrowserSave(0)" />
                             </a-form-item>
-                            <a-form-item>
+                            <a-form-item data-skey="browser.defaultSpace">
                                 <template #label>启动时打开的空间</template>
                                 <a-select v-model="browserForm.defaultSpace" :style="{ maxWidth: '280px' }"
                                     placeholder="选择默认空间" @change="scheduleBrowserSave(0)">
@@ -736,7 +800,7 @@
                         </a-form>
 
                         <a-divider :margin="8" />
-                        <div class="space-head">
+                        <div class="space-head" data-skey="browser.spaces">
                             <span class="space-title">空间列表</span>
                             <a-tooltip content="增删空间、单独设置代理/UA/首页请到浏览器页右上角齿轮">
                                 <icon-question-circle class="bs-help" />
@@ -766,7 +830,7 @@
                     <!-- ===================== 配置导出 / 导入 ===================== -->
                     <a-card v-show="activeTab === 'config'" class="pane-card card-head-tool">
                         <template #title>配置同步</template>
-                        <div class="cfg-sync">
+                        <div class="cfg-sync" data-skey="config.sync">
                             <div class="cfg-sync-label">导出 / 导入配置</div>
                             <a-space>
                                 <a-button size="small" @click="exportConfig">
@@ -883,7 +947,7 @@ import { computed, createVNode, getCurrentInstance, nextTick, onBeforeUnmount, o
 import { Events } from "@wailsio/runtime";
 import { Message } from "@arco-design/web-vue";
 import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
-import iconData from "@/components/common/select-icon-modal/icon.json";
+import iconData from "@/components/common/icon/select-icon-modal/icon.json";
 import { applyTheme, type ThemeMode } from "@/utils/theme";
 import { useCaps } from "@/utils/caps";
 import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
@@ -954,14 +1018,15 @@ interface ToolRow {
 const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, paths: { plugins: "", data: "", logs: "", downloads: "" }, tools: [] });
 const form = reactive<{
     log: { enabled: boolean; level: string; path: string };
-    ball: { enabled: boolean; icon: string };
+    ball: { enabled: boolean; icon: string; hideAllShortcut: string; dockEdge: boolean };
     general: { autoStart: boolean; appName: string; appLogo: string; theme: string };
     paths: { plugins: string; data: string; logs: string; downloads: string };
     launcher: LauncherCfg;
     archive: ArchiveCfg;
+    git: GitCfg;
 }>({
     log: { enabled: true, level: "info", path: "" },
-    ball: { enabled: false, icon: "" },
+    ball: { enabled: false, icon: "", hideAllShortcut: "", dockEdge: true },
     general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" },
     paths: { plugins: "", data: "", logs: "", downloads: "" },
     // 默认关闭：与后端 defaultLauncherConfig 一致，除开关外其余字段都是可直接编辑的初值
@@ -978,6 +1043,10 @@ const form = reactive<{
         sendTo: false,
         format: "zip",
         level: 6,
+    },
+    // 右键集成默认关：与后端 defaultGitConfig 一致
+    git: {
+        shellEnabled: false,
     },
 });
 const tools = ref<ToolRow[]>([]);
@@ -998,7 +1067,8 @@ const SETTING_TABS = computed(() =>
         { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
         { key: "launcher", label: "快捷搜索", icon: "IconSearch", desktopOnly: true },
         { key: "archive", label: "文件压缩", icon: "IconArchive", desktopOnly: true },
-        { key: "docspace", label: "文档中心", icon: "IconFolderOpen", desktopOnly: false },
+        { key: "git", label: "Git 右键", icon: "IconCode", desktopOnly: true },
+        { key: "docspace", label: "文档中心", icon: "IconFolder", desktopOnly: false },
         { key: "cloud", label: "云盘管理", icon: "IconCloud", desktopOnly: false },
         { key: "download", label: "下载管理", icon: "IconSave", desktopOnly: false },
         { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
@@ -1010,6 +1080,113 @@ const SETTING_TABS = computed(() =>
 );
 const activeTab = ref("general");
 const activeTabMeta = computed(() => SETTING_TABS.value.find((t) => t.key === activeTab.value) || SETTING_TABS.value[0]);
+
+/* ===================== 设置项全局搜索（借鉴 DeskBox「搜到任意设置」） =====================
+ * 设置项分布在多个 v-show 面板里、没有统一元数据，采用手工维护的静态索引：
+ * skey 与模板里各表单项的 data-skey 属性一一对应，新增设置项时同步补一条索引即可。 */
+type SettingSearchEntry = { skey: string; label: string; hint: string; tab: string };
+const SEARCH_INDEX: SettingSearchEntry[] = [
+    { skey: "general.appName", label: "应用名称", hint: "窗口标题、托盘提示显示的名称", tab: "general" },
+    { skey: "general.appLogo", label: "应用 Logo", hint: "用于浮动球中心图标，留空使用内置默认", tab: "general" },
+    { skey: "general.theme", label: "主题模式", hint: "浅色 / 暗黑 / 跟随系统，切换后所有窗口同步", tab: "general" },
+    { skey: "general.autoStart", label: "开机默认启动", hint: "Windows 登录时自动启动应用", tab: "general" },
+    { skey: "paths.plugins", label: "插件目录（plugins）", hint: "PHP/Nginx/MySQL/Redis/npm 服务程序安装位置", tab: "paths" },
+    { skey: "paths.data", label: "数据目录（data）", hint: "服务配置缓存与实例工作目录；截图另存、录像、站点根默认落点", tab: "paths" },
+    { skey: "paths.downloads", label: "下载目录（downloads）", hint: "下载管理器新建任务的默认落点", tab: "paths" },
+    { skey: "log.enabled", label: "启用文件日志", hint: "关闭后不再写入日志文件", tab: "paths" },
+    { skey: "paths.logs", label: "日志目录（logs）", hint: "程序与各服务日志的根目录", tab: "paths" },
+    { skey: "panel.username", label: "登录账号", hint: "改账号后其它已登录设备立即失效", tab: "panel" },
+    { skey: "panel.sessionHours", label: "登录有效期（小时）", hint: "会话过期后需要重新登录", tab: "panel" },
+    { skey: "panel.host", label: "监听地址", hint: "0.0.0.0 所有网卡 / 127.0.0.1 仅本机", tab: "panel" },
+    { skey: "panel.port", label: "端口", hint: "面板 HTTP 监听端口", tab: "panel" },
+    { skey: "panel.entryPath", label: "安全入口", hint: "必须先访问入口地址才能打开登录页，挡扫描机器人", tab: "panel" },
+    { skey: "panel.enabled", label: "登录保护", hint: "关闭后任何人访问面板地址都不需要登录", tab: "panel" },
+    { skey: "panel.password", label: "修改登录密码", hint: "bcrypt 加盐存储；更新后其它设备下线", tab: "panel" },
+    { skey: "ball.enabled", label: "显示桌面浮动球", hint: "常驻屏幕右下角的原生小窗，置顶、可拖动", tab: "ball" },
+    { skey: "ball.icon", label: "浮动球图标", hint: "球中心图标，颜色自动跟随主题", tab: "ball" },
+    { skey: "ball.hideAllShortcut", label: "显示/隐藏全部窗口热键", hint: "一键收起主窗口与所有工具窗口，再按恢复", tab: "ball" },
+    { skey: "ball.dockEdge", label: "贴边自动收缩", hint: "浮动球拖到屏幕边缘时收成小胶囊，碰它弹回", tab: "ball" },
+    { skey: "launcher.enabled", label: "启用快捷搜索", hint: "Alt+Space 呼出搜索面板", tab: "launcher" },
+    { skey: "launcher.shortcut", label: "呼出热键", hint: "默认 Alt+Space，可与工具热键共存", tab: "launcher" },
+    { skey: "launcher.scopes", label: "检索范围", hint: "应用 / 工具 / 窗口 / 文件 / 命令算式网址", tab: "launcher" },
+    { skey: "launcher.dirs", label: "额外索引目录", hint: "默认已纳入已知目录，AppData 等跳过", tab: "launcher" },
+    { skey: "launcher.maxEntries", label: "索引条目上限", hint: "撞顶时索引标记为不全", tab: "launcher" },
+    { skey: "launcher.index", label: "索引状态", hint: "重建索引、清空使用频次", tab: "launcher" },
+    { skey: "launcher.commands", label: "可搜的内置命令", hint: "搜索框以 > 开头只搜命令", tab: "launcher" },
+    { skey: "archive.enabled", label: "启用右键压缩", hint: "写注册表挂载系统右键的压缩/解压", tab: "archive" },
+    { skey: "archive.shell", label: "当前挂载状态", hint: "压缩/解压菜单项与注册表的一致性检查", tab: "archive" },
+    { skey: "archive.sendTo", label: "「发送到」快捷方式", hint: "多选文件后右键发送到压缩", tab: "archive" },
+    { skey: "archive.format", label: "默认格式", hint: "右键直接压缩时用的格式（zip / tar.gz）", tab: "archive" },
+    { skey: "archive.level", label: "默认压缩级别", hint: "级别只影响体积与耗时", tab: "archive" },
+    { skey: "docspace.enabled", label: "启用文档中心", hint: "关闭后文件查看器不再展示文档中心态", tab: "docspace" },
+    { skey: "docspace.versionKeep", label: "每条目版本保留数", hint: "存新快照后自动裁掉最旧的超额版本", tab: "docspace" },
+    { skey: "docspace.trashKeepDays", label: "回收站保留天数", hint: "超龄实体在打开回收站时自动彻底清理", tab: "docspace" },
+    { skey: "docspace.root", label: "库目录", hint: "元数据与实体快照落点（只读）", tab: "docspace" },
+    { skey: "docspace.counts", label: "概览", hint: "分类/条目/回收站/加密/分享/备份计数", tab: "docspace" },
+    { skey: "cloud.enabled", label: "启用云盘管理", hint: "关闭时云盘页不发起任何网络请求", tab: "cloud" },
+    { skey: "cloud.clientId", label: "Google 客户端 ID", hint: "OAuth 应用凭证，自备不内置", tab: "cloud" },
+    { skey: "cloud.clientSecret", label: "Google 客户端密钥", hint: "留空则不覆盖已保存的值", tab: "cloud" },
+    { skey: "cloud.redirect", label: "OAuth 回调地址", hint: "须与 Google 控制台登记逐字一致", tab: "cloud" },
+    { skey: "cloud.saveDir", label: "下载落地目录", hint: "留空走数据目录下 clouddrive/downloads", tab: "cloud" },
+    { skey: "cloud.concurrency", label: "转存并发度", hint: "本期为单连接，值留给后续", tab: "cloud" },
+    { skey: "download.enabled", label: "启用下载管理", hint: "关闭时前端隐藏下载管理入口", tab: "download" },
+    { skey: "download.saveDir", label: "默认下载目录", hint: "新建任务未指定目录时落这里", tab: "download" },
+    { skey: "download.maxRunningTasks", label: "同时下载任务数", hint: "超出的任务排队等额度", tab: "download" },
+    { skey: "download.maxTotalParts", label: "全局并发块数上限", hint: "所有在跑任务合计的分块并发闸门", tab: "download" },
+    { skey: "download.defaultConnections", label: "单任务默认分块数", hint: "新建任务未指定连接数时用此值", tab: "download" },
+    { skey: "download.speedLimitMB", label: "全局下行限速（MB/s）", hint: "0 = 不限速，即时作用于所有在跑任务", tab: "download" },
+    { skey: "download.proxyPool", label: "共享代理池", hint: "下载选源、仿站、浏览器 custom 代理复用", tab: "download" },
+    { skey: "download.mirrorPool", label: "常用镜像模板", hint: "新建下载任务的多源候选", tab: "download" },
+    { skey: "browser.maxSpaces", label: "空间数量上限", hint: "一个空间 = 一套独立 profile + 代理", tab: "browser" },
+    { skey: "browser.homepage", label: "默认首页", hint: "空间留空首页时用这个", tab: "browser" },
+    { skey: "browser.searchURL", label: "地址栏搜索模板", hint: "非网址输入走这个地址，%s 替换成搜索词", tab: "browser" },
+    { skey: "browser.proxyMode", label: "默认代理", hint: "跟随系统 / 直连 / 自定义", tab: "browser" },
+    { skey: "browser.proxy", label: "代理地址与绕过列表", hint: "环境级参数，改完需重开浏览器页", tab: "browser" },
+    { skey: "browser.userAgent", label: "默认 User-Agent", hint: "留空使用内置默认 UA", tab: "browser" },
+    { skey: "browser.defaultSpace", label: "启动时打开的空间", hint: "浏览器页启动默认选中的空间", tab: "browser" },
+    { skey: "browser.spaces", label: "空间列表", hint: "增删空间去浏览器页右上角齿轮", tab: "browser" },
+    { skey: "config.sync", label: "导出 / 导入配置", hint: "可搬运的 JSON；机器绑定字段不导出", tab: "config" },
+    { skey: "tools.list", label: "功能列表", hint: "工具排序、快捷方式、隐藏与自定义功能", tab: "tools" },
+];
+
+const searchKw = ref("");
+function tabLabel(key: string): string {
+    return SETTING_TABS.value.find((t) => t.key === key)?.label || key;
+}
+const searchResults = computed(() => {
+    const kw = searchKw.value.trim().toLowerCase();
+    if (!kw) return [];
+    return SEARCH_INDEX
+        .filter((e) => (e.label + " " + e.hint + " " + tabLabel(e.tab)).toLowerCase().includes(kw))
+        .slice(0, 30);
+});
+function escapeHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+/** 命中词包 <mark>；文案全部来自本文件静态字符串，转义后再插入即可 */
+function hlHtml(s: string): string {
+    const esc = escapeHtml(s);
+    const kw = searchKw.value.trim();
+    if (!kw) return esc;
+    const i = esc.toLowerCase().indexOf(kw.toLowerCase());
+    if (i < 0) return esc;
+    return esc.slice(0, i) + "<mark>" + esc.slice(i, i + kw.length) + "</mark>" + esc.slice(i + kw.length);
+}
+function jumpToSetting(skey: string) {
+    const e = SEARCH_INDEX.find((x) => x.skey === skey);
+    if (!e) return;
+    searchKw.value = "";
+    activeTab.value = e.tab;
+    nextTick(() => {
+        const el = document.querySelector<HTMLElement>(`.settings-page [data-skey="${skey}"]`);
+        if (!el) return;
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.classList.remove("s-flash");
+        void el.offsetWidth; // 重启动画：同一个项连点两次也要再闪一次
+        el.classList.add("s-flash");
+        window.setTimeout(() => el.classList.remove("s-flash"), 1400);
+    });
+}
 
 /* ===================== 文档中心（设置 + 概览） =====================
  * 库目录与计数只读展示；总开关 / 版本保留数 / 回收站保留天数可编辑保存
@@ -1254,6 +1431,7 @@ watch(activeTab, (k) => {
     if (k === "panel" && !panelInfo.value && !panelLoading.value) void loadPanel();
     if (k === "launcher") void loadLauncherInfo();
     if (k === "archive") void loadArchiveInfo();
+    if (k === "git") void loadGitInfo();
 });
 
 /** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
@@ -1261,6 +1439,7 @@ function onThemeChange(val: any) {
     applyTheme(String(val) as ThemeMode);
     scheduleSave(0);
 }
+
 const activePath = ref("");
 const logoPreview = ref("");
 
@@ -1492,11 +1671,12 @@ async function load() {
         if (cfg) {
             fullConfig.value = cfg;
             form.log = { enabled: !!cfg.log?.enabled, level: cfg.log?.level || "info", path: "" };
-            form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "" };
+            form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "", hideAllShortcut: cfg.ball?.hideAllShortcut || "", dockEdge: cfg.ball?.dockEdge ?? true };
             form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
             form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "", downloads: cfg.paths?.downloads || "" };
             form.launcher = normLauncher(cfg.launcher);
             form.archive = normArchive(cfg.archive);
+            form.git = normGit(cfg.git);
             if (cfg.browser) {
                 // 整段拷贝：页面上直接绑到 browserForm，保存时整段回传
                 browserForm.value = { ...cfg.browser, spaces: cfg.browser.spaces || [] };
@@ -1704,7 +1884,7 @@ function autoSave(): Promise<void> {
 async function runSave() {
     saving.value = true;
     try {
-        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, launcher: { ...form.launcher, scopes: { ...form.launcher.scopes }, dirs: [...form.launcher.dirs] }, archive: { ...form.archive }, tools: tools.value.map(normTool) };
+        const payload = { log: { ...form.log }, ball: { ...form.ball }, general: { ...form.general }, paths: { ...form.paths }, launcher: { ...form.launcher, scopes: { ...form.launcher.scopes }, dirs: [...form.launcher.dirs] }, archive: { ...form.archive }, git: { ...form.git }, tools: tools.value.map(normTool) };
         const path = await GoTools?.SaveConfig(payload);
         fullConfig.value = payload;
         activePath.value = path || "";
@@ -1737,7 +1917,6 @@ const DEFAULT_TOOLS: ToolRow[] = [
     { id: "siteclone", key: "siteclone", name: "仿站工具", path: "/tools/siteclone", event: "", icon: "download", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 780, shortcut: "", quick: false, home: false },
     { id: "guard", key: "guard", name: "进程守护", path: "/tools/guard", event: "", icon: "apps", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 720, shortcut: "", quick: false, home: false },
     { id: "archive", key: "archive", name: "文件压缩", path: "/tools/archive", event: "", icon: "archive", single: true, fullscreen: false, disableFullscreen: false, width: 1120, height: 760, shortcut: "", quick: false, home: false },
-    { id: "viewer", key: "viewer", name: "文件查看器", path: "/tools/viewer", event: "", icon: "file", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
     { id: "download", key: "download", name: "下载管理", path: "/tools/download", event: "", icon: "icon-xiazai", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
     { id: "docspace", key: "docspace", name: "文档中心", path: "/tools/docspace", event: "", icon: "folder", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
     { id: "lanshare", key: "lanshare", name: "局域网互传", path: "/tools/lanshare", event: "", icon: "icon-wangluo1", single: true, fullscreen: false, disableFullscreen: false, width: 1280, height: 820, shortcut: "", quick: false, home: false },
@@ -1960,6 +2139,43 @@ function lkOnShortcutKeydown(e: KeyboardEvent) {
     scheduleSave(0);
 }
 
+/* ---- 「显示/隐藏全部窗口」热键录制：与工具热键同一套规范化规则，只是写进 ball 段 ---- */
+const ballHaRecording = ref(false);
+
+function ballHaStartRecord() {
+    ballHaRecording.value = true;
+}
+
+function ballHaOnKeydown(e: KeyboardEvent) {
+    e.preventDefault();
+    if (e.key === "Escape") {
+        ballHaRecording.value = false;
+        return;
+    }
+    if (e.key === "Backspace" || e.key === "Delete") {
+        ballHaClear();
+        return;
+    }
+    // 仅按下修饰键时忽略，等主键
+    if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push("Ctrl");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.metaKey) parts.push("Win");
+    parts.push(normalizeKey(e.key));
+    form.ball.hideAllShortcut = parts.join("+");
+    ballHaRecording.value = false;
+    // 热键变了要尽快重新注册，不跟普通输入一样走 300ms 防抖
+    scheduleSave(0);
+}
+
+function ballHaClear() {
+    form.ball.hideAllShortcut = "";
+    ballHaRecording.value = false;
+    scheduleSave(0);
+}
+
 async function addLauncherDir() {
     try {
         const dir = String((await GoTools?.ChooseDir("选择要加入索引的目录")) || "");
@@ -2120,6 +2336,82 @@ async function uninstallArchiveShell() {
     }
 }
 
+/* ===================== Git（系统右键挂载） =====================
+ * 与文件压缩同构：“开关到底挂不挂”在 Go 侧（config.GitShellEnabled 决定
+ * 写不写注册表、起不起转交监听），而且只有桌面版有注册表可写。
+ * 前端只负责落盘 + 把 GitShellStatus 读回来的聚合槽位状态显示出来。
+ */
+
+/** 表单里的一份 Git 配置（与 config.GitConfig 同构） */
+interface GitCfg {
+    shellEnabled: boolean;
+}
+
+/** 挂载状态（与 gitcmd.GitShellInfo 同构，只用到展示得了的几个字段） */
+interface GitShellInfo {
+    supported: boolean;
+    exe: string;
+    slot: number;
+    stale: boolean;
+    detail: string;
+}
+
+/** 把配置里的 git 段规整成表单结构：老配置没这一段（nil）时全走默认值 */
+function normGit(c: any): GitCfg {
+    return { shellEnabled: !!c?.shellEnabled };
+}
+
+const gitShell = ref<GitShellInfo | null>(null);
+const gitBusy = ref(false);
+
+async function loadGitInfo() {
+    if (!caps.nativeWindows) return;
+    try {
+        gitShell.value = (await GoTools?.GitShellStatus()) || null;
+    } catch { /* 非 Wails 环境或绑定缺失：面板仍可读，只是状态空白 */ }
+}
+
+/**
+ * 总开关：先落盘（SaveConfig 里会按新状态走 applyGitSwitch 完成挂载/卸载），
+ * 再把挂载状态读回来显示。
+ */
+async function onGitEnabled() {
+    await saveNow();
+    await loadGitInfo();
+    if (form.git.shellEnabled) {
+        Message.success("已开启：Git 右键菜单已挂载，点菜单项会在当前实例里打开工作台并定位到该仓库");
+    } else {
+        Message.info("已关闭：注册表里的 ToolsGit* 菜单项已删干净，转交监听已停");
+    }
+}
+
+async function installGitShell() {
+    gitBusy.value = true;
+    try {
+        await saveNow(); // 装之前先把开关状态落盘
+        await GoTools?.GitShellInstall();
+        Message.success("已挂载到系统右键");
+    } catch (e: any) {
+        Message.error(`挂载失败：${String(e?.message || e)}`);
+    } finally {
+        gitBusy.value = false;
+        await loadGitInfo();
+    }
+}
+
+async function uninstallGitShell() {
+    gitBusy.value = true;
+    try {
+        await GoTools?.GitShellUninstall();
+        Message.success("已卸载：只删了本程序自己写的 ToolsGit* 那几项，不碰压缩与别家的键");
+    } catch (e: any) {
+        Message.error(`卸载失败：${String(e?.message || e)}`);
+    } finally {
+        gitBusy.value = false;
+        await loadGitInfo();
+    }
+}
+
 let offConfigSaved: (() => void) | null = null;
 let offLauncherIndex: (() => void) | null = null;
 
@@ -2194,29 +2486,122 @@ onBeforeUnmount(() => {
     overflow-y: auto;
 }
 
-.cat-item {
+/* 搜索框：藏在左栏顶部，与分类导航同缩进节奏 */
+.side-search {
+    padding: 8px 8px 4px;
+    flex: none;
+}
+
+/* 搜索结果行：复用 cat-item 胶囊底座，改两行结构（标题+分类 / 摘要） */
+.s-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.s-main {
     display: flex;
     align-items: center;
-    gap: var(--base-padding);
-    padding: var(--base-padding);
+    gap: 8px;
+    width: 100%;
+}
+
+.s-label {
+    color: var(--color-text-1);
+}
+
+.s-tab {
+    flex: none;
     font-size: var(--base-size-small);
+    color: rgb(var(--gray-5));
+}
+
+.s-hint {
+    width: 100%;
+    font-size: var(--base-size-small);
+    color: rgb(var(--gray-5));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-list mark {
+    color: rgb(var(--primary-6));
+    background: transparent;
+    font-weight: 600;
+}
+
+.s-empty {
+    padding: 16px 12px;
+    text-align: center;
+    font-size: var(--base-size-small);
+    color: rgb(var(--gray-5));
+}
+
+/* 跳转命中后的短暂主色底渐隐，帮眼睛在长表单里找到目标项 */
+[data-skey].s-flash {
+    animation: s-flash 1.2s ease-out 1;
+}
+
+@keyframes s-flash {
+    0% {
+        background: rgba(var(--primary-6), 0.12);
+        border-radius: var(--base-radius-default);
+    }
+
+    100% {
+        background: transparent;
+        border-radius: var(--base-radius-default);
+    }
+}
+
+/* 分类导航：胶囊项无分隔线；选中态按「短竖条+轻底」规范，不加深边框 */
+.cat-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 2px 8px;
+    padding: 9px 12px;
+    font-size: var(--base-size-large);
+    color: var(--color-text-2);
     cursor: pointer;
-    border-bottom: 1px solid var(--color-fill-1);
+    border-radius: var(--base-radius-default);
+    transition: background-color 0.15s, color 0.15s;
 }
 
 .cat-item:hover {
     background: var(--color-fill-2);
+    color: var(--color-text-1);
 }
 
-/* 选中态：主题主色为黑白时默认样式在暗色下对比不足，改用中性底色 + 正文色 */
+/* 选中态：主题主色为黑白时大面积铺底对比不足，改用中性轻底 + 正文色 + 左侧短竖条 */
 .cat-item.active {
-    background: var(--color-fill-3);
+    background: var(--color-fill-2);
     color: var(--color-text-1);
     font-weight: 600;
 }
 
+.cat-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 55%;
+    border-radius: 0 3px 3px 0;
+    background: transparent;
+    transition: background-color 0.15s;
+}
+
+.cat-item.active::before {
+    background: rgb(var(--primary-6));
+}
+
 .cat-icon {
-    font-size: var(--base-size-default);
+    font-size: var(--base-size-large);
+    color: inherit;
 }
 
 .cat-name {
@@ -2228,7 +2613,7 @@ onBeforeUnmount(() => {
 
 .cat-arrow {
     font-size: var(--base-size-small);
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
 }
 
 /* 右侧主列 */
@@ -2336,7 +2721,7 @@ onBeforeUnmount(() => {
 }
 
 .bs-help {
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
     cursor: help;
 }
 
@@ -2356,7 +2741,7 @@ onBeforeUnmount(() => {
 .hint {
     display: block;
     margin-top: 4px;
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
     font-size: var(--base-size-small);
     line-height: 1.5;
 }
@@ -2372,8 +2757,9 @@ onBeforeUnmount(() => {
 
 .panel-access {
     padding: 6px 10px;
-    border-radius: var(--border-radius-medium);
-    background: var(--color-fill-1);
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-bg-1);
     font-size: var(--base-size-small);
 }
 
@@ -2390,10 +2776,38 @@ onBeforeUnmount(() => {
     width: auto;
 }
 
-/* 面板右上角自动保存状态 */
+/* 面板右上角自动保存状态：小圆点作反馈，保存中变主色呼吸 */
 .auto-save-tip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: var(--base-size-small);
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
+}
+
+.save-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgb(var(--gray-5));
+    flex: none;
+}
+
+.save-dot.busy {
+    background: rgb(var(--primary-6));
+    animation: save-dot-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes save-dot-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
 }
 
 .tools-pane {
@@ -2410,7 +2824,7 @@ onBeforeUnmount(() => {
 .row-drag-handle {
     display: inline-flex;
     align-items: center;
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
     cursor: grab;
 }
 
@@ -2453,7 +2867,7 @@ onBeforeUnmount(() => {
 }
 
 .icon-cell .icon-text {
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
     font-size: var(--base-size-small);
 }
 
@@ -2495,12 +2909,12 @@ onBeforeUnmount(() => {
     width: 48px;
     height: 48px;
     border-radius: var(--base-radius-large);
-    border: 1px dashed var(--color-border-3);
+    border: 1px dashed var(--color-border-1);
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background: var(--color-fill-1);
+    background: var(--color-bg-1);
 }
 
 .logo-img {
@@ -2519,7 +2933,7 @@ onBeforeUnmount(() => {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    border: 1px dashed var(--color-border-3);
+    border: 1px dashed var(--color-border-1);
     background: var(--color-bg-1);
     color: var(--color-text-1);
     display: flex;
@@ -2547,9 +2961,9 @@ onBeforeUnmount(() => {
     gap: 8px;
     width: 100%;
     padding: 2px 8px;
-    border: 1px solid var(--color-border-2);
-    border-radius: 4px;
-    background: var(--color-fill-1);
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-bg-1);
 }
 
 .lk-dir-path {
@@ -2585,11 +2999,11 @@ onBeforeUnmount(() => {
 
 .lk-cmd {
     padding: 1px 8px;
-    border: 1px solid var(--color-border-2);
-    border-radius: 10px;
+    border: 1px solid var(--color-border-1);
+    border-radius: 999px;
     font-size: var(--base-size-small);
     color: var(--color-text-2);
-    background: var(--color-fill-1);
+    background: var(--color-bg-1);
 }
 
 .lk-cmd.danger {

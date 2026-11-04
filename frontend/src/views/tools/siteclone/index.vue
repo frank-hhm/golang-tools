@@ -105,22 +105,66 @@
         </common-task-progress>
       </div>
 
+      <!-- 结果统计：只在有产出时出现（复用首页同款 common-stat-card） -->
+      <a-row v-if="stats.files || stats.bytes || failCount" :gutter="[12, 12]" class="sc-cards">
+        <a-col :xs="12" :sm="12" :md="6">
+          <common-stat-card tone="blue" label="页数" :value="pagesValue"><template #icon><icon-apps /></template></common-stat-card>
+        </a-col>
+        <a-col :xs="12" :sm="12" :md="6">
+          <common-stat-card tone="cyan" label="文件" :value="stats.files"><template #icon><icon-file /></template></common-stat-card>
+        </a-col>
+        <a-col :xs="12" :sm="12" :md="6">
+          <common-stat-card tone="green" label="大小" :value="fmtBytes(stats.bytes)"><template #icon><icon-storage /></template></common-stat-card>
+        </a-col>
+        <a-col :xs="12" :sm="12" :md="6">
+          <common-stat-card :tone="failCount ? 'red' : 'gray'" label="失败资源" :value="failCount"
+            :ready="!!failCount" :detail="failCount ? '点下方复制清单' : '无'">
+            <template #icon><icon-exclamation-circle /></template>
+          </common-stat-card>
+        </a-col>
+      </a-row>
+
+      <!-- 失败汇总：有失败资源时给一条可复制清单的提示，方便二次补抓 -->
+      <a-alert v-if="failCount" class="sc-fail-alert" type="warning" :closable="false">
+        <template #content>
+          <div class="sc-fail-row">
+            <span>本次有 {{ failCount }} 个资源抓取失败</span>
+            <a-space :size="6">
+              <a-button size="mini" @click="filterFails = !filterFails">{{ filterFails ? '看全部日志' : '只看失败' }}</a-button>
+              <a-button size="mini" @click="copyFails"><template #icon><icon-copy /></template>复制失败清单</a-button>
+            </a-space>
+          </div>
+        </template>
+      </a-alert>
+
       <!-- 日志 -->
       <div class="sc-log">
-        <div v-for="(l, i) in logs" :key="i" class="log-line" :class="l.status">
+        <div v-for="(l, i) in shownLogs" :key="i" class="log-line" :class="l.status">
           <span class="log-time">{{ l.t }}</span>
           <span class="log-stage">{{ stageText(l.stage) }}</span>
           <span class="log-msg">{{ l.url || l.msg }}</span>
           <span v-if="l.status === 'fail'" class="log-err">{{ l.msg }}</span>
         </div>
-        <div v-if="!logs.length" class="log-empty">暂无输出</div>
+        <div v-if="!shownLogs.length" class="log-empty">
+          <a-empty :image-size="48" :description="filterFails ? '没有失败记录' : '暂无输出'" />
+        </div>
+      </div>
+
+      <!-- 本次会话历史：已完成的抓取列在下面，便于反复抓多个站时回看落点 -->
+      <div v-if="history.length" class="sc-history">
+        <div class="sc-history-title">本次会话已完成</div>
+        <div v-for="(h, i) in history" :key="i" class="sc-history-row">
+          <span class="sc-history-name" :title="h.url">{{ h.url }}</span>
+          <span class="sc-history-meta">文件 {{ h.files }} · {{ fmtBytes(h.bytes) }}<template v-if="h.pages"> · 页 {{ h.pages }}</template></span>
+          <a-link @click="openInExplorer(h.root)">定位</a-link>
+        </div>
       </div>
     </a-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { Events } from '@wailsio/runtime';
 
@@ -166,6 +210,28 @@ const stats = reactive({ pagesDone: 0, pagesTotal: 0, files: 0, bytes: 0 });
 interface LogLine { t: string; stage: string; url: string; msg: string; status: string }
 const logs = ref<LogLine[]>([]);
 const MAX_LOG = 400;
+
+// 失败只看开关 + 派生统计：fail 行聚成可复制清单，不重跑只提醒用户二次补抓。
+const filterFails = ref(false);
+const shownLogs = computed(() => (filterFails.value ? logs.value.filter((l) => l.status === 'fail') : logs.value));
+const failUrls = computed(() => logs.value.filter((l) => l.status === 'fail').map((l) => l.url || l.msg).filter(Boolean));
+const failCount = computed(() => failUrls.value.length);
+// 页数展示：整站且已知总数时 “已完成/总数”，否则只给已完成数。
+const pagesValue = computed(() =>
+  form.mode === 'site' && stats.pagesTotal > 0 ? `${stats.pagesDone}/${stats.pagesTotal}` : String(stats.pagesDone));
+
+interface HistoryRow { url: string; root: string; files: number; bytes: number; pages: string }
+const history = ref<HistoryRow[]>([]);
+
+async function copyFails() {
+  if (!failUrls.value.length) return;
+  try {
+    await navigator.clipboard.writeText(failUrls.value.join('\n'));
+    Message.success({ content: `已复制 ${failUrls.value.length} 条失败资源 URL`, position: 'top', duration: 2000 });
+  } catch {
+    Message.warning({ content: '当前环境不支持写入剪贴板', position: 'top', duration: 2500 });
+  }
+}
 
 let offEvent: any = null;
 
@@ -232,6 +298,16 @@ function onProgress(raw: any) {
     running.value = false;
     finalStage.value = p.stage;
     result.value = p.root ? { root: p.root } : result.value;
+    if (p.stage === 'done' && p.root) {
+      history.value.unshift({
+        url: form.url.trim(),
+        root: p.root,
+        files: p.files || stats.files,
+        bytes: p.bytes || stats.bytes,
+        pages: form.mode === 'site' ? String(p.pagesDone || stats.pagesDone) : '',
+      });
+      if (history.value.length > 30) history.value.length = 30;
+    }
     pushLog({ t: now(), stage: p.stage, url: '', msg: p.root ? `输出目录：${p.root}` : (p.msg || ''), status: 'ok' });
     return;
   }
@@ -294,14 +370,44 @@ async function cancel() {
 
 async function openDir() {
   if (!result.value?.root) return;
+  openInExplorer(result.value.root);
+}
+
+async function openInExplorer(p: string) {
+  if (!p) return;
   try {
-    await GoTools.DiskOpenInExplorer(result.value.root);
+    await GoTools.DiskOpenInExplorer(p);
   } catch (e) {
     Message.error({ content: errText(e), position: 'top', duration: 3000 });
   }
 }
 
+/* ==================== 表单记忆 ==================== */
+// 只持久化偏好的抓取参数（URL 不记，避免下次默认去抓上一个站）。
+const FORM_KEY = 'siteclone:form';
+function restoreForm() {
+  try {
+    const raw = localStorage.getItem(FORM_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    for (const k of ['mode', 'maxDepth', 'maxPages', 'concurrency', 'timeoutSec', 'userAgent', 'proxy', 'outDir', 'rewrite'] as const) {
+      if (saved[k] !== undefined) (form as any)[k] = saved[k];
+    }
+  } catch {
+    /* 损坏则忽略，用默认 */
+  }
+}
+watch(form, (v) => {
+  const { url: _url, ...rest } = v;
+  try {
+    localStorage.setItem(FORM_KEY, JSON.stringify(rest));
+  } catch {
+    /* 存不下不阻断表单 */
+  }
+}, { deep: true });
+
 onMounted(() => {
+  restoreForm();
   offEvent = Events.On('siteclone:progress', onProgress);
   loadProxyPool();
 });
@@ -351,8 +457,8 @@ onBeforeUnmount(() => {
 
 .sc-sub {
   margin-left: 10px;
-  color: var(--color-text-3);
-  font-size: 12px;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
 }
 
 .sc-form {
@@ -360,8 +466,8 @@ onBeforeUnmount(() => {
 }
 
 .hint {
-  color: var(--color-text-3);
-  font-size: 12px;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
   margin-top: 4px;
 }
 
@@ -382,23 +488,32 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 
-.sc-stats {
+.sc-cards {
+  flex: none;
+  margin: 2px 0 10px;
+}
+
+.sc-fail-alert {
+  flex: none;
+  margin-bottom: 8px;
+}
+
+.sc-fail-row {
   display: flex;
-  gap: 18px;
-  margin-top: 6px;
-  color: var(--color-text-2);
-  font-size: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .sc-log {
   flex: 1;
   min-height: 120px;
   overflow: auto;
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--border-radius-small);
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--base-radius-default);
   background: var(--color-fill-1);
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--base-size-small);
   line-height: 1.7;
 }
 
@@ -413,7 +528,7 @@ onBeforeUnmount(() => {
 }
 
 .log-time {
-  color: var(--color-text-4);
+  color: rgb(var(--gray-5));
   flex: none;
 }
 
@@ -434,8 +549,41 @@ onBeforeUnmount(() => {
 }
 
 .log-empty {
-  color: var(--color-text-4);
+  color: rgb(var(--gray-5));
   text-align: center;
-  padding-top: 40px;
+  padding-top: 24px;
+}
+
+.sc-history {
+  flex: none;
+  margin-top: 10px;
+  border-top: 1px solid var(--color-border-1);
+  padding-top: 8px;
+}
+
+.sc-history-title {
+  font-size: var(--base-size-small);
+  color: rgb(var(--gray-5));
+  margin-bottom: 4px;
+}
+
+.sc-history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--base-size-small);
+  line-height: 1.9;
+}
+
+.sc-history-name {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-1);
+}
+
+.sc-history-meta {
+  color: rgb(var(--gray-5));
 }
 </style>

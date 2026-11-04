@@ -3,11 +3,19 @@
 
 export type {
     BackupPlan,
+    BatchResult,
     Category,
+    CategoryCount,
     Counts,
+    ExtCount,
     Item,
+    ItemMeta,
+    KindCount,
+    Overview,
     SearchFilter,
     SecureEntry,
+    SourceCount,
+    Stats,
     TrashEntry,
     Version
 } from "./models.js";

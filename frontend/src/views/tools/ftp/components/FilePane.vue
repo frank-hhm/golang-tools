@@ -92,10 +92,10 @@
           <a-table-column title="" :width="150" align="right" fixed="right">
             <template #cell="{ record }">
               <a-space :size="2">
-                <a-button v-if="side === 'remote'" size="mini" type="text" @click="download(record)">下载</a-button>
-                <a-button v-else size="mini" type="text" :disabled="!uploadDir" @click="uploadOne(record)">上传</a-button>
-                <a-button size="mini" type="text" @click="openRename(record)">重命名</a-button>
-                <a-button size="mini" type="text" status="danger" @click="remove(record)">删除</a-button>
+                <a-button v-if="side === 'remote'" size="mini" class="btn-quiet" @click="download(record)">下载</a-button>
+                <a-button v-else size="mini" class="btn-quiet" :disabled="!uploadDir" @click="uploadOne(record)">上传</a-button>
+                <a-button size="mini" class="btn-quiet" @click="openRename(record)">重命名</a-button>
+                <a-button size="mini" class="btn-quiet" status="danger" @click="remove(record)">删除</a-button>
               </a-space>
             </template>
           </a-table-column>
@@ -694,5 +694,33 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, downloa
 
 .name-text:hover {
   color: rgb(var(--primary-6));
+}
+
+/* 弱化操作按钮：替代被禁用的 type="text"，常态无底无框，hover 只变字色不加深边框/底色 */
+.arco-btn.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-2);
+  padding: 0 4px;
+}
+
+.arco-btn.btn-quiet:hover {
+  background: transparent;
+  border-color: transparent;
+  color: rgb(var(--primary-6));
+}
+
+.arco-btn.btn-quiet.arco-btn-status-danger {
+  color: rgb(var(--red-6));
+}
+
+.arco-btn.btn-quiet.arco-btn-status-danger:hover {
+  background: transparent;
+  border-color: transparent;
+  color: rgb(var(--red-5));
+}
+
+.arco-btn.btn-quiet:disabled {
+  color: var(--color-text-4);
 }
 </style>

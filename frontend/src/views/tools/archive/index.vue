@@ -39,12 +39,31 @@
 
                 <div v-if="paths.length" class="ar-list">
                   <div v-for="p in paths" :key="p" class="ar-item">
+                    <common-file-icon class="ar-item-ic" :is-dir="isDirGuess(p)" :ext="extOf(p)" :size="16" />
                     <span class="ar-item-name">{{ baseName(p) }}</span>
                     <span class="ar-item-path">{{ p }}</span>
                     <icon-close class="ar-item-del" @click="removePath(p)" />
                   </div>
                 </div>
-                <div v-else class="ar-empty">还没有选择任何条目</div>
+                <div v-else class="ar-empty">
+                  <a-empty :image-size="40" :description="form.op === 'compress' ? '还没有选择要压缩的条目' : '还没有选择要解压的归档'" />
+                </div>
+              </div>
+
+              <!-- 解压：选中归档后先展包内清单（不整包解盘），用 ArchiveListEntries -->
+              <div v-if="form.op === 'extract' && entryPreview.length" class="ar-entries">
+                <div class="ar-entries-head">
+                  <span>包内清单（共 {{ entryTotal }} 项）</span>
+                  <a-link @click="entriesCollapsed = !entriesCollapsed">{{ entriesCollapsed ? '展开' : '收起' }}</a-link>
+                </div>
+                <div v-show="!entriesCollapsed" class="ar-entries-body">
+                  <div v-for="(e, i) in entryPreview" :key="i" class="ar-entry">
+                    <common-file-icon :is-dir="e.isDir" :ext="entryExt(e.dispPath)" :size="14" />
+                    <span class="ar-entry-name">{{ e.dispPath }}</span>
+                    <span class="ar-entry-size">{{ e.isDir ? '' : fmtBytes(e.size) }}</span>
+                  </div>
+                  <div v-if="entryTotal > entryPreview.length" class="ar-entry-more">…… 仅展示前 {{ entryPreview.length }} 项</div>
+                </div>
               </div>
             </a-form-item>
           </a-col>
@@ -83,7 +102,7 @@
           </template>
 
           <a-col v-else :span="24">
-            <a-form-item field="dest" label="解压到" help="留空解到归档同级的同名文件夹">
+            <a-form-item field="dest" label="解压到" help="留空解到归档同级的同名文件夹；已有同名文件夹时自动让开为「名称 (1)」，只写入、绝不合并或覆盖原目录">
               <a-input-group compact>
                 <a-input v-model="form.dest" placeholder="默认解压到同名文件夹" style="width: calc(100% - 80px)" />
                 <a-button style="width: 80px" @click="chooseDest">浏览</a-button>
@@ -140,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { Events } from '@wailsio/runtime';
 
@@ -370,6 +389,54 @@ function buildOptions() {
   };
 }
 
+/* ============================ 条目图标与包内清单 ============================ */
+
+function extOf(p: string): string {
+  const b = baseName(p);
+  const i = b.lastIndexOf('.');
+  return i > 0 ? b.slice(i + 1).toLowerCase() : '';
+}
+// 归档名/包内路径取最后一段的扩展名。
+function entryExt(disp: string): string {
+  const b = disp.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
+  const i = b.lastIndexOf('.');
+  return i > 0 ? b.slice(i + 1).toLowerCase() : '';
+}
+// 条目列表只有字符串路径、无从表中知道目录/文件；用“无扩展名则视为目录”启发式贴图标，
+// 属显示层面的近似，不影响任何实际操作（实际类型由 Go 侧扫描定）。
+function isDirGuess(p: string): boolean {
+  return extOf(p) === '';
+}
+
+interface ArcEntry { dispPath: string; isDir: boolean; size: number }
+const entries = ref<ArcEntry[]>([]);
+const entriesCollapsed = ref(false);
+const entryTotal = computed(() => entries.value.length);
+const ENTRY_PREVIEW = 100;
+const entryPreview = computed(() => entries.value.slice(0, ENTRY_PREVIEW));
+
+let entryTimer: number | null = null;
+// 选中归档（解压态且恰好一个包）时延迟拉包内清单；多选/压缩态清空。
+watch([() => form.op, paths], () => {
+  if (entryTimer !== null) window.clearTimeout(entryTimer);
+  if (form.op !== 'extract' || paths.value.length !== 1) {
+    entries.value = [];
+    return;
+  }
+  entryTimer = window.setTimeout(async () => {
+    const p = paths.value[0];
+    try {
+      const list = await GoTools.ArchiveListEntries(p);
+      // 拉回来时可能已改了选择：确认还是同一个包才赋值
+      if (form.op === 'extract' && paths.value.length === 1 && paths.value[0] === p) {
+        entries.value = (list || []) as ArcEntry[];
+      }
+    } catch {
+      entries.value = []; // 不支持的格式（如 rar/7z）静默不展清单
+    }
+  }, 250);
+}, { deep: true });
+
 /* ============================ 任务 ============================ */
 
 async function start() {
@@ -442,7 +509,12 @@ function onProgress(raw: any) {
       elapsedMs: p.elapsedMs || 0,
     });
     if (history.value.length > 30) history.value.length = 30;
-    Message.success({ content: `${p.name || ''} 已完成`, position: 'top', duration: 3000 });
+    // 压缩成功额外报个压缩率（写入体积/原始体积），让“划不划算”一眼可见。
+    let ratio = '';
+    if (form.op === 'compress' && p.total > 0 && p.bytes > 0 && p.bytes < p.total) {
+      ratio = ` · 压缩率 ${((1 - p.bytes / p.total) * 100).toFixed(0)}%`;
+    }
+    Message.success({ content: `${p.name || ''} 已完成${ratio}`, position: 'top', duration: 3000 });
     return;
   }
   if (p.stage === 'canceled') {
@@ -486,6 +558,7 @@ onBeforeUnmount(() => {
   offProgress?.();
   offDrop?.();
   if (scanTimer !== null) window.clearTimeout(scanTimer);
+  if (entryTimer !== null) window.clearTimeout(entryTimer);
 });
 </script>
 
@@ -520,8 +593,8 @@ onBeforeUnmount(() => {
 
 .ar-sub {
   margin-left: 10px;
-  color: var(--color-text-3);
-  font-size: 12px;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
 }
 
 .ar-form {
@@ -530,8 +603,8 @@ onBeforeUnmount(() => {
 
 .ar-drop {
   width: 100%;
-  border: 1px dashed var(--color-border-3);
-  border-radius: var(--border-radius-small);
+  border: 1px dashed var(--color-border-1);
+  border-radius: var(--base-radius-default);
   background: var(--color-fill-1);
   padding: 8px;
   box-sizing: border-box;
@@ -555,14 +628,14 @@ onBeforeUnmount(() => {
 }
 
 .ar-drop-hint {
-  color: var(--color-text-4);
-  font-size: 12px;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
 }
 
 .ar-drop-size {
   margin-left: auto;
   color: var(--color-text-2);
-  font-size: 12px;
+  font-size: var(--base-size-small);
 }
 
 .ar-list {
@@ -576,8 +649,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 2px 4px;
-  font-size: 12px;
-  border-radius: var(--border-radius-small);
+  font-size: var(--base-size-small);
+  border-radius: var(--base-radius-default);
+}
+
+.ar-item-ic {
+  flex: none;
 }
 
 .ar-item:hover {
@@ -599,12 +676,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-text-3);
+  color: rgb(var(--gray-5));
 }
 
 .ar-item-del {
   flex: none;
-  color: var(--color-text-4);
+  color: rgb(var(--gray-5));
   cursor: pointer;
 }
 
@@ -614,10 +691,61 @@ onBeforeUnmount(() => {
 
 .ar-empty {
   margin-top: 8px;
-  color: var(--color-text-4);
-  font-size: 12px;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
   text-align: center;
   padding: 8px 0;
+}
+
+/* 解压：包内清单预览 */
+.ar-entries {
+  margin-top: 8px;
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--base-radius-default);
+  background: var(--color-bg-1);
+  padding: 6px 8px;
+}
+
+.ar-entries-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--base-size-small);
+  color: rgb(var(--gray-5));
+}
+
+.ar-entries-body {
+  margin-top: 4px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.ar-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 4px;
+  font-size: var(--base-size-small);
+}
+
+.ar-entry-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-1);
+}
+
+.ar-entry-size {
+  flex: none;
+  color: rgb(var(--gray-5));
+}
+
+.ar-entry-more {
+  padding: 2px 4px;
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
 }
 
 .ar-preview {
@@ -651,11 +779,11 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 110px;
   overflow: auto;
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--border-radius-small);
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--base-radius-default);
   background: var(--color-fill-1);
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--base-size-small);
   line-height: 1.7;
 }
 
@@ -670,7 +798,7 @@ onBeforeUnmount(() => {
 }
 
 .log-time {
-  color: var(--color-text-4);
+  color: rgb(var(--gray-5));
   flex: none;
 }
 
@@ -687,7 +815,7 @@ onBeforeUnmount(() => {
 }
 
 .log-empty {
-  color: var(--color-text-4);
+  color: rgb(var(--gray-5));
   text-align: center;
   padding-top: 32px;
 }
@@ -695,13 +823,13 @@ onBeforeUnmount(() => {
 .ar-history {
   flex: none;
   margin-top: 10px;
-  border-top: 1px solid var(--color-border-2);
+  border-top: 1px solid var(--color-border-1);
   padding-top: 8px;
 }
 
 .ar-history-title {
-  font-size: 12px;
-  color: var(--color-text-3);
+  font-size: var(--base-size-small);
+  color: rgb(var(--gray-5));
   margin-bottom: 4px;
 }
 
@@ -709,7 +837,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--base-size-small);
   line-height: 1.9;
 }
 

@@ -115,6 +115,11 @@ type Store struct {
 	secure   []SecureEntry
 	shares   []ShareEntry
 	backups  []BackupPlan
+
+	// 派生元数据（类型/大小/修改时间）的 TTL 缓存，见 meta.go。
+	// 与 mu 分开一把锁：Stat 可能慢（远端），不能握着主锁让 CRUD 排队。
+	metaMu sync.Mutex
+	metas  map[string]metaCacheEntry
 }
 
 var (
@@ -244,6 +249,10 @@ func (s *Store) saveItems() error {
 			return err
 		}
 	}
+	// 条目集变了 → 派生元数据整表作废，下一轮列表重取。
+	// 挂在这一处而不是各 CRUD 里：新增/删除/换路径/换分类都会影响类型与大小，
+	// 单点比逐处补更不容易漏；代价只是多一轮 Stat，远小于错数据留在缓存里。
+	s.InvalidateAllMeta()
 	return nil
 }
 
@@ -343,18 +352,35 @@ func (s *Store) AddCategory(name, parent string) (Category, error) {
 	return c, nil
 }
 
-// RemoveCategory 删除分类（其下条目退为未分类），落盘。
+// RemoveCategory 删除分类（其下条目退为未分类，子分类上提一级），落盘。
 func (s *Store) RemoveCategory(id string) error {
 	if err := s.Load(); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	kept := s.taxonomy[:0]
+	// 先拿到被删节点的父，再把指向它的子分类改挂到上一层：
+	// 只处理条目而不管子分类的话，子节点的 Parent 会指向已经不存在的 id，
+	// 前端建树时它们就成了永远取不到的孤儿（整棵子树从界面上消失）
+	parentOf, found := "", false
 	for _, c := range s.taxonomy {
-		if c.ID != id {
-			kept = append(kept, c)
+		if c.ID == id {
+			parentOf, found = c.Parent, true
+			break
 		}
+	}
+	if !found {
+		return nil
+	}
+	kept := s.taxonomy[:0]
+	for i := range s.taxonomy {
+		if s.taxonomy[i].ID == id {
+			continue
+		}
+		if s.taxonomy[i].Parent == id {
+			s.taxonomy[i].Parent = parentOf
+		}
+		kept = append(kept, s.taxonomy[i])
 	}
 	s.taxonomy = kept
 	for _, it := range s.items {
@@ -366,6 +392,28 @@ func (s *Store) RemoveCategory(id string) error {
 		return err
 	}
 	return s.saveItems()
+}
+
+// RenameCategory 改分类名（去空白后为空则报错），落盘。
+// 只改 Name：id 是条目 Category 字段引用的外键，动不得。
+func (s *Store) RenameCategory(id, name string) error {
+	if err := s.Load(); err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("分类名不能为空")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.taxonomy {
+		if s.taxonomy[i].ID != id {
+			continue
+		}
+		s.taxonomy[i].Name = name
+		return writeJSONAtomic(s.pathOf("taxonomy.json"), s.taxonomy)
+	}
+	return fmt.Errorf("分类不存在：%s", id)
 }
 
 // ---------- 条目 CRUD ----------

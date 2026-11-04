@@ -42,10 +42,14 @@
  * 否则给一条 /demo/* 路由）。主页的入口按钮只在 dev 显示，这里不重复判环境——
  * 打包后没有入口，但路由仍在，需要时手输地址照样能开。
  */
-import { ref } from "vue";
+import { getCurrentInstance, ref } from "vue";
 import { useRouter } from "vue-router";
 import TaskProgressDemo from "./TaskProgressDemo.vue";
 import { useToolWindow } from "@/views/index/useToolWindow";
+
+const {
+    proxy: { $GoTools },
+} = getCurrentInstance() as any;
 
 interface TestItem {
     name: string;

@@ -300,7 +300,9 @@ func lanAddrs() []string {
 
 func (s *httpServer) handle(w http.ResponseWriter, r *http.Request) {
 	s.reqCount.Add(1)
-	if !s.lim.Allow(remoteIP(r)) {
+	// 每 IP 限频主要防首页/令牌探测；上传（含分片）已有 maxSessions + 单文件 2 GiB +
+	// 单片大小三重护栏，一个大文件几百个分片 PUT 不能被 120/分钟误伤，故豁免。
+	if !strings.HasPrefix(r.URL.Path, "/upload") && !s.lim.Allow(remoteIP(r)) {
 		http.Error(w, "请求过于频繁", http.StatusTooManyRequests)
 		return
 	}
@@ -321,6 +323,17 @@ func (s *httpServer) handle(w http.ResponseWriter, r *http.Request) {
 		s.handleGrant(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/upload":
 		s.handleUpload(w, r)
+	// 切片上传会话（与一次性 /upload 并存：小文件仍走旧路，curl/老页面直投不受影响）
+	case r.Method == http.MethodPost && r.URL.Path == "/upload/init":
+		s.handleUploadInit(w, r)
+	case r.Method == http.MethodPut && r.URL.Path == "/upload/part":
+		s.handleUploadPart(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/upload/complete":
+		s.handleUploadComplete(w, r)
+	case r.Method == http.MethodDelete && r.URL.Path == "/upload/abort":
+		s.handleUploadAbort(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/upload/session":
+		s.handleUploadSessionGet(w, r)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}

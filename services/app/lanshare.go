@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"Tools/services/applog"
+	"Tools/services/config"
 	"Tools/tools/lanshare"
 )
 
@@ -87,6 +88,22 @@ func (a *App) LanShareInboxFiles() ([]lanshare.InboxFile, error) {
 	return lanshare.ListInbox()
 }
 
+// LanShareUploadSessions 列出接收中的切片上传会话（可续传/进行中），
+// 供互传页展示与强踢。服务停着时仍能列出磁盘上残留的半成品会话。
+func (a *App) LanShareUploadSessions() ([]lanshare.UploadSession, error) {
+	return lanshare.ListUploadSessions()
+}
+
+// LanShareAbortUpload 强踢一个卡死/占位的接收会话（删半成品目录，腾出会话名额）。
+func (a *App) LanShareAbortUpload(sid string) error {
+	if err := lanshare.AbortUpload(sid); err != nil {
+		applog.Warnf("lanshare", "强踢上传会话失败 sid=%s: %v", sid, err)
+		return err
+	}
+	applog.Infof("lanshare", "已强踢上传会话: sid=%s", sid)
+	return nil
+}
+
 // LanShareAddGrant 授权一个本机路径供门户长期下载。目录可给 recursive
 // （是否允许逐项浏览）；hours<=0 表示长期有效。
 func (a *App) LanShareAddGrant(path string, recursive bool, hours int) (lanshare.Grant, error) {
@@ -145,4 +162,35 @@ func (a *App) LanShareChoosePath(title string) (string, error) {
 		CanChooseDirectories(true).
 		SetTitle(title).
 		PromptForSingleSelection())
+}
+
+// LanShareSettings 返回互传接收设置段（老配置无此段时返回默认值：空黑名单=全收）。
+// 供互传页回填接收类型黑名单。
+func (a *App) LanShareSettings() config.LanShareConfig {
+	return config.LanShareCfg()
+}
+
+// SaveLanShareSettings 保存接收类型黑名单（blockExt：每项可不带前导点，如 "exe"）。
+// 空切片 = 清空黑名单（全收）。落盘后立即回灌单例（ApplyLanShareConfig），
+// 对已在跑的服务即时生效，无需重启。
+func (a *App) SaveLanShareSettings(blockExt []string) error {
+	_, err := config.Update(func(cfg *config.AppConfig) {
+		if cfg.LanShare == nil {
+			cfg.LanShare = &config.LanShareConfig{}
+		}
+		cfg.LanShare.BlockExt = blockExt
+	})
+	if err != nil {
+		applog.Errorf("lanshare", "保存接收设置失败: %v", err)
+		return err
+	}
+	ApplyLanShareConfig()
+	applog.Infof("lanshare", "已保存接收类型黑名单: %d 项", len(config.LanShareCfg().BlockExt))
+	return nil
+}
+
+// ApplyLanShareConfig 把当前 config.LanShare 的接收黑名单回灌 lanshare 单例。
+// main 启动期调一次完成初始化，SaveLanShareSettings 保存后再调。
+func ApplyLanShareConfig() {
+	lanshare.SetBlockExt(config.LanShareCfg().BlockExt)
 }

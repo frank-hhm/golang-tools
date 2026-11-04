@@ -12,7 +12,7 @@
         <template #icon><icon-refresh /></template>刷新
       </a-button>
       <a-popconfirm
-        content="清空后回收站内所有实体将彻底删除，不可恢复。确认清空？"
+        :content="`清空后回收站内 ${entries.length} 项实体将彻底删除（不进系统回收站），不可恢复。确认清空？`"
         type="warning"
         :disabled="!entries.length"
         @ok="emptyAll"

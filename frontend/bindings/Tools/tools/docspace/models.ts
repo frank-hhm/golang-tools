@@ -19,6 +19,25 @@ export interface BackupPlan {
 }
 
 /**
+ * BatchResult 批量动作的统一回执：成功数 + 失败明细。
+ * 前端据此决定提示级别（全成功 success / 部分失败 warning），不把失败藏起来。
+ */
+export interface BatchResult {
+    "done": number;
+
+    /**
+     * 失败条目的 id
+     */
+    "failed": string[] | null;
+
+    /**
+     * Reason 只给首条失败的原因（一整批可能各有原因，全塞进一句反而读不清）。
+     * 无论全失败还是部分失败都给出，好让用户知道"为什么少了几条"。
+     */
+    "reason"?: string;
+}
+
+/**
  * Category 分类节点：Parent 空表示根节点。层级即密级/类别级别。
  */
 export interface Category {
@@ -26,6 +45,18 @@ export interface Category {
     "name": string;
     "parent"?: string;
     "sort": number;
+}
+
+/**
+ * CategoryCount 分类节点计数：Num 是挂在该节点自身的条目数，
+ * Inclusive 额外把子节点滚上来（给左树徽标用，父节点显示"含子级"更直观）。
+ */
+export interface CategoryCount {
+    "id": string;
+    "name": string;
+    "num": number;
+    "inclusive": number;
+    "size": number;
 }
 
 /**
@@ -38,6 +69,14 @@ export interface Counts {
     "secure": number;
     "shares": number;
     "backups": number;
+}
+
+/**
+ * KindCount 按扩展名汇总的一项，供「热门格式」展示。
+ */
+export interface ExtCount {
+    "ext": string;
+    "num": number;
 }
 
 /**
@@ -54,6 +93,87 @@ export interface Item {
     "version": number;
     "createdAt": number;
     "updatedAt": number;
+}
+
+/**
+ * ItemMeta 条目的展示元数据：类型、大小、修改时间。
+ * 
+ * 为什么不落盘：这些是实体文件的派生事实，写进 items/*.json 就会与磁盘脱节
+ * （用户在资源管理器里改名/删除/改大小，本程序不知道）。所以每次列表时经
+ * docref 现取，再用 TTL 缓存挡住重复 IO——与「运行时事实交给各模块缓存与重扫」
+ * 的仓库口径一致。
+ */
+export interface ItemMeta {
+    "id": string;
+
+    /**
+     * image|pdf|sheet|doc|text|code|audio|video|archive|binary
+     */
+    "kind": string;
+
+    /**
+     * 取不到时 application/octet-stream
+     */
+    "mime": string;
+
+    /**
+     * 小写不带点；tar.gz 整段保留
+     */
+    "ext": string;
+
+    /**
+     * 字节；Unreachable 时为 0
+     */
+    "size": number;
+
+    /**
+     * 毫秒时间戳；Unreachable 时为 0
+     */
+    "modTime": number;
+
+    /**
+     * Unreachable 表示取不到实体元信息：本机文件已删除/移动，或远端会话已关闭。
+     * 前端据此把条目标灰并给排查线索，不猜大小、不冒充 0 字节。
+     */
+    "unreachable": boolean;
+
+    /**
+     * Thumbable 表示该条目能出真缩略图（类型是图片且扩展名在标准库解码器覆盖内）。
+     * 后端算好交出去，省得前端再维护一份扩展名表与后端对不上。
+     */
+    "thumbable": boolean;
+
+    /**
+     * Thumb 是缩略图端点的完整 URL（?src=&sid=&path=&w=），Thumbable 为假时为空。
+     * 由绑定层补齐：Store 不 import fileview（fileview 已经 import docspace，
+     * 反向就成环），所以这里留空。前端一次 Metas 就拿齐 URL，不必逐条发调用。
+     */
+    "thumb"?: string;
+}
+
+/**
+ * KindCount 是「类型 + 数量」的一项，供前端按 Order 渲染 chips。
+ * Label 一并给出：中文标签的口径留在 Go 侧，前端只负责颜色，新增类型时
+ * 不会出现前后端两份名称表对不上的情况。
+ */
+export interface KindCount {
+    "kind": string;
+    "label": string;
+    "num": number;
+    "size": number;
+}
+
+/**
+ * Overview 一次给齐统计卡、类型 chips、分类徽标与源分布。
+ * 合并成一个方法而不是四个：统计页进页就要全量数据，四次往返在远端源下
+ * 肉眼可见地慢；且都源自同一份 Metas 缓存，拆开只会重复算。
+ */
+export interface Overview {
+    "stats": Stats;
+    "kinds": KindCount[] | null;
+    "categories": CategoryCount[] | null;
+    "sources": SourceCount[] | null;
+    "topExts": ExtCount[] | null;
 }
 
 /**
@@ -115,6 +235,34 @@ export interface SecureEntry {
     "salt": string;
     "check": string;
     "createdAt": number;
+}
+
+/**
+ * SourceCount 按文件源汇总的条目数，前端用来解释"为什么这条没大小"。
+ */
+export interface SourceCount {
+    "src": string;
+    "num": number;
+    "size": number;
+}
+
+/**
+ * Stats 是文档中心的总览数字：总量、体积、按类型分布、近况。
+ * 与 Metas 同源，所以口径一致（不可达的条目计入 Missing，不计入体积）。
+ */
+export interface Stats {
+    "total": number;
+    "totalSize": number;
+    "byKind": { [_ in string]?: number } | null;
+    "kindSize": { [_ in string]?: number } | null;
+    "missing": number;
+
+    /**
+     * 实体或登记信息 7 天内动过
+     */
+    "updated7d": number;
+    "withTags": number;
+    "withVersions": number;
 }
 
 /**

@@ -10,6 +10,7 @@ package guard
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -228,6 +229,71 @@ func Clear() error {
 	mu.Unlock()
 	emitStatus()
 	return nil
+}
+
+// maxGuardLogRead 单次读取日志的硬上限（8MB），兜底防止极端大文件吞内存。
+const maxGuardLogRead = 8 << 20
+
+// LogPath 返回某登记项的输出日志绝对路径（子进程 stdout/stderr 都追加到这里）。
+func LogPath(id string) (string, error) {
+	return logPath(id)
+}
+
+// ReadLog 读取某登记项日志末尾若干 KB（tailKB<=0 默认 64KB），供前端「查看日志」弹窗展示。
+// 文件不存在视为空（该项还没跑过 / 没有输出），不当作错误。
+func ReadLog(id string, tailKB int) (string, error) {
+	p, err := logPath(id)
+	if err != nil {
+		return "", err
+	}
+	if tailKB <= 0 {
+		tailKB = 64
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	size := st.Size()
+	want := int64(tailKB) * 1024
+	if want > maxGuardLogRead {
+		want = maxGuardLogRead
+	}
+	off := size - want
+	if off < 0 {
+		off = 0
+	}
+	// 从一个整行边界起，避免首行是半截乱码
+	if off > 0 {
+		b := make([]byte, 1)
+		for off < size {
+			if _, err := f.ReadAt(b, off); err != nil {
+				break
+			}
+			off++
+			if b[0] == '\n' {
+				break
+			}
+		}
+	}
+	if off >= size {
+		return "", nil
+	}
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return "", err
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxGuardLogRead))
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 // ---------- 控制 ----------

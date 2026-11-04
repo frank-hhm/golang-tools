@@ -58,6 +58,7 @@ const (
 	ballWM_PAINT       = 0x000F
 	ballWM_CLOSE       = 0x0010
 	ballWM_SETCURSOR   = 0x0020
+	ballWM_TIMER       = 0x0111
 	ballWM_MOUSEMOVE   = 0x0200
 	ballWM_LBUTTONDOWN = 0x0201
 	ballWM_LBUTTONUP   = 0x0202
@@ -143,6 +144,14 @@ const (
 	ballDiameterDIP  = 36.0 // 圆形底板直径（不含阴影留白），比原 48 DIP logo 更小
 	ballShadowPadDIP = 14.0 // 四周阴影留白（容纳大半径柔和投影，避免被窗口边缘截断）
 	ballLogoRatio    = 0.56 // logo 内容占底板直径的比例
+
+	// 贴边停靠胶囊化（借鉴 DeskBox；开关走 Host.BallDock()）
+	ballDockThresholdDIP = 12.0 // 松手时球缘距工作区边缘 ≤12 DIP 即判定停靠
+	ballTabVisibleDIP    = 18.0 // 停靠态胶囊露出边缘的可见厚度（收窄才有“tab”感，宽了就是白饼）
+	ballTabLengthDIP     = 60.0 // 停靠态胶囊沿边的长轴长度
+	ballDockHoverMs      = 150  // 指针悬停满足即弹回完整球
+	ballDockPollMs       = 50   // WM_TIMER 轮询悬停的周期
+	ballDockTimerID      = 2    // 球窗口唯一定时器 id（悬停轮询）
 )
 
 // ---------------- Win32 结构体 ----------------
@@ -309,6 +318,9 @@ var (
 	ballDelObj        = ballGdi32.NewProc("DeleteObject")
 	ballULW           = ballUser32.NewProc("UpdateLayeredWindow")
 	ballModHdr        = ballKern32.NewProc("GetModuleHandleW")
+	ballSetTimer      = ballUser32.NewProc("SetTimer")
+	ballKillTimer     = ballUser32.NewProc("KillTimer")
+	ballTickCnt       = ballKern32.NewProc("GetTickCount")
 )
 
 // ---------------- 运行期状态（仅在球线程访问的拖拽标志无需加锁） ----------------
@@ -342,6 +354,12 @@ var (
 	ballOrigLeft int32
 	ballOrigTop  int32
 	ballDragPx   int32 // 判定为拖动的最小位移（物理像素，随 DPI 放大）
+
+	// 贴边停靠（仅球线程读写）：停靠边（0=未停靠）、胶囊尺寸与悬停计时
+	ballDockEdge   int   // ballDockNone/Left/Right/Top/Bottom
+	ballTabW       int   // 胶囊短轴＝可见露出厚度（物理像素）
+	ballTabH       int   // 胶囊长轴（物理像素）
+	ballHoverSince int64 // 悬停胶囊起算毫秒（GetTickCount）；0=未在悬停
 
 	// 光标（仅球线程使用）：默认箭头 / 悬停手型 / 拖动中四向移动
 	ballCursorArrow uintptr
@@ -546,8 +564,18 @@ func ballThread() {
 	ballRadiusF = float64(ballDiameterPx) / 2
 	// 拖动阈值同样随 DPI 放大（高 DPI 下 4 物理像素过小，容易误触拖动）
 	ballDragPx = int32(math.Max(3, math.Round(4*scale)))
+	// 停靠胶囊几何（物理像素）：短轴是露出边外的可见厚度，长轴沿边
+	ballTabW = int(math.Round(ballTabVisibleDIP * scale))
+	ballTabH = int(math.Round(ballTabLengthDIP * scale))
 
 	left, top := ballInitPos()
+	// 上次松手位置贴着边缘 → 以停靠胶囊形态恢复（停靠边由坐标推导，不加新字段）
+	if ballHost != nil && ballHost.BallDock() {
+		left, top, ballDockEdge = ballDockTarget(left, top)
+		if ballDockEdge != ballDockNone {
+			ballLogf("恢复上次贴边停靠形态 edge=%d at (%d, %d)", ballDockEdge, left, top)
+		}
+	}
 
 	hInst, _, _ := ballModHdr.Call(0)
 	hwnd, _, _ := ballCreate.Call(
@@ -569,6 +597,9 @@ func ballThread() {
 	ballLoadLogo()
 	ballPaint(hwnd)
 	ballShow.Call(hwnd, ballSW_SHOWNOACTIVATE)
+	if ballDockEdge != ballDockNone {
+		ballSetTimer.Call(hwnd, ballDockTimerID, ballDockPollMs, 0)
+	}
 
 	// 角标同步循环：定期把「后台运行服务数」反映到球面（有变化才重绘）
 	badgeStop := make(chan struct{})
@@ -657,8 +688,8 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case ballWM_LBUTTONDOWN:
 		x := int32(int16(uint16(lParam & 0xFFFF)))
 		y := int32(int16(uint16((lParam >> 16) & 0xFFFF)))
-		if !ballInsideCircle(float64(x), float64(y)) {
-			break // 圆外透明区不响应
+		if !ballHitTest(float64(x), float64(y)) {
+			break // 形状（圆球/停靠胶囊）外的透明区不响应
 		}
 		ballCaptured = true
 		ballDragging = false
@@ -680,6 +711,10 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if !ballDragging && (abs32(dx) >= ballDragPx || abs32(dy) >= ballDragPx) {
 			ballDragging = true
 			ballSetCur.Call(ballCursorMove) // 捕获期间不会收到 WM_SETCURSOR，这里主动切光标
+			if ballDockEdge != ballDockNone {
+				// 从停靠胶囊拖出：先弹回完整球再跟手走（松手时重新判定是否停靠）
+				ballUndock(hwnd, false)
+			}
 		}
 		if ballDragging {
 			nl, nt := ballClampToScreen(ballOrigLeft+dx, ballOrigTop+dy)
@@ -709,10 +744,18 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			// 若不先复位会被它清成“未拖动”，导致刚拖完的位置不落盘。
 			ballCaptured = false
 			ballDragging = false
+			wasDocked := ballDockEdge != ballDockNone // 拖动起点在拖出时已弹回，这里仅剩“按住未拖”的情形
 			ballRelCap.Call()
 			if wasDragging {
-				ballSavePos(hwnd) // 拖动结束：同步记忆位置，立即落盘
+				// 松手即停靠判定点：球缘贴住工作区边缘就收成胶囊（关掉贴边吸附时保持原样）
+				if ballHost == nil || ballHost.BallDock() {
+					ballApplyDock(hwnd)
+				}
+				ballSavePos(hwnd) // 拖动/停靠结束：同步记忆位置，立即落盘
 				ballApplyCursor(hwnd)
+			} else if wasDocked {
+				// 停靠态单击：只弹回完整球（仍贴边），不顺带打开主界面，免得误触
+				ballUndock(hwnd, true)
 			} else if ballHost != nil {
 				// 单击（未拖动）：直接打开/聚焦主界面，不再弹菜单（快捷菜单仅保留右键）
 				go ballHost.ShowMainWindow()
@@ -724,6 +767,35 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		// 捕获被系统/其他窗口抢走时复位拖拽状态，避免卡在“按住”状态
 		ballCaptured = false
 		ballDragging = false
+		return 0
+
+	case ballWM_TIMER:
+		// 停靠轮询：指针在胶囊上连续悬停满 ballDockHoverMs 就弹回完整球
+		if wParam != ballDockTimerID {
+			return 0
+		}
+		if ballDockEdge == ballDockNone {
+			ballKillTimer.Call(hwnd, ballDockTimerID)
+			return 0
+		}
+		var p ballPoint
+		ballGetCur.Call(uintptr(unsafe.Pointer(&p)))
+		var rc ballRect
+		ballGetRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+		if !ballHitTest(float64(p.X-rc.Left), float64(p.Y-rc.Top)) {
+			ballHoverSince = 0 // 指针离开了胶囊：重新计时
+			return 0
+		}
+		tk, _, _ := ballTickCnt.Call()
+		now := int64(tk)
+		if now < ballHoverSince {
+			ballHoverSince = now // GetTickCount 约 49 天回绕，重置起点即可
+		} else if ballHoverSince == 0 {
+			ballHoverSince = now
+		} else if now-ballHoverSince >= ballDockHoverMs {
+			ballLogf("悬停 %dms 弹回完整球", ballDockHoverMs)
+			ballUndock(hwnd, true)
+		}
 		return 0
 
 	case ballWM_SETCURSOR:
@@ -747,6 +819,9 @@ func ballWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case ballWM_RELOAD:
 		// 设置/主题/图标变更：球线程内重读球心图标并重绘
+		if ballDockEdge != ballDockNone && (ballHost == nil || !ballHost.BallDock()) {
+			ballUndock(hwnd, true) // 贴边吸附刚被关闭：先弹回完整球再重绘
+		}
 		ballLoadLogo()
 		ballPaint(hwnd)
 		return 0
@@ -772,7 +847,7 @@ func abs32(v int32) int32 {
 	return v
 }
 
-// ballApplyCursor 悬停在圆球上显示手型、拖动中显示四向移动光标，提示“可按住拖动”。
+// ballApplyCursor 悬停在圆球（或停靠胶囊）上显示手型、拖动中显示四向移动光标，提示“可按住拖动”。
 func ballApplyCursor(hwnd uintptr) {
 	cur := ballCursorArrow
 	switch {
@@ -783,7 +858,7 @@ func ballApplyCursor(hwnd uintptr) {
 		ballGetCur.Call(uintptr(unsafe.Pointer(&p)))
 		var rc ballRect
 		ballGetRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
-		if ballInsideCircle(float64(p.X-rc.Left), float64(p.Y-rc.Top)) {
+		if ballHitTest(float64(p.X-rc.Left), float64(p.Y-rc.Top)) {
 			cur = ballCursorHand
 		}
 	}
@@ -847,6 +922,146 @@ func ballSavePos(hwnd uintptr) {
 		return
 	}
 	ballLogf("已记住位置: (%d, %d)", l, t)
+}
+
+// ---------------- 贴边停靠（胶囊 tab） ----------------
+//
+// 形态借鉴 DeskBox：拖动松手时若球体（不含阴影留白）贴住工作区边缘，
+// 沿该边收成「露出 18 DIP、带三颗握把圆点」的胶囊 tab；悬停 150ms 或单击弹回完整球（仍贴边），
+// 拖离边缘则解除停靠。停靠期间窗口仍是同一块方形 ULW 窗口，只是改为
+// 走 SDF 逐像素绘制圆角胶囊（与球体同一条预乘 alpha 通路，不走 GDI RoundRect）；
+// 停靠态不单独落盘——启动时用上次坐标跑一遍 ballDockTarget 即恢复。
+
+const (
+	ballDockNone = iota
+	ballDockLeft
+	ballDockRight
+	ballDockTop
+	ballDockBottom
+)
+
+// ballWorkArea 主工作区矩形（物理像素）：停靠判定与贴齐基准（避开任务栏）。
+func ballWorkArea() ballRect {
+	var rc ballRect
+	ballSysInfo.Call(ballSPI_GETWORKAREA, 0, uintptr(unsafe.Pointer(&rc)), 0)
+	return rc
+}
+
+// ballTabGeom 胶囊在窗口坐标里的半轴与圆角半径：长轴沿边、短轴为露出厚度，
+// 圆角取短轴半径——两端全圆，就是颗“药丸”。
+func ballTabGeom() (hw, hh, r float64) {
+	short := float64(ballTabW) / 2
+	long := float64(ballTabH) / 2
+	switch ballDockEdge {
+	case ballDockTop, ballDockBottom:
+		return long, short, short
+	default:
+		return short, long, short
+	}
+}
+
+// ballHitTest 窗口坐标命中判定：完整球态用圆（含 2px 容差），停靠态用药丸 SDF。
+func ballHitTest(x, y float64) bool {
+	if ballDockEdge == ballDockNone {
+		return ballInsideCircle(x, y)
+	}
+	hw, hh, r := ballTabGeom()
+	return ballSdfRR(x-ballCx, y-ballCy, hw, hh, r) <= 2
+}
+
+// ballClampInt32 把 v 钳制到 [lo, hi]；hi < lo（窗口比屏幕还长）时退化为 lo。
+func ballClampInt32(v, lo, hi int32) int32 {
+	if hi < lo {
+		return lo
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// ballDockTarget 按给定窗口左上角（完整球形态）判定是否停靠：取「球缘距工作区
+// 边缘 ≤ 阈值」里贴得最紧的一条边（负缝隙容忍 1px，探出任务栏下沿的不算）；
+// 命中时返回胶囊贴齐该边的窗口左上角（沿边方向钳进工作区，免得角上被截），
+// 未命中返回原坐标与 ballDockNone。
+func ballDockTarget(l, t int32) (int32, int32, int) {
+	rc := ballWorkArea()
+	pad, dia := int32(ballShadowPad), int32(ballDiameterPx)
+	thr := int32(math.Round(ballDockThresholdDIP * ballScale))
+	c := int32(math.Round(ballCx))
+	gaps := []struct {
+		edge int
+		gap  int32
+	}{{ballDockLeft, l + pad - rc.Left}, {ballDockRight, rc.Right - (l + pad + dia)},
+		{ballDockTop, t + pad - rc.Top}, {ballDockBottom, rc.Bottom - (t + pad + dia)}}
+	best, bestGap := ballDockNone, thr+1
+	for _, g := range gaps {
+		if g.gap >= -1 && g.gap < bestGap {
+			best, bestGap = g.edge, g.gap
+		}
+	}
+	if best == ballDockNone {
+		return l, t, ballDockNone
+	}
+	half := int32(ballTabW) / 2
+	hl := int32(ballTabH) / 2
+	nl, nt := l, t
+	switch best {
+	case ballDockLeft:
+		nl = rc.Left + half - c
+	case ballDockRight:
+		nl = rc.Right - half - c
+	case ballDockTop:
+		nt = rc.Top + half - c
+	case ballDockBottom:
+		nt = rc.Bottom - half - c
+	}
+	switch best {
+	case ballDockLeft, ballDockRight:
+		nt = ballClampInt32(t, rc.Top+hl-c, rc.Bottom-hl-c)
+	default:
+		nl = ballClampInt32(l, rc.Left+hl-c, rc.Right-hl-c)
+	}
+	return nl, nt, best
+}
+
+// ballApplyDock 进入停靠态：挪到胶囊贴边位置、换胶囊绘制、起悬停轮询定时器。
+// 位置落盘由调用方在松手链路里统一做（ballSavePos）。
+func ballApplyDock(hwnd uintptr) {
+	l, t := ballCurPos(hwnd)
+	nl, nt, edge := ballDockTarget(l, t)
+	if edge == ballDockNone {
+		return
+	}
+	ballDockEdge = edge
+	ballHoverSince = 0
+	ballSetPos.Call(hwnd, 0, uintptr(nl), uintptr(nt), 0, 0,
+		ballSWP_NOSIZE|ballSWP_NOZORDER|ballSWP_NOACTIVATE)
+	ballPaint(hwnd)
+	ballSetTimer.Call(hwnd, ballDockTimerID, ballDockPollMs, 0)
+	ballLogf("贴边停靠：edge=%d 窗口 (%d, %d)", edge, nl, nt)
+}
+
+// ballUndock 退出停靠态：弹回完整球。位置经 ballClampToScreen 吸附——依旧贴边，
+// 只是恢复成整球尺寸，不会飞回屏幕中间。
+func ballUndock(hwnd uintptr, save bool) {
+	if ballDockEdge == ballDockNone {
+		return
+	}
+	ballDockEdge = ballDockNone
+	ballHoverSince = 0
+	ballKillTimer.Call(hwnd, ballDockTimerID)
+	l, t := ballCurPos(hwnd)
+	nl, nt := ballClampToScreen(l, t)
+	ballSetPos.Call(hwnd, 0, uintptr(nl), uintptr(nt), 0, 0,
+		ballSWP_NOSIZE|ballSWP_NOZORDER|ballSWP_NOACTIVATE)
+	ballPaint(hwnd)
+	if save {
+		ballSavePos(hwnd)
+	}
 }
 
 // ballQuickItems 取宿主给出的快捷工具项（配置里 Quick=true），作为菜单项（ID → 显示名）。
@@ -1500,6 +1715,13 @@ func ballRender(size int) []byte {
 	ink := ballInkFor(ballEffectiveDark())
 	ballCurInk = ink // 供 ballLogoSample 着色（仅球线程读写）
 
+	// 停靠态画药丸胶囊而非圆球：与球体同一条 SDF 逐像素预乘 alpha 通路
+	docked := ballDockEdge != ballDockNone
+	var tabHW, tabHH, tabR float64
+	if docked {
+		tabHW, tabHH, tabR = ballTabGeom()
+	}
+
 	// 投影：双层柔和投影（近距离主阴影 + 大半径环境阴影），低透明度、大模糊，
 	// 与设计稿中「白色圆钮 + 轻阴影」的观感一致。
 	// blur 过大会被窗口边缘截断，上限由 ballShadowPadDIP 留白约束。
@@ -1514,7 +1736,8 @@ func ballRender(size int) []byte {
 	// 底板：主题色（bg-1）轻微渐变 + 极细内描边，保证在任何壁纸上都有轮廓
 	rimW := math.Max(1, float64(ballDiameterPx)*0.028)
 
-	hasLogo := ballLogoImg != nil && !ballLogoRect.Empty()
+	// logo 只在完整球态画：胶囊太薄，塞图标只会糊成一团
+	hasLogo := !docked && ballLogoImg != nil && !ballLogoRect.Empty()
 
 	// 无图标时回退绘制闪电（颜色跟随主题文字色 text-1）
 	bolt := [][2]float64{
@@ -1533,17 +1756,37 @@ func ballRender(size int) []byte {
 			dyBall := float64(y) - c
 			distBall := math.Sqrt(dx*dx + dyBall*dyBall)
 
-			var cov float64
+			// 带符距离：圆球用半径差，胶囊用 SDF；coverage/描边/阴影全由 sd 统一驱动
+			var sd float64
+			if docked {
+				sd = ballSdfRR(dx, dyBall, tabHW, tabHH, tabR)
+			} else {
+				sd = distBall - rad
+			}
+			cov := 0.0
 			switch {
-			case distBall <= rad-0.5:
+			case sd <= -0.5:
 				cov = 1
-			case distBall < rad+0.5:
-				cov = rad + 0.5 - distBall
+			case sd < 0.5:
+				cov = 0.5 - sd
+			}
+			if docked && cov > 0 {
+				cov *= 0.94 // 胶囊底板微透：贴在任何背景上都不死实
 			}
 
-			dySh := float64(y) - (c + keyOffY)
-			keyA := ballShadowAlpha(dx, dySh, rad, keyBlur, keyAlpha)
-			ambA := ballShadowAlpha(dx, float64(y)-(c+ambOffY), rad, ambBlur, ambAlpha)
+			var keyA, ambA float64
+			if docked {
+				out := sd
+				if out < 0 {
+					out = 0
+				}
+				keyA = ballSoftShadow(out, keyBlur, keyAlpha)
+				ambA = ballSoftShadow(out, ambBlur, ambAlpha)
+			} else {
+				dySh := float64(y) - (c + keyOffY)
+				keyA = ballShadowAlpha(dx, dySh, rad, keyBlur, keyAlpha)
+				ambA = ballShadowAlpha(dx, float64(y)-(c+ambOffY), rad, ambBlur, ambAlpha)
+			}
 			// 双层叠加：1-(1-a)(1-b)，交叠处不会叠加发黑
 			shA := 1 - (1-keyA)*(1-ambA)
 
@@ -1558,7 +1801,21 @@ func ballRender(size int) []byte {
 
 			var sr, sg, sb float64
 			if cov > 0 {
-				t := (float64(y) - (c - rad)) / (2 * rad)
+				// 渐变沿“受光”方向铺：完整球自上而下；胶囊沿短轴、屏内侧亮贴边侧暗，
+				// 才有药丸的立体感——沿长轴铺整根渐变在细 tab 上完全看不出，只剩白饼
+				var t float64
+				switch {
+				case !docked:
+					t = (float64(y) - (c - rad)) / (2 * rad)
+				case ballDockEdge == ballDockRight:
+					t = (dx + tabHW) / (2 * tabHW)
+				case ballDockEdge == ballDockLeft:
+					t = (tabHW - dx) / (2 * tabHW)
+				case ballDockEdge == ballDockBottom:
+					t = (dyBall + tabHH) / (2 * tabHH)
+				default: // top
+					t = (tabHH - dyBall) / (2 * tabHH)
+				}
 				if t < 0 {
 					t = 0
 				} else if t > 1 {
@@ -1567,9 +1824,9 @@ func ballRender(size int) []byte {
 				sr = lerp(ink.bgTop[0], ink.bgBot[0], t)
 				sg = lerp(ink.bgTop[1], ink.bgBot[1], t)
 				sb = lerp(ink.bgTop[2], ink.bgBot[2], t)
-				// 边缘内描边：浅色主题压暗、深色主题提亮，两种底色下都能看清圆形边界
-				if distBall > rad-rimW {
-					k := (distBall - (rad - rimW)) / rimW
+				// 边缘内描边：浅色主题压暗、深色主题提亮，两种底色下都能看清形状边界
+				if sd > -rimW {
+					k := (sd + rimW) / rimW
 					if k > 1 {
 						k = 1
 					}
@@ -1585,7 +1842,32 @@ func ballRender(size int) []byte {
 						sb *= 1 - k
 					}
 				}
-				if !hasLogo && pointInPoly(float64(x), float64(y), boltPoly) {
+				// 沿长轴排三颗“握把圆点”：暗示这是可展开的停靠 tab 而非一根装饰条
+				if docked {
+					dotR := math.Max(1.5, float64(ballTabW)*0.11)
+					gap := dotR * 3.4
+					for i := -1; i <= 1; i++ {
+						dcx, dcy := dx, dyBall
+						if ballDockEdge == ballDockTop || ballDockEdge == ballDockBottom {
+							dcx -= float64(i) * gap
+						} else {
+							dcy -= float64(i) * gap
+						}
+						d := math.Sqrt(dcx*dcx + dcy*dcy)
+						k := dotR + 0.5 - d
+						if k <= 0 {
+							continue
+						}
+						if k > 1 {
+							k = 1
+						}
+						k *= 0.55 // 半透明文字色：起点缀提示作用不抢主体
+						sr += (ink.text[0] - sr) * k
+						sg += (ink.text[1] - sg) * k
+						sb += (ink.text[2] - sb) * k
+					}
+				}
+				if !hasLogo && !docked && pointInPoly(float64(x), float64(y), boltPoly) {
 					sr, sg, sb = ink.text[0], ink.text[1], ink.text[2]
 				}
 			}
@@ -1612,8 +1894,8 @@ func ballRender(size int) []byte {
 		}
 	}
 
-	// 角标：有后台服务运行时，在球面右上（45°）叠加白边红点
-	if atomic.LoadInt32(&ballBadgeCount) > 0 {
+	// 角标：有后台服务运行时，在球面右上（45°）叠加白边红点（停靠胶囊态不画，位置语义不成立）
+	if !docked && atomic.LoadInt32(&ballBadgeCount) > 0 {
 		ballOverlayBadge(buf, size, c, rad)
 	}
 	return buf
@@ -1669,6 +1951,16 @@ func ballShadowAlpha(dx, dy, rad, blur, maxAlpha float64) float64 {
 	if f > 1 {
 		f = 1
 	}
+	return maxAlpha * f * f * (3 - 2*f)
+}
+
+// ballSoftShadow 停靠胶囊的阴影：取 SDF 外形外的正距离，按与圆球阴影同款
+// smoothstep 包络随模糊半径衰减（胶囊外形不是圆，没法用圆心距离函数）。
+func ballSoftShadow(out, blur, maxAlpha float64) float64 {
+	if out >= blur {
+		return 0
+	}
+	f := (blur - out) / blur
 	return maxAlpha * f * f * (3 - 2*f)
 }
 

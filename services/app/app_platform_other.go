@@ -6,8 +6,18 @@ import (
 	"fmt"
 	"runtime"
 
+	"Tools/services/config"
 	"Tools/services/sysx"
 )
+
+// windowDark 非 Windows 没有统一的「系统深浅色」事实源（桌面环境各不相同），
+// 只看配置里的主题档；auto 退成浅色。
+//
+// 这个函数在 Linux 上其实不会被用到：server 无头模式不建原生窗口，
+// 但底色取值在 app.go 里是跨平台调用的，所以它必须存在。
+func windowDark() bool {
+	return config.CurrentConfig().General.Theme == "dark"
+}
 
 // platformState 汇总 App 里只在 Windows 上才有意义的字段。
 //

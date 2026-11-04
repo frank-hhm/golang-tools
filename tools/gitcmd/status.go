@@ -72,20 +72,24 @@ func st_parse1(line string) FileEntry {
 	return FileEntry{Path: f[8], X: at(xy, 0), Y: at(xy, 1)}
 }
 
-// st_parse2 重命名/复制：type XY sub mH mI mW hH hI <score<TAB>new<TAB>orig>（9 段，
-// score 与两段路径由 TAB 连成最后一段，路径含空格也不会被拆坏）。
+// st_parse2 重命名/复制：v2 一共 10 个空格字段 ——
+//
+//	2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <newPath><TAB><origPath>
+//
+// score（如 R100/C100）自己占第 9 段，第 10 段才是 TAB 连着的新旧两条路径。按 9 段
+// 切会把 score 和新路径粘进同一格，进而把原路径当成 Path 读出来，界面上就变成「旧文件
+// 还在、新名字丢了」。路径含空格或中文不会被拆坏——这也是选 v2 而非 v1 的主要原因
+// （v1 会给非 ASCII 路径外加引号，还得再解一次转义）。
 func st_parse2(line string) FileEntry {
-	f := strings.SplitN(line, " ", 9) // f[8]="R100<TAB>new<TAB>orig"
-	if len(f) < 9 {
+	f := strings.SplitN(line, " ", 10) // f[8]="R100", f[9]="newpath<TAB>origpath"
+	if len(f) < 10 {
 		return FileEntry{}
 	}
 	xy := f[1]
-	parts := strings.Split(f[8], "\t") // [score, newpath, origpath]
-	e := FileEntry{X: at(xy, 0), Y: at(xy, 1)}
-	if len(parts) >= 3 {
-		e.Path, e.OrigPath = parts[1], parts[2]
-	} else if len(parts) == 2 {
-		e.Path = parts[1]
+	pair := strings.SplitN(f[9], "\t", 2)
+	e := FileEntry{Path: pair[0], X: at(xy, 0), Y: at(xy, 1)}
+	if len(pair) == 2 {
+		e.OrigPath = pair[1]
 	}
 	return e
 }

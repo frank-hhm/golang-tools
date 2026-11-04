@@ -34,6 +34,9 @@ type KeyPair struct {
 	PubKeyLine        string `json:"pubKeyLine"` // authorized_keys 单行
 	FingerprintSHA256 string `json:"fingerprintSHA256"`
 	FingerprintMD5    string `json:"fingerprintMD5"`
+	// ACLWarning 非空表示私钥的 NTFS 权限没收紧成功。Windows 版 OpenSSH 会拒用权限
+	// 宽松的私钥（报 UNPROTECTED PRIVATE KEY FILE），所以这不是提示，是功能可能失效。
+	ACLWarning string `json:"aclWarning"`
 }
 
 // HostRef 主机上下文（不含任何密码/私钥正文），用于生成命令片段与连接凭据。

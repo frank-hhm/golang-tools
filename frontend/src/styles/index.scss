@@ -3,6 +3,7 @@
 @use './theme/style.scss' as *;
 @use './theme/editor.scss' as *;
 @use './modal.scss' as *;
+@use './popconfirm.scss' as *;
 @use './scrollbar.scss' as *;
 
 :root {
@@ -210,4 +211,16 @@ html {
 
 .conn-test-msg.is-err {
     color: rgb(var(--red-6));
+}
+
+/* 文档中心「更多」下拉里的破坏性动作上色（网格卡与表格行共用）：
+   这一版 Arco 的 a-doption 只认 normal|danger，且 dropdown 样式表里没有任何
+   status 配色规则，破坏项与普通项同色——靠它自己分不出“移出”和“编辑标签”。
+   弹层是 teleport 到 body 的，所以放全局而不是某个组件的 scoped 里。 */
+.ds-op-danger {
+    color: rgb(var(--danger-6));
+}
+
+.ds-op-warn {
+    color: rgb(var(--warning-6));
 }

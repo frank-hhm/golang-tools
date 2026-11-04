@@ -110,7 +110,10 @@ func TestUploadRejectsBadNamesAndExecutables(t *testing.T) {
 		}
 	}
 
-	// 可执行类型被拒（纯拒绝，无任何其他文件时返回 400）
+	// 可执行类型被拒（纯拒绝，无任何其他文件时返回 400）：
+	// 默认黑名单空=全收，这里显式注入危险类型再验拦截。
+	SetBlockExt([]string{"exe"})
+	defer SetBlockExt(nil)
 	s2, _ := newTestServer(t)
 	w = postUpload(t, s2, map[string]string{"payload.exe": "MZ"})
 	if w.Code != http.StatusBadRequest {
@@ -226,6 +229,14 @@ func TestSanitizeName(t *testing.T) {
 			t.Errorf("净化结果仍含路径字符: %q -> %q", s, got)
 		}
 	}
+	// 默认黑名单为空 = 全收（用户诉求）；未注入时任何类型都不拦。
+	SetBlockExt(nil)
+	if uploadBlocked("Run.EXE") || uploadBlocked("x.ps1") || uploadBlocked("x.pdf") {
+		t.Error("默认空黑名单应全收，不应拦任何类型")
+	}
+	// 注入危险类型后按扩展名（不区分大小写）拦截，其余放行。
+	SetBlockExt([]string{"exe", "ps1"})
+	t.Cleanup(func() { SetBlockExt(nil) })
 	if !uploadBlocked("Run.EXE") || !uploadBlocked("x.ps1") || uploadBlocked("x.pdf") {
 		t.Error("可执行黑名单判定不符")
 	}

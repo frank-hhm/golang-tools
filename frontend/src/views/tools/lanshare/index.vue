@@ -33,6 +33,18 @@
                                 <a-input v-model="ctl.pin" size="small" :disabled="srv.running" allow-clear
                                     placeholder="留空 = 免密；仅挡无意访问，不是访问控制" />
                             </div>
+                            <div class="field">
+                                <div class="field-label">接收类型黑名单（留空 = 全类型收）</div>
+                                <a-select v-model="ctl.blockExt" size="small" mode="tags" allow-clear
+                                    :token-separators="[',', ' ', ';']" placeholder="如 exe、dll、ps1；回车添加"
+                                    :disabled="cfgSaving" />
+                                <a-space :size="6" class="blk-actions">
+                                    <a-button size="mini" :disabled="cfgSaving" @click="fillDangerTypes">一键填危险类型</a-button>
+                                    <a-button size="mini" :disabled="cfgSaving" @click="ctl.blockExt = []">清空（全收）</a-button>
+                                    <a-button size="mini" type="primary" :loading="cfgSaving" @click="saveReceivePolicy">保存</a-button>
+                                </a-space>
+                                <span class="hint">命中黑名单的扩展名在接收时直接拒收；对已在跑的服务即时生效，无需重启。危险类型仅挡随手双击运行，不是访问控制。</span>
+                            </div>
 
                             <a-space :size="8">
                                 <a-button v-if="!srv.running" size="small" type="primary" :loading="busy"
@@ -76,6 +88,10 @@
                             <div class="kv inbox">
                                 <span class="k">收件箱</span>
                                 <span class="v mono break" :title="srv.inbox">{{ srv.inbox || "--" }}</span>
+                                <a-button v-if="caps.nativeWindows" size="mini" type="text" class="mini-btn"
+                                    :disabled="!srv.inbox" title="在资源管理器中打开收件箱目录" @click="revealInbox()">
+                                    <template #icon><icon-folder /></template>
+                                </a-button>
                             </div>
                             <a-alert v-if="srv.lastErr" type="error" class="err">{{ srv.lastErr }}</a-alert>
                         </div>
@@ -89,6 +105,7 @@
                                 <li>本页是局域网互传与分享链接的总控：文档中心/磁盘页「分享」登记的链接、局域网设备传来的文件都汇集于此。</li>
                                 <li>上传免密：同一局域网内任何设备打开上面的地址即可往收件箱传文件，靠大小上限、类型黑名单与限频兜底，<strong>不靠认证</strong>。</li>
                                 <li>不要直接双击运行收件箱里的文件。</li>
+                                <li>收件箱的文件都在本机目录里：点「收件箱」行的文件夹按钮直接打开那个目录，列表里双击一行用文件查看器预览——只读本地文件，不走网络也不触发下载。</li>
                                 <li>该端口对局域网开放、<strong>不经面板登录墙</strong>；停止服务后所有分享链接立即失效。</li>
                             </ul>
                         </div>
@@ -103,7 +120,7 @@
                 <template #title>
                     <a-space :size="8">
                         <span>局域网互传</span>
-                        <a-tag size="small">{{ tab === "links" ? `分享链接 ${links.length}` : tab === "grants" ? `授权下载 ${grants.length}` : `收件箱 ${inbox.length}` }}</a-tag>
+                        <a-tag size="small">{{ tab === "links" ? `分享链接 ${links.length}` : tab === "grants" ? `授权下载 ${grants.length}` : tab === "upload" ? `上传会话 ${sessions.length}` : `收件箱 ${inbox.length}` }}</a-tag>
                     </a-space>
                 </template>
                 <template #extra>
@@ -114,6 +131,7 @@
                         <a-radio-group v-model="tab" type="button" size="medium">
                             <a-radio value="links">分享链接</a-radio>
                             <a-radio value="grants">授权下载</a-radio>
+                            <a-radio value="upload">上传会话</a-radio>
                             <a-radio value="inbox">收件箱</a-radio>
                         </a-radio-group>
                     </a-space>
@@ -162,17 +180,34 @@
                     </a-table>
 
                     <a-table v-show="tab === 'inbox'" :data="inbox" :loading="loading" :pagination="false"
-                        size="small" row-key="name" class="fill-table">
+                        size="small" row-key="name" class="fill-table inbox-table"
+                        :row-class="(r: any) => (r.name === selectedInbox ? 'row-selected' : '')"
+                        @row-click="(r: any) => (selectedInbox = r?.name ?? '')"
+                        @row-dblclick="(r: any) => r && previewInbox(r)">
                         <template #empty>
                             <a-empty description="收件箱为空" />
                         </template>
                         <template #columns>
                             <a-table-column title="文件" data-index="name" :ellipsis="true" :tooltip="true" />
-                            <a-table-column title="大小" :width="120">
+                            <a-table-column title="大小" :width="110">
                                 <template #cell="{ record }">{{ fmtBytes(record.size) }}</template>
                             </a-table-column>
                             <a-table-column title="收到时间" :width="180">
                                 <template #cell="{ record }">{{ fmtTime(record.modAt) }}</template>
+                            </a-table-column>
+                            <a-table-column title="操作" :width="150">
+                                <template #cell="{ record }">
+                                    <a-space :size="4">
+                                        <a-button size="mini" type="text" title="用文件查看器预览（双击行同效）"
+                                            @click.stop="previewInbox(record)">
+                                            <template #icon><icon-eye /></template>预览
+                                        </a-button>
+                                        <a-button v-if="caps.nativeWindows" size="mini" type="text"
+                                            title="在资源管理器中定位到该文件" @click.stop="revealInbox(record)">
+                                            <template #icon><icon-folder /></template>定位
+                                        </a-button>
+                                    </a-space>
+                                </template>
                             </a-table-column>
                         </template>
                     </a-table>
@@ -222,6 +257,37 @@
                             </a-table-column>
                         </template>
                     </a-table>
+
+                    <div v-show="tab === 'upload'" class="up-wrap">
+                        <common-upload-panel v-if="srv.running && srv.urls.length" :transport="transport"
+                            :threshold-bytes="8 * 1024 * 1024" :concurrency="2" hint="把本机文件拖进来，直接投递到收件箱"
+                            @done="onLocalUploaded" />
+                        <a-alert v-if="srv.running && srv.urls.length" type="info" class="up-tip">
+                            上方走的是本机互传服务（{{ srv.urls[0] }}）同一套 init/part/complete 协议；下方是局域网设备正在上传／可续传的接收会话，卡住的可就地强踢。</a-alert>
+                        <a-empty v-else description="先启动互传服务，本机拖拽上传与接收会话才可用" />
+                        <a-table v-if="sessions.length" :data="sessions" :loading="sessLoading" :pagination="false"
+                            size="small" row-key="id" class="fill-table sess-table">
+                            <template #columns>
+                                <a-table-column title="文件" data-index="name" :ellipsis="true" :tooltip="true" />
+                                <a-table-column title="已收 / 总大小" :width="170">
+                                    <template #cell="{ record }">{{ fmtBytes(record.received) }} / {{ fmtBytes(record.size) }}</template>
+                                </a-table-column>
+                                <a-table-column title="进度" :width="160">
+                                    <template #cell="{ record }"><a-progress :percent="record.percent / 100" size="small" /></template>
+                                </a-table-column>
+                                <a-table-column title="更新" :width="160">
+                                    <template #cell="{ record }">{{ fmtTime(record.updatedAt) }}</template>
+                                </a-table-column>
+                                <a-table-column title="操作" :width="100" align="right">
+                                    <template #cell="{ record }">
+                                        <a-popconfirm content="强踢会删除该会话已收的半成品，确定？" type="warning" @ok="kickSession(record)">
+                                            <a-button size="mini" type="text" status="danger">强踢</a-button>
+                                        </a-popconfirm>
+                                    </template>
+                                </a-table-column>
+                            </template>
+                        </a-table>
+                    </div>
                 </div>
             </a-card>
         </a-col>
@@ -274,6 +340,8 @@ import { Events } from "@wailsio/runtime";
 import { Message } from "@arco-design/web-vue";
 import qrcode from "qrcode-generator";
 import { useCaps } from "@/utils/caps";
+import { useToolWindow } from "@/views/index/useToolWindow";
+import type { UploadTransport } from "@/components/common/upload-panel/upload-panel";
 
 // 中文/UTF-8 支持：默认按 latin1 截断，需覆盖为 UTF-8（与二维码生成页同一口径）
 qrcode.stringToBytes = (s: string): number[] => {
@@ -284,6 +352,7 @@ qrcode.stringToBytes = (s: string): number[] => {
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const caps = useCaps();
+const { openToolWindow } = useToolWindow();
 
 interface LsStatus {
     running: boolean; host: string; port: number; urls: string[]; inbox: string;
@@ -299,18 +368,33 @@ interface LsGrant {
     id: string; path: string; name: string; recursive: boolean; expiryAt: number;
     createdAt: number; downloads: number; lastAt?: number; dir: boolean;
 }
+interface LsSession {
+    id: string; name: string; size: number; received: number; percent: number; updatedAt: number;
+}
+/** lanshare:progress 事件负载（与后端 tools/lanshare Progress 对齐） */
+interface LsProgress {
+    op: string; name: string; stage: string; percent: number; note?: string; id?: string; status?: string;
+}
 
 const srv = reactive<LsStatus>({
     running: false, host: "", port: 0, urls: [], inbox: "",
     startedAt: 0, autoStopAt: 0, reqCount: 0, uploadCount: 0, pin: "", grantPath: "/g/", lastErr: "",
 });
-const ctl = reactive({ host: "", stopMin: 120, pin: "" });
+const ctl = reactive({ host: "", stopMin: 120, pin: "", blockExt: [] as string[] });
+/** 常见危险类型（一键填入）：与旧版写死的后端黑名单对齐，供用户随时找回安全默认 */
+const DANGER_TYPES = ["exe", "dll", "bat", "cmd", "com", "msi", "scr", "vbs", "js", "jse", "wsf", "wsh", "ps1", "psm1", "lnk", "sh", "desktop", "jar", "reg"];
+/** 接收类型黑名单保存中标记 */
+const cfgSaving = ref(false);
 const links = ref<LsLink[]>([]);
 const inbox = ref<LsInbox[]>([]);
 const grants = ref<LsGrant[]>([]);
-const tab = ref<"links" | "grants" | "inbox">("links");
+const sessions = ref<LsSession[]>([]);
+const sessLoading = ref(false);
+const tab = ref<"links" | "grants" | "upload" | "inbox">("links");
 const busy = ref(false);
 const loading = ref(false);
+/** 收件箱选中行（只存文件名）：收件箱不会重名，row-key 也是它 */
+const selectedInbox = ref("");
 
 /* 二维码弹层 */
 const qrVisible = ref(false);
@@ -368,8 +452,121 @@ async function refreshGrants() {
     } catch { /* 授权列表读取失败不弹窗 */ }
 }
 
+async function refreshSessions() {
+    sessLoading.value = true;
+    try {
+        sessions.value = (await GoTools?.LanShareUploadSessions()) ?? [];
+    } catch { /* 会话列表读取失败不弹窗 */ } finally { sessLoading.value = false; }
+}
+
+/* ===================== 接收类型黑名单（设置，与启停无关、即时生效） ===================== */
+// loadReceivePolicy 回填当前黑名单（后端已归一为小写带前导点，如 ".exe"）。
+async function loadReceivePolicy() {
+    try {
+        const s = await GoTools?.LanShareSettings();
+        ctl.blockExt = ((s?.blockExt as string[]) ?? []).slice();
+    } catch { /* 设置未就绪时保持空（= 全收） */ }
+}
+function fillDangerTypes() {
+    ctl.blockExt = DANGER_TYPES.slice();
+}
+// saveReceivePolicy 保存黑名单：落盘后 Go 侧回灌单例，对已在跑的服务即时生效。
+async function saveReceivePolicy() {
+    cfgSaving.value = true;
+    try {
+        await GoTools?.SaveLanShareSettings(ctl.blockExt.map((s) => String(s).trim()).filter(Boolean));
+        Message.success("接收类型设置已保存并即时生效");
+        await loadReceivePolicy();
+    } catch (e: any) {
+        Message.error(`保存失败：${errText(e)}`);
+    } finally {
+        cfgSaving.value = false;
+    }
+}
+
+// transport：把公用上传面板的 init/part/complete/abort/once 指到本机互传服务。
+// 每次调用实时取 srv.urls[0]（服务重启会变 URL）；路径前缀与门户页一致。
+const lsBase = () => (srv.urls[0] || "").replace(/[\/]+$/, "");
+const transport: UploadTransport = {
+    async init(file) {
+        const r = await fetch(lsBase() + "/upload/init", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, size: file.size, mtime: file.lastModified || 0 }) });
+        if (!r.ok) throw new Error(await r.text());
+        return await r.json();
+    },
+    async part(file, sid, idx, start, end) {
+        const r = await fetch(lsBase() + `/upload/part?sid=${encodeURIComponent(sid)}&idx=${idx}`, { method: "PUT", body: file.slice(start, end) });
+        if (!r.ok) throw new Error(await r.text());
+    },
+    async complete(_file, sid) {
+        const r = await fetch(lsBase() + `/upload/complete?sid=${encodeURIComponent(sid)}`, { method: "POST" });
+        if (!r.ok) throw new Error(await r.text());
+    },
+    async abort(sid) {
+        if (!sid) return;
+        try { await fetch(lsBase() + `/upload/abort?sid=${encodeURIComponent(sid)}`, { method: "DELETE" }); } catch { /* 强踢失败不阻断 UI */ }
+    },
+    async once(file) {
+        const fd = new FormData(); fd.append("file", file, file.name);
+        const r = await fetch(lsBase() + "/upload", { method: "POST", body: fd });
+        if (!r.ok) throw new Error(await r.text());
+    },
+};
+
+async function onLocalUploaded() {
+    await Promise.all([refreshInbox(), refreshSessions(), refreshStatus()]);
+}
+
+async function kickSession(s: LsSession) {
+    try {
+        await GoTools?.LanShareAbortUpload(s.id);
+        Message.success("已强踢该上传会话");
+        await refreshSessions();
+    } catch (e: any) {
+        Message.error(`强踢失败：${errText(e)}`);
+    }
+}
+
 async function refreshAll() {
-    await Promise.all([refreshStatus(), refreshLinks(), refreshGrants(), refreshInbox()]);
+    await Promise.all([refreshStatus(), refreshLinks(), refreshGrants(), refreshInbox(), refreshSessions()]);
+}
+
+/* ===================== 收件箱：开目录与就地预览 ===================== */
+
+// inboxPath 拼收件箱条目的本机绝对路径。后端只回名字（不暴露路径拼接给前端），
+// 目录用 srv.inbox —— 服务停着时 StatusNow 也照填，所以未启动一样能开目录。
+function inboxPath(name: string): string {
+    const dir = (srv.inbox || "").replace(/[\\/]+$/, "");
+    if (!dir) return "";
+    return dir + (dir.includes("\\") ? "\\" : "/") + name;
+}
+
+// previewInbox 把收件箱文件交给文件查看器：它按本机路径读，走的是和磁盘页
+// 「打开」完全同一条链路（单例窗口靠 query 定位，已开着时靠事件导航）。
+// 不新写一套预览：收件箱里常有 csv/日志/压缩包，正是查看器分发的类型。
+async function previewInbox(r: LsInbox) {
+    const p = inboxPath(r.name);
+    if (!p) {
+        Message.warning("还没拿到收件箱目录，点「刷新」重试");
+        return;
+    }
+    await openToolWindow(`/tools/viewer?path=${encodeURIComponent(p)}`, "文件查看器", { single: true });
+    try { Events.Emit("viewer:open-path", { path: p }); } catch { /* 非 Wails 环境忽略 */ }
+}
+
+// revealInbox 在资源管理器里打开收件箱目录；传了条目就顺带选中那个文件。
+// 复用磁盘页的 DiskOpenInExplorer（不新增绑定）；非 Windows 面板下它直接报
+// 不支持，所以入口按 caps.nativeWindows 隐藏。
+async function revealInbox(r?: LsInbox) {
+    const p = r ? inboxPath(r.name) : (srv.inbox || "");
+    if (!p) {
+        Message.warning("还没拿到收件箱目录，点「刷新」重试");
+        return;
+    }
+    try {
+        await GoTools?.DiskOpenInExplorer(p);
+    } catch (e: any) {
+        Message.error(`打开目录失败：${errText(e)}`);
+    }
 }
 
 async function start() {
@@ -535,13 +732,33 @@ async function copyText(text: string) {
 
 onMounted(() => {
     void refreshAll();
+    void loadReceivePolicy();
     tick = setInterval(() => { now.value = Date.now(); }, 1000);
-    // 订阅传输进度：下载/撤销后就地刷新；任务中心由后端 task:update 统一兼顾跨页
+    // 订阅传输进度：改为按 payload 驱动。上传进行中用事件里的百分比就地刷行（不扫盘），
+    // 新会话才扫一次拉准确行；终态与下载才对齐磁盘刷新。跨页可见性由全局任务中心兼顾。
     try {
-        const off = Events.On("lanshare:progress", () => {
-            void refreshGrants();
-            void refreshLinks();
-            void refreshInbox();
+        const off = Events.On("lanshare:progress", (ev: any) => {
+            const p: LsProgress | undefined = ev?.data ?? ev;
+            if (!p || !p.op) return;
+            const terminal = p.stage === "done" || p.stage === "error" || p.stage === "canceled";
+            if (p.op === "upload") {
+                if (!terminal) {
+                    const id = p.id || "";
+                    const i = id ? sessions.value.findIndex((s) => s.id === id) : -1;
+                    if (i >= 0) {
+                        sessions.value[i] = { ...sessions.value[i], percent: p.percent ?? sessions.value[i].percent, updatedAt: Date.now() };
+                    } else {
+                        void refreshSessions(); // 新会话：扫一次拉含大小/已收的准确行
+                    }
+                    return;
+                }
+                void Promise.all([refreshSessions(), refreshInbox(), refreshStatus()]);
+                return;
+            }
+            if (p.op === "download") {
+                // 下载只改计数（授权/链接的下载次数），实体不动
+                void Promise.all([refreshGrants(), refreshLinks()]);
+            }
         });
         offLsProgress = () => { try { (off as any)?.(); } catch { /* 忽略卸载失败 */ } };
     } catch { /* 事件层未就绪时静默 */ }
@@ -654,8 +871,29 @@ onUnmounted(() => {
     word-break: break-all;
 }
 
+/* 收件箱行尾的文件夹按钮：路径要能换行，按钮不能被压扁 */
+.kv.inbox .mini-btn {
+    flex: none;
+    align-self: flex-start;
+}
+
+/* 收件箱行可双击预览：选中高亮必须盖到 td（Arco 的 td 自带背景会盖住 tr），
+   与抓包页同一写法 */
+.inbox-table :deep(.arco-table-tr) {
+    cursor: pointer;
+}
+
+.inbox-table :deep(.arco-table-tr.row-selected .arco-table-td) {
+    background-color: var(--color-fill-2) !important;
+}
+
 .err {
     margin-top: 4px;
+}
+
+/* 接收类型黑名单操作行：靠左上排开，与输入框留点间距 */
+.blk-actions {
+    margin-top: 2px;
 }
 
 .tips {

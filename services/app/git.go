@@ -108,6 +108,40 @@ func (a *App) GitDeleteBranch(repo, name string, force bool) error {
 	return gitcmd.DeleteBranch(context.Background(), repo, name, force)
 }
 
+// GitLog 取提交历史，带父信息与 lane 布局列（前端 canvas 只按 lane/行号画连线）。
+//   - revision 非空：从该 ref/区间起算（空 = HEAD）。
+//   - path 非空：只看这一个文件的历史，引擎附 --follow 跨重命名回溯。
+//   - limit<=0 取引擎默认 200。
+func (a *App) GitLog(repo, revision, path string, limit int) ([]gitcmd.Commit, error) {
+	return gitcmd.Log(context.Background(), repo, revision, path, limit)
+}
+
+// GitBlame 取某文件（可选版本）的逐行归属，连续同提交聚合成段（BlamePane）。
+//   - path 必填（相对仓库根）；revision 空 = 工作区当前。
+func (a *App) GitBlame(repo, path, revision string) ([]gitcmd.BlameSegment, error) {
+	return gitcmd.Blame(context.Background(), repo, path, revision)
+}
+
+// GitCreateBranchAt 在指定起点（提交哈希/分支/ref）建分支，checkout=true 同时切过去。
+func (a *App) GitCreateBranchAt(repo, name, startRef string, checkout bool) error {
+	return gitcmd.CreateBranchAt(context.Background(), repo, name, startRef, checkout)
+}
+
+// GitCherryPick 把某笔提交应用到当前分支（冲突时中断，本期只发起）。
+func (a *App) GitCherryPick(repo, hash string) error {
+	return gitcmd.CherryPick(context.Background(), repo, hash)
+}
+
+// GitRevert 生成一笔反向提交。
+func (a *App) GitRevert(repo, hash string) error {
+	return gitcmd.Revert(context.Background(), repo, hash)
+}
+
+// GitReset 按 mode（soft|mixed|hard）回退到 target（空=HEAD）；hard 丢工作区改动，前端必须二次确认。
+func (a *App) GitReset(repo, mode, target string) error {
+	return gitcmd.Reset(context.Background(), repo, mode, target)
+}
+
 // GitDiffFile 变更文件清单（增删行数；opts 决定看 工作区/暂存区/某提交）。
 func (a *App) GitDiffFile(repo string, opts gitcmd.DiffOpts) ([]gitcmd.FileDiff, error) {
 	return gitcmd.Files(context.Background(), repo, opts)
@@ -116,4 +150,108 @@ func (a *App) GitDiffFile(repo string, opts gitcmd.DiffOpts) ([]gitcmd.FileDiff,
 // GitDiffText 一个文件或一段差异的 unified diff 文本。
 func (a *App) GitDiffText(repo string, opts gitcmd.DiffOpts) (string, error) {
 	return gitcmd.Text(context.Background(), repo, opts)
+}
+
+// GitShowBlob 取某版本下某文件的完整内容（供并排 diff 左右两栏）。
+// rev："HEAD"/"<hash>"/"<hash>^" 等；rev=="" 表示暂存区（index）。该版本无此文件时回空串。
+func (a *App) GitShowBlob(repo, rev, path string) (string, error) {
+	return gitcmd.ShowBlob(context.Background(), repo, rev, path)
+}
+
+// ---------- P3：暂存栈 / 标签 / 远端 / 冲突三方 / rebase ----------
+
+// GitStashList 列出暂存栈（新→旧）。
+func (a *App) GitStashList(repo string) ([]gitcmd.StashEntry, error) {
+	return gitcmd.StashList(context.Background(), repo)
+}
+
+// GitStashPush 暂存当前改动；includeUntracked=true 会连未跟踪文件一并收走（UI 需明确提示）。
+// 无改动可暂存时返回可读错误。
+func (a *App) GitStashPush(repo, msg string, includeUntracked bool) error {
+	return gitcmd.StashPush(context.Background(), repo, msg, includeUntracked)
+}
+
+// GitStashApply 应用一条暂存但不出栈（ref：序号字符串或 stash@{N}，空=栈顶）。
+func (a *App) GitStashApply(repo, ref string) error {
+	return gitcmd.StashApply(context.Background(), repo, ref)
+}
+
+// GitStashPop 应用一条暂存并出栈。
+func (a *App) GitStashPop(repo, ref string) error {
+	return gitcmd.StashPop(context.Background(), repo, ref)
+}
+
+// GitStashDrop 丢弃一条暂存（破坏操作，前端需二次确认）。
+func (a *App) GitStashDrop(repo, ref string) error {
+	return gitcmd.StashDrop(context.Background(), repo, ref)
+}
+
+// GitTagList 列出标签。
+func (a *App) GitTagList(repo string) ([]gitcmd.Tag, error) {
+	return gitcmd.TagList(context.Background(), repo)
+}
+
+// GitTagCreate 建标签：message 非空为附注标签（本工具强制不签名），空为轻量；target 空=HEAD。
+func (a *App) GitTagCreate(repo, name, message, target string) error {
+	return gitcmd.TagCreate(context.Background(), repo, name, message, target)
+}
+
+// GitTagDelete 删本地标签（破坏操作，前端需二次确认）。
+func (a *App) GitTagDelete(repo, name string) error {
+	return gitcmd.TagDelete(context.Background(), repo, name)
+}
+
+// GitRemoteList 列出远端及抓取/推送地址。
+func (a *App) GitRemoteList(repo string) ([]gitcmd.Remote, error) {
+	return gitcmd.RemoteList(context.Background(), repo)
+}
+
+// GitRemoteAdd 新增远端。
+func (a *App) GitRemoteAdd(repo, name, url string) error {
+	return gitcmd.RemoteAdd(context.Background(), repo, name, url)
+}
+
+// GitRemoteRemove 删除远端（破坏操作，前端需二次确认）。
+func (a *App) GitRemoteRemove(repo, name string) error {
+	return gitcmd.RemoteRemove(context.Background(), repo, name)
+}
+
+// GitRemoteSetURL 改远端地址；push=true 只改推送地址。
+func (a *App) GitRemoteSetURL(repo, name, url string, push bool) error {
+	return gitcmd.RemoteSetURL(context.Background(), repo, name, url, push)
+}
+
+// GitOpState 仓库是否处于 merge/rebase/cherry-pick/revert 等中断态（前端据此显示冲突/继续条）。
+func (a *App) GitOpState(repo string) (gitcmd.OpState, error) {
+	return gitcmd.OpStateOf(context.Background(), repo)
+}
+
+// GitConflicts 列出冲突（未合并）文件路径。
+func (a *App) GitConflicts(repo string) ([]string, error) {
+	return gitcmd.Conflicts(context.Background(), repo)
+}
+
+// GitConflictSides 取某冲突文件的三方内容（基线/我方/对方）。
+func (a *App) GitConflictSides(repo, path string) (gitcmd.ConflictSides, error) {
+	return gitcmd.ConflictSidesOf(context.Background(), repo, path)
+}
+
+// GitResolveConflict 按 side（ours|theirs）选边解决并标记已解决（内部走 git add）。
+func (a *App) GitResolveConflict(repo, path, side string) error {
+	return gitcmd.ResolveConflict(context.Background(), repo, path, side)
+}
+
+// GitMarkResolved 把（已手动编辑的）冲突文件标记为已解决（git add）。
+func (a *App) GitMarkResolved(repo, path string) error {
+	return gitcmd.MarkResolved(context.Background(), repo, path)
+}
+
+// GitRebaseContinue 续跑中断的 rebase（已顶掉编辑器，不会卡在 $EDITOR）。
+func (a *App) GitRebaseContinue(repo string) error {
+	return gitcmd.RebaseContinue(context.Background(), repo)
+}
+
+// GitRebaseAbort 放弃 rebase，回到前状态（破坏操作，前端需二次确认）。
+func (a *App) GitRebaseAbort(repo string) error {
+	return gitcmd.RebaseAbort(context.Background(), repo)
 }

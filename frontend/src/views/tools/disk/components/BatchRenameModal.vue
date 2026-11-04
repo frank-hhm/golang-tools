@@ -55,7 +55,10 @@
                 <div class="br-label">连接符</div>
                 <a-input v-model="form.sep" size="small" :max-length="3" placeholder="可留空" style="width: 120px" />
 
-                <div class="br-example">示例：<b>{{ exampleText }}</b></div>
+                <div class="br-example">
+                    <span class="br-example-k">示例</span>
+                    <b>{{ exampleText }}</b>
+                </div>
             </div>
 
             <!-- 右侧：实时预览 -->
@@ -69,25 +72,28 @@
                     请至少填写固定文字或选择一个规则片段
                 </div>
                 <div v-else-if="!preview.length" class="br-empty">没有需要改名的项目（新名与原名相同）</div>
-                <table v-else class="br-table">
-                    <thead>
-                        <tr>
-                            <th>原名称</th>
-                            <th>新名称</th>
-                            <th class="br-st">状态</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="r in preview" :key="r.path" :class="{ 'is-err': r.error }">
-                            <td class="br-old" :title="r.oldName">{{ r.oldName }}</td>
-                            <td class="br-new" :title="r.newName">{{ r.newName }}</td>
-                            <td class="br-st">
-                                <span v-if="r.error" class="br-msg">⚠ {{ r.error }}</span>
-                                <span v-else class="br-msg ok">✓</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div v-else class="br-scroll">
+                    <table class="br-table">
+                        <thead>
+                            <tr>
+                                <th>原名称</th>
+                                <th>新名称</th>
+                                <th class="br-st">状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="r in preview" :key="r.path" :class="{ 'is-err': r.error }">
+                                <td class="br-old" :title="r.oldName">{{ r.oldName }}</td>
+                                <td class="br-new" :title="r.newName">{{ r.newName }}</td>
+                                <td class="br-st">
+                                    <span v-if="r.error" class="br-msg"><icon-exclamation-circle-fill
+                                        class="br-msg-ic" />{{ r.error }}</span>
+                                    <icon-check-circle-fill v-else class="br-ok-ic" />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
         <div class="modal-hint">
@@ -312,8 +318,12 @@ async function apply(): Promise<boolean> {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-top: 4px;
+    margin-top: 6px;
     flex-wrap: wrap;
+    /* 选中片段的参数做成嵌套小面板：与上方勾选组拉开层级，不再孤悬在空白里 */
+    padding: 6px 8px;
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
 }
 
 .br-opt {
@@ -325,13 +335,25 @@ async function apply(): Promise<boolean> {
 }
 
 .br-example {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin-top: 12px;
+    padding: 5px 8px;
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
     font-size: var(--base-size-small);
+    color: var(--color-text-3);
+}
+
+.br-example-k {
+    flex: none;
     color: var(--color-text-3);
 }
 
 .br-example b {
     color: rgb(var(--arcoblue-6));
+    font-family: Consolas, monospace;
     word-break: break-all;
 }
 
@@ -351,11 +373,22 @@ async function apply(): Promise<boolean> {
     margin-bottom: 6px;
 }
 
+/* 计数做成小药丸（与 Git 变更区的 grp-n 同一口径），不再裸文字飘在标题行右侧 */
+.br-ok-count,
+.br-err-count {
+    padding: 0 8px;
+    border-radius: var(--border-radius-full);
+    font-size: 11px;
+    line-height: 18px;
+}
+
 .br-ok-count {
+    background: rgba(var(--green-6), 0.12);
     color: rgb(var(--green-6));
 }
 
 .br-err-count {
+    background: rgba(var(--red-6), 0.12);
     color: rgb(var(--red-6));
 }
 
@@ -367,8 +400,16 @@ async function apply(): Promise<boolean> {
     color: var(--color-text-4);
     font-size: var(--base-size-small);
     border: 1px dashed var(--color-border-2);
-    border-radius: 4px;
+    border-radius: var(--base-radius-default);
     min-height: 120px;
+}
+
+/* 预览区自己滚：几百项改名时把弹窗拉成通页长，现在封顶 52vh，表头吸顶不跟着滚走 */
+.br-scroll {
+    flex: 1;
+    min-height: 120px;
+    max-height: 52vh;
+    overflow: auto;
 }
 
 .br-table {
@@ -379,19 +420,29 @@ async function apply(): Promise<boolean> {
 }
 
 .br-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     text-align: left;
     color: var(--color-text-3);
     font-weight: 500;
     padding: 4px 8px;
-    border-bottom: 1px solid var(--color-border-2);
+    background: var(--color-bg-2);
+    /* collapse 模式下 sticky 表头的 border 不跟随吸附（Chrome 已知行为），用 inset 阴影代底边线 */
+    box-shadow: inset 0 -1px 0 var(--color-border-1);
 }
 
 .br-table tbody td {
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--color-fill-3);
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--color-border-1);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* 行 hover 轻底：54 行里横向追一条名字时不至于串行 */
+.br-table tbody tr:hover td {
+    background: var(--color-fill-1);
 }
 
 .br-table th.br-st,
@@ -406,6 +457,7 @@ async function apply(): Promise<boolean> {
 
 .br-new {
     color: var(--color-text-1);
+    font-family: Consolas, monospace;
 }
 
 .br-table tr.is-err .br-new {
@@ -413,15 +465,20 @@ async function apply(): Promise<boolean> {
 }
 
 .br-msg {
-    color: rgb(var(--green-6));
-}
-
-.br-msg.ok {
-    color: rgb(var(--green-6));
-}
-
-tr.is-err .br-msg {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     color: rgb(var(--red-6));
+}
+
+.br-msg-ic {
+    flex: none;
+}
+
+.br-ok-ic {
+    color: rgb(var(--green-6));
+    font-size: 14px;
+    vertical-align: middle;
 }
 
 .modal-hint {
@@ -433,6 +490,6 @@ tr.is-err .br-msg {
 .modal-hint code {
     background: var(--color-fill-2);
     padding: 0 4px;
-    border-radius: 3px;
+    border-radius: var(--base-radius-small);
 }
 </style>

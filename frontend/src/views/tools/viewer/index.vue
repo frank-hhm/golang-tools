@@ -31,6 +31,18 @@
                         <template #icon><icon-refresh /></template>
                     </a-button>
                 </a-tooltip>
+                <a-dropdown trigger="hover" position="bottom" @select="onRecentSelect">
+                    <a-button size="small">
+                        <template #icon><icon-history /></template>
+                    </a-button>
+                    <template #content>
+                        <a-doption v-for="p in recentFiles" :key="p" :value="p" class="vp-recent-opt">
+                            <common-file-icon :is-dir="false" :ext="extOf(p)" :size="14" />
+                            <span class="vp-recent-name" :title="p">{{ baseName(p) }}</span>
+                        </a-doption>
+                        <a-doption v-if="!recentFiles.length" disabled :value="'__none__'">暂无最近文件</a-doption>
+                    </template>
+                </a-dropdown>
             </div>
         </a-card>
 
@@ -49,13 +61,26 @@
                 <template v-if="!docspaceOn || sideMode === 'local'">
                     <div v-if="loading" class="vp-side-state"><a-spin /></div>
                     <div v-else-if="loadError" class="vp-side-state vp-err">{{ loadError }}</div>
-                    <div v-else-if="!listing.entries || listing.entries.length === 0" class="vp-side-state">空目录</div>
-                    <div v-else class="vp-list">
-                        <div v-for="r in listing.entries" :key="r.path" class="vp-item"
-                            :class="{ active: !selectedManaged && selected && selected.path === r.path }" @click="onEntry(r, $event)">
-                            <common-file-icon :is-dir="r.isDir" :ext="r.ext" :size="18" />
-                            <span class="vp-item-name" :title="r.name">{{ r.name }}</span>
-                            <span class="vp-item-meta">{{ r.isDir ? '' : fmtSize(r.size) }}</span>
+                    <div v-else-if="!listing.entries || listing.entries.length === 0" class="vp-side-state">
+                        <a-empty :image-size="48" description="空目录" />
+                    </div>
+                    <div v-else class="vp-side-list">
+                        <div class="vp-side-sort">
+                            <span class="vp-sort-label">{{ listing.entries.length }} 项</span>
+                            <div class="vp-sort-group">
+                                <a-button size="mini" :type="sortKey === 'name' ? 'primary' : 'outline'"
+                                    @click="toggleSort('name')">名称</a-button>
+                                <a-button size="mini" :type="sortKey === 'size' ? 'primary' : 'outline'"
+                                    @click="toggleSort('size')">大小</a-button>
+                            </div>
+                        </div>
+                        <div class="vp-list">
+                            <div v-for="r in sortedEntries" :key="r.path" class="vp-item"
+                                :class="{ active: !selectedManaged && selected && selected.path === r.path }" @click="onEntry(r, $event)">
+                                <common-file-icon :is-dir="r.isDir" :ext="r.ext" :size="18" />
+                                <span class="vp-item-name" :title="r.name">{{ r.name }}</span>
+                                <span class="vp-item-meta">{{ r.isDir ? '' : fmtSize(r.size) }}</span>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -88,7 +113,7 @@
                     </div>
                     <div class="vp-ds-foot">
                         <a-link @click="loadDocspace"><icon-refresh /> 刷新</a-link>
-                        <a-link @click="gotoDocspacePage"><icon-folder-open /> 管理/回收站</a-link>
+                        <a-link @click="gotoDocspacePage"><icon-folder /> 管理/回收站</a-link>
                     </div>
                 </div>
             </div>
@@ -225,6 +250,55 @@ const canCodeEdit = computed(() => {
 // 系统程序打开：仅 Windows 桌面构建有可靠外壳；Linux 面板多半无图形界面，按能力隐藏
 const canOpenSystem = computed(() => !!caps.nativeWindows);
 
+/* ---------------- 左栏排序与最近文件 ---------------- */
+// 排序只影响本机浏览列表：目录始终在前，同名/同大小时按名称兜底，保证稳定。
+type SortKey = "name" | "size";
+const sortKey = ref<SortKey>((localStorage.getItem("viewer:sort") as SortKey) || "name");
+function toggleSort(k: SortKey) {
+    if (sortKey.value === k) {
+        // 再点同一键翻转升降序（名称升/降，大小大/小）
+        sortDesc.value = !sortDesc.value;
+    } else {
+        sortKey.value = k;
+        sortDesc.value = false;
+    }
+    localStorage.setItem("viewer:sort", sortKey.value);
+    localStorage.setItem("viewer:sort-desc", sortDesc.value ? "1" : "");
+}
+const sortDesc = ref(localStorage.getItem("viewer:sort-desc") === "1");
+const sortedEntries = computed(() => {
+    const list = [...(listing.entries || [])];
+    const dir = sortDesc.value ? -1 : 1;
+    list.sort((a: any, b: any) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+        if (sortKey.value === "size") return dir * ((a.size || 0) - (b.size || 0));
+        const an = String(a.name || "");
+        const bn = String(b.name || "");
+        return dir * an.localeCompare(bn, "zh-CN", { numeric: true, sensitivity: "base" });
+    });
+    return list;
+});
+
+// 最近文件：只记本机浏览打开过的文件，localStorage 存最近 10 条，不占后端。
+const RECENT_KEY = "viewer:recent";
+const RECENT_MAX = 10;
+const recentFiles = ref<string[]>((() => {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch { return []; }
+})());
+function pushRecent(path: string) {
+    if (!path) return;
+    recentFiles.value = [path, ...recentFiles.value.filter((p) => p !== path)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentFiles.value));
+}
+function onRecentSelect(v: any) {
+    const p = String(v || "");
+    if (p && p !== "__none__") void openPath(p);
+}
+function baseName(p: string): string {
+    const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
+    return i >= 0 ? p.slice(i + 1) : p;
+}
+
 // 在线写回/编辑只在「本机浏览」或「本机 local 源托管条目」下可用（需真实可写本机路径）。
 const canWriteLocal = computed(() => !!selected.value && (!selectedManaged.value || selected.value.src === "local"));
 
@@ -306,6 +380,7 @@ async function goHome() {
 async function onEntry(r: any, ev: MouseEvent) {
     if (r.isDir) { enter(r.path); return; }
     ev.stopPropagation();
+    pushRecent(r.path);
     selectedManaged.value = false;
     activeMedia.value = "";
     backToArchive.value = null;
@@ -596,9 +671,9 @@ onUnmounted(() => {
     width: 320px;
     flex: none;
     min-height: 0;
-    border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-8);
-    background: var(--color-bg-2);
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-bg-1);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -606,7 +681,7 @@ onUnmounted(() => {
 .vp-side-switch {
     flex: none;
     padding: 8px;
-    border-bottom: 1px solid var(--color-border-2);
+    border-bottom: 1px solid var(--color-border-1);
 }
 .vp-ds {
     flex: 1;
@@ -629,7 +704,7 @@ onUnmounted(() => {
     max-height: 34%;
     overflow: auto;
     padding: 0 8px 8px;
-    border-bottom: 1px solid var(--color-border-2);
+    border-bottom: 1px solid var(--color-border-1);
 }
 .vp-ds-list {
     flex: 1;
@@ -643,19 +718,41 @@ onUnmounted(() => {
     align-items: center;
     justify-content: space-between;
     padding: 6px 10px;
-    border-top: 1px solid var(--color-border-2);
+    border-top: 1px solid var(--color-border-1);
 }
 .vp-side-state {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text-3);
+    color: rgb(var(--gray-5));
 }
 .vp-err {
     color: rgb(var(--danger-6));
     padding: 0 12px;
     text-align: center;
+}
+.vp-side-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.vp-side-sort {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--color-border-1);
+}
+.vp-sort-label {
+    color: rgb(var(--gray-5));
+    font-size: var(--base-size-small);
+}
+.vp-sort-group {
+    display: flex;
+    gap: 4px;
 }
 .vp-list {
     flex: 1;
@@ -663,19 +760,36 @@ onUnmounted(() => {
     padding: 4px;
 }
 .vp-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 5px 8px;
-    border-radius: 6px;
+    border-radius: var(--base-radius-default);
     cursor: pointer;
     min-width: 0;
 }
 .vp-item:hover {
     background: var(--color-fill-2);
 }
+/* 选中态：保留轻背景变化，主表达用左侧短竖条 + 按需投影（不加深边框），与 nginx 实例列表同一套口径 */
 .vp-item.active {
     background: var(--color-primary-light-1);
+    box-shadow: var(--shadow-1-center);
+}
+.vp-item::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 55%;
+    border-radius: 0 2px 2px 0;
+    background: transparent;
+}
+.vp-item.active::after {
+    background: rgb(var(--primary-6));
 }
 .vp-item-name {
     flex: 1;
@@ -684,20 +798,20 @@ onUnmounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--color-text-1);
-    font-size: var(--base-size-14);
+    font-size: var(--base-size-large);
 }
 .vp-item-meta {
     flex: none;
-    color: var(--color-text-3);
-    font-size: var(--base-size-12);
+    color: rgb(var(--gray-5));
+    font-size: var(--base-size-small);
 }
 .vp-main {
     flex: 1;
     min-width: 0;
     min-height: 0;
-    border: 1px solid var(--color-border-2);
-    border-radius: var(--base-radius-8);
-    background: var(--color-bg-2);
+    border: 1px solid var(--color-border-1);
+    border-radius: var(--base-radius-default);
+    background: var(--color-bg-1);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -715,7 +829,7 @@ onUnmounted(() => {
     justify-content: space-between;
     gap: 12px;
     padding: 6px 10px;
-    border-bottom: 1px solid var(--color-border-2);
+    border-bottom: 1px solid var(--color-border-1);
 }
 .vp-fb-file {
     display: flex;
@@ -728,7 +842,7 @@ onUnmounted(() => {
     margin: 8px 10px 0;
 }
 .vp-fb-name {
-    font-size: var(--base-size-14);
+    font-size: var(--base-size-large);
     color: var(--color-text-1);
     white-space: nowrap;
     overflow: hidden;
@@ -737,7 +851,18 @@ onUnmounted(() => {
 }
 .vp-fb-size {
     flex: none;
-    font-size: var(--base-size-12);
-    color: var(--color-text-3);
+    font-size: var(--base-size-small);
+    color: rgb(var(--gray-5));
+}
+.vp-recent-opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 320px;
+}
+.vp-recent-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 </style>

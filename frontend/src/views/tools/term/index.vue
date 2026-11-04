@@ -17,6 +17,7 @@
               <template #content>
                 <a-doption value="cred"><icon-lock /> 凭据管理</a-doption>
                 <a-doption value="key"><icon-safe /> 主机密钥</a-doption>
+                <a-doption value="sshgen"><icon-command /> 生成 SSH</a-doption>
                 <a-doption value="import"><icon-import /> 导入 SSH 配置</a-doption>
               </template>
             </a-dropdown>
@@ -130,6 +131,7 @@
   <host-form-modal v-model:visible="formVisible" :host="editingHost" @saved="onSaved" />
   <credential-modal v-model:visible="credVisible" @changed="credentials = $event" />
   <host-key-modal v-model:visible="keyVisible" />
+  <ssh-gen-modal v-model:visible="sshGenVisible" :context="sshGenCtx" />
   <import-config-modal v-model:visible="importVisible" @imported="onImported" />
 </template>
 
@@ -154,16 +156,26 @@ const activeHostId = ref('');
 const groupFilter = ref('');
 const tagFilter = ref('');
 
-/** 凭据管理/主机密钥/导入配置 三个弹窗 */
+/** 凭据管理/主机密钥/生成 SSH/导入配置 四个弹窗 */
 const credVisible = ref(false);
 const keyVisible = ref(false);
 const importVisible = ref(false);
+const sshGenVisible = ref(false);
 
 function onToolAction(v: string) {
   if (v === 'cred') credVisible.value = true;
   else if (v === 'key') keyVisible.value = true;
+  else if (v === 'sshgen') sshGenVisible.value = true;
   else if (v === 'import') importVisible.value = true;
 }
+
+/* SSH 生成助手：列表里选中了主机就把地址/账号预填进片段与部署 tab，未选中则空开 */
+const sshGenCtx = computed(() => {
+  const h = hosts.value.find((x) => x.id === activeHostId.value);
+  if (!h) return {};
+  const u = credUserOf(h);
+  return { address: h.address, port: h.port || 22, user: u === '?' ? '' : u, keyPath: h.keyPath };
+});
 
 /** 所有非空分组（去重） */
 const groups = computed(() => {

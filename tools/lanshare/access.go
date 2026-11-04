@@ -126,15 +126,42 @@ func sanitizeName(raw string) string {
 	return out
 }
 
-// uploadBlocked 收件箱不收的类型：可执行/脚本类。免密上传意味着任何局域网
-// 设备都能塞文件，这一层不挡攻击者，只挡"用户随手双击运行"这条路。
-func uploadBlocked(name string) bool {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".exe", ".dll", ".bat", ".cmd", ".com", ".msi", ".scr", ".vbs", ".js", ".jse",
-		".wsf", ".wsh", ".ps1", ".psm1", ".lnk", ".sh", ".desktop", ".jar", ".reg":
-		return true
+// uploadBlocked 收件箱不收的类型：默认黑名单为空 = 全类型全收（用户诉求「默认全类型
+// 所有文件」）。黑名单由 services/app 经 SetBlockExt 从 config.LanShare 回灌（tools 层
+// 不反向依赖配置包）；填入可执行/脚本类即可找回安全默认，挡「用户随手双击运行」。
+var (
+	blockMu  sync.RWMutex
+	blockExt = map[string]bool{} // 键：小写、带前导点的扩展名（如 ".exe"）
+)
+
+// SetBlockExt 整体替换接收类型黑名单。入参每项归一：TrimSpace + 小写 + 补前导点，
+// 忽略空串与纯点；去重。传空切片 = 清空黑名单（全收）。启动与保存设置时调用。
+func SetBlockExt(exts []string) {
+	m := make(map[string]bool, len(exts))
+	for _, e := range exts {
+		e = strings.ToLower(strings.TrimSpace(e))
+		if e == "" || e == "." {
+			continue
+		}
+		if !strings.HasPrefix(e, ".") {
+			e = "." + e
+		}
+		m[e] = true
 	}
-	return false
+	blockMu.Lock()
+	blockExt = m
+	blockMu.Unlock()
+}
+
+func uploadBlocked(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext == "" {
+		return false
+	}
+	blockMu.RLock()
+	blocked := blockExt[ext]
+	blockMu.RUnlock()
+	return blocked
 }
 
 /* ==================== 限频 ==================== */

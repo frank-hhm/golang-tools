@@ -1,0 +1,25 @@
+/**
+ * 气泡确认框（a-popconfirm）皮肤：给确认文案一个宽度上限
+ *
+ * Arco 的 popconfirm 气泡宽度完全由内容决定：.arco-popconfirm-body 是 flex
+ * （图标 + 文案两列），而文案那个 span 没有 min-width:0，于是一句长说明会把气泡
+ * 横向拉到几百像素（Docker「清空容器日志」那句就顶到了窗口边）。这里统一收口：
+ *   - 文案列限宽 320px，超出正常换行；长路径 / 无空格英文按词断行，不溢出气泡
+ *   - 图标与按钮行不受影响，只压文案那一列
+ *
+ * 规则必须待在全局样式里：气泡是 teleport 到 body 下渲染的，组件的 scoped 样式
+ * 哪怕加 :deep 也到不了它（同 modal.scss 处理 a-modal 的理由）。
+ * 全项目 34 处 popconfirm 都用 content="字符串" 传文案，没有一处用 #content 插槽
+ * 塞自定义宽内容，所以这里限宽不会挤坏谁。
+ */
+
+.arco-popconfirm-popup-content .arco-popconfirm-body {
+    max-width: 320px;
+}
+
+.arco-popconfirm-popup-content .arco-popconfirm-body .arco-popconfirm-content {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}

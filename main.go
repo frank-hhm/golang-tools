@@ -145,6 +145,16 @@ func main() {
 		appInstance.SetArchiveArgs(os.Args)
 	}
 
+	// Git 右键 verb 拉起来的命令行分流（计划-Git可视化集成 §八）：
+	//   不在仓库 → toast 说明后退出；命中仓库且有实例在跑 → 转交后退出；
+	//   没有实例 → 记下定位目标，正常起 GUI 后由 Git 页取走打开。
+	// 只认 --git-* 精确标记，与上面的压缩标记互不冲突，普通双击启动零影响。
+	if op, repo, ok := appsvc.GitCLICommand(os.Args); ok {
+		if appInstance.HandleGitCLI(op, repo) {
+			os.Exit(0)
+		}
+	}
+
 	// 系统通知点击跳转：Toast 经 tools: 协议拉起本进程时，命令行里多了个
 	// tools:<目标>。本机已有实例在跑就把目标转交过去、本进程直接退出（不重复开
 	// 窗口/托盘/热键）；没有实例就把目标记成 pending，正常起 GUI 后由前端取走跳转。
@@ -175,6 +185,10 @@ func main() {
 			Handler: fileview.MediaHandler(application.AssetFileServerFS(assets)),
 		},
 		Windows: application.WindowsOptions{
+			// 关掉「最后一个窗口被销毁即退出进程」：局域网互传等常驻服务跑在 Go 侧，
+			// 用户启动后关掉独立工具窗（webview 被销毁）不应终止进程/服务。进程生命周期
+			// 交回托盘——真正退出只走 RealQuit（托盘「退出」置 quitting 并 app.Quit()）。
+			DisableQuitOnLastWindowClosed: true,
 			// 录制期间工具窗口处于隐藏状态，保持其 JS 定时器/捕获回调不被后台节流
 			AdditionalBrowserArgs: []string{
 				"--disable-background-timer-throttling",
@@ -232,6 +246,8 @@ func main() {
 	appsvc.ApplyDownloadConfig()
 	backup.SetEmitter(emit)
 	lanshare.SetEmitter(emit)
+	// 局域网互传接收策略回灌：把 config.LanShare 的接收类型黑名单落到单例（默认空=全收）
+	appsvc.ApplyLanShareConfig()
 	clouddrive.SetEmitter(emit)
 	sshgen.SetEmitter(emit)
 	gitcmd.SetEmitter(emit)
@@ -247,7 +263,7 @@ func main() {
 	// 'Mac' options tailor the window when running on macOS.
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainOpts := application.WebviewWindowOptions{
 		Title: startupCfg.General.AppName,
 		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
 		Width:  1240,
@@ -269,9 +285,12 @@ func main() {
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
-		BackgroundColour: application.NewRGB(6, 7, 15),
+		// 底色跟主题走，不写死近黑：WebView2 首帧前露的就是它，
+		// 对齐 Arco --color-bg-1 才不会亮出一块黑板（详见 appsvc.WindowBackground 注释）
+		BackgroundColour: application.NewRGB(appsvc.WindowBackground()),
 		URL:              "/",
-	})
+	}
+	mainWindow := app.Window.NewWithOptions(mainOpts)
 
 	// 注入主窗口与托盘图标：关闭主窗口时隐藏到托盘而非退出，托盘右键提供“设置/退出”
 	appInstance.SetMainWindow(mainWindow)

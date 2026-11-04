@@ -6,5 +6,6 @@ export type {
     InboxFile,
     Link,
     Progress,
-    Status
+    Status,
+    UploadSession
 } from "./models.js";

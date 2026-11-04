@@ -38,6 +38,12 @@ export interface AppConfig {
     "archive"?: ArchiveConfig | null;
 
     /**
+     * Git Git 可视化设置。指针类型：老配置里没有这一段时读回来是 nil，序列化随之省略。
+     * 关掉时不写注册表 verb、不起转交监听，见 GitConfig.ShellEnabled。
+     */
+    "git"?: GitConfig | null;
+
+    /**
      * DocSpace 文档中心设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
      * 序列化也随之省略。见 DocSpaceConfig 各字段。
      */
@@ -54,6 +60,12 @@ export interface AppConfig {
      * 随之省略。见 DownloadConfig 各字段（护栏参数 + 全局目录 + 共享代理/镜像池）。
      */
     "download"?: DownloadConfig | null;
+
+    /**
+     * LanShare 局域网互传接收设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
+     * 序列化随之省略。见 LanShareConfig（接收类型黑名单，默认空=全收）。
+     */
+    "lanShare"?: LanShareConfig | null;
 }
 
 /**
@@ -112,6 +124,18 @@ export interface BallConfig {
      * 是否已记录位置；false 时启动停靠工作区右下角
      */
     "hasPos": boolean;
+
+    /**
+     * HideAllShortcut 「显示/隐藏全部窗口」全局热键（形如 Ctrl+Alt+H），空 = 不注册。
+     * 老配置没这段：读进来是空串（不注册），避免默默抢占用户自定义过的组合键；新默认带 Ctrl+Alt+H。
+     */
+    "hideAllShortcut": string;
+
+    /**
+     * DockEdge 拖到屏幕边缘时自动收缩成胶囊 tab；指针型：nil = 开启（与 ToolConfig.Home 同一套路），
+     * 只有显式 false 才关闭，normalizeConfig 把 nil 兜成 true。
+     */
+    "dockEdge": boolean | null;
 }
 
 /**
@@ -362,6 +386,32 @@ export interface GeneralConfig {
      * 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
      */
     "theme": string;
+}
+
+/**
+ * GitConfig Git 可视化设置（工作台 + 系统右键挂载）。
+ */
+export interface GitConfig {
+    /**
+     * ShellEnabled 右键集成总开关。关掉时整套系统挂载都不存在：不写注册表 verb、
+     * 不起转交监听。默认关闭 —— 往用户的右键菜单里加东西必须是他主动要的，
+     * 不能是程序装好就默默出现的。Git 工作台页本身不受此开关影响（它是普通工具，
+     * 一直可打开）；此开关只管「挂进资源管理器右键」这一段。
+     */
+    "shellEnabled": boolean;
+}
+
+/**
+ * LanShareConfig 局域网互传接收设置（计划-局域网互传接收优化 §3.2）。
+ * 只放接收侧的类型策略参数；端口/host/PIN 等运行期参数仍是启动入参，不落这里。
+ */
+export interface LanShareConfig {
+    /**
+     * BlockExt 收件箱拒收的扩展名黑名单（如 "exe"/".ps1"）。空 = 全类型全收，
+     * 契合「默认全类型所有文件」；用户可「一键填入常见危险类型」找回安全默认。
+     * 落盘/读取前由 normalizeLanShareConfig 统一成小写带前导点、去重去空。
+     */
+    "blockExt"?: string[] | null;
 }
 
 /**

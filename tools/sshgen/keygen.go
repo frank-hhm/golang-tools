@@ -111,7 +111,7 @@ func Generate(o KeyOptions) (KeyPair, error) {
 		return KeyPair{}, fmt.Errorf("写公钥失败: %w", err)
 	}
 
-	return KeyPair{
+	kp := KeyPair{
 		Type:              typ,
 		Comment:           comment,
 		PrivPath:          privPath,
@@ -119,7 +119,14 @@ func Generate(o KeyOptions) (KeyPair, error) {
 		PubKeyLine:        pubLine,
 		FingerprintSHA256: ssh.FingerprintSHA256(sshPub),
 		FingerprintMD5:    ssh.FingerprintLegacyMD5(sshPub),
-	}, nil
+	}
+	// 光有 0600 在 Windows 上不够：OpenSSH 会查 NTFS 权限，读到继承来的宽松 ACL 就
+	// 把钥匙整个忽略掉。收紧失败不推翻已生成好的密钥，只把原因带回前端，
+	// 让人有机会换个目录重来或自行处理。
+	if err := tightenKeyACL(privPath); err != nil {
+		kp.ACLWarning = err.Error()
+	}
+	return kp, nil
 }
 
 // curveFor 把位数映射到 ECDSA 曲线；0 默认 P256。

@@ -986,6 +986,22 @@ export function DocSpaceItems(): $CancellablePromise<docspace$0.Item[] | null> {
 }
 
 /**
+ * DocSpaceMetas 返回全部条目的类型/大小/修改时间，顺序与 DocSpaceItems 一致。
+ * 前端按下标对齐拼成一张表，因此这两个方法必须同序（都来自 Store.Items()）。
+ * 缩略图 URL 在这一轮里顺手填好：网格视图下几百张图逐条求 URL 就是几百次往返。
+ */
+export function DocSpaceMetas(): $CancellablePromise<docspace$0.ItemMeta[] | null> {
+    return $Call.ByID(3671288592);
+}
+
+/**
+ * DocSpaceMoveItemsCategory 批量改分类，返回实际改动条数。
+ */
+export function DocSpaceMoveItemsCategory(ids: string[] | null, category: string): $CancellablePromise<number> {
+    return $Call.ByID(4179334905, ids, category);
+}
+
+/**
  * DocSpaceMoveTrash 把 local 条目实体移入回收站（sftp 返回不支持）。
  */
 export function DocSpaceMoveTrash(itemID: string): $CancellablePromise<void> {
@@ -998,6 +1014,14 @@ export function DocSpaceMoveTrash(itemID: string): $CancellablePromise<void> {
  */
 export function DocSpaceNewNote(name: string): $CancellablePromise<docspace$0.Item> {
     return $Call.ByID(3249176068, name);
+}
+
+/**
+ * DocSpaceOverview 一次给出统计卡、类型分布、分类徽标与源分布。
+ * 合并成一个入口而不是四个：都是同一份元数据的汇总，拆开只会把同一批 Stat 拖成四轮往返。
+ */
+export function DocSpaceOverview(): $CancellablePromise<docspace$0.Overview> {
+    return $Call.ByID(3813064061);
 }
 
 /**
@@ -1021,6 +1045,20 @@ export function DocSpaceRemoveCategory(id: string): $CancellablePromise<void> {
  */
 export function DocSpaceRemoveItem(id: string): $CancellablePromise<void> {
     return $Call.ByID(3619299665, id);
+}
+
+/**
+ * DocSpaceRemoveItems 批量取消纳管（不动磁盘原文件）。
+ */
+export function DocSpaceRemoveItems(ids: string[] | null): $CancellablePromise<number> {
+    return $Call.ByID(3154258054, ids);
+}
+
+/**
+ * DocSpaceRenameCategory 改分类名。id 是条目引用的外键，只动 Name 不动 id。
+ */
+export function DocSpaceRenameCategory(id: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(1123068752, id, name);
 }
 
 /**
@@ -1054,6 +1092,13 @@ export function DocSpaceSearch(f: docspace$0.SearchFilter): $CancellablePromise<
 }
 
 /**
+ * DocSpaceSetItemCategory 设置单个条目的分类（category 空表示未分类）。
+ */
+export function DocSpaceSetItemCategory(itemID: string, category: string): $CancellablePromise<void> {
+    return $Call.ByID(3162282961, itemID, category);
+}
+
+/**
  * DocSpaceSetItemTags 覆盖设置某条目的标签。
  */
 export function DocSpaceSetItemTags(itemID: string, tags: string[] | null): $CancellablePromise<void> {
@@ -1076,11 +1121,42 @@ export function DocSpaceSnapshot(itemID: string, note: string): $CancellableProm
 }
 
 /**
+ * DocSpaceSnapshotItems 批量存快照，保留数取配置。
+ */
+export function DocSpaceSnapshotItems(ids: string[] | null, note: string): $CancellablePromise<docspace$0.BatchResult> {
+    return $Call.ByID(910070846, ids, note);
+}
+
+/**
+ * DocSpaceTagItems 批量加/减标签，返回实际改动条数。
+ */
+export function DocSpaceTagItems(ids: string[] | null, add: string[] | null, remove: string[] | null): $CancellablePromise<number> {
+    return $Call.ByID(3933585418, ids, add, remove);
+}
+
+/**
+ * DocSpaceThumbURL 把一条引用拼成缩略图端点 URL。
+ * 走 HTTP 而不是把字节从绑定里返回：几百张图一次灌进来会把调用层拖垮，
+ * 而 <img> 天然并发懒加载 + 浏览器缓存。
+ * dim<=0 用后端默认尺寸；不可出图的类型直接报错，让前端回退到类型图标。
+ */
+export function DocSpaceThumbURL(src: string, sid: string, path: string, dim: number): $CancellablePromise<string> {
+    return $Call.ByID(2128432239, src, sid, path, dim);
+}
+
+/**
  * DocSpaceTrash 返回回收站条目（最近删除在前）。
  * 先按配置的保留天数自动清理超期实体，再列出。
  */
 export function DocSpaceTrash(): $CancellablePromise<docspace$0.TrashEntry[] | null> {
     return $Call.ByID(291166404);
+}
+
+/**
+ * DocSpaceTrashItems 批量移入回收站。非本机源逐条跳过，失败 id 如实回传。
+ */
+export function DocSpaceTrashItems(ids: string[] | null): $CancellablePromise<docspace$0.BatchResult> {
+    return $Call.ByID(2356685144, ids);
 }
 
 /**
@@ -2021,6 +2097,14 @@ export function GetLogDir(): $CancellablePromise<string> {
 }
 
 /**
+ * GetPendingGit 前端挂载时取走并清空冷启动定位（取一次即消费）。返回的是
+ * githost.Request 的 JSON；无 pending 时为空串。非桌面平台没有右键链路，恒空。
+ */
+export function GetPendingGit(): $CancellablePromise<string> {
+    return $Call.ByID(3960057131);
+}
+
+/**
  * GetPendingNavigate 前端挂载时取走并清空冷启动目标（取一次即消费）。
  * 非桌面平台永远空串：没有协议、也就不会有 pending。
  */
@@ -2067,6 +2151,14 @@ export function GetToastStatus(): $CancellablePromise<string> {
 }
 
 /**
+ * GitBlame 取某文件（可选版本）的逐行归属，连续同提交聚合成段（BlamePane）。
+ *   - path 必填（相对仓库根）；revision 空 = 工作区当前。
+ */
+export function GitBlame(repo: string, path: string, revision: string): $CancellablePromise<gitcmd$0.BlameSegment[] | null> {
+    return $Call.ByID(928590373, repo, path, revision);
+}
+
+/**
  * GitBranchList 本地 + 远程分支（含领先落后与当前标记）。
  */
 export function GitBranchList(repo: string): $CancellablePromise<gitcmd$0.Branch[] | null> {
@@ -2089,6 +2181,13 @@ export function GitCheckout(repo: string, name: string): $CancellablePromise<voi
 }
 
 /**
+ * GitCherryPick 把某笔提交应用到当前分支（冲突时中断，本期只发起）。
+ */
+export function GitCherryPick(repo: string, hash: string): $CancellablePromise<void> {
+    return $Call.ByID(1740249306, repo, hash);
+}
+
+/**
  * GitCommit 提交已暂存改动（amend 改写上一笔），返回新提交短哈希。
  */
 export function GitCommit(repo: string, message: string, amend: boolean): $CancellablePromise<string> {
@@ -2096,10 +2195,31 @@ export function GitCommit(repo: string, message: string, amend: boolean): $Cance
 }
 
 /**
+ * GitConflictSides 取某冲突文件的三方内容（基线/我方/对方）。
+ */
+export function GitConflictSides(repo: string, path: string): $CancellablePromise<gitcmd$0.ConflictSides> {
+    return $Call.ByID(3457284484, repo, path);
+}
+
+/**
+ * GitConflicts 列出冲突（未合并）文件路径。
+ */
+export function GitConflicts(repo: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1464903525, repo);
+}
+
+/**
  * GitCreateBranch 建分支，checkout=true 同时切过去。
  */
 export function GitCreateBranch(repo: string, name: string, checkout: boolean): $CancellablePromise<void> {
     return $Call.ByID(1272588434, repo, name, checkout);
+}
+
+/**
+ * GitCreateBranchAt 在指定起点（提交哈希/分支/ref）建分支，checkout=true 同时切过去。
+ */
+export function GitCreateBranchAt(repo: string, name: string, startRef: string, checkout: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3952451175, repo, name, startRef, checkout);
 }
 
 /**
@@ -2138,6 +2258,30 @@ export function GitFetch(repo: string): $CancellablePromise<void> {
 }
 
 /**
+ * GitLog 取提交历史，带父信息与 lane 布局列（前端 canvas 只按 lane/行号画连线）。
+ *   - revision 非空：从该 ref/区间起算（空 = HEAD）。
+ *   - path 非空：只看这一个文件的历史，引擎附 --follow 跨重命名回溯。
+ *   - limit<=0 取引擎默认 200。
+ */
+export function GitLog(repo: string, revision: string, path: string, limit: number): $CancellablePromise<gitcmd$0.Commit[] | null> {
+    return $Call.ByID(2493771588, repo, revision, path, limit);
+}
+
+/**
+ * GitMarkResolved 把（已手动编辑的）冲突文件标记为已解决（git add）。
+ */
+export function GitMarkResolved(repo: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(1315806791, repo, path);
+}
+
+/**
+ * GitOpState 仓库是否处于 merge/rebase/cherry-pick/revert 等中断态（前端据此显示冲突/继续条）。
+ */
+export function GitOpState(repo: string): $CancellablePromise<gitcmd$0.OpState> {
+    return $Call.ByID(1915163930, repo);
+}
+
+/**
  * GitPull 拉取并合并（进度经 git:progress 事件）。
  */
 export function GitPull(repo: string): $CancellablePromise<void> {
@@ -2149,6 +2293,48 @@ export function GitPull(repo: string): $CancellablePromise<void> {
  */
 export function GitPush(repo: string): $CancellablePromise<void> {
     return $Call.ByID(2395042950, repo);
+}
+
+/**
+ * GitRebaseAbort 放弃 rebase，回到前状态（破坏操作，前端需二次确认）。
+ */
+export function GitRebaseAbort(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(3161227640, repo);
+}
+
+/**
+ * GitRebaseContinue 续跑中断的 rebase（已顶掉编辑器，不会卡在 $EDITOR）。
+ */
+export function GitRebaseContinue(repo: string): $CancellablePromise<void> {
+    return $Call.ByID(4199284487, repo);
+}
+
+/**
+ * GitRemoteAdd 新增远端。
+ */
+export function GitRemoteAdd(repo: string, name: string, url: string): $CancellablePromise<void> {
+    return $Call.ByID(1722687303, repo, name, url);
+}
+
+/**
+ * GitRemoteList 列出远端及抓取/推送地址。
+ */
+export function GitRemoteList(repo: string): $CancellablePromise<gitcmd$0.Remote[] | null> {
+    return $Call.ByID(4089136324, repo);
+}
+
+/**
+ * GitRemoteRemove 删除远端（破坏操作，前端需二次确认）。
+ */
+export function GitRemoteRemove(repo: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2424514796, repo, name);
+}
+
+/**
+ * GitRemoteSetURL 改远端地址；push=true 只改推送地址。
+ */
+export function GitRemoteSetURL(repo: string, name: string, url: string, push: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3907441645, repo, name, url, push);
 }
 
 /**
@@ -2173,6 +2359,57 @@ export function GitRepos(): $CancellablePromise<gitcmd$0.RepoRef[] | null> {
 }
 
 /**
+ * GitReset 按 mode（soft|mixed|hard）回退到 target（空=HEAD）；hard 丢工作区改动，前端必须二次确认。
+ */
+export function GitReset(repo: string, mode: string, target: string): $CancellablePromise<void> {
+    return $Call.ByID(1448805825, repo, mode, target);
+}
+
+/**
+ * GitResolveConflict 按 side（ours|theirs）选边解决并标记已解决（内部走 git add）。
+ */
+export function GitResolveConflict(repo: string, path: string, side: string): $CancellablePromise<void> {
+    return $Call.ByID(1994973268, repo, path, side);
+}
+
+/**
+ * GitRevert 生成一笔反向提交。
+ */
+export function GitRevert(repo: string, hash: string): $CancellablePromise<void> {
+    return $Call.ByID(1490271728, repo, hash);
+}
+
+/**
+ * GitShellInstall 装上全部 Git 右键 verb。幂等：已挂好的键重写成同一份内容，
+ * 挪过位置的旧路径顺带修好。
+ */
+export function GitShellInstall(): $CancellablePromise<void> {
+    return $Call.ByID(1194250723);
+}
+
+/**
+ * GitShellStatus 当前挂载状态（设置页展示聚合三态；非 Windows 回 supported=false）。
+ */
+export function GitShellStatus(): $CancellablePromise<gitcmd$0.GitShellInfo> {
+    return $Call.ByID(1043394242);
+}
+
+/**
+ * GitShellUninstall 删干净自家写过的 ToolsGit* 键，别人的键、压缩的键一律不碰。
+ */
+export function GitShellUninstall(): $CancellablePromise<void> {
+    return $Call.ByID(2558821442);
+}
+
+/**
+ * GitShowBlob 取某版本下某文件的完整内容（供并排 diff 左右两栏）。
+ * rev："HEAD"/"<hash>"/"<hash>^" 等；rev=="" 表示暂存区（index）。该版本无此文件时回空串。
+ */
+export function GitShowBlob(repo: string, rev: string, path: string): $CancellablePromise<string> {
+    return $Call.ByID(886429436, repo, rev, path);
+}
+
+/**
  * GitStage 暂存指定路径。
  */
 export function GitStage(repo: string, paths: string[] | null): $CancellablePromise<void> {
@@ -2187,10 +2424,67 @@ export function GitStageAll(repo: string): $CancellablePromise<void> {
 }
 
 /**
+ * GitStashApply 应用一条暂存但不出栈（ref：序号字符串或 stash@{N}，空=栈顶）。
+ */
+export function GitStashApply(repo: string, ref: string): $CancellablePromise<void> {
+    return $Call.ByID(180967901, repo, ref);
+}
+
+/**
+ * GitStashDrop 丢弃一条暂存（破坏操作，前端需二次确认）。
+ */
+export function GitStashDrop(repo: string, ref: string): $CancellablePromise<void> {
+    return $Call.ByID(702030210, repo, ref);
+}
+
+/**
+ * GitStashList 列出暂存栈（新→旧）。
+ */
+export function GitStashList(repo: string): $CancellablePromise<gitcmd$0.StashEntry[] | null> {
+    return $Call.ByID(3717575203, repo);
+}
+
+/**
+ * GitStashPop 应用一条暂存并出栈。
+ */
+export function GitStashPop(repo: string, ref: string): $CancellablePromise<void> {
+    return $Call.ByID(2800170430, repo, ref);
+}
+
+/**
+ * GitStashPush 暂存当前改动；includeUntracked=true 会连未跟踪文件一并收走（UI 需明确提示）。
+ * 无改动可暂存时返回可读错误。
+ */
+export function GitStashPush(repo: string, msg: string, includeUntracked: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1690127327, repo, msg, includeUntracked);
+}
+
+/**
  * GitStatus 一次工作区状态快照（手动刷新 / 进仓库时拉一次，不做轮询）。
  */
 export function GitStatus(repo: string): $CancellablePromise<gitcmd$0.Status> {
     return $Call.ByID(798723664, repo);
+}
+
+/**
+ * GitTagCreate 建标签：message 非空为附注标签（本工具强制不签名），空为轻量；target 空=HEAD。
+ */
+export function GitTagCreate(repo: string, name: string, message: string, target: string): $CancellablePromise<void> {
+    return $Call.ByID(1241313834, repo, name, message, target);
+}
+
+/**
+ * GitTagDelete 删本地标签（破坏操作，前端需二次确认）。
+ */
+export function GitTagDelete(repo: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(556826137, repo, name);
+}
+
+/**
+ * GitTagList 列出标签。
+ */
+export function GitTagList(repo: string): $CancellablePromise<gitcmd$0.Tag[] | null> {
+    return $Call.ByID(268777882, repo);
 }
 
 /**
@@ -2233,6 +2527,21 @@ export function GuardClear(): $CancellablePromise<void> {
  */
 export function GuardGetState(): $CancellablePromise<guard$0.Snapshot> {
     return $Call.ByID(35314650);
+}
+
+/**
+ * GuardLogPath 返回某守护项日志文件的绝对路径，供前端「打开/定位日志」。
+ */
+export function GuardLogPath(id: string): $CancellablePromise<string> {
+    return $Call.ByID(2053448520, id);
+}
+
+/**
+ * GuardReadLog 读取某守护项日志末尾内容（tailKB<=0 时默认 64KB），供前端「查看日志」弹窗。
+ * 跨平台存在：非桌面构建同样能读本机数据目录下的日志文件。
+ */
+export function GuardReadLog(id: string, tailKB: number): $CancellablePromise<string> {
+    return $Call.ByID(3218668611, id, tailKB);
 }
 
 /**
@@ -2300,6 +2609,18 @@ export function GuardUpsert(e: guard$0.Entry): $CancellablePromise<void> {
 }
 
 /**
+ * HandleGitCLI 右键拉起来的那个短进程该干的活。返回 true = 本进程应立即退出：
+ *   - 不在任何仓库内 → toast 说明后退出（不改菜单可见性，判断在程序内做）；
+ *   - 命中仓库且有实例在跑 → 转交给它（登记 + 拉前台 + 路由到 Git 页）后退出；
+ * 
+ * 返回 false = 没有可转交的实例，本进程正常起 GUI，并把它记成 pending，
+ * 主窗口就绪后由前端取走、定位到该仓库。
+ */
+export function HandleGitCLI(op: string, repo: string): $CancellablePromise<boolean> {
+    return $Call.ByID(1370888354, op, repo);
+}
+
+/**
  * ImportConfig 弹打开框导入配置快照，返回被导入的文件路径（取消返回空串）。
  * 
  * 覆盖范围就是 ExportConfig 导出的那些字段；目录、Logo、球位等机器绑定项
@@ -2307,6 +2628,13 @@ export function GuardUpsert(e: guard$0.Entry): $CancellablePromise<void> {
  */
 export function ImportConfig(): $CancellablePromise<string> {
     return $Call.ByID(649187289);
+}
+
+/**
+ * LanShareAbortUpload 强踢一个卡死/占位的接收会话（删半成品目录，腾出会话名额）。
+ */
+export function LanShareAbortUpload(sid: string): $CancellablePromise<void> {
+    return $Call.ByID(2007367339, sid);
 }
 
 /**
@@ -2377,6 +2705,14 @@ export function LanShareRevokeLink(token: string): $CancellablePromise<void> {
 }
 
 /**
+ * LanShareSettings 返回互传接收设置段（老配置无此段时返回默认值：空黑名单=全收）。
+ * 供互传页回填接收类型黑名单。
+ */
+export function LanShareSettings(): $CancellablePromise<config$0.LanShareConfig> {
+    return $Call.ByID(1271827553);
+}
+
+/**
  * LanShareStart 启动服务：port<=0 用默认端口（占用自动 +1，最多试 20 个）；
  * host 传 "127.0.0.1" 只供本机，空串监听全部网卡；autoStopMin>0 到点自停；
  * pin 非空时下载/链接需带对 PIN（仅挡无意访问，不是访问控制）。
@@ -2404,6 +2740,14 @@ export function LanShareStop(): $CancellablePromise<void> {
  */
 export function LanShareURL(token: string): $CancellablePromise<string> {
     return $Call.ByID(3949745333, token);
+}
+
+/**
+ * LanShareUploadSessions 列出接收中的切片上传会话（可续传/进行中），
+ * 供互传页展示与强踢。服务停着时仍能列出磁盘上残留的半成品会话。
+ */
+export function LanShareUploadSessions(): $CancellablePromise<lanshare$0.UploadSession[] | null> {
+    return $Call.ByID(3916011220);
 }
 
 /**
@@ -4182,6 +4526,15 @@ export function SaveDownloadSettings($in: config$0.DownloadConfig): $Cancellable
 }
 
 /**
+ * SaveLanShareSettings 保存接收类型黑名单（blockExt：每项可不带前导点，如 "exe"）。
+ * 空切片 = 清空黑名单（全收）。落盘后立即回灌单例（ApplyLanShareConfig），
+ * 对已在跑的服务即时生效，无需重启。
+ */
+export function SaveLanShareSettings(blockExt: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(1779853432, blockExt);
+}
+
+/**
  * SecStoreChangePassword 校验旧口令后重新加密（新盐新 nonce）。
  */
 export function SecStoreChangePassword(id: string, oldPw: string, newPw: string): $CancellablePromise<void> {
@@ -4303,6 +4656,13 @@ export function SetMainWindow(w: application$0.Window): $CancellablePromise<void
  */
 export function SetNativeNotify(v: boolean): $CancellablePromise<void> {
     return $Call.ByID(2203486880, v);
+}
+
+/**
+ * SetPendingGit 记下冷启动要打开的仓库与操作，等前端挂载后取。
+ */
+export function SetPendingGit(op: string, repo: string): $CancellablePromise<void> {
+    return $Call.ByID(1427209615, op, repo);
 }
 
 /**

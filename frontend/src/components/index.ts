@@ -1,21 +1,22 @@
 import { App, Plugin } from 'vue';
 import LayoutBody from '@/components/layouts/LayoutBody.vue'
-import selectIconModal from '@/components/common/select-icon-modal/index.vue'
+import selectIconModal from '@/components/common/icon/select-icon-modal/index.vue'
 import CommonPager from '@/components/common/pager/index.vue'
 import CommonThemeSwitch from '@/components/common/theme-switch/index.vue'
 import CommonCanvasClock from '@/components/common/canvas-clock/index.vue'
 import CommonBadge from '@/components/common/badge/index.vue'
 import CommonModalTip from '@/components/common/modal-tip/index.vue'
 import CommonDockerOff from '@/components/common/docker-off/index.vue'
-import CommonStatIcon from '@/components/common/stat-icon/index.vue'
+import CommonStatIcon from '@/components/common/icon/stat-icon/index.vue'
 import CommonStatCard from '@/components/common/stat-card/index.vue'
 import CommonItemCard from '@/components/common/item-card/index.vue'
 import CommonInfoRow from '@/components/common/info-row/index.vue'
 import CommonLogModal from '@/components/common/log-modal/index.vue'
 import CommonTitleBar from '@/components/common/title-bar/index.vue'
-import CommonToolIcon from '@/components/common/tool-icon/index.vue'
-import CommonFileIcon from '@/components/common/file-icon/index.vue'
+import CommonToolIcon from '@/components/common/icon/tool-icon/index.vue'
+import CommonFileIcon from '@/components/common/icon/file-icon/index.vue'
 import CommonTaskProgress from '@/components/common/task-progress/index.vue'
+import CommonUploadPanel from '@/components/common/upload-panel/index.vue'
 import BodyViewer from '@/components/business/body-viewer/index.vue'
 import DockerImages from '@/components/business/docker-images/index.vue'
 import AnnotateCanvas from '@/components/business/annotate-canvas/AnnotateCanvas.vue'
@@ -27,6 +28,8 @@ import SshGenModal from '@/components/business/ssh-gen/SshGenModal.vue'
  *                公共自绘标题栏（WinTitleBar）、内容区容器（LayoutBody）
  *  - common/     全局通用组件（纯 UI、跨 webview 复用，无后端依赖）：统一注册并加 `common-` 前缀，
  *                如 common-pager 分页、common-theme-switch 主题开关、select-icon-modal 图标选择弹层
+ *                图标族集中在 common/icon/ 子目录：tool-icon 功能图标 / file-icon 文件图标 /
+ *                stat-icon 指标图标 / select-icon-modal 图标选择弹层
  *  - business/   webview 业务组件（特定工具场景）：如 body-viewer 报文查看器（sniffer 专用）、
  *                annotate-canvas 标注编辑画布（截图页 / 文件查看器图片编辑共用）
  */
@@ -65,6 +68,8 @@ export const ComponentsPlugin: Plugin = {
         app.component('common-file-icon', CommonFileIcon);
         // common-task-progress：任务/下载进度行（名称↔速度 / 整宽进度条 / 底部左ETA右操作），下载管理与任务抽屉共用
         app.component('common-task-progress', CommonTaskProgress);
+        // common-upload-panel：公用上传面板（拖拽区+文件队列+切片续传），传输经 transport 注入与 UI 解耦，局域网互传等上传场景复用
+        app.component('common-upload-panel', CommonUploadPanel);
         // select-icon-modal：图标选择弹层，通过 type 属性切换图标源
         //  - type="iconfont"（默认）：本地字体图标，emit `icon-xxx`
         //  - type="arco"：Arco Design 图标库，emit 图标名（如 camera / clock-circle）
@@ -81,4 +86,4 @@ export const ComponentsPlugin: Plugin = {
         app.component('ssh-gen-modal', SshGenModal);
     },
 };
-export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, CommonTaskProgress, selectIconModal, BodyViewer, DockerImages, AnnotateCanvas, SshGenModal };
+export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, CommonTaskProgress, CommonUploadPanel, selectIconModal, BodyViewer, DockerImages, AnnotateCanvas, SshGenModal };

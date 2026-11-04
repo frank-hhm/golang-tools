@@ -88,6 +88,14 @@ export interface Progress {
      */
     "percent": number;
     "note": string;
+
+    /**
+     * ID / Status 供切片上传接台账：ID=sid 当主键（接收上传全程稳定一行、
+     * 重名避让出的多任务不误并），Status 是细粒度相位（queued/running/paused/done/error/canceled）。
+     * 与 services/tasks.payload 的 ID/Status 键对齐；下载/非切片上传不带，为空不影响记账。
+     */
+    "id": string;
+    "status": string;
 }
 
 /**
@@ -138,4 +146,16 @@ export interface Status {
      */
     "grantPath": string;
     "lastErr": string;
+}
+
+/**
+ * UploadSession 供管理页/绑定展示的会话快照（列可续传会话、强踢用）。
+ */
+export interface UploadSession {
+    "id": string;
+    "name": string;
+    "size": number;
+    "received": number;
+    "percent": number;
+    "updatedAt": number;
 }

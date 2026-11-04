@@ -5,6 +5,7 @@
  *  - localStorage：窗口启动时同步读取（无闪烁），storage 事件实现多窗口即时同步
  *  - config.general.theme：随应用配置保存（后端持久化，作为首次运行的回退值）
  */
+
 export type ThemeMode = "light" | "dark" | "auto";
 
 /** 主题模式在 localStorage 的键（storage 事件据此跨窗口同步，如 common-theme-switch 组件） */

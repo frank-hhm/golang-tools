@@ -331,13 +331,72 @@ func TestRunExtractToDefaultDest(t *testing.T) {
 	if !strings.Contains(strings.Join(stages, ","), StageExtracting) {
 		t.Fatalf("缺 extracting 事件: %v", stages)
 	}
-	// 默认解到归档同级的同名文件夹：src.zip → src/
-	want := filepath.Join(base, "src", "a.txt")
-	if filepath.Clean(res.Out) != filepath.Clean(filepath.Join(base, "src")) {
-		t.Fatalf("目标目录 = %q，期望 %s", res.Out, filepath.Join(base, "src"))
+	// 默认解到归档同级的同名文件夹：src.zip → src/；但 src/ 正是压缩时那个源目录，
+	// 已存在就必须让开——不然会把包内的 src/ 直接合并进用户的原目录里。
+	want := filepath.Join(base, "src (1)", "src", "a.txt")
+	if filepath.Clean(res.Out) != filepath.Clean(filepath.Join(base, "src (1)")) {
+		t.Fatalf("目标目录 = %q，期望 %s", res.Out, filepath.Join(base, "src (1)"))
 	}
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("没解出 %s: %v", want, err)
+	}
+	// 原目录一个字都不能多
+	if _, err := os.Stat(filepath.Join(base, "src", "src")); !os.IsNotExist(err) {
+		t.Fatal("往已存在的 src/ 里合并出了套娃目录")
+	}
+	// 上面 want 里的 src (1)/src 那一层是包内自带顶层目录名导致的，属于已知代价：
+	// 主流归档工具（7-Zip / WinRAR 的“解压到 <包名>”）同样如此。要不要在“包内只有一个
+	// 顶层目录”时不另套一层，是产品语义选择，改之前先记在这里。
+	if _, err := os.Stat(filepath.Join(base, "src", "a.txt")); err != nil {
+		t.Fatalf("避让不该动到原目录: %v", err)
+	}
+}
+
+// 真机右键链路（--archive 紧跟 --extract）复现出来的那一幕。
+func TestRunExtractAvoidsExistingDirWithCJKName(t *testing.T) {
+	base := t.TempDir()
+	// 真机右键链路踩到的就是这一种：中文带空格的目录名，压缩后紧挨着解压。
+	// 名字里的空格以前会暴露出另一类问题（参数切分、引号），所以不能只用 src 过测。
+	mk(t, base, map[string]string{"源 目录/b.txt": "B", "源 目录/中文 文件.txt": "CN"})
+	if _, err := Run(context.Background(), Options{Paths: []string{filepath.Join(base, "源 目录")}, Format: sysx.ArchiveZip}, "jc", nil); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), Options{Op: OpExtract, Paths: []string{filepath.Join(base, "源 目录.zip")}}, "jd", nil)
+	if err != nil {
+		t.Fatalf("解压失败: %v", err)
+	}
+	if filepath.Base(res.Out) != "源 目录 (1)" {
+		t.Fatalf("目标目录 = %q，期望让开已存在的同名目录", res.Out)
+	}
+	if _, err := os.Stat(filepath.Join(base, "源 目录", "源 目录")); !os.IsNotExist(err) {
+		t.Fatal("往用户的原目录里塞了套娃副本")
+	}
+	if _, err := os.Stat(filepath.Join(res.Out, "源 目录", "中文 文件.txt")); err != nil {
+		t.Fatalf("中文带空格的名字没解出来: %v", err)
+	}
+}
+
+// 用户自己指定的目标目录不做重名避让：挑一个已有文件夹正是那次选择的意思。
+func TestRunExtractHonoursExplicitDest(t *testing.T) {
+	base := t.TempDir()
+	mk(t, base, map[string]string{"src/a.txt": "AAAA"})
+	if _, err := Run(context.Background(), Options{Paths: []string{filepath.Join(base, "src")}, Format: sysx.ArchiveZip}, "j", nil); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(base, "src.zip")
+	dest := filepath.Join(base, "in here")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), Options{Op: OpExtract, Paths: []string{zipPath}, Dest: dest}, "jx", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(res.Out) != filepath.Clean(dest) {
+		t.Fatalf("目标目录被改了: %q", res.Out)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "src", "a.txt")); err != nil {
+		t.Fatalf("没解到指定目录: %v", err)
 	}
 }
 

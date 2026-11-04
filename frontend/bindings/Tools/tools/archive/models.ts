@@ -62,7 +62,7 @@ export interface Options {
     "name": string;
 
     /**
-     * 解压目标目录；空=归档同级的同名文件夹
+     * 解压目标目录；空=归档同级的同名文件夹（已被占用则加序号）
      */
     "dest": string;
 }
