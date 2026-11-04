@@ -443,3 +443,53 @@ func specFromForm(h Host) (connectSpec, error) {
 	}
 	return spec, nil
 }
+
+// CredentialSpec 共享凭据的解密视图（FTP⇄term 归一用，字段语义同 connectSpec）。
+// Password/Passphrase 为明文，只在内存里短暂存在，调用方不得落盘。
+type CredentialSpec struct {
+	Auth       string
+	User       string
+	Password   string
+	KeyPath    string
+	Passphrase string
+}
+
+// ResolveCredential 按 id 解出一条共享凭据（含明文口令）；tools/ftp 等外部包
+// 经绑定层叠加使用，不跨包暴露内部 connectSpec。
+func ResolveCredential(id string) (CredentialSpec, error) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	c, ok, err := findCred(id)
+	if err != nil {
+		return CredentialSpec{}, err
+	}
+	if !ok {
+		return CredentialSpec{}, fmt.Errorf("凭据不存在，可能已被删除")
+	}
+	spec := connectSpec{}
+	if err := applyCred(&spec, c); err != nil {
+		return CredentialSpec{}, err
+	}
+	return CredentialSpec{Auth: spec.Auth, User: spec.User, Password: spec.Password, KeyPath: spec.KeyPath, Passphrase: spec.Passphrase}, nil
+}
+
+// ResolveHostSpec 按主机 id 取出建连视图（凭据优先、旧内联字段兜底，含明文）。
+// 供绑定层做跨工具导入（终端主机→SFTP 连接）；明文只在内存短暂存在，不得落盘。
+func ResolveHostSpec(id string) (Host, connectSpec, error) {
+	return resolve(id)
+}
+
+// SaveHostFromForm 保存一条主机记录（表单形态，含旧字段内联兜底），返回落库后的记录。
+// 供绑定层做跨工具导入（如 FTP 连接→终端主机）后落库。
+func SaveHostFromForm(h Host) (Host, error) {
+	list, err := SaveHost(h)
+	if err != nil {
+		return Host{}, err
+	}
+	for _, x := range list {
+		if x.ID == h.ID || (h.ID == "" && x.Name == h.Name && x.Address == h.Address) {
+			return x, nil
+		}
+	}
+	return h, nil
+}

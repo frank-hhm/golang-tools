@@ -2457,7 +2457,7 @@ func (h nativeHost) BallMenuItems() []winui.MenuItem {
 	return out
 }
 
-func (h nativeHost) BallTheme() string { return config.CurrentConfig().General.Theme }
+func (h nativeHost) BallTheme() string { return config.CurrentConfig().General.Theme.Mode }
 
 func (h nativeHost) BallLogoPath() string { return config.CurrentConfig().General.AppLogo }
 

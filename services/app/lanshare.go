@@ -164,21 +164,25 @@ func (a *App) LanShareChoosePath(title string) (string, error) {
 		PromptForSingleSelection())
 }
 
-// LanShareSettings 返回互传接收设置段（老配置无此段时返回默认值：空黑名单=全收）。
-// 供互传页回填接收类型黑名单。
+// LanShareSettings 返回互传设置段（老配置无此段时返回默认值：空黑名单=全收、
+// 启动默认 120 分钟后自停）。供互传页回填黑名单与启动控件、设置页分区回填。
 func (a *App) LanShareSettings() config.LanShareConfig {
 	return config.LanShareCfg()
 }
 
-// SaveLanShareSettings 保存接收类型黑名单（blockExt：每项可不带前导点，如 "exe"）。
-// 空切片 = 清空黑名单（全收）。落盘后立即回灌单例（ApplyLanShareConfig），
-// 对已在跑的服务即时生效，无需重启。
-func (a *App) SaveLanShareSettings(blockExt []string) error {
+// SaveLanShareSettings 保存互传设置（接收黑名单 + 启动默认值 port/host/autoStopMin/pin）。
+// 空黑名单 = 全收。落盘后立即回灌单例（ApplyLanShareConfig），
+// 对已在跑的服务即时生效，无需重启；启动默认值下次启动时生效。
+func (a *App) SaveLanShareSettings(in config.LanShareConfig) error {
 	_, err := config.Update(func(cfg *config.AppConfig) {
 		if cfg.LanShare == nil {
 			cfg.LanShare = &config.LanShareConfig{}
 		}
-		cfg.LanShare.BlockExt = blockExt
+		cfg.LanShare.BlockExt = in.BlockExt
+		cfg.LanShare.Port = in.Port
+		cfg.LanShare.Host = in.Host
+		cfg.LanShare.AutoStopMin = in.AutoStopMin
+		cfg.LanShare.Pin = in.Pin
 	})
 	if err != nil {
 		applog.Errorf("lanshare", "保存接收设置失败: %v", err)

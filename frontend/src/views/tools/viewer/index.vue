@@ -772,10 +772,9 @@ onUnmounted(() => {
 .vp-item:hover {
     background: var(--color-fill-2);
 }
-/* 选中态：保留轻背景变化，主表达用左侧短竖条 + 按需投影（不加深边框），与 nginx 实例列表同一套口径 */
+/* 选中态：中性淡底 + 左侧短竖条（不加深边框 / 不加投影），与磁盘管理、Git、docspace 一套语言 */
 .vp-item.active {
-    background: var(--color-primary-light-1);
-    box-shadow: var(--shadow-1-center);
+    background: var(--color-fill-3);
 }
 .vp-item::after {
     content: "";
@@ -785,7 +784,7 @@ onUnmounted(() => {
     transform: translateY(-50%);
     width: 3px;
     height: 55%;
-    border-radius: 0 2px 2px 0;
+    border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
     background: transparent;
 }
 .vp-item.active::after {

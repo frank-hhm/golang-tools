@@ -45,6 +45,15 @@
                         </a-tooltip>
                     </a-breadcrumb-item>
                 </a-breadcrumb>
+                <a-input v-model="addrInput" size="small" class="fb-addr" placeholder="粘贴或输入路径，回车跳转"
+                    allow-clear @press-enter="enter(addrInput)">
+                    <template #prefix><icon-folder /></template>
+                </a-input>
+                <a-tooltip content="复制当前路径">
+                    <a-button size="small" @click="copyCurPath">
+                        <template #icon><icon-copy /></template>
+                    </a-button>
+                </a-tooltip>
                 <a-tooltip :content="isFav ? '取消收藏当前目录' : '收藏当前目录'">
                     <a-button size="small" @click="toggleFav">
                         <template #icon>
@@ -162,7 +171,8 @@
                 <a-table v-if="view === 'list'" class="fb-table" :data="pagedRows" :loading="loading || searching"
                     :pagination="false" size="small" row-key="path" :bordered="false"
                     :row-selection="{ type: 'checkbox', showCheckedAll: true }" v-model:selected-keys="selectedKeys"
-                    :scroll="{ x: 1040, y: '100%' }" @row-dblclick="(record: any) => openEntry(record)">
+                    :scroll="{ x: 1040, y: '100%' }" @row-dblclick="(record: any) => openEntry(record)"
+                    @row-contextmenu="onRowContext">
                     <template #columns>
                         <a-table-column title="文件名称" :width="380">
                             <template #cell="{ record }">
@@ -254,7 +264,7 @@
                     <template v-else>
                         <div v-for="r in pagedRows" :key="r.path" class="g-item"
                             :class="{ sel: selectedKeys.includes(r.path) }" @click="toggleRow(r)"
-                            @dblclick="openEntry(r)">
+                            @dblclick="openEntry(r)" @contextmenu.prevent.stop="onRowContext(r, $event)">
                             <span class="g-icon" :class="{ dir: r.isDir }">
                                 <common-file-icon :is-dir="r.isDir" :ext="r.ext" :size="40" />
                             </span>
@@ -289,6 +299,36 @@
                     :page-size-options="[50, 100, 200, 500]" size="mini" show-total show-page-size show-jumper />
             </div>
         </a-card>
+
+        <!-- ==================== 条目右键上下文菜单（列表行 + 网格块共用） ====================
+             动作 100% 复用 onRowMore / 工具栏批量函数，不新增未实现能力；
+             多选时批量类（复制/剪切/删除/压缩）作用于全部选中，单行类只作用于右键行 -->
+        <div v-if="ctx.visible" class="ctx-mask" @click="closeCtx" @contextmenu.prevent="closeCtx" />
+        <a-menu v-if="ctx.visible && ctx.row" ref="ctxMenuEl" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }"
+          @menu-item-click="onCtxClick">
+          <a-menu-item key="open"><icon-folder v-if="ctx.row.isDir" /><icon-file v-else /> 打开</a-menu-item>
+          <a-menu-item key="rename"><icon-edit /> 重命名</a-menu-item>
+          <a-menu-item key="copy"><icon-copy /> 复制{{ ctxBatch ? `（${ctxCount} 项）` : "" }}</a-menu-item>
+          <a-menu-item key="cut"><icon-scissor /> 剪切{{ ctxBatch ? `（${ctxCount} 项）` : "" }}</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="viewer"><icon-file /> 在查看器中打开</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="system"><icon-launch /> 用系统程序打开</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="download"><icon-download /> 另存为</a-menu-item>
+          <a-menu-item key="explorer"><icon-desktop /> 在文件夹中显示</a-menu-item>
+          <a-menu-item key="shell"><icon-code /> 在此打开终端</a-menu-item>
+          <a-menu-item key="size"><icon-storage /> 计算大小</a-menu-item>
+          <a-menu-item key="props"><icon-info-circle /> 属性</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="docadd"><icon-plus /> 纳入文档中心</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="docver"><icon-history /> 文档版本</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="docshare"><icon-share-alt /> 局域网分享</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="docenc"><icon-lock /> 加密</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir" key="doctrash"><icon-archive /> 移入文档回收站</a-menu-item>
+          <a-menu-item v-if="ctx.row.isDir" key="bksrc"><icon-folder /> 备份设为源</a-menu-item>
+          <a-menu-item v-if="ctx.row.isDir" key="bkdst"><icon-folder /> 备份设为目标</a-menu-item>
+          <a-menu-item key="compress"><icon-archive /> 压缩为压缩包{{ ctxBatch ? `（${ctxCount} 项）` : "" }}</a-menu-item>
+          <a-menu-item v-if="!ctx.row.isDir && isArchiveFile(ctx.row)" key="extract"><icon-folder /> 解压到同级文件夹</a-menu-item>
+          <a-menu-item key="delete" class="ctx-del"><icon-delete /> 删除到回收站{{ ctxBatch ? `（${ctxCount} 项）` : "" }}</a-menu-item>
+          <a-menu-item key="forever" class="ctx-del"><icon-exclamation-circle /> 永久删除</a-menu-item>
+        </a-menu>
 
         <!-- ==================== 新建 / 重命名的名称输入 ==================== -->
         <a-modal v-model:visible="nameVisible" :title="nameTitle" :mask-closable="false" :ok-text="nameOk"
@@ -439,7 +479,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, reactive, ref, watch } from "vue";
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import DiskOverview from "./components/DiskOverview.vue";
@@ -478,6 +518,9 @@ const ovCollapsed = ref(false);
 
 const listing = ref<any>(emptyListing());
 const current = ref("");
+// 可编辑地址栏：跟着 current 同步，用户改写后回车才跳转（照 Viewer 的 vp-addr）
+const addrInput = ref("");
+watch(current, (v) => { addrInput.value = v; }, { immediate: true });
 const loading = ref(false);
 const busy = ref(false); // 上传/粘贴这类耗时操作，期间禁用按钮防连点
 const errMsg = ref("");
@@ -617,6 +660,18 @@ async function goHome() {
         await enter(await GoTools.DiskHome());
     } catch (e) {
         errMsg.value = `找不到用户主目录：${errText(e)}`;
+    }
+}
+
+/** 复制当前目录路径到剪贴板：非安全上下文（http）下 navigator.clipboard 可能为空，给兑底提示 */
+async function copyCurPath() {
+    const p = String(current.value || "");
+    if (!p) return;
+    try {
+        await navigator.clipboard.writeText(p);
+        Message.success(`已复制路径：${p}`);
+    } catch {
+        Message.warning("当前环境不支持自动复制，请从地址栏手动复制");
     }
 }
 
@@ -1019,6 +1074,55 @@ function onRowMore(v: any, r: any) {
     else if (v === "extract") doExtract(r);
 }
 
+/* ============================ 条目右键上下文菜单 ============================ */
+const ctx = reactive<{ visible: boolean; x: number; y: number; row: any }>({ visible: false, x: 0, y: 0, row: null });
+const ctxMenuEl = ref<any>(null);
+/** 右键行是否处于多选集合内：是则复制/剪切/删除/压缩等批量类作用于全部选中项 */
+const ctxBatch = computed(() => !!ctx.row && selectedKeys.value.length > 1 && selectedPaths.value.includes(String(ctx.row.path)));
+const ctxCount = computed(() => selectedPaths.value.length);
+
+/** 列表 @row-contextmenu(record, ev) 与网格 @contextmenu(r, $event) 共用（Arco 把 ev 声明为 Event，这里用 any 接住 MouseEvent） */
+function onRowContext(record: any, ev: any) {
+    if (!record) return;
+    ev.preventDefault();
+    const key = String(record.path);
+    // 未选中的行：单选它；已多选中的行：保留整个多选集，让批量动作自然命中全部
+    if (!selectedKeys.value.includes(key)) selectedKeys.value = [key];
+    ctx.row = record;
+    void showCtxMenu(ev.clientX, ev.clientY);
+}
+
+/** 先按点击位置显示，再 nextTick 量真实尺寸夹回视口（照 portman 口径，不靠估计高度） */
+async function showCtxMenu(x: number, y: number) {
+    ctx.x = x; ctx.y = y; ctx.visible = true;
+    await nextTick();
+    const el = ctxMenuEl.value?.$el || ctxMenuEl.value;
+    if (!el) return;
+    ctx.x = Math.max(4, Math.min(x, window.innerWidth - el.offsetWidth - 4));
+    ctx.y = Math.max(4, Math.min(y, window.innerHeight - el.offsetHeight - 4));
+}
+
+function closeCtx() { ctx.visible = false; }
+
+function onCtxKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && ctx.visible) ctx.visible = false;
+}
+
+/** 菜单项点击：批量类走 selectedPaths，单行类走 ctx.row，其余全部委托既有 onRowMore */
+function onCtxClick(key: string) {
+    const row = ctx.row;
+    ctx.visible = false;
+    if (!row) return;
+    if (key === "open") { openEntry(row); return; }
+    if (key === "rename") { openNameModal("rename", row); return; }
+    if (key === "copy") { copySelected(false); return; }
+    if (key === "cut") { copySelected(true); return; }
+    if (key === "compress") { openCompress(); return; }
+    if (key === "delete") { doDelete(false); return; }
+    if (key === "forever") { doDelete(true); return; }
+    onRowMore(key, row);
+}
+
 /* ---------- 压缩 / 解压（复用 tools/archive 引擎，与压缩工具页/系统右键同一套；进度走 archive:progress 进任务中心） ---------- */
 const ARCHIVE_EXTS = [".zip", ".tar.gz", ".tgz"]; // 引擎 FormatFor 只认这三种
 function isArchiveFile(r: any): boolean {
@@ -1219,6 +1323,10 @@ onMounted(async () => {
         errMsg.value = `找不到默认目录，请从上方盘符点进去：${errText(e)}`;
     }
 });
+
+// 右键菜单 Esc 关闭：遮罩只接鼠标，键盘关掉是 portman/procman 已有的习惯
+onMounted(() => window.addEventListener("keydown", onCtxKeydown));
+onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 </script>
 
 <style scoped>
@@ -1436,6 +1544,7 @@ onMounted(async () => {
 }
 
 .g-item {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1445,16 +1554,27 @@ onMounted(async () => {
     border-radius: var(--base-radius-default);
     cursor: pointer;
     user-select: none;
-    transition: background 0.2s, border-color 0.2s;
+    transition: background-color 0.15s, color 0.15s;
 }
 
 .g-item:hover {
-    background: var(--color-fill-1);
+    background: var(--color-fill-2);
 }
 
+/* 选中：中性淡底 + 左上短竖条，不用整块主色边框，与列表 / 树节点一套语言 */
 .g-item.sel {
-    border-color: rgb(var(--primary-6));
-    background: rgba(var(--primary-6), 0.06);
+    background: var(--color-fill-3);
+}
+
+.g-item.sel::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    width: 3px;
+    height: 16px;
+    border-radius: var(--base-radius-small);
+    background: rgb(var(--primary-6));
 }
 
 .g-icon {
@@ -1530,5 +1650,60 @@ onMounted(async () => {
 
 .cm-body {
     display: block;
+}
+
+/* 地址栏：不抢面包屑的剩余宽度，窗口窄时可收缩 */
+.fb-addr {
+    width: 240px;
+    flex: 0 1 240px;
+    min-width: 120px;
+}
+
+/* 条目右键菜单：照 docspace/portman 口径（fixed 遮罩 + fixed 定位 a-menu） */
+.ctx-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+}
+.ctx-menu {
+    position: fixed;
+    z-index: 2001;
+    width: max-content;
+    min-width: 168px;
+    max-width: 240px;
+    max-height: 72vh;
+    overflow-y: auto;
+    padding: 2px;
+    background: var(--color-bg-popup);
+    border: 1px solid var(--color-border-2);
+    border-radius: var(--base-radius-default);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
+}
+.ctx-menu :deep(.arco-menu-inner) {
+    padding: 2px;
+}
+.ctx-menu :deep(.arco-menu-item.ctx-del) {
+    color: rgb(var(--danger-6));
+}
+
+/* 列表选中态：不再整行刷主色，改中性淡底 + 名称列左侧短竖条，
+   与 Git 仓库项、docspace 树节点共用一套选中语言 */
+.fb-table :deep(.arco-table-tr-selected .arco-table-td) {
+    background: var(--color-fill-3);
+}
+.name-cell {
+    position: relative;
+    padding-left: 8px;
+}
+.fb-table :deep(.arco-table-tr-selected .name-cell::before) {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 15px;
+    border-radius: var(--base-radius-small);
+    background: rgb(var(--primary-6));
 }
 </style>

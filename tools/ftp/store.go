@@ -126,11 +126,13 @@ func SaveConnection(in Connection) ([]Connection, error) {
 		return nil, fmt.Errorf("端口需在 1-65535 之间")
 	}
 	if in.Auth == AuthKey {
-		if in.KeyPath == "" {
+		if in.KeyPath == "" && in.CredID == "" {
 			return nil, fmt.Errorf("请选择私钥文件")
 		}
-		if _, err := os.Stat(in.KeyPath); err != nil {
-			return nil, fmt.Errorf("私钥文件不可读: %v", err)
+		if in.KeyPath != "" {
+			if _, err := os.Stat(in.KeyPath); err != nil {
+				return nil, fmt.Errorf("私钥文件不可读: %v", err)
+			}
 		}
 	}
 	if in.RemoteDir != "" && !strings.HasPrefix(in.RemoteDir, "/") {
@@ -170,6 +172,10 @@ func SaveConnection(in Connection) ([]Connection, error) {
 		rec.PassEnc = enc
 	} else if in.Auth == AuthKey {
 		// 改成密钥登录后旧密码没有意义，顺手清掉
+		rec.PassEnc = ""
+	}
+	// 关联共享凭据（P2 归一）：密码以凭据为准，记录内不留 inline 密文
+	if rec.CredID != "" {
 		rec.PassEnc = ""
 	}
 	// 列表标题：名称优先，其次备注，最后主机
@@ -235,4 +241,10 @@ func credential(id string) (Connection, string, error) {
 		return r.toConn(), pass, nil
 	}
 	return Connection{}, "", fmt.Errorf("连接记录不存在，可能已被删除")
+}
+
+// ResolveStored 取出记录与已存密码（供绑定层叠加 term 共享凭据后建连）。
+// 与 credential 同语义，导出给 services/app 做凭据归一合并。
+func ResolveStored(id string) (Connection, string, error) {
+	return credential(id)
 }

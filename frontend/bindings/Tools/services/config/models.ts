@@ -383,9 +383,9 @@ export interface GeneralConfig {
     "appLogo": string;
 
     /**
-     * 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
+     * 主题配置（模式 + 令牌维度）：mode 后端消费，其余仅持久化
      */
-    "theme": string;
+    "theme": ThemeConfig;
 }
 
 /**
@@ -402,8 +402,9 @@ export interface GitConfig {
 }
 
 /**
- * LanShareConfig 局域网互传接收设置（计划-局域网互传接收优化 §3.2）。
- * 只放接收侧的类型策略参数；端口/host/PIN 等运行期参数仍是启动入参，不落这里。
+ * LanShareConfig 局域网互传设置（计划-SSH管理与局域网互传 P2 收尾 + 接收优化 §3.2）。
+ * BlockExt 是接收侧类型策略；Port/Host/AutoStopMin/PIN 是启动默认值：
+ * 运行期仍以互传页的启动入参为准，这里只作设置页分区落盘的预填来源。
  */
 export interface LanShareConfig {
     /**
@@ -412,6 +413,27 @@ export interface LanShareConfig {
      * 落盘/读取前由 normalizeLanShareConfig 统一成小写带前导点、去重去空。
      */
     "blockExt"?: string[] | null;
+
+    /**
+     * Port 启动默认端口；<=0 取 lanshare 内置默认（占用自动 +1 重试照旧）。
+     */
+    "port"?: number;
+
+    /**
+     * Host 启动默认监听地址：空=全部网卡，"127.0.0.1"=仅本机。
+     */
+    "host"?: string;
+
+    /**
+     * AutoStopMin 到点自停分钟数；<=0 不自动停。默认沿用页内旧值 120。
+     */
+    "autoStopMin"?: number;
+
+    /**
+     * Pin 访问 PIN 默认值，空=免密。明文落 config.json（与 Download 代理池
+     * 同口径：本机用户配置文件，不额外加密）；文档已注明 PIN 仅挡无意访问。
+     */
+    "pin"?: string;
 }
 
 /**
@@ -539,6 +561,64 @@ export interface ProxyItem {
     "id": string;
     "name": string;
     "url": string;
+}
+
+/**
+ * ThemeConfig 主题令牌配置。mode 沿用 light/dark/auto 语义（前端据此切 body[arco-theme]、
+ * 浮动球与窗口首帧底色据此定深浅，后端也消费这一维）；其余维度（预设色板 / 自定义主色 /
+ * 圆角 / 密度 / 高对比度 / 减少动效 / 玻璃）与明暗正交，后端只持久化不消费，由前端投射进
+ * --app-* 设计令牌。字段都是字符串短名，前端拿枚举值自行映射，扩容不需要动 Go 结构。
+ */
+export interface ThemeConfig {
+    /**
+     * light | dark | auto，默认 light
+     */
+    "mode": string;
+
+    /**
+     * 预设皮肤名（default/graphite/ocean/forest/sunset…）；custom=自定义主色，默认 default
+     */
+    "preset": string;
+
+    /**
+     * 自定义主色 hex（Preset=custom 时生效）；空=未设
+     */
+    "primary": string;
+
+    /**
+     * 色彩和谐模式 analogous|complementary|split|triadic，默认 analogous（前端消费，后端仅持久化）
+     */
+    "harmony": string;
+
+    /**
+     * small | default | large，默认 default
+     */
+    "radius": string;
+
+    /**
+     * compact | standard | loose，默认 standard（只管留白/间距）
+     */
+    "density": string;
+
+    /**
+     * small | default | large | xlarge，默认 default（字号，独立于密度，前端消费后端仅持久化）
+     */
+    "fontSize": string;
+
+    /**
+     * normal | high，默认 normal
+     */
+    "contrast": string;
+
+    /**
+     * on | reduced，默认 on
+     */
+    "motion": string;
+
+    /**
+     * off | surface，默认 off（阶段一仅令牌位）
+     */
+    "glass": string;
 }
 
 /**

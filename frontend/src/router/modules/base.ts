@@ -110,6 +110,16 @@ export default [{
             },
             component: () => import('@/views/demo/clock/index.vue')
         },
+        {
+            // 透明主题实验台：表面磨砂/玻璃观感在隔离页调参预览，确认后再另开计划铺全局
+            path: '/demo/glass',
+            name: '/demo/glass',
+            meta: {
+                auth: false,
+                menu_name: "透明实验台",
+            },
+            component: () => import('@/views/demo/glass/index.vue')
+        },
         ...buildChildren('/')
     ]
 }, {
@@ -154,6 +164,17 @@ export default [{
                 menu_name: "Canvas时钟Demo",
             },
             component: () => import('@/views/demo/clock/index.vue')
+        },
+        {
+            // 透明主题实验台的新窗口路由（实验台用 openWin 开原生窗验证窗口级透明观感）
+            path: 'demo/glass',
+            name: '/win/demo/glass',
+            meta: {
+                auth: false,
+                blank: true,
+                menu_name: "透明实验台",
+            },
+            component: () => import('@/views/demo/glass/index.vue')
         }
     ]
 }, {

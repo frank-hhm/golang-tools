@@ -180,6 +180,10 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// underlying 透出被包裹的源流：对象存储的分块上传需要从里面取出本地源文件（按文件
+// 指纹判断能否续传，见 objectstore.go 的 localSource），计数壳不能把这信息挡住。
+func (c *countingReader) underlying() io.Reader { return c.r }
+
 // reportProgress 把「已传字节」换算成事件：百分比变化或距上次发送超过节流窗口才发，
 // 总大小未知时 percent 恒 0（前端画不定进度）。
 func reportProgress(p *Progress, total int64, trans int64, last *int, lastAt *time.Time, force bool) {

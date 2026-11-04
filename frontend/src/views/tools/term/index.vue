@@ -55,6 +55,7 @@
                 <icon-more class="conn-more" @click.stop />
                 <template #content>
                   <a-doption value="open"><icon-code /> 打开终端</a-doption>
+                  <a-doption value="sftp"><icon-storage /> 在 SFTP 中打开</a-doption>
                   <a-doption value="edit"><icon-edit /> 编辑</a-doption>
                   <a-doption value="del"><icon-delete /> 删除</a-doption>
                 </template>
@@ -137,8 +138,10 @@
 
 <script setup lang="ts">
 import { computed, getCurrentInstance, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { Message, Modal } from '@arco-design/web-vue';
 import TermConsole from '@/components/business/term-console/index.vue';
+import { useToolWindow } from '@/views/index/useToolWindow';
 import HostFormModal from './components/HostFormModal.vue';
 import CredentialModal from './components/CredentialModal.vue';
 import HostKeyModal from './components/HostKeyModal.vue';
@@ -146,6 +149,8 @@ import ImportConfigModal from './components/ImportConfigModal.vue';
 import type { TermCredential, TermHost, TermTab } from './types';
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+const route = useRoute();
+const { openToolWindow } = useToolWindow();
 
 /* ==================== 连接记录 ==================== */
 const hosts = ref<TermHost[]>([]);
@@ -261,11 +266,27 @@ function onSaved(list: TermHost[], id: string) {
   if (h) connect(h);
 }
 
-/** 列表项的 ⋯ 菜单：三个动作都落在页面上，列表自身不处理业务 */
+/** 列表项的 ⋯ 菜单：动作都落在页面上，列表自身不处理业务 */
 function onHostAction(v: string, h: TermHost) {
   if (v === 'open') connect(h);
+  else if (v === 'sftp') void openInSftp(h);
   else if (v === 'edit') openForm(h);
   else if (v === 'del') confirmRemove(h);
+}
+
+// openInSftp 把终端主机导入为 SFTP 连接并开文件传输页自动连接（P2 互通）：
+// 共享凭据只引用同一 credID，一处改密两端生效；后端 TermOpenInSFTP 返回新建连接 id。
+async function openInSftp(h: TermHost) {
+  try {
+    const connId = String(await GoTools?.TermOpenInSFTP(h.id) ?? '');
+    if (!connId) {
+      Message.warning('未能导入 SFTP 连接');
+      return;
+    }
+    await openToolWindow(`/tools/ftp?conn=${encodeURIComponent(connId)}`, '文件传输', { single: true });
+  } catch (e: any) {
+    Message.error({ content: String(e?.message || e || '在 SFTP 中打开失败'), position: 'top', duration: 3000 });
+  }
 }
 
 function confirmRemove(h: TermHost) {
@@ -385,9 +406,15 @@ function syncActive() {
   activeKey.value = tabs.value[0]?.key || '';
 }
 
-onMounted(() => {
-  loadHosts();
+onMounted(async () => {
+  await loadHosts();
   loadCredentials();
+  // 跨页互跳：文件传输页「在终端中打开」带来的主机 id，选中即连
+  const hostQ = String(route.query?.host ?? '');
+  if (hostQ) {
+    const hit = hosts.value.find((x) => x.id === hostQ);
+    if (hit) connect(hit);
+  }
 });
 </script>
 

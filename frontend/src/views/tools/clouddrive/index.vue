@@ -27,9 +27,10 @@
                                     {{ a.hasToken ? '已授权' : '未授权' }}
                                 </a-tag>
                             </div>
+                            <div v-if="acctSub(a)" class="acct-sub2">{{ acctSub(a) }}</div>
                         </div>
                         <a-space :size="2">
-                            <a-tooltip content="授权">
+                            <a-tooltip v-if="!isOSKind(a.kind)" content="授权">
                                 <a-button size="mini" type="text" :disabled="!ready" @click.stop="openAuth(a)">
                                     <icon-safe />
                                 </a-button>
@@ -157,13 +158,23 @@
                         <a-option value="google">Google Drive</a-option>
                         <a-option value="aliyun">阿里云盘</a-option>
                         <a-option value="baidu">百度网盘</a-option>
+                        <a-option value="aliyun_oss">阿里云 OSS（对象存储）</a-option>
+                        <a-option value="tencent_cos">腾讯云 COS（对象存储）</a-option>
+                        <a-option value="s3">S3 兼容存储（MinIO/OBS/AWS…）</a-option>
                     </a-select>
                 </a-form-item>
                 <a-form-item label="显示名">
                     <a-input v-model="addModal.label" placeholder="例如：我的谷歌盘" />
                 </a-form-item>
+                <div v-if="isOSKind(addModal.kind)" class="add-tip">
+                    对象存储无授权流程，点「确定」后在下一个弹窗一次填完 bucket / endpoint / region / AccessKey。
+                </div>
             </a-form>
         </a-modal>
+
+        <!-- 对象存储建账号（OSS / COS / S3 三 kind 共用） -->
+        <AddObjectStoreModal v-model:visible="osModal.open" :kind="osModal.kind" :label="osModal.label"
+            @added="onOSAdded" />
 
         <!-- 授权：Google 走粘贴回跳，阿里/百度走粘贴长期凭证 -->
         <a-modal v-model:visible="authModal.open" :title="authTitle" :width="560" :ok-loading="authModal.saving"
@@ -304,11 +315,12 @@ import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref
 import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useToolWindow } from "@/views/index/useToolWindow";
+import AddObjectStoreModal from "./components/AddObjectStoreModal.vue";
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 const { openToolWindow } = useToolWindow();
 
-interface AccountView { id: string; kind: string; label: string; createdAt: number; updatedAt: number; hasToken: boolean; }
+interface AccountView { id: string; kind: string; label: string; bucket?: string; endpoint?: string; region?: string; createdAt: number; updatedAt: number; hasToken: boolean; }
 interface Entry { id: string; name: string; path: string; isDir: boolean; size: number; mtime: number; mime: string; thumbUrl?: string; }
 interface Quota { used: number; total: number; }
 interface Transfer { id: string; op: string; srcAcct: string; srcPath: string; dstAcct: string; dstPath: string; name: string; size: number; trans: number; stage: string; note: string; createdAt: number; updatedAt: number; }
@@ -327,8 +339,17 @@ const canBrowse = computed(() => !!cur.value?.hasToken && cfg.enabled);
 const quotaPct = computed(() => (quota.value && quota.value.total > 0 ? Math.min(1, quota.value.used / quota.value.total) : 0));
 
 const errText = (e: any) => String(e?.message ?? e ?? "操作失败");
+const OS_KINDS = ["aliyun_oss", "tencent_cos", "s3"];
+const isOSKind = (k: string) => OS_KINDS.includes(k);
 const kindName = (k: string) =>
-    (k === "google" ? "Google Drive" : k === "aliyun" ? "阿里云盘" : k === "baidu" ? "百度网盘" : k);
+    (k === "google" ? "Google Drive"
+        : k === "aliyun" ? "阿里云盘"
+            : k === "baidu" ? "百度网盘"
+                : k === "aliyun_oss" ? "阿里云 OSS"
+                    : k === "tencent_cos" ? "腾讯云 COS"
+                        : k === "s3" ? "S3 兼容存储" : k);
+// 对象存储账号副标题：bucket@region（网盘类无此信息，返回空则不渲染）。
+const acctSub = (a: AccountView) => (isOSKind(a.kind) && a.bucket ? `${a.bucket}${a.region ? " @ " + a.region : ""}` : "");
 const curDirID = () => (crumbs.value.length ? crumbs.value[crumbs.value.length - 1].id : "");
 
 function fmtBytes(n: number): string {
@@ -407,6 +428,14 @@ function pick(a: AccountView) {
 const addModal = reactive({ open: false, saving: false, kind: "google", label: "" });
 function openAdd() { addModal.kind = "google"; addModal.label = ""; addModal.open = true; }
 async function doAdd() {
+    // 对象存储三类走单独表单弹窗（创建时一步填齐 bucket/AK，无授权流程）。
+    if (isOSKind(addModal.kind)) {
+        osModal.kind = addModal.kind;
+        osModal.label = addModal.label;
+        addModal.open = false;
+        osModal.open = true;
+        return;
+    }
     addModal.saving = true;
     try {
         const v = await GoTools?.CloudAddAccount(addModal.kind, addModal.label);
@@ -417,6 +446,14 @@ async function doAdd() {
     } catch (e: any) {
         Message.error(`添加失败：${errText(e)}`);
     } finally { addModal.saving = false; }
+}
+
+// 对象存储建账号弹窗（三 kind 共用一个组件）
+const osModal = reactive({ open: false, kind: "aliyun_oss", label: "" });
+async function onOSAdded() {
+    await loadAccounts();
+    const hit = accounts.value.find((a) => isOSKind(a.kind));
+    if (hit && !cur.value) pick(hit);
 }
 async function remove(a: AccountView) {
     try {
@@ -785,6 +822,13 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
     margin-top: 4px;
 }
 
+.acct-sub2 {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--color-text-3);
+    word-break: break-all;
+}
+
 .quota {
     margin-top: 12px;
     padding-top: 10px;
@@ -907,6 +951,16 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
 }
 
 .auth-tip {
+    color: var(--color-text-3);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.add-tip {
+    margin-top: -6px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--color-fill-2);
     color: var(--color-text-3);
     font-size: 12px;
     line-height: 1.6;

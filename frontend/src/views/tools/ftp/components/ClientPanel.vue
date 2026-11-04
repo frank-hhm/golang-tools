@@ -34,6 +34,7 @@
                 <icon-more class="inst-more" @click.stop />
                 <template #content>
                   <a-doption value="open"><icon-folder /> 打开文件管理</a-doption>
+                  <a-doption value="term"><icon-terminal /> 在终端中打开</a-doption>
                   <a-doption value="edit"><icon-edit /> 编辑</a-doption>
                   <a-doption value="del"><icon-delete /> 删除</a-doption>
                 </template>
@@ -103,15 +104,19 @@
 
 <script setup lang="ts">
 import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { Events } from '@wailsio/runtime';
 import { Message, Modal } from '@arco-design/web-vue';
 import FilePane from './FilePane.vue';
 import TransferQueue from './TransferQueue.vue';
 import ConnectionFormModal from './ConnectionFormModal.vue';
 import PreviewModal from './PreviewModal.vue';
+import { useToolWindow } from '@/views/index/useToolWindow';
 import type { FtpConnection, FtpDragItem, FtpEntry, FtpSessionInfo, FtpTransfer } from '../types';
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+const route = useRoute();
+const { openToolWindow } = useToolWindow();
 
 /* ==================== 连接记录 ==================== */
 
@@ -164,8 +169,24 @@ function onSaved(list: FtpConnection[], id: string) {
 
 function onAction(v: string, c: FtpConnection) {
   if (v === 'open') void connect(c);
+  else if (v === 'term') void openInTerminal(c);
   else if (v === 'edit') openForm(c);
   else if (v === 'del') confirmRemove(c);
+}
+
+// openInTerminal 把 SFTP 连接导入为终端主机并开终端页自动连接（P2 互通）：
+// 共享凭据只引用同一 credID，一处改密两端生效；重复导入同名主机由后端去重语义兼顾。
+async function openInTerminal(c: FtpConnection) {
+  try {
+    const hostId = String(await GoTools?.FtpOpenInTerminal(c.id) ?? '');
+    if (!hostId) {
+      Message.warning('未能导入终端主机');
+      return;
+    }
+    await openToolWindow(`/tools/term?host=${encodeURIComponent(hostId)}`, '终端连接', { single: true });
+  } catch (e: any) {
+    Message.error({ content: String(e?.message || e || '在终端中打开失败'), position: 'top', duration: 3000 });
+  }
 }
 
 function confirmRemove(c: FtpConnection) {
@@ -312,6 +333,12 @@ let offDrop: (() => void) | null = null;
 
 onMounted(async () => {
   await loadConnections();
+  // 跨页互跳：终端页「在 SFTP 中打开」带来的连接 id，选中即连
+  const connQ = String(route.query?.conn ?? '');
+  if (connQ) {
+    const hit = connections.value.find((x) => x.id === connQ);
+    if (hit) void connect(hit);
+  }
   offTransfer = Events.On('ftp:transfer', (raw: any) => {
     // Wails v3 的事件负载在 data 里，直接拿 raw 会读不到字段
     const t = raw?.data ?? raw;

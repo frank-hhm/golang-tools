@@ -45,12 +45,138 @@ type BallConfig struct {
 	DockEdge *bool `json:"dockEdge"`
 }
 
+// ThemeConfig 主题令牌配置。mode 沿用 light/dark/auto 语义（前端据此切 body[arco-theme]、
+// 浮动球与窗口首帧底色据此定深浅，后端也消费这一维）；其余维度（预设色板 / 自定义主色 /
+// 圆角 / 密度 / 高对比度 / 减少动效 / 玻璃）与明暗正交，后端只持久化不消费，由前端投射进
+// --app-* 设计令牌。字段都是字符串短名，前端拿枚举值自行映射，扩容不需要动 Go 结构。
+type ThemeConfig struct {
+	Mode     string `json:"mode"`     // light | dark | auto，默认 light
+	Preset   string `json:"preset"`   // 预设皮肤名（default/graphite/ocean/forest/sunset…）；custom=自定义主色，默认 default
+	Primary  string `json:"primary"`  // 自定义主色 hex（Preset=custom 时生效）；空=未设
+	Harmony  string `json:"harmony"`  // 色彩和谐模式 analogous|complementary|split|triadic，默认 analogous（前端消费，后端仅持久化）
+	Radius   string `json:"radius"`   // small | default | large，默认 default
+	Density  string `json:"density"`  // compact | standard | loose，默认 standard（只管留白/间距）
+	FontSize string `json:"fontSize"` // small | default | large | xlarge，默认 default（字号，独立于密度，前端消费后端仅持久化）
+	Contrast string `json:"contrast"` // normal | high，默认 normal
+	Motion   string `json:"motion"`   // on | reduced，默认 on
+	Glass    string `json:"glass"`    // off | surface，默认 off（阶段一仅令牌位）
+}
+
+// 主题 mode 的合法三态与预设默认名：前后端各写一次，靠变更文档与单测锁住口径。
+const (
+	ThemeModeLight       = "light"
+	ThemeModeDark        = "dark"
+	ThemeModeAuto        = "auto"
+	defaultThemePreset   = "default"
+	defaultThemeHarmony  = "analogous"
+	defaultThemeFontSize = "default"
+)
+
+// validThemeHarmony 和谐模式合法集（与前端 palette.HARMONY_OFFSETS 键一致）。
+func validThemeHarmony(v string) bool {
+	switch v {
+	case "analogous", "complementary", "split", "triadic":
+		return true
+	}
+	return false
+}
+
+// validThemeFontSize 字号档合法集（与前端 theme.FONT_SCALE_MAP 键一致）。
+func validThemeFontSize(v string) bool {
+	switch v {
+	case "small", "default", "large", "xlarge":
+		return true
+	}
+	return false
+}
+
+// defaultThemeConfig 返回一份合法的主题默认配置（仅 mode 有后端语义，其余取各自默认短名）。
+func defaultThemeConfig() ThemeConfig {
+	return ThemeConfig{
+		Mode:     ThemeModeLight,
+		Preset:   defaultThemePreset,
+		Harmony:  defaultThemeHarmony,
+		Radius:   "default",
+		Density:  "standard",
+		FontSize: defaultThemeFontSize,
+		Contrast: "normal",
+		Motion:   "on",
+		Glass:    "off",
+	}
+}
+
+// UnmarshalJSON 向后兼容老配置：早期 config.json 里 theme 是裸字符串（"light"/"dark"/"auto"），
+// 现升级为对象。这里容忍两种形态——JSON 字符串按 mode 解析并补齐其余默认，对象走常规解码，
+// null/空按零值（随后 normalizeThemeConfig 兜默认）。避免老用户升级后配置报错或主题丢失。
+func (t *ThemeConfig) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	// 老格式：带引号的裸字符串
+	if trimmed[0] == '"' {
+		*t = defaultThemeConfig()
+		switch strings.Trim(trimmed, "\"") {
+		case ThemeModeDark:
+			t.Mode = ThemeModeDark
+		case ThemeModeAuto:
+			t.Mode = ThemeModeAuto
+		default:
+			t.Mode = ThemeModeLight
+		}
+		return nil
+	}
+	// 新格式：对象。用别名类型规避递归进入本方法。
+	type alias ThemeConfig
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*t = ThemeConfig(a)
+	return nil
+}
+
+// normalizeThemeConfig 补齐主题配置合法范围：mode 收敛到 light/dark/auto 三态，其余维度
+// 空值回落各自默认短名。全是 idempotent 修正，不覆盖用户填的合法值。
+func normalizeThemeConfig(t *ThemeConfig) {
+	switch t.Mode {
+	case ThemeModeLight, ThemeModeDark, ThemeModeAuto:
+	default:
+		t.Mode = ThemeModeLight
+	}
+	if strings.TrimSpace(t.Preset) == "" {
+		t.Preset = defaultThemePreset
+	}
+	if !validThemeHarmony(strings.TrimSpace(t.Harmony)) {
+		t.Harmony = defaultThemeHarmony
+	}
+	if strings.TrimSpace(t.Radius) == "" {
+		t.Radius = "default"
+	}
+	if strings.TrimSpace(t.Density) == "" {
+		t.Density = "standard"
+	}
+	if !validThemeFontSize(strings.TrimSpace(t.FontSize)) {
+		t.FontSize = defaultThemeFontSize
+	}
+	if strings.TrimSpace(t.Contrast) == "" {
+		t.Contrast = "normal"
+	}
+	if strings.TrimSpace(t.Motion) == "" {
+		t.Motion = "on"
+	}
+	if strings.TrimSpace(t.Glass) == "" {
+		t.Glass = "off"
+	}
+	t.Primary = strings.TrimSpace(t.Primary)
+}
+
 // GeneralConfig 应用通用设置
 type GeneralConfig struct {
-	AutoStart bool   `json:"autoStart"` // 是否注册开机（Windows 登录时）自动启动，写入 HKCU\...\Run 注册表键
-	AppName   string `json:"appName"`   // 应用显示名称（窗口标题/托盘提示），默认 "Tools"
-	AppLogo   string `json:"appLogo"`   // 自定义 logo 图片绝对路径，空表示使用内置默认
-	Theme     string `json:"theme"`     // 主题模式：light / dark / auto，默认 light（前端消费，后端仅持久化）
+	AutoStart bool        `json:"autoStart"` // 是否注册开机（Windows 登录时）自动启动，写入 HKCU\...\Run 注册表键
+	AppName   string      `json:"appName"`   // 应用显示名称（窗口标题/托盘提示），默认 "Tools"
+	AppLogo   string      `json:"appLogo"`   // 自定义 logo 图片绝对路径，空表示使用内置默认
+	Theme     ThemeConfig `json:"theme"`     // 主题配置（模式 + 令牌维度）：mode 后端消费，其余仅持久化
 }
 
 // PathsConfig 全局基础目录（plugins/data/logs 各自下按服务名建子目录，downloads 为单基目录，见 appdirs/layout.go）；
@@ -408,18 +534,29 @@ func normalizeDownloadConfig(cfg *AppConfig) {
 	}
 }
 
-// LanShareConfig 局域网互传接收设置（计划-局域网互传接收优化 §3.2）。
-// 只放接收侧的类型策略参数；端口/host/PIN 等运行期参数仍是启动入参，不落这里。
+// LanShareConfig 局域网互传设置（计划-SSH管理与局域网互传 P2 收尾 + 接收优化 §3.2）。
+// BlockExt 是接收侧类型策略；Port/Host/AutoStopMin/PIN 是启动默认值：
+// 运行期仍以互传页的启动入参为准，这里只作设置页分区落盘的预填来源。
 type LanShareConfig struct {
 	// BlockExt 收件箱拒收的扩展名黑名单（如 "exe"/".ps1"）。空 = 全类型全收，
 	// 契合「默认全类型所有文件」；用户可「一键填入常见危险类型」找回安全默认。
 	// 落盘/读取前由 normalizeLanShareConfig 统一成小写带前导点、去重去空。
 	BlockExt []string `json:"blockExt,omitempty"`
+	// Port 启动默认端口；<=0 取 lanshare 内置默认（占用自动 +1 重试照旧）。
+	Port int `json:"port,omitempty"`
+	// Host 启动默认监听地址：空=全部网卡，"127.0.0.1"=仅本机。
+	Host string `json:"host,omitempty"`
+	// AutoStopMin 到点自停分钟数；<=0 不自动停。默认沿用页内旧值 120。
+	AutoStopMin int `json:"autoStopMin,omitempty"`
+	// Pin 访问 PIN 默认值，空=免密。明文落 config.json（与 Download 代理池
+	// 同口径：本机用户配置文件，不额外加密）；文档已注明 PIN 仅挡无意访问。
+	Pin string `json:"pin,omitempty"`
 }
 
-// defaultLanShareConfig 互传默认设置：黑名单为空 = 全类型全收。
+// defaultLanShareConfig 互传默认设置：黑名单为空 = 全类型全收；
+// 启动默认值沿用互传页旧写法：默认端口、全部网卡、120 分钟后自停、免密。
 func defaultLanShareConfig() *LanShareConfig {
-	return &LanShareConfig{}
+	return &LanShareConfig{AutoStopMin: 120}
 }
 
 // LanShareSection 取互传接收设置。老配置从未有这一段时返回默认值（空黑名单），调用方不用判空。
@@ -433,13 +570,21 @@ func LanShareSection(cfg AppConfig) LanShareConfig {
 // LanShareCfg 当前缓存配置里的互传接收设置，供 services/app 绑定层读取回灌。
 func LanShareCfg() LanShareConfig { return LanShareSection(CurrentConfig()) }
 
-// normalizeLanShareConfig 清洗互传接收黑名单：每项去空、小写、补前导点、去重。
+// normalizeLanShareConfig 清洗互传设置：黑名单每项去空、小写、补前导点、去重；
+// 端口越界回落 0（=用内置默认），autoStopMin 负值回落默认 120，host 去空白。
 // nil 段跳过（调用方走 LanShareSection 拿默认值）；不覆盖用户填的合法值。
 func normalizeLanShareConfig(cfg *AppConfig) {
 	l := cfg.LanShare
 	if l == nil {
 		return
 	}
+	if l.Port < 0 || l.Port > 65535 {
+		l.Port = 0
+	}
+	if l.AutoStopMin < 0 {
+		l.AutoStopMin = 120
+	}
+	l.Host = strings.TrimSpace(l.Host)
 	seen := map[string]bool{}
 	out := make([]string, 0, len(l.BlockExt))
 	for _, e := range l.BlockExt {
@@ -638,7 +783,7 @@ func DefaultConfig() AppConfig {
 	return AppConfig{
 		Log:      LogConfig{Enabled: true, Level: "info", Path: ""},
 		Ball:     BallConfig{Enabled: true, HideAllShortcut: "Ctrl+Alt+H", DockEdge: dockOn()},
-		General:  GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: "light"},
+		General:  GeneralConfig{AutoStart: false, AppName: "Tools", AppLogo: "", Theme: defaultThemeConfig()},
 		Browser:  defaultBrowserConfig(),
 		Launcher: defaultLauncherConfig(),
 		Archive:  defaultArchiveConfig(),
@@ -972,11 +1117,7 @@ func normalizeConfig(cfg *AppConfig) {
 	normalizeCloudConfig(cfg)
 	normalizeDownloadConfig(cfg)
 	normalizeLanShareConfig(cfg)
-	switch cfg.General.Theme {
-	case "light", "dark", "auto":
-	default:
-		cfg.General.Theme = "light"
-	}
+	normalizeThemeConfig(&cfg.General.Theme)
 	for i := range cfg.Tools {
 		if cfg.Tools[i].ID == "" {
 			cfg.Tools[i].ID = cfg.Tools[i].Key
@@ -1253,7 +1394,7 @@ func SaveAppTheme(theme string) error {
 	if !set {
 		cfg = LoadAppConfig()
 	}
-	cfg.General.Theme = theme
+	cfg.General.Theme.Mode = theme
 	_, err := writeAppConfigLocked(cfg)
 	return err
 }

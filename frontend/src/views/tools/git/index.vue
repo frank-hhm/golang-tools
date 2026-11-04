@@ -761,6 +761,10 @@ onBeforeUnmount(() => {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  /* 改动少时按内容收高，不再撑成半屏空 bordered 卡片（顶部与满高历史卡对齐）；
+     改动多时到 max-height 上限后内部滚，两块仍共享同一行高基准 */
+  align-self: flex-start;
+  max-height: 100%;
 }
 .changes-card :deep(.arco-card-header) {
   flex: none;

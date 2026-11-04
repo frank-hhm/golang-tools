@@ -610,6 +610,16 @@ export function CloudAddAccount(kind: string, label: string): $CancellablePromis
 }
 
 /**
+ * CloudAddObjectStore 一步创建对象存储账号（阿里 OSS / 腾讯 COS / 通用 S3）：这类
+ * 账号没有 OAuth 授权码流程，创建时 bucket/endpoint/region + AccessKey 一次填齐。
+ * bucket/endpoint/region 属非敏感配置（回前端可显示）；akID/akSecret 只进加密账号表
+ * （tools/secret），绝不回前端，改密钥只能重填。endpoint/region 可留空（按 kind 推导默认域名）。
+ */
+export function CloudAddObjectStore(kind: string, label: string, bucket: string, endpoint: string, region: string, akID: string, akSecret: string): $CancellablePromise<clouddrive$0.AccountView> {
+    return $Call.ByID(929500638, kind, label, bucket, endpoint, region, akID, akSecret);
+}
+
+/**
  * CloudAuthURL 生成 Google 授权 URL，供用户点开授权（需先启用云盘并配好客户端凭证）。
  */
 export function CloudAuthURL(acctID: string): $CancellablePromise<string> {
@@ -1927,6 +1937,15 @@ export function FtpMkdir(sessionID: string, dir: string, name: string): $Cancell
 }
 
 /**
+ * FtpOpenInTerminal 把一条 SFTP 连接导入为终端主机并返回主机 id（前端随后开
+ * /tools/term?host=<id> 自动连接）。已关联共享凭据的只引用同一 credID——
+ * 一处改密两端生效；内联密码/私钥的升格为一条共享凭据。
+ */
+export function FtpOpenInTerminal(connID: string): $CancellablePromise<string> {
+    return $Call.ByID(4208753687, connID);
+}
+
+/**
  * FtpOpenServerRoot 在文件管理器里打开服务端根目录（空则打开当前配置的根目录）
  */
 export function FtpOpenServerRoot(path: string): $CancellablePromise<void> {
@@ -2705,8 +2724,8 @@ export function LanShareRevokeLink(token: string): $CancellablePromise<void> {
 }
 
 /**
- * LanShareSettings 返回互传接收设置段（老配置无此段时返回默认值：空黑名单=全收）。
- * 供互传页回填接收类型黑名单。
+ * LanShareSettings 返回互传设置段（老配置无此段时返回默认值：空黑名单=全收、
+ * 启动默认 120 分钟后自停）。供互传页回填黑名单与启动控件、设置页分区回填。
  */
 export function LanShareSettings(): $CancellablePromise<config$0.LanShareConfig> {
     return $Call.ByID(1271827553);
@@ -4526,12 +4545,12 @@ export function SaveDownloadSettings($in: config$0.DownloadConfig): $Cancellable
 }
 
 /**
- * SaveLanShareSettings 保存接收类型黑名单（blockExt：每项可不带前导点，如 "exe"）。
- * 空切片 = 清空黑名单（全收）。落盘后立即回灌单例（ApplyLanShareConfig），
- * 对已在跑的服务即时生效，无需重启。
+ * SaveLanShareSettings 保存互传设置（接收黑名单 + 启动默认值 port/host/autoStopMin/pin）。
+ * 空黑名单 = 全收。落盘后立即回灌单例（ApplyLanShareConfig），
+ * 对已在跑的服务即时生效，无需重启；启动默认值下次启动时生效。
  */
-export function SaveLanShareSettings(blockExt: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(1779853432, blockExt);
+export function SaveLanShareSettings($in: config$0.LanShareConfig): $CancellablePromise<void> {
+    return $Call.ByID(1779853432, $in);
 }
 
 /**
@@ -4901,6 +4920,14 @@ export function TermListKnownHosts(): $CancellablePromise<term$0.KnownHostEntry[
  */
 export function TermOpenDocker(containerID: string, title: string, cols: number, rows: number): $CancellablePromise<term$0.SessionInfo> {
     return $Call.ByID(1920309376, containerID, title, cols, rows);
+}
+
+/**
+ * TermOpenInSFTP 把一条终端主机导入为 SFTP 连接并返回连接 id（前端随后开
+ * /tools/ftp?conn=<id>）。共享凭据直接引用；旧式内联密码/私钥升格为凭据。
+ */
+export function TermOpenInSFTP(hostID: string): $CancellablePromise<string> {
+    return $Call.ByID(904256622, hostID);
 }
 
 /**

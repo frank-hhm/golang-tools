@@ -69,11 +69,17 @@ func OpenSession(connID string) (SessionInfo, error) {
 	if err != nil {
 		return SessionInfo{}, err
 	}
+	return OpenSessionResolved(c, pass)
+}
+
+// OpenSessionResolved 用已解析的连接与密码建会话：绑定层叠加 term 共享凭据后调它
+// （P2 凭据归一）；包内旧路径 OpenSession 仍走自身 credential。
+func OpenSessionResolved(c Connection, pass string) (SessionInfo, error) {
 	if c.Auth == AuthKey && c.KeyPath == "" {
-		return SessionInfo{}, fmt.Errorf("该记录缺少私钥文件，请重新编辑")
+		return SessionInfo{}, fmt.Errorf("该记录缺少私钥文件（选了共享凭据的请确认凭据里填了私钥），请重新编辑")
 	}
 	if c.Auth != AuthKey && pass == "" {
-		return SessionInfo{}, fmt.Errorf("该记录没有保存密码，请编辑后重新输入")
+		return SessionInfo{}, fmt.Errorf("该记录没有保存密码（也未关联含密码的共享凭据），请编辑后重新输入")
 	}
 
 	cfg, cerr := sshClientConfig(c, pass)
@@ -143,9 +149,16 @@ func sshClientConfig(c Connection, pass string) (*ssh.ClientConfig, error) {
 		if rerr != nil {
 			return nil, fmt.Errorf("读取私钥失败: %v", rerr)
 		}
-		signer, perr := ssh.ParsePrivateKey(raw)
+		var signer ssh.Signer
+		var perr error
+		if c.Passphrase != "" {
+			// 共享凭据可带口令（与 term 同口径）
+			signer, perr = ssh.ParsePrivateKeyWithPassphrase(raw, []byte(c.Passphrase))
+		} else {
+			signer, perr = ssh.ParsePrivateKey(raw)
+		}
 		if perr != nil {
-			return nil, fmt.Errorf("私钥解析失败（带口令的私钥暂不支持）: %v", perr)
+			return nil, fmt.Errorf("私钥解析失败（带口令的私钥需在凭据里填口令）: %v", perr)
 		}
 		cfg.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
 	} else {
@@ -167,13 +180,14 @@ func sshClientConfig(c Connection, pass string) (*ssh.ClientConfig, error) {
 // 编辑已有记录时密码留空则沿用已保存的密码（与 credential 同一套语义）。
 func Test(c Connection) (int64, error) {
 	pass := c.Password
-	if pass == "" && c.ID != "" {
+	if c.CredID == "" && pass == "" && c.ID != "" {
+		// 未关联共享凭据时编辑已有记录密码留空，沿用已保存的密码（与 credential 同一套语义）
 		if _, saved, err := credential(c.ID); err == nil {
 			pass = saved
 		}
 	}
 	if c.Auth == AuthKey && c.KeyPath == "" {
-		return 0, fmt.Errorf("请先选择私钥文件")
+		return 0, fmt.Errorf("请先选择私钥文件（或在共享凭据里填私钥）")
 	}
 	if c.Auth != AuthKey && pass == "" {
 		return 0, fmt.Errorf("请输入密码（或选择密钥验证）")

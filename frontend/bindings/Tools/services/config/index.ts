@@ -19,6 +19,7 @@ export type {
     MirrorItem,
     PathsConfig,
     ProxyItem,
+    ThemeConfig,
     ToolConfig,
     ToolSettings
 } from "./models.js";

@@ -69,11 +69,20 @@
         <div v-else-if="!files.length" class="hist-fstate">没有文件改动（合并提交或空提交）</div>
         <div v-else class="hd-files">
           <div v-for="f in files" :key="f.path" class="hist-file" @dblclick="emit('diff', { commit: selected.hash, path: f.path })">
+            <span class="hf-dot" :class="fstate(f)"></span>
             <span class="hist-fpath" :title="f.path">{{ f.path }}</span>
-            <a-link class="hd-fhis" @click.stop="openBlame(f.path)">追溯</a-link>
-            <a-link class="hd-fhis" @click.stop="followFile(f.path)">历史</a-link>
             <span v-if="f.binary" class="hist-fbin">二进制</span>
-            <span v-else class="hist-fnum"><i class="add">+{{ f.added }}</i><i class="del">-{{ f.deleted }}</i></span>
+            <template v-else>
+              <span class="hf-bar" :title="`+${f.added} / -${f.deleted}`">
+                <i class="hf-add" :style="{ width: addPct(f) + '%' }"></i>
+                <i class="hf-del" :style="{ width: 100 - addPct(f) + '%' }"></i>
+              </span>
+              <span class="hist-fnum"><i class="add">+{{ f.added }}</i><i class="del">-{{ f.deleted }}</i></span>
+            </template>
+            <span class="hd-fhis">
+              <a-link class="hf-link" @click.stop="openBlame(f.path)">追溯</a-link>
+              <a-link class="hf-link" @click.stop="followFile(f.path)">历史</a-link>
+            </span>
           </div>
         </div>
       </div>
@@ -184,6 +193,22 @@ function refsOf(s: string): { text: string; kind: string }[] {
 
 function subjOf(c: Commit | null): string {
   return c?.subject || '（无说明）';
+}
+
+/** 由 numstat 的增删数推一个文件态色点（无 name-status 只能靠启发）：
+ *  纯新增→绿、纯删除→红、又加又删→橙（最常见的是修改）、二进制→灰 */
+function fstate(f: FileDiff): string {
+  if (f.binary) return 'bin';
+  if (f.added > 0 && !f.deleted) return 'add';
+  if (f.deleted > 0 && !f.added) return 'del';
+  if (f.added > 0 && f.deleted > 0) return 'mod';
+  return 'none';
+}
+/** 差异条里绿色（新增）占比，供按增删比例铺条；全 0 时退中点 */
+function addPct(f: FileDiff): number {
+  const t = (f.added || 0) + (f.deleted || 0);
+  if (!t) return 50;
+  return Math.round(((f.added || 0) / t) * 100);
 }
 
 function rel(ts: number): string {
@@ -617,13 +642,34 @@ defineExpose({ load });
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 1px 6px 1px 0;
+  padding: 3px 6px 3px 4px;
   border-radius: var(--base-radius-small);
   font-size: 12px;
   cursor: pointer;
 }
 .hist-file:hover {
   background: var(--color-fill-2);
+}
+/* 文件态色点：呼应变更区的状态色语言，一眼扫出这笔改了哪类文件 */
+.hf-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--border-radius-full);
+  background: rgb(var(--gray-4));
+}
+.hf-dot.add {
+  background: rgb(var(--green-6));
+}
+.hf-dot.del {
+  background: rgb(var(--red-6));
+}
+.hf-dot.mod {
+  background: rgb(var(--orangered-6));
+}
+.hf-dot.bin,
+.hf-dot.none {
+  background: rgb(var(--gray-4));
 }
 .hist-fpath {
   flex: 1;
@@ -633,20 +679,49 @@ defineExpose({ load });
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 增删比例条：定宽槽，绿段宽=新增占比、红段=删除占比，悬停看精确数 */
+.hf-bar {
+  flex: none;
+  display: inline-flex;
+  width: 52px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--border-radius-full);
+  background: var(--color-fill-2);
+}
+.hf-add,
+.hf-del {
+  display: block;
+  height: 100%;
+}
+.hf-add {
+  background: rgb(var(--green-6));
+}
+.hf-del {
+  background: rgb(var(--red-6));
+}
 .hd-fhis {
   flex: none;
-  font-size: 11px;
+  display: inline-flex;
+  gap: 6px;
   opacity: 0;
+  transition: opacity 0.12s ease;
 }
 .hist-file:hover .hd-fhis {
   opacity: 1;
 }
+.hf-link {
+  font-size: 11px;
+}
 .hist-fbin {
   flex: none;
   color: rgb(var(--gray-5));
+  font-size: 11px;
 }
 .hist-fnum {
   flex: none;
+  width: 62px;
+  text-align: right;
   font-family: Consolas, monospace;
   font-size: 11px;
 }

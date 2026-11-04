@@ -70,6 +70,16 @@ export interface Connection {
     "keyPath"?: string;
 
     /**
+     * 关联 term 共享凭据（P2 收尾：一处改密多端生效）
+     */
+    "credID"?: string;
+
+    /**
+     * 私钥口令：只在共享凭据解析后于内存里短暂存在，不落盘
+     */
+    "passphrase"?: string;
+
+    /**
      * UTF-8 / GBK（FTP 阶段用）
      */
     "charset"?: string;

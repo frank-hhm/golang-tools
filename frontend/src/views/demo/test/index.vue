@@ -77,6 +77,11 @@ const items: TestItem[] = [
         desc: "Canvas 指针时钟：预设配色、自定义配色弹窗、参数说明。",
         path: "/demo/clock",
     },
+    {
+        name: "透明主题实验台",
+        desc: "表面磨砂（backdrop-filter）在卡片/浮层/弹窗上的透明度、模糊半径、描边实时调参预览；隔离页，不碰全局。开原生窗可验证窗口级观感。",
+        path: "/demo/glass",
+    },
 ];
 
 const router = useRouter();

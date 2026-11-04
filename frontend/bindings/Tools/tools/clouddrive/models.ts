@@ -8,6 +8,9 @@ export interface AccountView {
     "id": string;
     "kind": string;
     "label": string;
+    "bucket"?: string;
+    "endpoint"?: string;
+    "region"?: string;
     "createdAt": number;
     "updatedAt": number;
     "hasToken": boolean;

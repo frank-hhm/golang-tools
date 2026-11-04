@@ -65,10 +65,9 @@ const THEME_TOKENS = {
     secondColor: "--primary-6",
 } as const;
 /** 按明暗模式差异化的 token（仅浅色/暗黑各用不同变量时在此登记）：
- *  暗黑下圆环改用更亮的中性灰 fill-4（与暗盘 bg-2 明显分层，边框清晰可见；
- *  primary 蓝在暗盘上对比不足故弃用），分针提亮一档、秒针直接用白 */
+ *  暗黑下 text-3 只有 0.5 白、primary 蓝在暗盘上对比不足，分针提亮一档、秒针直接用白 */
 const DARK_TOKEN_OVERRIDES: Partial<Record<ColorKey, string>> = {
-    ringColor: "--color-fill-4",
+    ringColor: "--primary-6",
     minuteColor: "--color-text-2",
     secondColor: "--color-text-1",
 };
@@ -93,15 +92,6 @@ let darkMode = false;
 function wmAlpha(base: number): number {
     return darkMode ? base * 0.6 : base;
 }
-/** prop 里写 var(--x, fallback) 时先解析成实色：canvas fillStyle 不认 var()，
- *  直接塞会当无效值丢弃（fillStyle 维持默认黑，盘面变黑盘）；
- *  读 body 计算值（含玻璃态覆盖），空则退 fallback 字面量 */
-function resolveCssVar(v: string): string {
-    const m = /^var\(\s*(--[\w-]+)\s*(?:,\s*([\s\S]+)\s*)?\)$/.exec(v.trim());
-    if (!m) return v;
-    return getComputedStyle(document.body).getPropertyValue(m[1]).trim() || m[2] || "";
-}
-
 function resolvePalette(): Record<ColorKey, string> {
     if (palette) return palette;
     const cs = getComputedStyle(document.body);
@@ -111,7 +101,7 @@ function resolvePalette(): Record<ColorKey, string> {
     const p = {} as Record<ColorKey, string>;
     for (const k of Object.keys(THEME_TOKENS) as ColorKey[]) {
         if (props[k]) {
-            p[k] = resolveCssVar(props[k]);
+            p[k] = props[k];
             continue;
         }
         const token = dark ? DARK_TOKEN_OVERRIDES[k] || THEME_TOKENS[k] : THEME_TOKENS[k];
@@ -209,19 +199,11 @@ function draw() {
     }
     ctx.restore();
 
-    // ③ 外圈圆环：压在表盘底与内阴影的接缝上；浅色为中性浅灰（fill-2），暗黑为更亮中性灰（fill-4），实色描边
+    // ③ 外圈圆环：压在表盘底与内阴影的接缝上；缺省为中性浅灰（fill-2），实色描边
     ctx.beginPath();
     ctx.lineWidth = ringW;
     ctx.strokeStyle = pal.ringColor;
     ctx.arc(0, 0, r - ringW / 2, 0, 2 * Math.PI);
-    ctx.stroke();
-
-    // ③b 外沿发丝描边：贴圆环最外沿补一圈细线，明确时钟与卡片底色的轮廓边界；
-    //    暗黑下用近白微光勾边（否则深色环易融进暗卡片），浅色下用淡黑轻收边
-    ctx.beginPath();
-    ctx.lineWidth = Math.max(1, 1.5 * rem);
-    ctx.strokeStyle = darkMode ? withAlpha("#ffffff", 0.16) : withAlpha("#000000", 0.08);
-    ctx.arc(0, 0, r - ctx.lineWidth / 2, 0, 2 * Math.PI);
     ctx.stroke();
 
     // ④ 数字 1~12（12 在正上方，顺时针，贴近表盘边缘）

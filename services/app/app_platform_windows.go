@@ -27,7 +27,7 @@ import (
 // 与浮动球面板的 ballEffectiveDark 同一口径。读不到注册表就当浅色，
 // 宁可底色偏亮也不要给老机器开出一窗黑。
 func windowDark() bool {
-	switch config.CurrentConfig().General.Theme {
+	switch config.CurrentConfig().General.Theme.Mode {
 	case "dark":
 		return true
 	case "light":

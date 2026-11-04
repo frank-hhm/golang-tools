@@ -21,6 +21,11 @@
                                 </a-select>
                             </div>
                             <div class="field">
+                                <div class="field-label">端口</div>
+                                <a-input-number v-model="ctl.port" size="small" :min="0" :max="65535" :step="1"
+                                    :precision="0" :disabled="srv.running" placeholder="0 = 默认（占用自动 +1）" />
+                            </div>
+                            <div class="field">
                                 <div class="field-label">自动停止</div>
                                 <a-select v-model="ctl.stopMin" size="small" :disabled="srv.running">
                                     <a-option :value="30">30 分钟后</a-option>
@@ -380,7 +385,7 @@ const srv = reactive<LsStatus>({
     running: false, host: "", port: 0, urls: [], inbox: "",
     startedAt: 0, autoStopAt: 0, reqCount: 0, uploadCount: 0, pin: "", grantPath: "/g/", lastErr: "",
 });
-const ctl = reactive({ host: "", stopMin: 120, pin: "", blockExt: [] as string[] });
+const ctl = reactive({ host: "", stopMin: 120, pin: "", port: 0, blockExt: [] as string[] });
 /** 常见危险类型（一键填入）：与旧版写死的后端黑名单对齐，供用户随时找回安全默认 */
 const DANGER_TYPES = ["exe", "dll", "bat", "cmd", "com", "msi", "scr", "vbs", "js", "jse", "wsf", "wsh", "ps1", "psm1", "lnk", "sh", "desktop", "jar", "reg"];
 /** 接收类型黑名单保存中标记 */
@@ -459,23 +464,37 @@ async function refreshSessions() {
     } catch { /* 会话列表读取失败不弹窗 */ } finally { sessLoading.value = false; }
 }
 
-/* ===================== 接收类型黑名单（设置，与启停无关、即时生效） ===================== */
-// loadReceivePolicy 回填当前黑名单（后端已归一为小写带前导点，如 ".exe"）。
+/* ===================== 互传设置（黑名单即时生效；port/host/pin/自停是启动默认值） ===================== */
+// loadReceivePolicy 回填当前设置：黑名单后端已归一为小写带前导点（如 ".exe"）；
+// 启动默认值（host/pin/自停分钟）仅在服务未运行时覆盖控件，不碰正在跑的实例。
 async function loadReceivePolicy() {
     try {
         const s = await GoTools?.LanShareSettings();
         ctl.blockExt = ((s?.blockExt as string[]) ?? []).slice();
-    } catch { /* 设置未就绪时保持空（= 全收） */ }
+        if (!srv.running) {
+            ctl.host = (s?.host as string) ?? "";
+            ctl.stopMin = Number(s?.autoStopMin ?? 120);
+            ctl.pin = (s?.pin as string) ?? "";
+            ctl.port = Number(s?.port ?? 0);
+        }
+    } catch { /* 设置未就绪时保持默认（全收 / 免密 / 120 分钟自停） */ }
 }
 function fillDangerTypes() {
     ctl.blockExt = DANGER_TYPES.slice();
 }
-// saveReceivePolicy 保存黑名单：落盘后 Go 侧回灌单例，对已在跑的服务即时生效。
+// saveReceivePolicy 保存整段设置：落盘后 Go 侧回灌单例，黑名单对已在跑的服务
+// 即时生效；启动默认值下次启动时用。页面控件当前值即默认值，不留双标。
 async function saveReceivePolicy() {
     cfgSaving.value = true;
     try {
-        await GoTools?.SaveLanShareSettings(ctl.blockExt.map((s) => String(s).trim()).filter(Boolean));
-        Message.success("接收类型设置已保存并即时生效");
+        await GoTools?.SaveLanShareSettings({
+            blockExt: ctl.blockExt.map((s) => String(s).trim()).filter(Boolean),
+            port: ctl.port > 0 ? ctl.port : 0,
+            host: ctl.host,
+            autoStopMin: ctl.stopMin,
+            pin: ctl.pin.trim(),
+        } as any);
+        Message.success("互传设置已保存（黑名单即时生效，启动默认值下次启动用）");
         await loadReceivePolicy();
     } catch (e: any) {
         Message.error(`保存失败：${errText(e)}`);
@@ -572,7 +591,7 @@ async function revealInbox(r?: LsInbox) {
 async function start() {
     busy.value = true;
     try {
-        const st = await GoTools?.LanShareStart(0, ctl.host, ctl.stopMin, ctl.pin.trim());
+        const st = await GoTools?.LanShareStart(ctl.port > 0 ? ctl.port : 0, ctl.host, ctl.stopMin, ctl.pin.trim());
         if (st) Object.assign(srv, st);
         Message.success(srv.running ? "互传服务已启动" : "服务未能启动");
         await refreshAll();

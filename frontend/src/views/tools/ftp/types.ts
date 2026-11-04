@@ -10,6 +10,10 @@ export interface FtpConnection {
   auth: string;
   password?: string;
   keyPath?: string;
+  /** 关联的终端共享凭据 id（P2 凭据归一）：非空时内联账号/密码/私钥由凭据提供 */
+  credID?: string;
+  /** 私钥口令（仅运行期由凭据解析叠加，不入库） */
+  passphrase?: string;
   charset?: string;
   passive?: boolean;
   remoteDir?: string;

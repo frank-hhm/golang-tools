@@ -35,20 +35,22 @@ const (
 
 // Connection 一条远程连接记录（密码明文只在上送时出现，落盘前即加密）
 type Connection struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`                // 列表标题；为空时用 备注/主机
-	Proto     string `json:"proto"`               // sftp | ftp | ftps
-	Host      string `json:"host"`                // IP 或域名
-	Port      int    `json:"port"`                // SFTP 默认 22
-	User      string `json:"user"`                // 登录账号
-	Auth      string `json:"auth"`                // password | key
-	Password  string `json:"password,omitempty"`  // 明文只在此刻出现
-	KeyPath   string `json:"keyPath,omitempty"`   // 私钥文件路径
-	Charset   string `json:"charset,omitempty"`   // UTF-8 / GBK（FTP 阶段用）
-	Passive   bool   `json:"passive,omitempty"`   // 被动模式（FTP 阶段用）
-	RemoteDir string `json:"remoteDir,omitempty"` // 打开后默认进入的远端目录
-	Note      string `json:"note,omitempty"`      // 备注
-	UpdatedAt int64  `json:"updatedAt"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`                 // 列表标题；为空时用 备注/主机
+	Proto      string `json:"proto"`                // sftp | ftp | ftps
+	Host       string `json:"host"`                 // IP 或域名
+	Port       int    `json:"port"`                 // SFTP 默认 22
+	User       string `json:"user"`                 // 登录账号
+	Auth       string `json:"auth"`                 // password | key
+	Password   string `json:"password,omitempty"`   // 明文只在此刻出现
+	KeyPath    string `json:"keyPath,omitempty"`    // 私钥文件路径
+	CredID     string `json:"credID,omitempty"`     // 关联 term 共享凭据（P2 收尾：一处改密多端生效）
+	Passphrase string `json:"passphrase,omitempty"` // 私钥口令：只在共享凭据解析后于内存里短暂存在，不落盘
+	Charset    string `json:"charset,omitempty"`    // UTF-8 / GBK（FTP 阶段用）
+	Passive    bool   `json:"passive,omitempty"`    // 被动模式（FTP 阶段用）
+	RemoteDir  string `json:"remoteDir,omitempty"`  // 打开后默认进入的远端目录
+	Note       string `json:"note,omitempty"`       // 备注
+	UpdatedAt  int64  `json:"updatedAt"`
 }
 
 // SessionInfo 打开文件管理后回给前端的句柄

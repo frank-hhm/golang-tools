@@ -75,20 +75,119 @@
                                 </div>
                                 <span class="hint">建议 PNG 正方形（如 128x128），用于浮动球中心图标。留空使用内置默认。</span>
                             </a-form-item>
-                            <a-form-item field="general.theme" data-skey="general.theme">
-                                <template #label>主题模式</template>
-                                <a-radio-group size="medium" v-model="form.general.theme" type="button"
-                                    @change="onThemeChange">
-                                    <a-radio value="light">浅色</a-radio>
-                                    <a-radio value="dark">暗黑</a-radio>
-                                    <a-radio value="auto">跟随系统</a-radio>
-                                </a-radio-group>
-                                <span class="hint">切换后立即生效，所有窗口同步。</span>
-                            </a-form-item>
                             <a-form-item field="autoStart" data-skey="general.autoStart">
                                 <template #label>开机默认启动</template>
                                 <a-switch type="round" v-model="form.general.autoStart" @change="scheduleSave(0)" />
                                 <span class="hint">开启后 Windows 登录时自动启动应用。</span>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
+
+                    <!-- ===================== 主题设置 ===================== -->
+                    <a-card v-show="activeTab === 'theme'" class="pane-card card-head-tool">
+                        <template #title>主题与外观</template>
+                        <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
+                            <a-form-item field="general.theme" data-skey="general.theme">
+                                <template #label>主题模式</template>
+                                <a-radio-group size="medium" v-model="form.general.theme.mode" type="button"
+                                    @change="onThemeTokenChange">
+                                    <a-radio value="light">浅色</a-radio>
+                                    <a-radio value="dark">暗黑</a-radio>
+                                    <a-radio value="auto">跟随系统</a-radio>
+                                </a-radio-group>
+                                <span class="hint">明暗模式，切换后立即生效，所有窗口同步。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.preset" data-skey="general.theme">
+                                <template #label>主题种子色</template>
+                                <div class="theme-palette">
+                                    <a-tooltip v-for="p in COLOR_PRESETS" :key="p.name" :content="p.label">
+                                        <div class="swatch" :class="{ active: form.general.theme.preset === p.name }"
+                                            :style="{ background: p.seed }" @click="pickPreset(p.name)" />
+                                    </a-tooltip>
+                                    <a-tooltip content="自定义种子色">
+                                        <a-color-picker v-model="form.general.theme.primary" :show-alpha="false"
+                                            size="small" @change="pickCustomPrimary">
+                                            <div class="swatch custom"
+                                                :class="{ active: form.general.theme.preset === CUSTOM_PRESET }"
+                                                :style="form.general.theme.primary ? { background: form.general.theme.primary } : undefined">
+                                                <span v-if="!form.general.theme.primary" class="swatch-plus">+</span>
+                                            </div>
+                                        </a-color-picker>
+                                    </a-tooltip>
+                                </div>
+                                <span class="hint">选一个种子色（预设或取色器自定义），下方和谐模式自动搭配出一整套协调色。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.harmony" data-skey="general.theme">
+                                <template #label>搭配方式（色彩和谐）</template>
+                                <a-radio-group v-model="form.general.theme.harmony" type="button" size="small"
+                                    @change="onThemeTokenChange">
+                                    <a-radio value="analogous">邻近</a-radio>
+                                    <a-radio value="complementary">互补</a-radio>
+                                    <a-radio value="split">分裂互补</a-radio>
+                                    <a-radio value="triadic">三等分</a-radio>
+                                </a-radio-group>
+                                <span class="hint">由种子色按色相环规则派生强调色/辅助色；OKLCH 感知色阶，浅色/暗黑各自生成。</span>
+                            </a-form-item>
+                            <a-form-item v-if="themePreview" field="general.theme" data-skey="general.theme">
+                                <template #label>配色预览</template>
+                                <div class="theme-preview">
+                                    <div class="tp-item">
+                                        <span class="tp-chip" :style="{ background: themePreview.brand }"></span>
+                                        <span class="tp-name">主色</span>
+                                    </div>
+                                    <div class="tp-item">
+                                        <span class="tp-chip" :style="{ background: themePreview.accent }"></span>
+                                        <span class="tp-name">强调</span>
+                                    </div>
+                                    <div class="tp-item">
+                                        <span class="tp-chip" :style="{ background: themePreview.secondary }"></span>
+                                        <span class="tp-name">辅助</span>
+                                    </div>
+                                </div>
+                                <span class="hint">实时呈现本主题的搭配（主/强调/辅助基准色），随种子与和谐模式变化。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.radius" data-skey="general.theme">
+                                <template #label>圆角</template>
+                                <a-radio-group v-model="form.general.theme.radius" type="button" size="small"
+                                    @change="onThemeTokenChange">
+                                    <a-radio value="none">直角</a-radio>
+                                    <a-radio value="small">小</a-radio>
+                                    <a-radio value="default">标准</a-radio>
+                                    <a-radio value="large">大</a-radio>
+                                </a-radio-group>
+                            </a-form-item>
+                            <a-form-item field="general.theme.density" data-skey="general.theme">
+                                <template #label>显示密度</template>
+                                <a-radio-group v-model="form.general.theme.density" type="button" size="small"
+                                    @change="onThemeTokenChange">
+                                    <a-radio value="compact">紧凑</a-radio>
+                                    <a-radio value="standard">标准</a-radio>
+                                    <a-radio value="loose">宽松</a-radio>
+                                </a-radio-group>
+                                <span class="hint">调整字号与留白；对第三方控件为尽力优化。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.contrast" data-skey="general.theme">
+                                <template #label>高对比度</template>
+                                <a-switch type="round" :model-value="form.general.theme.contrast === 'high'"
+                                    @change="setContrast" />
+                                <span class="hint">增强文字/边框对比与键盘焦点，便于无障碍与弱光环境。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.motion" data-skey="general.theme">
+                                <template #label>减少动效</template>
+                                <a-switch type="round" :model-value="form.general.theme.motion === 'reduced'"
+                                    @change="setMotion" />
+                                <span class="hint">关闭过渡与动画，照顾动效敏感与低配设备。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.fontSize" data-skey="general.theme.fontSize">
+                                <template #label>字体大小</template>
+                                <a-radio-group v-model="form.general.theme.fontSize" type="button" size="small"
+                                    @change="onThemeTokenChange">
+                                    <a-radio value="small">小</a-radio>
+                                    <a-radio value="default">标准</a-radio>
+                                    <a-radio value="large">大</a-radio>
+                                    <a-radio value="xlarge">特大</a-radio>
+                                </a-radio-group>
+                                <span class="hint">整体字号，独立于显示密度；两者可分别调节。</span>
                             </a-form-item>
                         </a-form>
                     </a-card>
@@ -624,6 +723,46 @@
                             </a-form-item>
                         </a-form>
                     </a-card>
+                    <!-- ===================== 局域网互传 ===================== -->
+                    <a-card v-show="activeTab === 'lanshare'" class="pane-card card-head-tool">
+                        <template #title>局域网互传</template>
+                        <a-form :model="{}" :style="{ maxWidth: '760px' }" layout="vertical">
+                            <a-alert type="info" style="margin-bottom: 16px">
+                                这里是互传服务的<strong>启动默认值</strong>：改完保存，下次在互传页点「启动」时预填生效；
+                                已在跑的实例不受影响。接收类型黑名单在互传页改，即时对在跑服务生效。
+                            </a-alert>
+                            <a-form-item label="默认端口" data-skey="lanShare.port">
+                                <a-input-number v-model="lanShareForm.port" :min="0" :max="65535" :step="1" :precision="0"
+                                    style="width: 200px" placeholder="0 = 内置默认" />
+                                <span class="hint" style="margin-left: 10px">0 取内置默认端口；被占用自动 +1 重试（最多 20 个）。</span>
+                            </a-form-item>
+                            <a-form-item label="监听范围" data-skey="lanShare.host">
+                                <a-select v-model="lanShareForm.host" style="width: 260px">
+                                    <a-option value="">全部网卡（局域网可访问）</a-option>
+                                    <a-option value="127.0.0.1">仅本机回环</a-option>
+                                </a-select>
+                                <span class="hint" style="margin-left: 10px">局域网内任何设备都能往收件箱传文件，不需要时建议及时停服务。</span>
+                            </a-form-item>
+                            <a-form-item label="自动停止" data-skey="lanShare.autoStopMin">
+                                <a-select v-model="lanShareForm.autoStopMin" style="width: 200px">
+                                    <a-option :value="30">30 分钟后</a-option>
+                                    <a-option :value="120">2 小时后</a-option>
+                                    <a-option :value="0">不自动停</a-option>
+                                </a-select>
+                                <span class="hint" style="margin-left: 10px">到点自停并在界面提示，避免传完忘了关。</span>
+                            </a-form-item>
+                            <a-form-item label="访问 PIN（可选）" data-skey="lanShare.pin">
+                                <a-input v-model="lanShareForm.pin" placeholder="留空 = 免密" allow-clear style="width: 260px" />
+                                <span class="hint">仅挡无意访问，不是访问控制；明文存本机 config.json。</span>
+                            </a-form-item>
+                            <a-form-item>
+                                <a-space>
+                                    <a-button type="primary" :loading="lanShareSaving" @click="saveLanShare">保存设置</a-button>
+                                    <a-button @click="loadLanShare">重载</a-button>
+                                </a-space>
+                            </a-form-item>
+                        </a-form>
+                    </a-card>
                     <div v-show="activeTab === 'tools'" class="tools-pane">
                         <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }" data-skey="tools.list">
                             <template #title>功能列表</template>
@@ -948,7 +1087,15 @@ import { Events } from "@wailsio/runtime";
 import { Message } from "@arco-design/web-vue";
 import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
 import iconData from "@/components/common/icon/select-icon-modal/icon.json";
-import { applyTheme, type ThemeMode } from "@/utils/theme";
+import {
+    applyThemeConfig,
+    normalizeConfig,
+    DEFAULT_THEME,
+    effectiveScheme,
+    type ThemeConfig,
+} from "@/utils/theme";
+import { COLOR_PRESETS, CUSTOM_PRESET, resolveTheme } from "@/utils/presets";
+import { buildTheme } from "@/utils/palette";
 import { useCaps } from "@/utils/caps";
 import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
 import PoolEditor, { type PoolRow } from "./PoolEditor.vue";
@@ -1015,11 +1162,11 @@ interface ToolRow {
 }
 
 /** 完整配置（保存时整体回传） */
-const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" }, paths: { plugins: "", data: "", logs: "", downloads: "" }, tools: [] });
+const fullConfig = ref<any>({ log: { enabled: true, level: "info", path: "" }, ball: { enabled: false, icon: "" }, general: { autoStart: false, appName: "Tools", appLogo: "", theme: { ...DEFAULT_THEME } }, paths: { plugins: "", data: "", logs: "", downloads: "" }, tools: [] });
 const form = reactive<{
     log: { enabled: boolean; level: string; path: string };
     ball: { enabled: boolean; icon: string; hideAllShortcut: string; dockEdge: boolean };
-    general: { autoStart: boolean; appName: string; appLogo: string; theme: string };
+    general: { autoStart: boolean; appName: string; appLogo: string; theme: ThemeConfig };
     paths: { plugins: string; data: string; logs: string; downloads: string };
     launcher: LauncherCfg;
     archive: ArchiveCfg;
@@ -1027,7 +1174,7 @@ const form = reactive<{
 }>({
     log: { enabled: true, level: "info", path: "" },
     ball: { enabled: false, icon: "", hideAllShortcut: "", dockEdge: true },
-    general: { autoStart: false, appName: "Tools", appLogo: "", theme: "light" },
+    general: { autoStart: false, appName: "Tools", appLogo: "", theme: { ...DEFAULT_THEME } },
     paths: { plugins: "", data: "", logs: "", downloads: "" },
     // 默认关闭：与后端 defaultLauncherConfig 一致，除开关外其余字段都是可直接编辑的初值
     launcher: {
@@ -1062,6 +1209,7 @@ let saveChain: Promise<void> = Promise.resolve();
 const SETTING_TABS = computed(() =>
     [
         { key: "general", label: "通用", icon: "IconSettings", desktopOnly: false },
+        { key: "theme", label: "主题", icon: "IconPalette", desktopOnly: false },
         { key: "paths", label: "目录", icon: "IconFolder", desktopOnly: false },
         { key: "panel", label: "访问与安全", icon: "IconLock", desktopOnly: false, webOnly: true },
         { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
@@ -1071,6 +1219,7 @@ const SETTING_TABS = computed(() =>
         { key: "docspace", label: "文档中心", icon: "IconFolder", desktopOnly: false },
         { key: "cloud", label: "云盘管理", icon: "IconCloud", desktopOnly: false },
         { key: "download", label: "下载管理", icon: "IconSave", desktopOnly: false },
+        { key: "lanshare", label: "局域网互传", icon: "IconSend", desktopOnly: false },
         { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
         { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
         { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
@@ -1088,7 +1237,8 @@ type SettingSearchEntry = { skey: string; label: string; hint: string; tab: stri
 const SEARCH_INDEX: SettingSearchEntry[] = [
     { skey: "general.appName", label: "应用名称", hint: "窗口标题、托盘提示显示的名称", tab: "general" },
     { skey: "general.appLogo", label: "应用 Logo", hint: "用于浮动球中心图标，留空使用内置默认", tab: "general" },
-    { skey: "general.theme", label: "主题模式", hint: "浅色 / 暗黑 / 跟随系统，切换后所有窗口同步", tab: "general" },
+    { skey: "general.theme", label: "主题搭配", hint: "明暗模式 / 种子色（预设或自定义取色）/ 色彩和谐搭配 / 圆角 / 字体大小 / 密度 / 高对比度 / 减少动效，切换后所有窗口同步", tab: "theme" },
+    { skey: "general.theme.fontSize", label: "字体大小", hint: "整体字号，独立于显示密度，小/标准/大/特大", tab: "theme" },
     { skey: "general.autoStart", label: "开机默认启动", hint: "Windows 登录时自动启动应用", tab: "general" },
     { skey: "paths.plugins", label: "插件目录（plugins）", hint: "PHP/Nginx/MySQL/Redis/npm 服务程序安装位置", tab: "paths" },
     { skey: "paths.data", label: "数据目录（data）", hint: "服务配置缓存与实例工作目录；截图另存、录像、站点根默认落点", tab: "paths" },
@@ -1130,6 +1280,10 @@ const SEARCH_INDEX: SettingSearchEntry[] = [
     { skey: "cloud.saveDir", label: "下载落地目录", hint: "留空走数据目录下 clouddrive/downloads", tab: "cloud" },
     { skey: "cloud.concurrency", label: "转存并发度", hint: "本期为单连接，值留给后续", tab: "cloud" },
     { skey: "download.enabled", label: "启用下载管理", hint: "关闭时前端隐藏下载管理入口", tab: "download" },
+    { skey: "lanShare.port", label: "互传默认端口", hint: "0 取内置默认，占用自动 +1", tab: "lanshare" },
+    { skey: "lanShare.host", label: "互传监听范围", hint: "全部网卡或仅本机回环", tab: "lanshare" },
+    { skey: "lanShare.autoStopMin", label: "互传自动停止", hint: "到点自停，避免传完忘了关", tab: "lanshare" },
+    { skey: "lanShare.pin", label: "互传访问 PIN", hint: "仅挡无意访问，不是访问控制", tab: "lanshare" },
     { skey: "download.saveDir", label: "默认下载目录", hint: "新建任务未指定目录时落这里", tab: "download" },
     { skey: "download.maxRunningTasks", label: "同时下载任务数", hint: "超出的任务排队等额度", tab: "download" },
     { skey: "download.maxTotalParts", label: "全局并发块数上限", hint: "所有在跑任务合计的分块并发闸门", tab: "download" },
@@ -1315,6 +1469,45 @@ async function saveDownload() {
 }
 watch(activeTab, (k) => { if (k === "download") void loadDownload(); });
 
+/* ===================== 局域网互传（设置） =====================
+ * P2 收尾：互传服务的启动默认值（端口/监听/自停/PIN）从页内控件升到设置页落盘；
+ * 运行期仍以互传页启动入参为准，这里只是预填来源。接收黑名单仍在互传页（即时生效）。 */
+const lanShareSaving = ref(false);
+const lanShareForm = reactive({ port: 0, host: "", autoStopMin: 120, pin: "" });
+async function loadLanShare() {
+    try {
+        const s = await GoTools?.LanShareSettings();
+        if (!s) return;
+        lanShareForm.port = Number(s.port ?? 0);
+        lanShareForm.host = String(s.host ?? "");
+        lanShareForm.autoStopMin = Number(s.autoStopMin ?? 120);
+        lanShareForm.pin = String(s.pin ?? "");
+    } catch {
+        /* 静默：后端未连时不刷屏 */
+    }
+}
+async function saveLanShare() {
+    lanShareSaving.value = true;
+    try {
+        // blockExt 透传当前值（黑名单落点在互传页，这里不碰）：先读回再原样带上
+        const cur = await GoTools?.LanShareSettings();
+        await GoTools?.SaveLanShareSettings({
+            blockExt: (cur?.blockExt as string[]) ?? [],
+            port: lanShareForm.port > 0 ? lanShareForm.port : 0,
+            host: lanShareForm.host,
+            autoStopMin: lanShareForm.autoStopMin,
+            pin: lanShareForm.pin,
+        } as any);
+        Message.success("互传启动默认值已保存，下次启动时生效");
+        await loadLanShare();
+    } catch (e: any) {
+        Message.error(`保存失败：${String(e?.message ?? e ?? "操作失败")}`);
+    } finally {
+        lanShareSaving.value = false;
+    }
+}
+watch(activeTab, (k) => { if (k === "lanshare") void loadLanShare(); });
+
 /* ===================== 面板访问（仅 Web / 服务模式） =====================
  * 这些配置存在服务端的 panel.json 里，桌面版没有这个文件，也没有登录概念，
  * 所以只在 !caps.nativeWindows 时加载与展示。端口、入口、账号改完即时生效，
@@ -1434,10 +1627,43 @@ watch(activeTab, (k) => {
     if (k === "git") void loadGitInfo();
 });
 
-/** 主题切换：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
-function onThemeChange(val: any) {
-    applyTheme(String(val) as ThemeMode);
+/** 主题令牌变更：立即应用到 DOM（localStorage 同步广播到其他窗口），并自动持久化到配置 */
+function onThemeTokenChange() {
+    applyThemeConfig(form.general.theme);
     scheduleSave(0);
+}
+
+/** 实时预览当前主题搭配的主/强调/辅助基准色（种子+和谐模式+明暗档派生） */
+const themePreview = computed(() => {
+    const cfg = form.general.theme;
+    const { seed, harmony } = resolveTheme(cfg.preset, cfg.primary || "", cfg.harmony);
+    const t = buildTheme(seed, harmony, effectiveScheme(cfg.mode));
+    return t ? { brand: t.seeds.brand, accent: t.seeds.accent, secondary: t.seeds.secondary } : null;
+});
+
+/** 选预设皮肤（非 custom 时种子色取预设 seed） */
+function pickPreset(name: string) {
+    form.general.theme.preset = name;
+    onThemeTokenChange();
+}
+
+/** 取色器选色即切「自定义」并实时更新色阶 */
+function pickCustomPrimary(color: string) {
+    form.general.theme.preset = CUSTOM_PRESET;
+    form.general.theme.primary = color || "";
+    onThemeTokenChange();
+}
+
+/** 高对比度开关：switch 布尔 ↔ 配置短名 */
+function setContrast(v: string | number | boolean) {
+    form.general.theme.contrast = v ? "high" : "normal";
+    onThemeTokenChange();
+}
+
+/** 减少动效开关 */
+function setMotion(v: string | number | boolean) {
+    form.general.theme.motion = v ? "reduced" : "on";
+    onThemeTokenChange();
 }
 
 const activePath = ref("");
@@ -1631,7 +1857,7 @@ async function importConfig() {
         const path = await GoTools?.ImportConfig();
         if (!path) return;
         await load();
-        applyTheme(String(form.general.theme || "light") as ThemeMode);
+        applyThemeConfig(form.general.theme);
         Message.success("配置已导入");
     } catch (e: any) {
         Message.error(`导入失败：${String(e?.message || e)}`);
@@ -1672,7 +1898,7 @@ async function load() {
             fullConfig.value = cfg;
             form.log = { enabled: !!cfg.log?.enabled, level: cfg.log?.level || "info", path: "" };
             form.ball = { enabled: !!cfg.ball?.enabled, icon: cfg.ball?.icon || "", hideAllShortcut: cfg.ball?.hideAllShortcut || "", dockEdge: cfg.ball?.dockEdge ?? true };
-            form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: cfg.general?.theme || "light" };
+            form.general = { autoStart: !!cfg.general?.autoStart, appName: cfg.general?.appName || "Tools", appLogo: cfg.general?.appLogo || "", theme: normalizeConfig(cfg.general?.theme) };
             form.paths = { plugins: cfg.paths?.plugins || "", data: cfg.paths?.data || "", logs: cfg.paths?.logs || "", downloads: cfg.paths?.downloads || "" };
             form.launcher = normLauncher(cfg.launcher);
             form.archive = normArchive(cfg.archive);
@@ -2903,6 +3129,70 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 16px;
+}
+
+/* 主题皮肤色板：一排圆点选预设主色，末尾一枚取色器作为自定义入口 */
+.theme-palette {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--base-radius-default);
+    cursor: pointer;
+    border: 2px solid transparent;
+    box-shadow: 0 0 0 1px var(--color-border-2) inset;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s, border-color 0.12s;
+}
+
+.swatch:hover {
+    transform: scale(1.08);
+}
+
+.swatch.active {
+    border-color: rgb(var(--primary-6));
+}
+
+.swatch.custom {
+    background: var(--color-fill-2);
+    color: var(--color-text-2);
+    font-weight: 600;
+    line-height: 1;
+}
+
+.swatch-plus {
+    font-size: 16px;
+}
+
+.theme-preview {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.tp-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tp-chip {
+    width: 22px;
+    height: 22px;
+    border-radius: var(--base-radius-default);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.tp-name {
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
 }
 
 .logo-preview {

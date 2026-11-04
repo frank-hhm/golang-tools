@@ -1,0 +1,133 @@
+/*
+ * 主题令牌层：一组与 light/dark 正交的 --app-* 语义令牌，承载「主色 / 圆角 / 密度 /
+ * 高对比度 / 减少动效 / 玻璃」这些与明暗无关的观感维度。
+ *
+ * 分工（关键）：
+ *  - 数值型令牌（--primary-1..10、--base-radius-*、Arco --border-radius-*、--base-size-*、
+ *    --base-margin/padding、html font-size）由 utils/theme.ts 在运行时写进
+ *    documentElement.style。inline 声明优先级高于本文件的 :root，因此用户选择即时生效、
+ *    且天然覆盖 Arco 在 arco.css 里对 --primary-N / --arcoblue-N 的定义，全站组件自动跟随
+ *    ——这就是「零页面改动」的传导路径。
+ *  - 本文件只保留：① 未被应用时的默认令牌位；② 需要按 body class 生效的整体规则
+ *    （减少动效、高对比度、密度对第三方控件的尽力微调）；③ 阶段二才消费的表面玻璃令牌占位。
+ */
+
+:root {
+    /* 玻璃令牌位：阶段一仅占位、不生效（默认全透明关闭）。surface 磨砂由下方 body.app-glass 消费这三枚 */
+    --app-glass-alpha: 0;
+    --app-glass-blur: 0px;
+    --app-glass-border: transparent;
+
+    /* 密度缩放因子：standard=1；theme.ts 通过 body.density-* 类或 inline 微调 */
+    --app-density: 1;
+
+    /*
+     * --app-* 配色真源令牌：theme.ts 运行时按「种子 + 和谐模式」用 OKLCH 引擎算出整套
+     * （--app-brand/accent/secondary/neutral-1..10 + 语义 --app-success/warning/danger/info）并 inline 覆盖。
+     * 这里只给「基准档 + 语义色」静态兜底（墨蓝默认主题），保证 JS 未跑时新 UI 也不裸奔；
+     * --primary-1..10 是 theme.ts 从 brand 派生投给 Arco 的兼容出口（存量页/组件消费），不在这里定义。
+     */
+    --app-brand: #165dff;
+    --app-accent: #16d9e0;
+    --app-secondary: #d9168f;
+    --app-success: #2eb76b;
+    --app-warning: #e6a23c;
+    --app-danger: #e35d5b;
+    --app-info: #4b7bec;
+}
+
+/* 减少动效：body.reduce-motion 由 theme.ts 依 ThemeConfig.motion 挂载。
+   统一压到近零时长，尊重偏好也照顾低配机与动效敏感用户。!important 是为压过组件内联过渡。 */
+body.reduce-motion,
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+}
+
+body.reduce-motion {
+    --base-shadow: none;
+}
+
+/* 高对比度 / 无障碍：body.a11y-contrast 由 theme.ts 依 ThemeConfig.contrast 挂载。
+   不写死任何色值，只把 Arco 语义变量的档位往「更对比」方向提一级——Arco 的
+   --color-text-1（最对比）..--color-text-4（最弱）与 --color-border-1..3 在明暗两档
+   都已各自排好序，因此这一套覆盖在浅色与暗黑下都成立，且不破坏 --color-* 的三元组格式。 */
+body.a11y-contrast {
+    --color-text-4: var(--color-text-2);
+    --color-text-3: var(--color-text-2);
+    --color-border-1: var(--color-border-3);
+    --color-border-2: var(--color-border-3);
+}
+
+/* 焦点可见性增强：键盘 Tab 到任何可聚焦元素都描一圈主色环，配合高对比度开关使用 */
+body.a11y-contrast :focus-visible {
+    outline: 2px solid rgb(var(--primary-6));
+    outline-offset: 1px;
+}
+
+/* 密度对第三方控件的「尽力而为」微调：Arco 按钮/输入/表格行高是固定 px，不读 --base-size-*，
+   所以这里按 body 密度类压缩其纵向留白。如实说明——只影响观感松紧，非全量可控。 */
+body.density-compact .arco-btn {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+body.density-compact .arco-table-td,
+body.density-compact .arco-table-th {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+body.density-loose .arco-btn {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+body.density-loose .arco-table-td,
+body.density-loose .arco-table-th {
+    padding-top: 14px;
+    padding-bottom: 14px;
+}
+
+/*
+ * 表面磨砂（透明·阶段一收尾，默认关闭）：body.app-glass 由 theme.ts 依 ThemeConfig.glass==="surface" 挂载。
+ * 取值是「设计决策 + 待肉眼定稿」——实验台 /demo/glass 调好后改这三枚即可，全局皮肤统一消费。
+ * 只吃 CSS backdrop-filter（跨平台安全：Linux/Web 无头浏览器同样生效），绝不碰窗口级原生透明
+ * （DWM Acrylic/Mica 曾因与无边框冲突致灰纱/白跳整体下线）。
+ *
+ * 浮层（modal/popover/drawer）teleport 到 body，非 scoped 才能命中，故写在令牌层全局 scss。
+ * 浅/暗两套底色分开取，保证磨砂底下文字对比（首要验收点）。
+ */
+body.app-glass {
+    --app-glass-alpha: 0.72;
+    --app-glass-blur: 16px;
+    --app-glass-border: 0.3;
+}
+
+body.app-glass .arco-card,
+body.app-glass .arco-modal,
+body.app-glass .arco-drawer {
+    background: rgba(255, 255, 255, var(--app-glass-alpha));
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    border-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+body.app-glass[arco-theme="dark"] .arco-card,
+body.app-glass[arco-theme="dark"] .arco-modal,
+body.app-glass[arco-theme="dark"] .arco-drawer {
+    background: rgba(28, 30, 38, var(--app-glass-alpha));
+    border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+/* 减少动效时禁用磨砂模糊（backdrop-filter 开销大，动效敏感/低配优先可读与性能） */
+body.reduce-motion.app-glass .arco-card,
+body.reduce-motion.app-glass .arco-modal,
+body.reduce-motion.app-glass .arco-drawer {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}

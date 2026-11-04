@@ -18,31 +18,57 @@
         </div>
       </a-form-item>
 
-      <a-form-item label="账号" required>
-        <a-input v-model="form.user" placeholder="root" allow-clear />
+      <a-form-item label="凭据">
+        <div class="cred-row">
+          <a-select v-model="form.credID" placeholder="选择已保存的凭据（推荐，与终端共享）" allow-clear allow-search
+            @change="onCredChange">
+            <a-option v-for="c in credentials" :key="c.id" :value="c.id">
+              <a-space :size="6">
+                <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
+                  {{ c.auth === 'key' ? '密钥' : '密码' }}
+                </a-tag>
+                <span>{{ c.name }}</span>
+                <span v-if="c.user" class="cred-opt-user">{{ c.user }}</span>
+              </a-space>
+            </a-option>
+          </a-select>
+          <a-button size="small" @click="credVisible = true">管理</a-button>
+        </div>
       </a-form-item>
 
-      <a-form-item label="验证方式">
-        <a-radio-group v-model="form.auth" type="button">
-          <a-radio value="password">密码验证</a-radio>
-          <a-radio value="key">密钥验证</a-radio>
-        </a-radio-group>
+      <!-- 选了共享凭据：账号/登录方式取自凭据，这里只作展示（一处改密 FTP 与终端同时生效） -->
+      <a-form-item v-if="form.credID" label="登录">
+        <a-typography-text type="secondary">{{ credSummary }}</a-typography-text>
       </a-form-item>
 
-      <a-form-item v-if="form.auth === 'password'" label="密码" required>
-        <a-input-password v-model="form.password" :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入登录密码'"
-          allow-clear />
-      </a-form-item>
+      <!-- 未选凭据：保留旧式内联填写（兼容路径） -->
+      <template v-else>
+        <a-form-item label="账号" required>
+          <a-input v-model="form.user" placeholder="root" allow-clear />
+        </a-form-item>
 
-      <a-form-item v-else label="私钥文件" required>
-        <a-space :size="8">
-          <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="key-input">
-            <template #prefix><icon-file /></template>
-          </a-input>
-          <a-button size="small" @click="chooseKey">选择</a-button>
-          <a-button size="small" @click="openSshGen">生成密钥</a-button>
-        </a-space>
-      </a-form-item>
+        <a-form-item label="验证方式">
+          <a-radio-group v-model="form.auth" type="button">
+            <a-radio value="password">密码验证</a-radio>
+            <a-radio value="key">密钥验证</a-radio>
+          </a-radio-group>
+        </a-form-item>
+
+        <a-form-item v-if="form.auth === 'password'" label="密码" required>
+          <a-input-password v-model="form.password" :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入登录密码'"
+            allow-clear />
+        </a-form-item>
+
+        <a-form-item v-else label="私钥文件" required>
+          <a-space :size="8">
+            <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="key-input">
+              <template #prefix><icon-file /></template>
+            </a-input>
+            <a-button size="small" @click="chooseKey">选择</a-button>
+            <a-button size="small" @click="openSshGen">生成密钥</a-button>
+          </a-space>
+        </a-form-item>
+      </template>
 
       <a-form-item label="初始目录">
         <a-input v-model="form.remoteDir" placeholder="留空则进入登录后的家目录，如 /var/www" allow-clear />
@@ -67,12 +93,16 @@
   </a-modal>
 
   <ssh-gen-modal v-model:visible="sshGenVisible" :context="sshGenCtx" @use-key="onUseKey" />
+  <!-- 凭据管理直接复用终端页的凭据弹窗：同一份 credentials.json，不写第二套 -->
+  <credential-modal v-model:visible="credVisible" @changed="credentials = $event" />
 </template>
 
 <script setup lang="ts">
 import { computed, getCurrentInstance, reactive, ref, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import type { FtpConnection } from '../types';
+import type { TermCredential } from '../../term/types';
+import CredentialModal from '../../term/components/CredentialModal.vue';
 
 const props = defineProps<{ visible: boolean; connection: FtpConnection | null }>();
 const emit = defineEmits<{
@@ -83,6 +113,30 @@ const emit = defineEmits<{
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
 const busy = ref(false);
+const credentials = ref<TermCredential[]>([]);
+const credVisible = ref(false);
+
+const credSummary = computed(() => {
+  const c = credentials.value.find((x) => x.id === form.credID);
+  if (!c) return '所选凭据（保存后生效）';
+  return c.auth === 'key' ? `密钥登录 · ${c.user || '账号沿用连接'} · ${c.name}` : `密码登录 · ${c.user || '账号沿用连接'} · ${c.name}`;
+});
+
+async function loadCreds() {
+  try {
+    credentials.value = (await GoTools?.TermListCredentials()) || [];
+  } catch {
+    credentials.value = [];
+  }
+}
+
+/** 选/清凭据：选了就不需要内联账号密码；清空则回到旧式内联 */
+function onCredChange() {
+  if (form.credID) {
+    form.password = '';
+    form.keyPath = '';
+  }
+}
 
 /** 密码不回填（记录里本来就没有明文），编辑时留空即沿用原密码 */
 function emptyForm(): FtpConnection {
@@ -96,6 +150,7 @@ function emptyForm(): FtpConnection {
     auth: 'password',
     password: '',
     keyPath: '',
+    credID: '',
     remoteDir: '',
     note: '',
   };
@@ -107,6 +162,7 @@ watch(
   () => props.visible,
   (v) => {
     if (!v) return;
+    loadCreds();
     Object.assign(form, emptyForm(), props.connection ? { ...props.connection, password: '' } : {});
     busy.value = false;
     resetTest();
@@ -138,6 +194,7 @@ function onUseKey(payload: { keyPath: string; pubKey: string }) {
 function validate(): string {
   if (!form.host.trim()) return '请填写主机 IP 或域名';
   if (!form.port || form.port < 1 || form.port > 65535) return '端口需在 1-65535 之间';
+  if (form.credID) return ''; // 登录方式取自共享凭据
   if (!form.user.trim()) return '请填写登录账号';
   if (form.auth === 'password') {
     if (!form.password && !form.id) return '请输入登录密码';
@@ -225,5 +282,21 @@ async function onOk() {
 
 .key-input {
   width: 300px;
+}
+
+.cred-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.cred-row .arco-select {
+  flex: 1;
+}
+
+.cred-opt-user {
+  color: var(--color-text-3);
+  font-size: var(--base-size-small);
 }
 </style>

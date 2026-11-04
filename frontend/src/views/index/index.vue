@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <layout-body height="full" :isBg="false">
     <a-row :gutter="12" class="home-row">
       <a-col :span="16" class="left-col">
@@ -97,9 +97,8 @@
 
         <!-- ========== 右侧：当前时间 ========== -->
         <div class="clock-body">
-          <!-- Canvas 指针时钟：盘面已含日期/星期/年份/毫秒时间跑动信息；
-               表盘底色跟随卡片实色变量，浅色/暗黑各自取值 -->
-          <common-canvas-clock :size="180" face-color="var(--color-bg-2)" />
+          <!-- Canvas 指针时钟：盘面已含日期/星期/年份/毫秒时间跑动信息 -->
+          <common-canvas-clock :size="180" />
         </div>
 
         <!-- ========== 右侧：快捷操作 ========== -->

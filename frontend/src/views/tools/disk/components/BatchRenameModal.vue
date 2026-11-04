@@ -1,9 +1,9 @@
 <template>
     <!-- 批量重命名：按「固定文字 + 规则片段（自增 / 随机数字 / 随机字母，可多选）」给多个文件/目录改名，
          实时预览结果，任一行非法/重名则不允许应用。仅用于同一目录下的多项。 -->
-    <a-modal :visible="visible" title="批量重命名" :width="780" :mask-closable="false" :ok-loading="applying"
-        :ok-button-props="{ disabled: !canApply }" cancel-text="取消" ok-text="应用" :esc-to-close="!applying"
-        :on-before-ok="apply" @cancel="close">
+    <a-modal :visible="visible" title="批量重命名" :width="780" :mask-closable="false"
+        :esc-to-close="!applying" :body-style="{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }"
+        @cancel="close">
         <div class="br-wrap">
             <!-- 左侧：规则配置 -->
             <div class="br-form">
@@ -100,6 +100,16 @@
             新名保留各自扩展名（目录不加）；顺序即列表显示顺序。名称不能为空、不能含
             <code>\ / : * ? " &lt; &gt; |</code>，也不能以空格或点结尾，且不能与目录内其它项重名。
         </div>
+        <!-- 自定义页脚：内置 OK 钮挂不了气泡，「应用」改包一层 a-popconfirm 二次确认（与全项目危险操作同一口径） -->
+        <template #footer>
+            <a-space :size="8">
+                <a-button @click="close">取消</a-button>
+                <a-popconfirm :content="`确定重命名这 ${preview.length} 项？将逐项执行，个别失败不会回滚已改名的项。`"
+                    type="warning" position="lt" :disabled="!canApply" @ok="apply">
+                    <a-button type="primary" :loading="applying" :disabled="!canApply">应用</a-button>
+                </a-popconfirm>
+            </a-space>
+        </template>
     </a-modal>
 </template>
 
@@ -280,6 +290,9 @@ async function apply(): Promise<boolean> {
     if (ok) Message.success(`已重命名 ${ok} 项`);
     if (fails.length) Message.error(`${fails.length} 项失败：${fails[0]}${fails.length > 1 ? " 等" : ""}`);
     if (ok) emit("done", ok);
+    // 页脚改自定义后没有 on-before-ok 的返回值语义了：全部成功才收弹窗，
+    // 有失败则留着，让用户修正标红项后重试
+    if (!fails.length) close();
     return fails.length === 0;
 }
 </script>
@@ -289,6 +302,10 @@ async function apply(): Promise<boolean> {
     display: flex;
     gap: 16px;
     align-items: stretch;
+    /* 弹窗 body 被 :body-style 收成 flex 列，这里吃满剩余高度，
+       否则子项的 max-height 只是摆设——整表撑爆弹窗、提示文字被顶出底边 */
+    flex: 1;
+    min-height: 0;
 }
 
 .br-form {
@@ -296,6 +313,7 @@ async function apply(): Promise<boolean> {
     flex: none;
     border-right: 1px solid var(--color-border-2);
     padding-right: 16px;
+    overflow-y: auto;
 }
 
 .br-tip {
@@ -360,6 +378,7 @@ async function apply(): Promise<boolean> {
 .br-preview {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
 }
@@ -404,12 +423,14 @@ async function apply(): Promise<boolean> {
     min-height: 120px;
 }
 
-/* 预览区自己滚：几百项改名时把弹窗拉成通页长，现在封顶 52vh，表头吸顶不跟着滚走 */
+/* 预览区自己滚：弹窗 body 收成 flex 列后这里吃满剩余高度（vh 猜高度必翻车），
+   外面套一圈边框卡片，表格不再裸浮在弹窗里压住提示文字 */
 .br-scroll {
     flex: 1;
     min-height: 120px;
-    max-height: 52vh;
     overflow: auto;
+    border: 1px solid var(--color-border-2);
+    border-radius: var(--base-radius-default);
 }
 
 .br-table {
@@ -482,6 +503,7 @@ async function apply(): Promise<boolean> {
 }
 
 .modal-hint {
+    flex: none;
     margin-top: 12px;
     font-size: var(--base-size-small);
     color: var(--color-text-4);

@@ -49,6 +49,23 @@ func (a *App) CloudAddAccount(kind, label string) (clouddrive.AccountView, error
 	return v, err
 }
 
+// CloudAddObjectStore 一步创建对象存储账号（阿里 OSS / 腾讯 COS / 通用 S3）：这类
+// 账号没有 OAuth 授权码流程，创建时 bucket/endpoint/region + AccessKey 一次填齐。
+// bucket/endpoint/region 属非敏感配置（回前端可显示）；akID/akSecret 只进加密账号表
+// （tools/secret），绝不回前端，改密钥只能重填。endpoint/region 可留空（按 kind 推导默认域名）。
+func (a *App) CloudAddObjectStore(kind, label, bucket, endpoint, region, akID, akSecret string) (clouddrive.AccountView, error) {
+	if !cloudEnabled() {
+		return clouddrive.AccountView{}, fmt.Errorf("云盘功能未启用，请到设置 → 云盘管理打开")
+	}
+	v, err := clouddrive.AddObjectStore(kind, label, bucket, endpoint, region, akID, akSecret)
+	if err != nil {
+		applog.Warnf("clouddrive", "添加对象存储账号失败 kind=%s bucket=%s: %v", kind, bucket, err)
+		return clouddrive.AccountView{}, err
+	}
+	applog.Infof("clouddrive", "已添加对象存储账号 %s（kind=%s bucket=%s）", v.ID, v.Kind, v.Bucket)
+	return v, nil
+}
+
 // CloudRemoveAccount 删除账号（连带 token；不动云端实体）。
 func (a *App) CloudRemoveAccount(id string) error {
 	if err := clouddrive.RemoveAccount(id); err != nil {

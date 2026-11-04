@@ -16,7 +16,7 @@ import (
 // 这个函数在 Linux 上其实不会被用到：server 无头模式不建原生窗口，
 // 但底色取值在 app.go 里是跨平台调用的，所以它必须存在。
 func windowDark() bool {
-	return config.CurrentConfig().General.Theme == "dark"
+	return config.CurrentConfig().General.Theme.Mode == "dark"
 }
 
 // platformState 汇总 App 里只在 Windows 上才有意义的字段。
