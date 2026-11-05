@@ -6,7 +6,7 @@
 
         <a-row class="left-inner">
           <a-col :span="24">
-            <a-card class="card-head-tool">
+            <m-card>
 
               <template #title>
                 <!-- 欢迎栏 -->
@@ -32,14 +32,14 @@
               <a-row :gutter="[12, 12]" class="stat-cards">
                 <a-col v-for="c in statCards" :key="c.key" :span="8" :class="{ 'stat-clickable': !!c.link }"
                   :title="c.link ? '点击查看' + c.link : undefined" @click="onStatCardClick(c.key)">
-                  <common-stat-card :icon="c.icon" :icon-value="c.p" :icon-size="26" :tone="c.tone"
-                    :label="c.label" :value="c.big" :unit="c.unit" :detail="c.detail" />
+                  <common-stat-card :icon="c.icon" :icon-value="c.p" :icon-size="26" :tone="c.tone" :label="c.label"
+                    :value="c.big" :unit="c.unit" :detail="c.detail" />
                 </a-col>
               </a-row>
-            </a-card>
+            </m-card>
           </a-col>
           <a-col :span="24" class="svc-col">
-            <a-card class="svc-card-fill card-head-tool">
+            <a-card class="svc-card-fill">
               <!-- 本地服务实例卡片 -->
               <template #title>
                 <span class="svc-title">本地服务实例</span>
@@ -58,7 +58,7 @@
               <!-- 本地服务实例卡片：顺序跟随后端返回的实例列表，不做拖拽排序 -->
               <div class="svc-cards" v-if="filteredServices.length">
                 <div v-for="s in filteredServices" :key="s.id" class="svc-card" @click="openServiceDetail(s)"
-                                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
+                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
                   <div class="svc-card-top">
                     <div class="svc-logo" :class="'logo-' + s.type">
                       <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />
@@ -81,8 +81,8 @@
                       <com-badge :status="s.running ? 'success' : 'normal'" :animated="s.running"></com-badge>
                       <span>{{ s.running ? '已启用' : '已停止' }}</span>
                     </div>
-                    <a-switch v-if="s.type !== 'docker'" :model-value="s.running" :loading="svcToggling === s.id" size="small"
-                      @change="toggleService(s)" />
+                    <a-switch v-if="s.type !== 'docker'" :model-value="s.running" :loading="svcToggling === s.id"
+                      size="small" @change="toggleService(s)" />
                     <a-tag v-else size="small" color="arcoblue" @click="openServiceDetail(s)">面板管理</a-tag>
                   </div>
                 </div>
@@ -132,8 +132,7 @@
     </a-row>
 
     <!-- 全部工具：无背景蒙层（mask=false），不阻断后方页面交互 -->
-    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" 
-      :footer="false" draggable class="tools-more-modal">
+    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" :footer="false" draggable class="tools-more-modal">
       <div class="tools-grid tools-grid-modal">
         <div v-for="item in orderedAllTools" :key="item.id || item.name" class="tool-cell tool-cell-named"
           @click="onMoreToolClick(item)">
@@ -699,7 +698,7 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   overflow-y: scroll;
-    scrollbar-width: none;
+  scrollbar-width: none;
 }
 
 .tools-card::-webkit-scrollbar {
@@ -711,6 +710,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
 }
+
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

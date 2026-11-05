@@ -40,6 +40,13 @@ type Capabilities struct {
 	// Wails 在这两种构建里照样编译通过、NewWithOptions 也不报错，只是窗口不会真的出现，
 	// 前端必须靠这个字段决定"开新窗口"还是"页面内路由"。
 	NativeWindows bool `json:"nativeWindows"`
+	// SystemBackdrop 表示能否用 Win11 系统级桌面模糊背景（Acrylic/Mica/Tabbed）。
+	//
+	// 判据与 Wails SupportsBackdropTypes() 一致：Windows 11 build >= 22621 才为 true。
+	// 为 false 时，逐像素透明外的其余材质会由 Wails 自动回退到旧式 BLURBEHIND
+	// （仍糊桌面，但无噪点/调色），前端据此如实标注、不假装能自定义桌面模糊。
+	// Linux / -tags server 恒为 false。
+	SystemBackdrop bool `json:"systemBackdrop"`
 }
 
 // String 便于日志一行打全平台信息。

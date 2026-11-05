@@ -216,6 +216,8 @@ export default [{
         auth: false,
         blank: true,
         menu_name: "截图",
+        // 截图选区浮层靠窗口透明显示冻结帧/真实桌面，全局背景层(.theme-bg)会盖住桌面，须关掉
+        noThemeBg: true,
     },
     component: () => import('@/views/widget/capture.vue')
 }, {
@@ -226,6 +228,8 @@ export default [{
         auth: false,
         blank: true,
         menu_name: "图钉",
+        // 图钉置顶是无边框透明窗，展示钉住的截图本身，不应铺应用主题背景
+        noThemeBg: true,
     },
     component: () => import('@/views/widget/pin.vue')
 }, {
@@ -239,6 +243,19 @@ export default [{
         menu_name: "快捷搜索",
     },
     component: () => import('@/views/widget/launcher.vue')
+}, {
+    // 逐像素透明调试窗：无边框全透明底，桌面从页面未着色处透出，由后端 OpenGlassDebugWindow 开窗。
+    // 不注册为工具项，也不在主页网格出现。
+    path: '/widget/glasswin',
+    name: '/widget/glasswin',
+    meta: {
+        auth: false,
+        blank: true,
+        menu_name: "透明调试窗",
+        // 逐像素透明调试窗：桌面要从页面未着色处透出，铺了 .theme-bg 就测不到真透明
+        noThemeBg: true,
+    },
+    component: () => import('@/views/widget/glasswin.vue')
 }, {
     // 压缩前的可选项小窗：无边框透明置顶，由后端 ArchivePanelOpen 开窗/点亮
     // （「发送到 → 压缩 (Tools)…」那条快捷方式走它）。不注册为工具项。

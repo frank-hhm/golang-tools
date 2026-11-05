@@ -610,6 +610,87 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 	return nil
 }
 
+// OpenGlassDebugWindow 按 mode 开一个专用的原生调试窗，加载 /widget/glasswin?mode=<mode>，
+// 让你在真实桌面上调表面磨砂的叠加层（色调/不透明度/描边/圆角）并回报参数。
+// mode ∈ {transparent, acrylic, mica, tabbed}（空/未知回落 transparent）：
+//   - transparent：逐像素透明（BackgroundTypeTransparent + RGBA(0,0,0,0)），桌面从页面未着色处透出、但不模糊。
+//   - acrylic/mica/tabbed：BackgroundTypeTranslucent + 对应 BackdropType，走 Win11 系统级桌面模糊（DWMWA_SYSTEMBACKDROP_TYPE）；
+//     低于 Win11 22621 时由 Wails 自动回退旧式 BLURBEHIND。
+//
+// 全部显式关掉无边框装饰——这正是快捷搜索/压缩/截图浮层已在用、且能杜绝「灰纱」的配方
+// （保留时 DwmExtendFrameIntoClientArea 的玻璃底板会透过透明 WebView 把整窗染暗）。
+// 系统 backdrop 是独立的 DWM 属性，照常铺，不因此复现灰纱。不碰主窗与工具窗。
+// 每种材质独立命名单例（win:glassdebug:<mode>），可同时开多个并排 A/B；已存在则展示+取消最小化+聚焦。width/height <=0 兜默认 900x640。
+func (a *App) OpenGlassDebugWindow(width int, height int, mode string) error {
+	if a.app == nil {
+		return fmt.Errorf("应用尚未初始化")
+	}
+	// Web/Linux 面板没有原生窗口：照常返回错误（方法本身跨平台存在，不藏 build tag），
+	// 前端据此隐藏入口/提示，不会静默开窗失败。
+	if !sysx.Caps().NativeWindows {
+		return fmt.Errorf("%w：当前运行模式没有原生窗口，无法开透明调试窗", sysx.ErrUnsupported)
+	}
+	// mode 归一到四种材质，空/未知回落逐像素透明。
+	switch mode {
+	case "transparent", "acrylic", "mica", "tabbed":
+	default:
+		mode = "transparent"
+	}
+	if width <= 0 {
+		width = 900
+	}
+	if height <= 0 {
+		height = 640
+	}
+	// 每种材质独立命名，可同时开多个并排 A/B 对比（叠加参数经 localStorage 跨窗共享）。
+	name := "win:glassdebug:" + mode
+	if w, ok := a.app.Window.GetByName(name); ok {
+		w.Show()
+		w.UnMinimise()
+		w.Focus()
+		applog.Infof("window", "复用透明调试窗: %s", name)
+		return nil
+	}
+	opts := application.WebviewWindowOptions{
+		Name:   name,
+		Title:  "透明调试窗 · " + mode,
+		Width:  width,
+		Height: height,
+		// 无边框 + 页面未着色处透出（透明或系统 backdrop）
+		Frameless:        true,
+		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+		StartState:       application.WindowStateNormal,
+		URL:              "/#/widget/glasswin?mode=" + mode,
+		Windows: application.WindowsWindow{
+			// 自绘头部的 app-region: drag 生效所需
+			NonClientRegionSupport: true,
+			// 关键：关掉无边框装饰，不留 DwmExtendFrameIntoClientArea 的玻璃底板，杜绝「灰纱」
+			// （见 launcher.go 同段说明）。系统 backdrop 是独立的 DWMWA_SYSTEMBACKDROP_TYPE 属性，
+			// 照常铺，不因此复现灰纱。
+			DisableFramelessWindowDecorations: true,
+		},
+	}
+	// 逐像素透明 vs 系统级桌面模糊：Translucent + BackdropType 才走 DWM 模糊材质。
+	if mode == "transparent" {
+		opts.BackgroundType = application.BackgroundTypeTransparent
+	} else {
+		opts.BackgroundType = application.BackgroundTypeTranslucent
+		switch mode {
+		case "mica":
+			opts.Windows.BackdropType = application.Mica
+		case "tabbed":
+			opts.Windows.BackdropType = application.Tabbed
+		default: // acrylic
+			opts.Windows.BackdropType = application.Acrylic
+		}
+	}
+	applog.Infof("window", "新建透明调试窗: %s %dx%d mode=%s", name, width, height, mode)
+	if w := a.app.Window.NewWithOptions(opts); w == nil {
+		return fmt.Errorf("透明调试窗创建失败")
+	}
+	return nil
+}
+
 /* ============================ 串口 / 网络调试 ============================ */
 
 // GetSerialPorts 获取系统串口列表

@@ -13,10 +13,13 @@
  */
 
 :root {
-    /* 玻璃令牌位：阶段一仅占位、不生效（默认全透明关闭）。surface 磨砂由下方 body.app-glass 消费这三枚 */
+    /* 玻璃令牌位：默认全 0（纯 no-op）。开启时 theme.ts 以 inline --app-glass-* 覆盖这六枚，下方 body.app-glass 统一消费 */
     --app-glass-alpha: 0;
     --app-glass-blur: 0px;
-    --app-glass-border: transparent;
+    --app-glass-border: 0;
+    --app-glass-shadow: 0;
+    --app-glass-noise: 0;
+    --app-glass-material: frosted;
 
     /* 密度缩放因子：standard=1；theme.ts 通过 body.density-* 类或 inline 微调 */
     --app-density: 1;
@@ -94,40 +97,156 @@ body.density-loose .arco-table-th {
 }
 
 /*
- * 表面磨砂（透明·阶段一收尾，默认关闭）：body.app-glass 由 theme.ts 依 ThemeConfig.glass==="surface" 挂载。
- * 取值是「设计决策 + 待肉眼定稿」——实验台 /demo/glass 调好后改这三枚即可，全局皮肤统一消费。
+ * 表面玻璃皮肤（默认关闭）：body.app-glass 由 theme.ts 依 ThemeConfig.glass.on 挂载，材质类 mat-acrylic/mat-frosted 标材质。
+ * 具体参数（alpha/blur/border/shadow/noise）由 theme.ts 以 inline --app-glass-* 写进 :root，本层统一消费；
+ * 关闭时 theme.ts 撤除这些 inline 变量，回落上面 :root 占位（全 0），故默认态是纯 no-op。
  * 只吃 CSS backdrop-filter（跨平台安全：Linux/Web 无头浏览器同样生效），绝不碰窗口级原生透明
- * （DWM Acrylic/Mica 曾因与无边框冲突致灰纱/白跳整体下线）。
+ * （DWM Acrylic/Mica 曾因与无边框冲突致灰纱/白跳整体下线，见 AGENTS.md）。
  *
- * 浮层（modal/popover/drawer）teleport 到 body，非 scoped 才能命中，故写在令牌层全局 scss。
+ * 浮层（modal/drawer）teleport 到 body，非 scoped 才能命中，故写在令牌层全局 scss。
  * 浅/暗两套底色分开取，保证磨砂底下文字对比（首要验收点）。
  */
-body.app-glass {
-    --app-glass-alpha: 0.72;
-    --app-glass-blur: 16px;
-    --app-glass-border: 0.3;
-}
+
+// Acrylic 仿的标志性灰度颗粒：feTurbulence 分形噪点，去色后 overlay 混合到表面。
+$glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
 body.app-glass .arco-card,
+body.app-glass .m-card,
 body.app-glass .arco-modal,
 body.app-glass .arco-drawer {
     background: rgba(255, 255, 255, var(--app-glass-alpha));
     backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
     -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
     border-color: rgba(255, 255, 255, var(--app-glass-border));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, var(--app-glass-shadow));
 }
 
 body.app-glass[arco-theme="dark"] .arco-card,
+body.app-glass[arco-theme="dark"] .m-card,
 body.app-glass[arco-theme="dark"] .arco-modal,
 body.app-glass[arco-theme="dark"] .arco-drawer {
-    background: rgba(28, 30, 38, var(--app-glass-alpha));
+    background: rgba(24, 26, 32, var(--app-glass-alpha));
     border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+/*
+ * 玻璃也覆盖自定义卡片外壳（指标卡 .stat-card / 实体卡 .item-card / 服务卡 .svc-card）：
+ * 这些是全站主力「卡片」面，描边强度必须能管到它们，否则关了描边仍留着 --color-border-1 实边。
+ * 只铺 tint + 磨砂 + 受控描边；不给玻璃投影，保留各卡自己的 hover/选中/错误态阴影规范。
+ */
+body.app-glass .stat-card,
+body.app-glass .item-card,
+body.app-glass .svc-card {
+    background: rgba(255, 255, 255, var(--app-glass-alpha));
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    border-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+body.app-glass[arco-theme="dark"] .stat-card,
+body.app-glass[arco-theme="dark"] .item-card,
+body.app-glass[arco-theme="dark"] .svc-card {
+    background: rgba(24, 26, 32, var(--app-glass-alpha));
+    border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+/* Acrylic 仿：表面再叠一层灰度噪点（::after，overlay 混合，opacity 受控），只盖表面不拦点击 */
+body.mat-acrylic.app-glass .arco-card,
+body.mat-acrylic.app-glass .m-card,
+body.mat-acrylic.app-glass .arco-modal,
+body.mat-acrylic.app-glass .arco-drawer {
+    position: relative;
+}
+
+body.mat-acrylic.app-glass .arco-card::after,
+body.mat-acrylic.app-glass .m-card::after,
+body.mat-acrylic.app-glass .arco-modal::after,
+body.mat-acrylic.app-glass .arco-drawer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: var(--app-glass-noise);
+    mix-blend-mode: overlay;
+    background-image: $glass-noise;
 }
 
 /* 减少动效时禁用磨砂模糊（backdrop-filter 开销大，动效敏感/低配优先可读与性能） */
 body.reduce-motion.app-glass .arco-card,
+body.reduce-motion.app-glass .m-card,
 body.reduce-motion.app-glass .arco-modal,
 body.reduce-motion.app-glass .arco-drawer {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+}
+
+/*
+ * 全局主题背景层：.theme-bg（App.vue 挂的固定底）按 body.app-bg-<type> 绘制五种 CSS 背景。
+ * 背景要让 .theme-bg 透出来，需把 body/#app 与外壳那几块实色底（--color-bg-1/2 铺的
+ * .basic-layout/.layout-content/.blank-layout/.layout-body-main）在有背景时改透明——面板自身底色交给
+ * 玻璃 tint 提供（未开玻璃时靠内容卡片自带底）。native 档不画（真桌面透出）；none 档完全 no-op。
+ */
+body.app-bg-mesh .theme-bg {
+    background:
+        radial-gradient(circle at 20% 20%, #ff6b6b, transparent 45%),
+        radial-gradient(circle at 80% 30%, #4ecdc4, transparent 45%),
+        radial-gradient(circle at 40% 80%, #5470c6, transparent 45%),
+        radial-gradient(circle at 90% 85%, #f7b32b, transparent 40%),
+        linear-gradient(135deg, #a8edea, #fed6e3);
+}
+
+body.app-bg-photo .theme-bg {
+    background: linear-gradient(160deg, #3a1c71, #d76d77, #ffaf7b);
+}
+
+body.app-bg-plain .theme-bg {
+    background: linear-gradient(160deg, #cfd9df, #e2ebf0);
+}
+
+/* 暗夜纹理：跟随明暗主题——浅色给近白纹理，深色给暗纹理 */
+body.app-bg-dark .theme-bg {
+    background:
+        repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 7px),
+        linear-gradient(160deg, #f5f7fa, #dfe4ec);
+}
+
+body[arco-theme="dark"].app-bg-dark .theme-bg {
+    background:
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 7px),
+        linear-gradient(160deg, #2a2d34, #16181d);
+}
+
+/* 自定义图：--app-bg-image 由 theme.ts 经 ReadFileDataURI 异步写入（url(...)），未就绪时不画 */
+body.app-bg-image .theme-bg {
+    background-image: var(--app-bg-image, none);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+/* 底色让路：有 CSS 背景时把根底与外壳实色底改透明，露出 .theme-bg（none/native 档不介入，保持原状） */
+body:not(.app-bg-none):not(.app-bg-native),
+body:not(.app-bg-none):not(.app-bg-native) #app {
+    background: transparent;
+}
+
+body:not(.app-bg-none):not(.app-bg-native) .basic-layout,
+body:not(.app-bg-none):not(.app-bg-native) .layout-content,
+body:not(.app-bg-none):not(.app-bg-native) .blank-layout,
+body:not(.app-bg-none):not(.app-bg-native) .win-titlebar,
+body:not(.app-bg-none):not(.app-bg-native) .layout-body-main.has-bg,
+body:not(.app-bg-none):not(.app-bg-native) .layout-body-main.has-bg .layout-body-main-content {
+    background: transparent;
+}
+
+/* 标题栏随玻璃：开玻璃时标题栏也铺磨砂 tint（比上面纯让路更高特异性，胜出），未开玻璃时回落让路透明露背景 */
+body.app-glass:not(.app-bg-none):not(.app-bg-native) .win-titlebar {
+    background: rgba(255, 255, 255, var(--app-glass-alpha));
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+}
+
+body.app-glass[arco-theme="dark"]:not(.app-bg-none):not(.app-bg-native) .win-titlebar {
+    background: rgba(24, 26, 32, var(--app-glass-alpha));
 }

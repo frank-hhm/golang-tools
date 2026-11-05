@@ -47,19 +47,126 @@ type BallConfig struct {
 
 // ThemeConfig 主题令牌配置。mode 沿用 light/dark/auto 语义（前端据此切 body[arco-theme]、
 // 浮动球与窗口首帧底色据此定深浅，后端也消费这一维）；其余维度（预设色板 / 自定义主色 /
-// 圆角 / 密度 / 高对比度 / 减少动效 / 玻璃）与明暗正交，后端只持久化不消费，由前端投射进
-// --app-* 设计令牌。字段都是字符串短名，前端拿枚举值自行映射，扩容不需要动 Go 结构。
+// 圆角 / 密度 / 高对比度 / 减少动效 / 玻璃 / 背景）与明暗正交，后端只持久化不消费，由前端投射进
+// --app-* 设计令牌。glass/background 已从短名升级为对象，但 glass 仍兼容老字符串（见 ThemeGlass）。
 type ThemeConfig struct {
-	Mode     string `json:"mode"`     // light | dark | auto，默认 light
-	Preset   string `json:"preset"`   // 预设皮肤名（default/graphite/ocean/forest/sunset…）；custom=自定义主色，默认 default
-	Primary  string `json:"primary"`  // 自定义主色 hex（Preset=custom 时生效）；空=未设
-	Harmony  string `json:"harmony"`  // 色彩和谐模式 analogous|complementary|split|triadic，默认 analogous（前端消费，后端仅持久化）
-	Radius   string `json:"radius"`   // small | default | large，默认 default
-	Density  string `json:"density"`  // compact | standard | loose，默认 standard（只管留白/间距）
-	FontSize string `json:"fontSize"` // small | default | large | xlarge，默认 default（字号，独立于密度，前端消费后端仅持久化）
-	Contrast string `json:"contrast"` // normal | high，默认 normal
-	Motion   string `json:"motion"`   // on | reduced，默认 on
-	Glass    string `json:"glass"`    // off | surface，默认 off（阶段一仅令牌位）
+	Mode       string          `json:"mode"`       // light | dark | auto，默认 light
+	Preset     string          `json:"preset"`     // 预设皮肤名（default/graphite/ocean/forest/sunset…）；custom=自定义主色，默认 default
+	Primary    string          `json:"primary"`    // 自定义主色 hex（Preset=custom 时生效）；空=未设
+	Harmony    string          `json:"harmony"`    // 色彩和谐模式 analogous|complementary|split|triadic，默认 analogous（前端消费，后端仅持久化）
+	Radius     string          `json:"radius"`     // small | default | large，默认 default
+	Density    string          `json:"density"`    // compact | standard | loose，默认 standard（只管留白/间距）
+	FontSize   string          `json:"fontSize"`   // small | default | large | xlarge，默认 default（字号，独立于密度，前端消费后端仅持久化）
+	Contrast   string          `json:"contrast"`   // normal | high，默认 normal
+	Motion     string          `json:"motion"`     // on | reduced，默认 on
+	Glass      ThemeGlass      `json:"glass"`      // 表面玻璃材质参数；兼容老字符串 off|surface（见 UnmarshalJSON）
+	Background ThemeBackground `json:"background"` // 全局背景主题（网格/风景/纯色/暗夜纹理/自定义图/原生）
+}
+
+// ThemeGlass 表面磨砂/Acrylic 仿材质参数。数值全部存整数避免前后端 float 序列化歧义，
+// 前端按各自除数还原：alpha/border ÷100（0..1）、shadow ÷100（0..0.5）、noise ÷1000（0..0.12）、blur 直接 px。
+type ThemeGlass struct {
+	On       bool   `json:"on"`       // 是否启用表面玻璃（旧 glass!="off" 的等价开关）
+	Material string `json:"material"` // frosted | acrylic，acrylic 才消费 noise
+	Alpha    int    `json:"alpha"`    // 底透明度 0-100（÷100）
+	Blur     int    `json:"blur"`     // 模糊半径 0-40 px
+	Border   int    `json:"border"`   // 描边不透明度 0-100（÷100）
+	Shadow   int    `json:"shadow"`   // 投影强度 0-50（÷100）
+	Noise    int    `json:"noise"`    // 噪点强度 0-120（÷1000），仅 acrylic 消费
+}
+
+// ThemeBackground 全局背景主题档。
+type ThemeBackground struct {
+	Type  string `json:"type"`  // none | mesh | photo | plain | dark | image | native，默认 none
+	Image string `json:"image"` // 导入后的绝对路径，仅 type=image；其它档清空
+}
+
+// 玻璃/背景维度的合法集与默认，前后端各写一次，靠变更文档与单测锁住口径。
+const (
+	glassMaterialFrosted = "frosted"
+	glassMaterialAcrylic = "acrylic"
+	backgroundNone       = "none"
+	backgroundImage      = "image"
+)
+
+// legacySurfaceGlass 把阶段一的 glass=="surface" 旧值映射成当前 tokens.scss 里那组观感，
+// 保证老用户升级后磨砂观感逐像素不变（alpha 0.72 / blur 16 / border 0.3 / shadow 0.18）。
+func legacySurfaceGlass() ThemeGlass {
+	return ThemeGlass{On: true, Material: glassMaterialFrosted, Alpha: 72, Blur: 16, Border: 30, Shadow: 18, Noise: 0}
+}
+
+// defaultGlass 默认关闭（纯 no-op），材质取 frosted。
+func defaultGlass() ThemeGlass {
+	return ThemeGlass{Material: glassMaterialFrosted}
+}
+
+func validGlassMaterial(v string) bool {
+	return v == glassMaterialFrosted || v == glassMaterialAcrylic
+}
+
+func validBackgroundType(v string) bool {
+	switch v {
+	case "none", "mesh", "photo", "plain", "dark", "image", "native":
+		return true
+	}
+	return false
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// normalizeThemeGlass 夹区间 + 材质合法化，idempotent，不覆盖合法值。
+func normalizeThemeGlass(g *ThemeGlass) {
+	if !validGlassMaterial(g.Material) {
+		g.Material = glassMaterialFrosted
+	}
+	g.Alpha = clampInt(g.Alpha, 0, 100)
+	g.Blur = clampInt(g.Blur, 0, 40)
+	g.Border = clampInt(g.Border, 0, 100)
+	g.Shadow = clampInt(g.Shadow, 0, 50)
+	g.Noise = clampInt(g.Noise, 0, 120)
+}
+
+// normalizeThemeBackground 背景档合法化；非 image 档清空残留路径。
+func normalizeThemeBackground(b *ThemeBackground) {
+	if !validBackgroundType(b.Type) {
+		b.Type = backgroundNone
+	}
+	b.Image = strings.TrimSpace(b.Image)
+	if b.Type != backgroundImage {
+		b.Image = ""
+	}
+}
+
+// UnmarshalJSON 兼容老配置里 glass 是裸字符串（"off"/"surface"）的形态：字符串按语义映射成对象，
+// 对象走常规解码，null/空保持零值（随后 normalizeThemeGlass 兜默认）。避免老用户升级后磨砂配置丢失。
+func (g *ThemeGlass) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	if trimmed[0] == '"' {
+		if strings.Trim(trimmed, "\"") == "surface" {
+			*g = legacySurfaceGlass()
+		} else {
+			*g = defaultGlass()
+		}
+		return nil
+	}
+	type alias ThemeGlass
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*g = ThemeGlass(a)
+	return nil
 }
 
 // 主题 mode 的合法三态与预设默认名：前后端各写一次，靠变更文档与单测锁住口径。
@@ -93,15 +200,16 @@ func validThemeFontSize(v string) bool {
 // defaultThemeConfig 返回一份合法的主题默认配置（仅 mode 有后端语义，其余取各自默认短名）。
 func defaultThemeConfig() ThemeConfig {
 	return ThemeConfig{
-		Mode:     ThemeModeLight,
-		Preset:   defaultThemePreset,
-		Harmony:  defaultThemeHarmony,
-		Radius:   "default",
-		Density:  "standard",
-		FontSize: defaultThemeFontSize,
-		Contrast: "normal",
-		Motion:   "on",
-		Glass:    "off",
+		Mode:       ThemeModeLight,
+		Preset:     defaultThemePreset,
+		Harmony:    defaultThemeHarmony,
+		Radius:     "default",
+		Density:    "standard",
+		FontSize:   defaultThemeFontSize,
+		Contrast:   "normal",
+		Motion:     "on",
+		Glass:      defaultGlass(),
+		Background: ThemeBackground{Type: backgroundNone},
 	}
 }
 
@@ -165,9 +273,8 @@ func normalizeThemeConfig(t *ThemeConfig) {
 	if strings.TrimSpace(t.Motion) == "" {
 		t.Motion = "on"
 	}
-	if strings.TrimSpace(t.Glass) == "" {
-		t.Glass = "off"
-	}
+	normalizeThemeGlass(&t.Glass)
+	normalizeThemeBackground(&t.Background)
 	t.Primary = strings.TrimSpace(t.Primary)
 }
 

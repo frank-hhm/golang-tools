@@ -13,6 +13,7 @@ import (
 	appsvc "Tools/services/app"
 	"Tools/services/applog"
 	"Tools/services/config"
+	"Tools/services/sysx"
 	"Tools/services/tasks"
 	"Tools/tools/archive"
 	"Tools/tools/backup"
@@ -289,6 +290,17 @@ func main() {
 		// 对齐 Arco --color-bg-1 才不会亮出一块黑板（详见 appsvc.WindowBackground 注释）
 		BackgroundColour: application.NewRGB(appsvc.WindowBackground()),
 		URL:              "/",
+	}
+	// 原生 DWM 材质全局档（Windows 11 22621+）：启动时若主题为 native，主窗按系统级 backdrop
+	// 建窗——translucent + Acrylic + 逐像素 alpha 0 + 关无边框装饰（与 OpenGlassDebugWindow /
+	// launcher.go 同套防「灰纱」配方）。运行期无法可靠翻转 WebView2 透明，故 native 档以“重启后
+	// 由此启动路径生效”为准（设置页选 native 会提示重启）。低于 22621（caps.systemBackdrop=false）
+	// 时不启用，主窗保持默认不透明，行为与改动前一致。
+	if startupCfg.General.Theme.Background.Type == "native" && sysx.Caps().SystemBackdrop {
+		mainOpts.BackgroundType = application.BackgroundTypeTranslucent
+		mainOpts.BackgroundColour = application.NewRGBA(0, 0, 0, 0)
+		mainOpts.Windows.BackdropType = application.Acrylic
+		mainOpts.Windows.DisableFramelessWindowDecorations = true
 	}
 	mainWindow := app.Window.NewWithOptions(mainOpts)
 

@@ -19,6 +19,7 @@ const state = reactive<Capabilities>({
     hasDocker: false,
     pkgMode: "green",
     nativeWindows: false,
+    systemBackdrop: false,
 });
 
 let pending: Promise<Capabilities> | null = null;

@@ -18,8 +18,27 @@
 import type { ThemeScheme } from "./palette";
 import { buildTheme, normalizeHarmony, type HarmonyMode } from "./palette";
 import { resolveTheme } from "./presets";
+import { App } from "bindings/Tools/services/app/index";
 
 export type ThemeMode = "light" | "dark" | "auto";
+
+/** 表面玻璃材质参数（与后端 config.general.theme 的 ThemeGlass 同构）。数值存整数，前端各自除数还原 */
+export interface ThemeGlass {
+  on: boolean;
+  material: "frosted" | "acrylic";
+  alpha: number; // 0-100（÷100）
+  blur: number; // 0-40 px
+  border: number; // 0-100（÷100）
+  shadow: number; // 0-50（÷100）
+  noise: number; // 0-120（÷1000），仅 acrylic 消费
+}
+
+/** 全局背景主题档（与后端 ThemeBackground 同构） */
+export type BackgroundType = "none" | "mesh" | "photo" | "plain" | "dark" | "image" | "native";
+export interface ThemeBackground {
+  type: BackgroundType;
+  image: string; // 绝对路径，仅 type=image
+}
 
 /** 前端整套主题令牌配置，与后端 config.general.theme（bindings 的 ThemeConfig）同构 */
 export interface ThemeConfig {
@@ -32,13 +51,28 @@ export interface ThemeConfig {
   fontSize: string;
   contrast: string;
   motion: string;
-  glass: string;
+  glass: ThemeGlass;
+  background: ThemeBackground;
 }
 
 /** 旧：仅模式的 localStorage 键（保留以兼容读取与 theme-switch 的 storage 同步） */
 export const THEME_STORAGE_KEY = "app-theme-mode";
 /** 新：整套令牌配置的 localStorage 键 */
 export const THEME_CFG_STORAGE_KEY = "app-theme-cfg";
+
+/** 默认玻璃：关闭（纯 no-op），参数取实验台定稿那组观感，开关一开即所见 */
+export const DEFAULT_GLASS: ThemeGlass = {
+  on: false,
+  material: "acrylic",
+  alpha: 60,
+  blur: 0,
+  border: 0,
+  shadow: 18,
+  noise: 120,
+};
+
+/** 默认背景：none（与改动前像素级一致，不铺任何全局背景） */
+export const DEFAULT_BACKGROUND: ThemeBackground = { type: "none", image: "" };
 
 export const DEFAULT_THEME: ThemeConfig = {
   mode: "light",
@@ -50,7 +84,8 @@ export const DEFAULT_THEME: ThemeConfig = {
   fontSize: "default",
   contrast: "normal",
   motion: "on",
-  glass: "off",
+  glass: { ...DEFAULT_GLASS },
+  background: { ...DEFAULT_BACKGROUND },
 };
 
 // 圆角映射：同时投射到项目自用的 --base-radius-* 与 Arco 的 --border-radius-*。
@@ -98,9 +133,14 @@ export function normalizeConfig(input: unknown): ThemeConfig {
   // 旧配置：裸字符串只表达 mode
   if (typeof input === "string") {
     const mode = input === "dark" || input === "auto" ? input : "light";
-    return { ...DEFAULT_THEME, mode };
+    return {
+      ...DEFAULT_THEME,
+      mode,
+      glass: { ...DEFAULT_GLASS },
+      background: { ...DEFAULT_BACKGROUND },
+    };
   }
-  const src = (input || {}) as Partial<ThemeConfig>;
+  const src = (input || {}) as Partial<ThemeConfig> & { glass?: unknown; background?: unknown };
   const mode: ThemeMode = src.mode === "dark" || src.mode === "auto" ? src.mode : "light";
   return {
     mode,
@@ -112,9 +152,64 @@ export function normalizeConfig(input: unknown): ThemeConfig {
     fontSize: FONT_SCALE_MAP[src.fontSize || ""] ? src.fontSize! : DEFAULT_THEME.fontSize,
     contrast: src.contrast === "high" ? "high" : "normal",
     motion: src.motion === "reduced" ? "reduced" : "on",
-    glass: src.glass === "surface" ? "surface" : "off",
+    glass: normalizeGlass(src.glass),
+    background: normalizeBackground(src.background),
   };
 }
+
+function clampInt(v: unknown, lo: number, hi: number, dflt: number): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? Math.round(v) : dflt;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** 归一玻璃参数：兼容旧字符串 off|surface（surface 映射成阶段一那组观感），对象走常规夹区间 */
+export function normalizeGlass(input: unknown): ThemeGlass {
+  if (typeof input === "string") {
+    if (input === "surface") {
+      return { on: true, material: "frosted", alpha: 72, blur: 16, border: 30, shadow: 18, noise: 0 };
+    }
+    return { ...DEFAULT_GLASS, on: false };
+  }
+  const s = (input || {}) as Partial<ThemeGlass>;
+  return {
+    on: !!s.on,
+    material: s.material === "acrylic" ? "acrylic" : "frosted",
+    alpha: clampInt(s.alpha, 0, 100, DEFAULT_GLASS.alpha),
+    blur: clampInt(s.blur, 0, 40, DEFAULT_GLASS.blur),
+    border: clampInt(s.border, 0, 100, DEFAULT_GLASS.border),
+    shadow: clampInt(s.shadow, 0, 50, DEFAULT_GLASS.shadow),
+    noise: clampInt(s.noise, 0, 120, DEFAULT_GLASS.noise),
+  };
+}
+
+const BG_TYPES: BackgroundType[] = ["none", "mesh", "photo", "plain", "dark", "image", "native"];
+
+/** 归一背景档：非法 type 兜 none；非 image 档清空残留路径 */
+export function normalizeBackground(input: unknown): ThemeBackground {
+  const s = (input || {}) as Partial<ThemeBackground>;
+  const type: BackgroundType = BG_TYPES.includes((s.type || "none") as BackgroundType)
+    ? (s.type as BackgroundType)
+    : "none";
+  return { type, image: type === "image" ? String(s.image || "") : "" };
+}
+
+/**
+ * 把玻璃参数换算成 CSS 变量表（纯函数、无 DOM 依赖，便于单测与实验台复用）。
+ * alpha/border/shadow 除 100、noise 除 1000 还原成 0..1 单位数；blur 直接 px；material 透传给 tokens.scss 选择噪点层。
+ */
+export function glassVars(g: ThemeGlass): Record<string, string> {
+  return {
+    "--app-glass-alpha": (g.alpha / 100).toFixed(3),
+    "--app-glass-blur": `${g.blur}px`,
+    "--app-glass-border": (g.border / 100).toFixed(3),
+    "--app-glass-shadow": (g.shadow / 100).toFixed(3),
+    "--app-glass-noise": (g.noise / 1000).toFixed(3),
+    "--app-glass-material": g.material,
+  };
+}
+
+/** 玻璃变量名（关闭时按此清单从 documentElement 撤除，回落 tokens.scss :root 占位） */
+const GLASS_VAR_NAMES = Object.keys(glassVars(DEFAULT_GLASS));
 
 /** 当前整套主题配置（localStorage 优先，无则默认） */
 export function currentThemeConfig(): ThemeConfig {
@@ -215,8 +310,41 @@ function renderTokens(cfg: ThemeConfig) {
   body.classList.toggle("a11y-contrast", cfg.contrast === "high");
   body.classList.toggle("reduce-motion", cfg.motion === "reduced");
 
-  // ⑥ 玻璃（阶段一占位，不生效）
-  body.classList.toggle("app-glass", cfg.glass === "surface");
+  // ⑥ 玻璃：body.app-glass 开关 + 材质类；开则把参数投进 --app-glass-*，关则撤除回落 :root 占位
+  const g = cfg.glass;
+  body.classList.toggle("app-glass", g.on);
+  body.classList.toggle("mat-acrylic", g.on && g.material === "acrylic");
+  body.classList.toggle("mat-frosted", g.on && g.material === "frosted");
+  if (g.on) {
+    setVars(root, glassVars(g));
+  } else {
+    removeVars(root, GLASS_VAR_NAMES);
+  }
+
+  // ⑦ 背景：body.app-bg-<type> 类驱动背景层与底色让路；image 档异步读 dataURL 写 --app-bg-image
+  const bg = cfg.background;
+  for (const t of BG_TYPES) body.classList.toggle(`app-bg-${t}`, bg.type === t);
+  if (bg.type === "image" && bg.image) {
+    void applyBackgroundImage(bg.image);
+  } else {
+    bgReqSeq++;
+    root.style.removeProperty("--app-bg-image");
+  }
+}
+
+// 背景图 dataURL 异步加载序号：快速切换背景时丢弃过期回包，避免迟到的图片盖掉当前档。
+let bgReqSeq = 0;
+function applyBackgroundImage(path: string) {
+  const seq = ++bgReqSeq;
+  App.ReadFileDataURI(path)
+    .then((uri) => {
+      if (seq !== bgReqSeq) return;
+      if (uri) document.documentElement.style.setProperty("--app-bg-image", `url("${uri}")`);
+      else document.documentElement.style.removeProperty("--app-bg-image");
+    })
+    .catch(() => {
+      if (seq === bgReqSeq) document.documentElement.style.removeProperty("--app-bg-image");
+    });
 }
 
 /** 应用并持久化整套主题配置 */

@@ -564,10 +564,25 @@ export interface ProxyItem {
 }
 
 /**
+ * ThemeBackground 全局背景主题档。
+ */
+export interface ThemeBackground {
+    /**
+     * none | mesh | photo | plain | dark | image | native，默认 none
+     */
+    "type": string;
+
+    /**
+     * 导入后的绝对路径，仅 type=image；其它档清空
+     */
+    "image": string;
+}
+
+/**
  * ThemeConfig 主题令牌配置。mode 沿用 light/dark/auto 语义（前端据此切 body[arco-theme]、
  * 浮动球与窗口首帧底色据此定深浅，后端也消费这一维）；其余维度（预设色板 / 自定义主色 /
- * 圆角 / 密度 / 高对比度 / 减少动效 / 玻璃）与明暗正交，后端只持久化不消费，由前端投射进
- * --app-* 设计令牌。字段都是字符串短名，前端拿枚举值自行映射，扩容不需要动 Go 结构。
+ * 圆角 / 密度 / 高对比度 / 减少动效 / 玻璃 / 背景）与明暗正交，后端只持久化不消费，由前端投射进
+ * --app-* 设计令牌。glass/background 已从短名升级为对象，但 glass 仍兼容老字符串（见 ThemeGlass）。
  */
 export interface ThemeConfig {
     /**
@@ -616,9 +631,55 @@ export interface ThemeConfig {
     "motion": string;
 
     /**
-     * off | surface，默认 off（阶段一仅令牌位）
+     * 表面玻璃材质参数；兼容老字符串 off|surface（见 UnmarshalJSON）
      */
-    "glass": string;
+    "glass": ThemeGlass;
+
+    /**
+     * 全局背景主题（网格/风景/纯色/暗夜纹理/自定义图/原生）
+     */
+    "background": ThemeBackground;
+}
+
+/**
+ * ThemeGlass 表面磨砂/Acrylic 仿材质参数。数值全部存整数避免前后端 float 序列化歧义，
+ * 前端按各自除数还原：alpha/border ÷100（0..1）、shadow ÷100（0..0.5）、noise ÷1000（0..0.12）、blur 直接 px。
+ */
+export interface ThemeGlass {
+    /**
+     * 是否启用表面玻璃（旧 glass!="off" 的等价开关）
+     */
+    "on": boolean;
+
+    /**
+     * frosted | acrylic，acrylic 才消费 noise
+     */
+    "material": string;
+
+    /**
+     * 底透明度 0-100（÷100）
+     */
+    "alpha": number;
+
+    /**
+     * 模糊半径 0-40 px
+     */
+    "blur": number;
+
+    /**
+     * 描边不透明度 0-100（÷100）
+     */
+    "border": number;
+
+    /**
+     * 投影强度 0-50（÷100）
+     */
+    "shadow": number;
+
+    /**
+     * 噪点强度 0-120（÷1000），仅 acrylic 消费
+     */
+    "noise": number;
 }
 
 /**

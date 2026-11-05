@@ -2650,6 +2650,14 @@ export function ImportConfig(): $CancellablePromise<string> {
 }
 
 /**
+ * ImportThemeBackground 弹原生图片选择框，把选中图导入 data/theme/background.<ext>，返回落点绝对路径。
+ * 取消返回空串；非桌面构建（无原生窗口）返回 sysx.ErrUnsupported，前端应改走文件输入 + SaveThemeBackgroundDataURI。
+ */
+export function ImportThemeBackground(): $CancellablePromise<string> {
+    return $Call.ByID(3546970736);
+}
+
+/**
  * LanShareAbortUpload 强踢一个卡死/占位的接收会话（删半成品目录，腾出会话名额）。
  */
 export function LanShareAbortUpload(sid: string): $CancellablePromise<void> {
@@ -3758,6 +3766,23 @@ export function OpenConfigDir(): $CancellablePromise<void> {
 }
 
 /**
+ * OpenGlassDebugWindow 按 mode 开一个专用的原生调试窗，加载 /widget/glasswin?mode=<mode>，
+ * 让你在真实桌面上调表面磨砂的叠加层（色调/不透明度/描边/圆角）并回报参数。
+ * mode ∈ {transparent, acrylic, mica, tabbed}（空/未知回落 transparent）：
+ *   - transparent：逐像素透明（BackgroundTypeTransparent + RGBA(0,0,0,0)），桌面从页面未着色处透出、但不模糊。
+ *   - acrylic/mica/tabbed：BackgroundTypeTranslucent + 对应 BackdropType，走 Win11 系统级桌面模糊（DWMWA_SYSTEMBACKDROP_TYPE）；
+ *     低于 Win11 22621 时由 Wails 自动回退旧式 BLURBEHIND。
+ * 
+ * 全部显式关掉无边框装饰——这正是快捷搜索/压缩/截图浮层已在用、且能杜绝「灰纱」的配方
+ * （保留时 DwmExtendFrameIntoClientArea 的玻璃底板会透过透明 WebView 把整窗染暗）。
+ * 系统 backdrop 是独立的 DWM 属性，照常铺，不因此复现灰纱。不碰主窗与工具窗。
+ * 每种材质独立命名单例（win:glassdebug:<mode>），可同时开多个并排 A/B；已存在则展示+取消最小化+聚焦。width/height <=0 兜默认 900x640。
+ */
+export function OpenGlassDebugWindow(width: number, height: number, mode: string): $CancellablePromise<void> {
+    return $Call.ByID(2040003917, width, height, mode);
+}
+
+/**
  * OpenLogDir 在系统资源管理器中打开当前日志目录（Windows: explorer）。
  */
 export function OpenLogDir(): $CancellablePromise<void> {
@@ -4184,6 +4209,14 @@ export function ProcSuspend(pid: number, on: boolean): $CancellablePromise<void>
 }
 
 /**
+ * ReadFileDataURI 读取图片文件转成 data: URI，供前端当 CSS 背景用。限 8 MB、扩展名须在白名单，否则报错。
+ * 跨平台（Linux 面板浏览器同样可用），不依赖原生窗口。
+ */
+export function ReadFileDataURI(path: string): $CancellablePromise<string> {
+    return $Call.ByID(593001802, path);
+}
+
+/**
  * RealQuit 真正退出程序：置退出标志（使关闭钩子不再拦截）、销毁托盘，再终止应用。
  */
 export function RealQuit(): $CancellablePromise<void> {
@@ -4554,6 +4587,14 @@ export function SaveLanShareSettings($in: config$0.LanShareConfig): $Cancellable
 }
 
 /**
+ * SaveThemeBackgroundDataURI 接收前端 <input type=file> 读出的 dataURL（"data:<mime>;base64,...."），
+ * 校验后落盘到 data/theme/background.<ext>，返回绝对路径。跨平台（无头面板浏览器上传同样走这里），不依赖原生窗口。
+ */
+export function SaveThemeBackgroundDataURI(dataURI: string): $CancellablePromise<string> {
+    return $Call.ByID(4213848986, dataURI);
+}
+
+/**
  * SecStoreChangePassword 校验旧口令后重新加密（新盐新 nonce）。
  */
 export function SecStoreChangePassword(id: string, oldPw: string, newPw: string): $CancellablePromise<void> {
@@ -4712,6 +4753,14 @@ export function SetToolOrder(ids: string[] | null): $CancellablePromise<void> {
  */
 export function SetTrayIcon(b: string | null): $CancellablePromise<void> {
     return $Call.ByID(2204952799, b);
+}
+
+/**
+ * SetWindowNativeBackdrop 对主窗口即时下发生成原生 DWM 材质档。
+ * mode ∈ {acrylic, mica, tabbed, none}（none 关闭系统材质）。
+ */
+export function SetWindowNativeBackdrop(mode: string): $CancellablePromise<void> {
+    return $Call.ByID(3254327039, mode);
 }
 
 /**

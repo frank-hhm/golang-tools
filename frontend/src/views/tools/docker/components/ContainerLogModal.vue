@@ -15,8 +15,7 @@
         <template #operations>
             <a-switch :model-value="follow" size="small" @change="onFollowChange" />
             <span class="follow-label">实时跟随</span>
-            <a-popconfirm content="确定清空容器日志？将只保留清空之后新产生的日志
-            （Docker Desktop 下容器历史日志无法从本地截断）。" type="warning"
+            <a-popconfirm content="确定清空容器日志？将只保留清空之后新产生的日志（Docker Desktop 下容器历史日志无法从本地截断）。" type="warning"
                 position="bl" @ok="emit('clear')">
                 <a-button size="small">
                     <template #icon><icon-delete /></template>清空

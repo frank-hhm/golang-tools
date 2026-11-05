@@ -146,6 +146,24 @@
                                 </div>
                                 <span class="hint">实时呈现本主题的搭配（主/强调/辅助基准色），随种子与和谐模式变化。</span>
                             </a-form-item>
+                            <a-form-item field="general.theme" data-skey="general.theme">
+                                <template #label>配色搭配总览</template>
+                                <div class="hm-grid">
+                                    <div class="hm-corner"></div>
+                                    <div v-for="h in harmonyChoices" :key="h.v" class="hm-colhead">{{ h.label }}</div>
+                                    <template v-for="row in harmonyMatrix" :key="row.name">
+                                        <div class="hm-rowhead">{{ row.label }}</div>
+                                        <div v-for="c in row.cells" :key="c.harmony" class="hm-cell"
+                                            :class="{ active: form.general.theme.preset === row.name && form.general.theme.harmony === c.harmony }"
+                                            @click="pickCombo(row.name, c.harmony)">
+                                            <span class="hm-chip" :style="{ background: c.brand }"></span>
+                                            <span class="hm-chip" :style="{ background: c.accent }"></span>
+                                            <span class="hm-chip" :style="{ background: c.secondary }"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                                <span class="hint">预设 × 和谐模式的主/强调/辅助实色一览，点一格即套用该搭配（随当前明暗档变化）。</span>
+                            </a-form-item>
                             <a-form-item field="general.theme.radius" data-skey="general.theme">
                                 <template #label>圆角</template>
                                 <a-radio-group v-model="form.general.theme.radius" type="button" size="small"
@@ -189,6 +207,71 @@
                                 </a-radio-group>
                                 <span class="hint">整体字号，独立于显示密度；两者可分别调节。</span>
                             </a-form-item>
+                            <a-form-item field="general.theme.background" data-skey="general.theme">
+                                <template #label>主题背景</template>
+                                <a-radio-group v-model="form.general.theme.background.type" type="button" size="small"
+                                    @change="onBackgroundTypeChange">
+                                    <a-radio value="none">无</a-radio>
+                                    <a-radio value="mesh">彩色网格</a-radio>
+                                    <a-radio value="photo">风景照</a-radio>
+                                    <a-radio value="plain">纯色</a-radio>
+                                    <a-radio value="dark">暗夜纹理</a-radio>
+                                    <a-radio value="image">自定义图</a-radio>
+                                    <a-radio v-if="caps.nativeWindows && caps.systemBackdrop" value="native">原生材质</a-radio>
+                                </a-radio-group>
+                                <div v-if="form.general.theme.background.type === 'image'" class="bg-image-row">
+                                    <a-button size="small" @click="pickBackgroundImage">选择图片…</a-button>
+                                    <span v-if="form.general.theme.background.image" class="hint">当前：{{ bgImageName }}</span>
+                                    <a-button v-if="form.general.theme.background.image" size="small"
+                                        @click="clearBackgroundImage">清除</a-button>
+                                </div>
+                                <input ref="bgFileInput" type="file" accept="image/*" class="bg-file-input"
+                                    @change="onBgFileChosen" />
+                                <span class="hint">全局背景主题，切换即时生效、所有窗口同步；「自定义图」可上传本地图片（≤8MB）。暗夜纹理随明暗主题给近白/暗两版。</span>
+                                <span v-if="caps.nativeWindows && caps.systemBackdrop" class="hint">「原生材质」走 Windows 11 系统级桌面模糊（DWM Acrylic），关闭后需重启应用才能让主窗透明/模糊完全生效。</span>
+                            </a-form-item>
+                            <a-form-item field="general.theme.glass" data-skey="general.theme">
+                                <template #label>表面玻璃</template>
+                                <a-switch type="round" v-model="form.general.theme.glass.on"
+                                    @change="onThemeTokenChange" />
+                                <span class="hint">给卡片/弹窗/抽屉铺半透明磨砂（CSS backdrop-filter，跨平台）；配合「主题背景」才有可糊的底。</span>
+                            </a-form-item>
+                            <template v-if="form.general.theme.glass.on">
+                                <a-form-item field="general.theme.glass.material" data-skey="general.theme">
+                                    <template #label>玻璃材质</template>
+                                    <a-radio-group v-model="form.general.theme.glass.material" type="button" size="small"
+                                        @change="onThemeTokenChange">
+                                        <a-radio value="frosted">普通磨砂</a-radio>
+                                        <a-radio value="acrylic">Acrylic 仿</a-radio>
+                                    </a-radio-group>
+                                    <a-space class="glass-presets">
+                                        <a-button size="mini" @click="applyGlassPreset('soft')">柔和</a-button>
+                                        <a-button size="mini" @click="applyGlassPreset('default')">默认</a-button>
+                                        <a-button size="mini" @click="applyGlassPreset('strong')">强磨砂</a-button>
+                                    </a-space>
+                                </a-form-item>
+                                <a-form-item :label="`底透明度 ${form.general.theme.glass.alpha}%`">
+                                    <a-slider v-model="form.general.theme.glass.alpha" :min="0" :max="100" :step="1"
+                                        @change="onThemeTokenChange" />
+                                </a-form-item>
+                                <a-form-item :label="`模糊半径 ${form.general.theme.glass.blur}px`">
+                                    <a-slider v-model="form.general.theme.glass.blur" :min="0" :max="40" :step="1"
+                                        @change="onThemeTokenChange" />
+                                </a-form-item>
+                                <a-form-item :label="`描边强度 ${form.general.theme.glass.border}%`">
+                                    <a-slider v-model="form.general.theme.glass.border" :min="0" :max="100" :step="1"
+                                        @change="onThemeTokenChange" />
+                                </a-form-item>
+                                <a-form-item :label="`投影强度 ${form.general.theme.glass.shadow}%`">
+                                    <a-slider v-model="form.general.theme.glass.shadow" :min="0" :max="50" :step="1"
+                                        @change="onThemeTokenChange" />
+                                </a-form-item>
+                                <a-form-item v-if="form.general.theme.glass.material === 'acrylic'"
+                                    :label="`噪点强度 ${form.general.theme.glass.noise}‰`">
+                                    <a-slider v-model="form.general.theme.glass.noise" :min="0" :max="120" :step="1"
+                                        @change="onThemeTokenChange" />
+                                </a-form-item>
+                            </template>
                         </a-form>
                     </a-card>
 
@@ -1095,7 +1178,7 @@ import {
     type ThemeConfig,
 } from "@/utils/theme";
 import { COLOR_PRESETS, CUSTOM_PRESET, resolveTheme } from "@/utils/presets";
-import { buildTheme } from "@/utils/palette";
+import { buildTheme, type HarmonyMode } from "@/utils/palette";
 import { useCaps } from "@/utils/caps";
 import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
 import PoolEditor, { type PoolRow } from "./PoolEditor.vue";
@@ -1647,6 +1730,39 @@ function pickPreset(name: string) {
     onThemeTokenChange();
 }
 
+/** 和谐模式候选（与 radio 组同口径），供搭配总览网格用 */
+const harmonyChoices: { v: HarmonyMode; label: string }[] = [
+    { v: "analogous", label: "邻近" },
+    { v: "complementary", label: "互补" },
+    { v: "split", label: "分裂互补" },
+    { v: "triadic", label: "三等分" },
+];
+
+/** 预设×和谐的 brand/accent/secondary 实色矩阵（按当前明暗档派生） */
+const harmonyMatrix = computed(() => {
+    const scheme = effectiveScheme(form.general.theme.mode);
+    return COLOR_PRESETS.map((p) => ({
+        name: p.name,
+        label: p.label,
+        cells: harmonyChoices.map((h) => {
+            const t = buildTheme(p.seed, h.v, scheme);
+            return {
+                harmony: h.v,
+                brand: t ? t.seeds.brand : "",
+                accent: t ? t.seeds.accent : "",
+                secondary: t ? t.seeds.secondary : "",
+            };
+        }),
+    }));
+});
+
+/** 点搭配总览一格：同时套用预设与和谐模式 */
+function pickCombo(name: string, harmony: HarmonyMode) {
+    form.general.theme.preset = name;
+    form.general.theme.harmony = harmony;
+    onThemeTokenChange();
+}
+
 /** 取色器选色即切「自定义」并实时更新色阶 */
 function pickCustomPrimary(color: string) {
     form.general.theme.preset = CUSTOM_PRESET;
@@ -1664,6 +1780,88 @@ function setContrast(v: string | number | boolean) {
 function setMotion(v: string | number | boolean) {
     form.general.theme.motion = v ? "reduced" : "on";
     onThemeTokenChange();
+}
+
+/* ===================== 主题背景图 / 玻璃材质 ===================== */
+/** 背景图文件输入（仅 Web/无头构建用：无原生对话框，读成 dataURL 再交后端落盘） */
+const bgFileInput = ref<HTMLInputElement | null>(null);
+/** 当前背景图的文件名（从绝对路径末段取，跨平台分隔符都认） */
+const bgImageName = computed(() => {
+    const p = form.general.theme.background.image || "";
+    return p.split(/[\\/]/).pop() || p;
+});
+/** 选背景图：桌面弹原生对话框；Web/无头触发隐藏文件输入 */
+async function pickBackgroundImage() {
+    if (caps.nativeWindows) {
+        try {
+            const path = await GoTools?.ImportThemeBackground();
+            if (!path) return; // 取消
+            form.general.theme.background.image = path;
+            form.general.theme.background.type = "image";
+            onThemeTokenChange();
+        } catch (e: any) {
+            Message.error(`导入背景图失败：${String(e?.message ?? e ?? "操作失败")}`);
+        }
+        return;
+    }
+    bgFileInput.value?.click();
+}
+/** 文件输入选定：校验体积 → dataURL → 后端落盘 → 写回路径 */
+async function onBgFileChosen(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+        Message.error("背景图过大（上限 8MB）");
+        return;
+    }
+    try {
+        const dataURI = await readFileAsDataURL(file);
+        const path = await GoTools?.SaveThemeBackgroundDataURI(dataURI);
+        if (!path) {
+            Message.error("保存背景图失败");
+            return;
+        }
+        form.general.theme.background.image = path;
+        form.general.theme.background.type = "image";
+        onThemeTokenChange();
+    } catch (e: any) {
+        Message.error(`上传背景图失败：${String(e?.message ?? e ?? "操作失败")}`);
+    }
+}
+function readFileAsDataURL(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result || ""));
+        fr.onerror = () => reject(fr.error || new Error("读取文件失败"));
+        fr.readAsDataURL(file);
+    });
+}
+/** 清除背景图：回到无背景档 */
+function clearBackgroundImage() {
+    form.general.theme.background.image = "";
+    form.general.theme.background.type = "none";
+    onThemeTokenChange();
+}
+/** 玻璃快速套用：三档观感预设（与实验台口径一致） */
+function applyGlassPreset(name: "soft" | "default" | "strong") {
+    const g = form.general.theme.glass;
+    if (name === "soft") Object.assign(g, { material: "frosted", alpha: 72, blur: 10, border: 25, shadow: 18, noise: 0 });
+    else if (name === "strong") Object.assign(g, { material: "frosted", alpha: 45, blur: 28, border: 50, shadow: 22, noise: 0 });
+    else Object.assign(g, { material: "acrylic", alpha: 60, blur: 0, border: 0, shadow: 18, noise: 120 });
+    onThemeTokenChange();
+}
+/** 主题背景档变更：常规即时应用+保存；选中原生材质时额外尝试即时下发 DWM 材质并如实提示需重启 */
+async function onBackgroundTypeChange(v: string | number | boolean) {
+    onThemeTokenChange();
+    if (v !== "native") return;
+    try {
+        await GoTools?.SetWindowNativeBackdrop("acrylic");
+    } catch (e: any) {
+        // 运行期切换失败不致命（低版本 / 无主窗）：配置已保存，重启后由启动路径按 native 档建 translucent 窗
+    }
+    Message.info("原生材质已选中：重启应用后主窗透明/模糊完全生效");
 }
 
 const activePath = ref("");
@@ -3171,6 +3369,23 @@ onBeforeUnmount(() => {
     font-size: 16px;
 }
 
+/* 主题背景：自定义图行（选图/当前名/清除）与隐藏的文件输入 */
+.bg-image-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.bg-file-input {
+    display: none;
+}
+
+.glass-presets {
+    margin-left: 12px;
+}
+
 .theme-preview {
     display: flex;
     gap: 16px;
@@ -3193,6 +3408,54 @@ onBeforeUnmount(() => {
 .tp-name {
     font-size: var(--base-size-small);
     color: var(--color-text-2);
+}
+
+/* 配色搭配总览：预设×和谐 的实色矩阵，选中格用主色描边环 + 轻底（不加重硬边框） */
+.hm-grid {
+    display: grid;
+    grid-template-columns: 72px repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    align-items: center;
+    max-width: 560px;
+}
+
+.hm-colhead {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+    text-align: center;
+}
+
+.hm-rowhead {
+    font-size: var(--base-size-small);
+    color: var(--color-text-2);
+    padding-right: 6px;
+}
+
+.hm-cell {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 4px;
+    border-radius: var(--base-radius-default);
+    background: transparent;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.hm-cell:hover {
+    background: var(--color-fill-2);
+}
+
+.hm-cell.active {
+    background: var(--color-fill-2);
+    box-shadow: 0 0 0 2px rgb(var(--primary-6));
+}
+
+.hm-chip {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--base-radius-small);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 .logo-preview {

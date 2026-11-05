@@ -62,14 +62,16 @@
 /******card header********/
 /* 标题栏高度由内容撑开：全局按钮统一 small、单选组统一 medium 后，medium 单选组高 32px，
    超过固定 46/40 高度留下的内容盒（26/24px），overflow:hidden 会把控件上下裁掉 */
-.arco-card.card-head-tool > .arco-card-header {
+.arco-card.card-head-tool > .arco-card-header,
+.m-card.card-head-tool > .m-card-header {
     height: auto;
     min-height: 46px;
     /* 右侧是按钮/按钮组时收窄留白，避免控件看起来被多缩进一层；左侧保持 16px，与 body 左基线对齐 */
     padding-right: var(--card-head-tool-pad, 8px);
 }
 
-.arco-card.arco-card-size-small.card-head-tool > .arco-card-header {
+.arco-card.arco-card-size-small.card-head-tool > .arco-card-header,
+.m-card.m-card-size-small.card-head-tool > .m-card-header {
     min-height: 40px;
 }
 
@@ -79,7 +81,9 @@
    用 padding-left + 等量负 margin-left 把裁剪边界（padding box）向左外扩 8px；
    实测其他内容的左外边距、标题右边界、头栏高度都不变（只给横向，纵向 padding 会撑高头栏） */
 .arco-card.card-head-tool > .arco-card-header > .arco-card-header-title,
-.arco-card.card-head-tool > .arco-card-header > .arco-card-header-extra {
+.arco-card.card-head-tool > .arco-card-header > .arco-card-header-extra,
+.m-card.card-head-tool > .m-card-header > .m-card-header-title,
+.m-card.card-head-tool > .m-card-header > .m-card-header-extra {
     padding-left: 8px;
     margin-left: -8px;
 }
