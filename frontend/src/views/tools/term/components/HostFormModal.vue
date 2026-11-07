@@ -281,7 +281,7 @@ async function onOk() {
   gap: 8px;
 }
 
-.cred-row :deep(.arco-select) {
+.cred-row :deep(.arco-select-view) {
   flex: 1;
 }
 

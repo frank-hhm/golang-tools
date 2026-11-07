@@ -150,7 +150,7 @@ function doDelete(name: string) {
   font-size: 12px;
 }
 .tg-name {
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--code-font-family);
 }
 .tg-empty {
   padding: 20px;

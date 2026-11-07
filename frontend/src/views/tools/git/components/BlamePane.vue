@@ -153,7 +153,7 @@ watch(() => [props.repo, props.path, props.revision], load, { immediate: true })
 }
 .bp-rev {
   font-size: 11px;
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
 }
 .bp-state {
   flex: 1;
@@ -175,7 +175,7 @@ watch(() => [props.repo, props.path, props.revision], load, { immediate: true })
 .bp-line {
   display: flex;
   align-items: stretch;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--code-font-family);
   font-size: 12px;
   line-height: 1.55;
 }

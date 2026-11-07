@@ -41,11 +41,11 @@ import { Message } from "@arco-design/web-vue";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { closeBrackets } from "@codemirror/autocomplete";
 import { highlightSelectionMatches } from "@codemirror/search";
 import { basicSetup } from "codemirror";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { tags as t } from "@lezer/highlight";
 
 // 由父组件只传文件路径，读取/编辑/保存全在这里完成（遵循子组件自管状态、父只给上下文的约定）。
 const props = defineProps<{ path: string }>();
@@ -120,6 +120,38 @@ async function loadLanguage(e: string): Promise<any> {
 // 只读用一个 Compartment 承载，切换只重配这个槽，不重建编辑器、不丢光标与历史。
 const readonlyComp = new Compartment();
 
+/* 主题感知的高亮与底色：全部引用 styles/theme/code.scss 的 --code-* 变量。
+   这些值以 CSS 形式注入，切明暗时 body[arco-theme] 让 var() 自动翻面，不必重建编辑器。
+   取代旧的固定 oneDark——它在浅色档也是深底，与全站其它等宽面（报文/日志/终端）不一致。 */
+const codeSurface = EditorView.theme({
+    "&": { backgroundColor: "var(--code-bg)", color: "var(--code-text)" },
+    ".cm-gutters": {
+        backgroundColor: "var(--code-gutter-bg)",
+        color: "var(--code-gutter-text)",
+        border: "none",
+        borderRight: "1px solid var(--code-border)",
+    },
+    ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "var(--code-gutter-bg)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--code-text)" },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: "var(--code-gutter-bg)",
+    },
+});
+
+const codeHighlight = HighlightStyle.define([
+    { tag: t.propertyName, color: "var(--code-tok-key)" },
+    { tag: [t.string, t.escape, t.regexp], color: "var(--code-tok-str)" },
+    { tag: [t.number, t.color], color: "var(--code-tok-num)" },
+    { tag: [t.null, t.bool, t.atom, t.keyword, t.operatorKeyword, t.controlKeyword], color: "var(--code-tok-lit)" },
+    { tag: t.comment, color: "var(--code-tok-com)", fontStyle: "italic" },
+    { tag: t.tagName, color: "var(--code-tok-tag)" },
+    { tag: t.attributeName, color: "var(--code-tok-attr)" },
+    { tag: [t.punctuation, t.separator, t.bracket, t.operator], color: "var(--code-tok-punc)" },
+    { tag: [t.function(t.variableName), t.macroName], color: "var(--code-tok-key)" },
+    { tag: [t.className, t.typeName], color: "var(--code-tok-num)" },
+    { tag: [t.heading, t.strong], color: "var(--code-tok-lit)", fontWeight: "bold" },
+]);
+
 function readonlyExt(on: boolean) {
     return [EditorState.readOnly.of(on), EditorView.editable.of(!on)];
 }
@@ -129,8 +161,8 @@ async function mountEditor(text: string) {
     const lang = await loadLanguage(ext.value);
     const base: any[] = [
         basicSetup,
-        oneDark,
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        codeSurface,
+        syntaxHighlighting(codeHighlight),
         bracketMatching(),
         closeBrackets(),
         highlightSelectionMatches(),
@@ -347,7 +379,7 @@ onBeforeUnmount(() => {
     background: var(--color-fill-2);
     border-radius: 4px;
     padding: 1px 4px;
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
 }
 .md-body :deep(table) {
     border-collapse: collapse;
@@ -368,9 +400,10 @@ onBeforeUnmount(() => {
 .md-err {
     color: rgb(var(--danger-6));
 }
-/* CodeMirror 默认字号偏小，贴合本项目阅读习惯 */
+/* CodeMirror 默认字号偏小，贴合本项目阅读习惯；字体栈与全站等宽内容统一走 --code-font-family */
 .cp-editor :deep(.cm-editor) {
     height: 100%;
-    font-size: 13px;
+    font-family: var(--code-font-family);
+    font-size: var(--base-size-large);
 }
 </style>

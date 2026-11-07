@@ -433,10 +433,6 @@ onUnmounted(() => { if (offProgress) offProgress(); });
     gap: 10px;
 }
 
-.dl-stats> :deep(.stat-card) {
-    height: auto;
-}
-
 /* 工具条 */
 .dl-bar {
     flex: none;

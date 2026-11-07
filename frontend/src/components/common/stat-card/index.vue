@@ -64,7 +64,6 @@ withDefaults(defineProps<{
   display: flex;
   align-items: center;
   gap: var(--base-padding);
-  height: 100%;
   padding: var(--base-padding);
   background: var(--color-bg-2);
   border: 1px solid var(--color-border-1);

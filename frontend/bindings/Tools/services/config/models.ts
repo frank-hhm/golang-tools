@@ -568,7 +568,7 @@ export interface ProxyItem {
  */
 export interface ThemeBackground {
     /**
-     * none | mesh | photo | plain | dark | image | native，默认 none
+     * none | mesh | photo | dark | image | native，默认 none
      */
     "type": string;
 
@@ -631,12 +631,17 @@ export interface ThemeConfig {
     "motion": string;
 
     /**
+     * 无边距模式：卡片去左右内边距、不铺背景，描边固定归无（前端消费，后端仅持久化，默认 false）
+     */
+    "flush": boolean;
+
+    /**
      * 表面玻璃材质参数；兼容老字符串 off|surface（见 UnmarshalJSON）
      */
     "glass": ThemeGlass;
 
     /**
-     * 全局背景主题（网格/风景/纯色/暗夜纹理/自定义图/原生）
+     * 全局背景主题（网格/风景/暗夜纹理/自定义图/原生）
      */
     "background": ThemeBackground;
 }

@@ -3,7 +3,7 @@
     <common-log-modal :model-value="visible"
         :title="inst ? `实例 ${inst.name}（:${inst.port}）` : '实例日志'" :lines="logsLines" :width="660"
         @update:model-value="(v: boolean) => emit('update:visible', v)" @close="stopPolling">
-        <template #head>
+        <template #panel>
             <div v-if="logsStatus" class="ls-grid">
                 <div class="ls-item"><span>状态</span><b :class="{ ok: logsStatus.running }">{{ logsStatus.running ? '运行中'
                     : '已停止'
@@ -106,7 +106,6 @@ onUnmounted(stopPolling);
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 8px;
-    margin-bottom: var(--base-margin);
 }
 
 .ls-item {

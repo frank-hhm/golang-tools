@@ -90,7 +90,7 @@
                                     </a-input>
                                 </template>
                             </a-table-column>
-                            <a-table-column title="解释" data-index="explain" :width="240" />
+                            <a-table-column title="解释" data-index="explain" :width="240" ellipsis tooltip />
                         </template>
                     </a-table>
                 </div>
@@ -398,7 +398,7 @@ const copyText = async (text: string) => {
     min-height: 0;
 }
 
-.result-table :deep(.arco-table-body) {
+.result-table :deep(.arco-table-content) {
     flex: 1;
     min-height: 0;
 }

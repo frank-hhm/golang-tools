@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <a-row class="video-page" :gutter="6">
     <!-- 左侧固定 30%：录制设置 + 录制状态 + 结果（与 Redis/抓包工具页布局一致） -->
     <a-col :span="6" class="side-col">

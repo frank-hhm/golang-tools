@@ -9,9 +9,9 @@
           <img :src="preview.data" :alt="entry?.name || ''" />
         </div>
         <a-result v-else-if="preview.kind === 'tooLarge'" status="warning"
-          :title="`文件过大（${fmtSize(preview.size)}），不支持在线预览`" sub-title="请下载后用本地工具打开">
+          :title="`文件过大（${fmtSize(preview.size)}），不支持在线预览`" subtitle="请下载后用本地工具打开">
         </a-result>
-        <a-result v-else status="info" title="二进制文件不支持预览" sub-title="请下载后用本地工具打开" />
+        <a-result v-else status="info" title="二进制文件不支持预览" subtitle="请下载后用本地工具打开" />
       </template>
     </div>
     <div v-if="preview" class="pv-foot">
@@ -75,7 +75,7 @@ function close() {
   padding: 10px 12px;
   background: var(--color-fill-1);
   border-radius: 4px;
-  font-family: Consolas, 'Cascadia Mono', 'Microsoft YaHei', monospace;
+  font-family: var(--code-font-family);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;

@@ -122,7 +122,9 @@ const emit = defineEmits<{
 }
 
 .env-item {
-    background: var(--color-fill-1);
+    /* 浅色档 --color-fill-1 是不透明实色，在纹理/玻璃弹窗表面上成孤立灰块；
+       改铺 --gray-10 同源淡膜（随明暗自动反向），透出面板底纹 */
+    background: rgba(var(--gray-10), 0.06);
     border-radius: var(--base-radius-default);
     padding: var(--base-radius-default) var(--base-radius-large);
     font-size: var(--base-size-small);
@@ -176,6 +178,6 @@ const emit = defineEmits<{
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

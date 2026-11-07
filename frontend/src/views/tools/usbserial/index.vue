@@ -660,7 +660,7 @@ onUnmounted(() => {
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-all;
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
 }
 
 .recv-body.hex {
@@ -684,7 +684,7 @@ onUnmounted(() => {
     padding: var(--base-padding) var(--base-radius-large);
     border-bottom: 1px solid var(--color-border-2);
     cursor: pointer;
-    font-family: Consolas, Monaco, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     word-break: break-all;
 }

@@ -425,11 +425,11 @@ async function saveInstance(): Promise<boolean> {
 }
 
 .hosts-line {
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
 }
 
 .hosts-path {
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     color: var(--color-text-4);
     word-break: break-all;
 }

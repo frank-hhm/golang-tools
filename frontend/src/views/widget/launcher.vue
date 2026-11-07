@@ -298,10 +298,13 @@ onBeforeUnmount(() => {
   max-height: 100%;
   display: flex;
   flex-direction: column;
+  /* 无描边、无投影：用户要求「快捷搜索不要边框」，border 与 box-shadow 全部归无，不留任何边缘线。
+     背景随主题纹理（与主窗/设置页同一条）由 tokens.scss 的 body:not(.app-bg-none):not(.app-bg-native) .lk-card
+     组以更高特异性覆盖此处 bg-1（bg-2 基色 + --app-texture-bg，不透明复刻）；none/native 档不命中时才落到这里的实色 bg-1 兜底。 */
   background: var(--color-bg-1, #fff);
-  border: 1px solid var(--color-border-2, #e5e6eb);
+  border: none;
   border-radius: var(--base-radius-default);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
   overflow: hidden;
   user-select: none;
 }
@@ -353,11 +356,17 @@ onBeforeUnmount(() => {
   padding: 5px 12px;
   border-radius: var(--base-radius-default);
   cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
 }
-/* 选中态不铺灰底（整块灰色压在透明窗上很脏）：只点亮左侧一根短竖条，
-   再加一点投影把它抬起来——与 nginx 实例列表的选中口径一致。 */
+/* 选中态与设置页左侧分类导航（.cat-item.active）同口径：中性轻底 fill-2 + 正文加粗 +
+   左侧一根主题色短竖条，不加深边框、不用投影（此前压在纹理卡上的投影边缘显脏）。
+   面板背景现随主题纹理，fill-2 轻底与设置页观感一致。 */
 .lk-item.active {
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.14);
+  background: var(--color-fill-2);
+}
+.lk-item.active .lk-item-title {
+  color: var(--color-text-1);
+  font-weight: 600;
 }
 .lk-item.active::before {
   content: "";
@@ -366,7 +375,7 @@ onBeforeUnmount(() => {
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 56%;
+  height: 55%;
   border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
   background: rgb(var(--primary-6));
 }
@@ -417,14 +426,16 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 类型标签：去掉灰色药丸，只留一个靠右的弱色短词，选中行才点亮成主题色 */
+/* 类型标签：去掉灰色药丸，只留一个靠右的弱色短词。 */
 .lk-item-tag {
   flex: none;
   font-size: var(--base-size-small);
   color: var(--color-text-4, #c9cdd4);
 }
+/* 选中行不再把标签染成主题色（与设置页菜单同口径：主色只体现在左侧那根短竖条，
+   文字类元素走中性色）；只从弱色 text-4 提到次级正文色 text-2 作轻提醒。 */
 .lk-item.active .lk-item-tag {
-  color: rgb(var(--primary-6));
+  color: var(--color-text-2, #4e5969);
 }
 .lk-item.danger .lk-item-title {
   color: rgb(var(--red-6, 245, 63, 63));

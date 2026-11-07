@@ -605,8 +605,8 @@ const batchConvert = () => {
     gap: 4px;
 }
 
-.result-input :deep(.arco-input) {
-    font-family: Consolas, Monaco, "Courier New", monospace;
+.result-input :deep(.arco-input-el) {
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
 }
 
@@ -639,10 +639,10 @@ const batchConvert = () => {
     height: 100%;
 }
 
-.fill-textarea :deep(.arco-textarea) {
+.fill-textarea :deep(.arco-textarea-el) {
     height: 100%;
     resize: none;
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
 }
 </style>

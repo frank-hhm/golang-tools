@@ -1,0 +1,65 @@
+/**
+ * 代码/JSON/日志/终端等宽内容的全局皮肤（唯一事实源）。
+ *
+ * 背景：此前全站 100+ 处各自硬编码等宽字体栈（Consolas monospace /
+ * Consolas Monaco "Courier New" / Consolas 'Cascadia Mono' / Consolas Menlo 等
+ * 六七种写法混用），语法配色各自定义，暗色档覆盖程度不一——同一类信息在不同
+ * 页面字体宽窄、色板都不一样，观感散乱。这里收口成一组全局 CSS 变量：
+ *
+ *  - --code-font-family：统一等宽字体栈。Windows 首选 Consolas（系统自带、
+ *    ClearType 清晰），Linux/macOS 无 Consolas 时按 Cascadia Mono → Menlo →
+ *    DejaVu Sans Mono → Liberation Mono 链回退，末尾 monospace 兜底。
+ *    CJK 回落字形由浏览器字体匹配自动处理（各平台默认中文字体），无需写进栈。
+ *  - --code-tok-*：语法着色色板。浅色取 GitHub Light 取向、暗色取 VS Code
+ *    Dark 取向，与 body-viewer 旧硬编码值一致，只换定义位置不改观感基准。
+ *  - --code-bg / --code-text / --code-gutter-* / --code-border：代码面板
+ *    表面色四件套，同样明暗两套。
+ *
+ * 暗色切换走 body[arco-theme="dark"] 属性，与全站主题联动机制一致；
+ * 各消费方只引用变量名，切主题时变量自动翻面，组件里不留第二套色值。
+ *
+ * 注意：xterm(term-console) 与 CodeMirror(CodePane) 在 JS 里创建，吃不到
+ * CSS 变量——它们的字体/色板常量与本文件保持同一组值，改动时两边同步。
+ * 对应 TS 侧：components/business/term-console 的 FONT_FAMILY 常量。
+ */
+
+:root {
+    /* 等宽字体栈（全站唯一口径，组件里不要再写第二份） */
+    --code-font-family: Consolas, "Cascadia Mono", Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace;
+
+    /* 代码面板表面四件套（浅色） */
+    --code-bg: #fbfcfd;
+    --code-text: #24292f;
+    --code-border: #e5e6eb;
+    --code-gutter-bg: #f2f3f5;
+    --code-gutter-text: #86909c;
+
+    /* 语法着色色板（浅色）：键/属性名、字符串、数字、字面量、标签、属性、标点、注释 */
+    --code-tok-key: #0b61a4;
+    --code-tok-str: #a31515;
+    --code-tok-num: #098658;
+    --code-tok-lit: #6f42c1;
+    --code-tok-tag: #22863a;
+    --code-tok-attr: #6f42c1;
+    --code-tok-punc: #6a737d;
+    --code-tok-com: #8b949e;
+}
+
+body[arco-theme="dark"] {
+    /* 代码面板表面四件套（暗色） */
+    --code-bg: #17171a;
+    --code-text: #e6e6e6;
+    --code-border: #2b2b30;
+    --code-gutter-bg: #1d1d20;
+    --code-gutter-text: #6b7280;
+
+    /* 语法着色色板（暗色） */
+    --code-tok-key: #79c0ff;
+    --code-tok-str: #7ec699;
+    --code-tok-num: #f08d49;
+    --code-tok-lit: #cc99cd;
+    --code-tok-tag: #e06c75;
+    --code-tok-attr: #f2c97d;
+    --code-tok-punc: #9aa4b2;
+    --code-tok-com: #7d8590;
+}

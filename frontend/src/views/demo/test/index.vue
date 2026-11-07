@@ -117,7 +117,7 @@ function openHere(it: TestItem) {
     border-radius: var(--base-radius-small);
     background: var(--color-fill-2);
     color: var(--color-text-2);
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
 }
 

@@ -759,7 +759,7 @@ const slowCols = [
     { title: "耗时(μs)", dataIndex: "duration", width: 110 },
     { title: "时间", slotName: "time", width: 170 },
     { title: "命令", dataIndex: "command", ellipsis: true, tooltip: true },
-    { title: "客户端", dataIndex: "clientAddr", width: 160 },
+    { title: "客户端", dataIndex: "clientAddr", width: 160, ellipsis: true, tooltip: true },
 ];
 const slowData = computed(() =>
     st.slowlog.map((e: any) => ({ ...e, time: e.time ? new Date(e.time * 1000).toLocaleString() : "" })),
@@ -1281,15 +1281,23 @@ onUnmounted(() => {
     color: rgb(var(--red-6));
 }
 
+/* 内容区：与设置页同款——只留一个可见子卡片。上下不铺 padding/gap（避免与卡片 body 上内边距叠双层，
+   子卡片互斥显隐 gap 本就无作用），但左右保留一圈 --base-padding：内层卡片 body 左右会被 card-flush 归零，
+   若这里不管左右，开无边距/暗黑纹理下内容就贴死面板左右缘。这圈左右 padding 不在 .arco-card 内，
+   card-flush 管不到，故单独补归零规则：普通档随密度，无边距档归零铺满。 */
 .tab-content {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--base-padding);
-    padding: var(--base-padding);
-    height: calc(100% - var(--base-padding) * 2);
+    height: 100%;
     overflow: hidden;
+    padding: 0 var(--base-padding);
+}
+
+body.card-flush .tab-content {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 /* 状态 */
@@ -1499,7 +1507,7 @@ onUnmounted(() => {
 }
 
 .kv-lines {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: 1.7;
 }
@@ -1564,7 +1572,7 @@ onUnmounted(() => {
     border-radius: var(--base-radius-default);
     background: var(--color-bg-1);
     color: var(--color-text-1);
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     padding: var(--base-padding);
 }

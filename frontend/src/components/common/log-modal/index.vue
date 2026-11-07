@@ -1,16 +1,26 @@
 <template>
-    <!-- 通用日志弹窗：只负责「标题 + 可滚动日志区 + 自动贴底 + 底部左右两区」这套排版。
+    <!-- 通用日志弹窗：只负责「标题栏(标题+状态标记) + 可滚动日志区 + 自动贴底 + 底部左右两区」这套排版。
          数据与轮询/跟随等一律留在调用方：调用方传 lines，按需往下面的插槽里塞自己的内容。
          插槽约定：
+           #head      —— 标题栏里标题右侧的一行紧凑状态标记（运行中 / 端口 / 容器 / 行数…）；
+                         只放成排的小 chip，大块状态面板请用 #panel（头部固定 48px，塞高内容会撑破）
            #alert     —— 正文最上方的横幅（放 a-alert，如环境未就绪 / 重要提醒）
-           #head      —— 日志区上方的一行状态标记（如 运行中 / 端口 / 容器 / 行数）
+           #panel     —— 正文里日志区上方的大块状态面板（如 Redis 多项运行指标网格）
            #tip       —— 底部左侧：提示文案或次要标记
            #operations—— 底部右侧：操作按钮（清空 / 刷新 / 连接 …） -->
-    <a-modal :visible="modelValue" :title="title" :width="width" :footer="hasFooter" :unmount-on-close="unmountOnClose"
+    <a-modal :visible="modelValue" :width="width" :footer="hasFooter" :unmount-on-close="unmountOnClose"
         @update:visible="onVisible" @close="emit('close')">
+        <!-- 标题栏：标题文本 + 右侧一行紧凑状态标记（#head）。放得下才叫 head，
+             大块状态面板走正文顶部的 #panel，别塞进来撑破 48px 头部 -->
+        <template #title>
+            <div class="logm-title">
+                <span class="logm-title-text">{{ title }}</span>
+                <div v-if="$slots.head" class="logm-head"><slot name="head" /></div>
+            </div>
+        </template>
         <div class="logm-body">
             <div v-if="$slots.alert" class="logm-alert"><slot name="alert" /></div>
-            <div v-if="$slots.head" class="logm-head"><slot name="head" /></div>
+            <div v-if="$slots.panel" class="logm-panel"><slot name="panel" /></div>
             <div ref="boxRef" class="logm-log" :style="height ? { height } : undefined">
                 <div v-for="(l, i) in lines" :key="i" class="logm-line">{{ l }}</div>
                 <div v-if="lines.length === 0" class="logm-empty">{{ emptyText }}</div>
@@ -79,14 +89,38 @@ watch(() => props.modelValue, (v) => { if (v) scrollBottom(); });
     margin: 0;
 }
 
-/* 状态标记行：调用方塞进来的标记成组靠左排（状态点 + 文案 + 端口/容器标签…），
-   窄屏自动换行；需要靠右的次要信息由调用方自行 margin-left:auto */
+/* 标题栏：标题文本靠左，#head 的紧凑标记紧随其后。arco 把 .arco-modal-title 设为
+   justify-content:center，这里用 width:100% 撑满再把内容压回左对齐 */
+.logm-title {
+    display: flex;
+    align-items: center;
+    gap: var(--base-padding);
+    width: 100%;
+    min-width: 0;
+}
+
+.logm-title-text {
+    flex: none;
+    font-size: var(--base-size-large);
+    color: var(--color-text-1);
+    white-space: nowrap;
+}
+
+/* 状态标记行：成组小 chip 靠左单排（状态点 + 文案 + 端口/容器/行数标签…）。
+   头部固定 48px，不换行——放不下的多指标面板应改用正文 #panel */
 .logm-head {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: var(--base-padding);
+    min-width: 0;
     font-size: var(--base-size-small);
+    color: var(--color-text-2);
+}
+
+/* 正文顶部的大块状态面板（#panel）：整块占行，与日志区之间由 .logm-body 的 gap 分隔 */
+.logm-panel {
+    width: 100%;
 }
 
 /* 固定高度 + 内部滚动：短窗口下随视口收缩 */
@@ -97,7 +131,7 @@ watch(() => props.modelValue, (v) => { if (v) scrollBottom(); });
     border: 1px solid var(--color-border-2);
     border-radius: var(--base-radius-default);
     padding: var(--base-padding) var(--base-radius-large);
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     color: var(--color-text-1);
     line-height: 1.5;

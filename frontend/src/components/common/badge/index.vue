@@ -5,7 +5,7 @@
          同时抬一层 z-index，避免光晕被紧邻的文字/标签盖住半边。
          注：放进卡片标题栏（#title / #extra）时，Arco 那两个容器的 overflow:hidden 仍会裁掉贴边的光晕，
          styles/theme/style.scss 里对 .card-head-tool 的头栏做了同样的外扩照顾 -->
-    <!-- 悬停提示走 a-tooltip（泡泡挂在 body 上，不会被父级 overflow 裁），没有 title 时整体禁用 -->
+    <!-- 悬停提示走 m-tooltip（泡泡挂在 body 上，不会被父级 overflow 裁），没有 title 时整体禁用 -->
     <a-tooltip :content="title" :disabled="!title">
         <span class="com-badge" :class="[`com-badge-${status}`, { 'is-animated': animated }]" :style="rootStyle">
             <span class="com-badge-dot"></span>
@@ -27,7 +27,7 @@ const props = withDefaults(defineProps<{
     size?: number;
     /** 模糊背景扩张动画：用于"正在运行/连接中"这类持续态 */
     animated?: boolean;
-    /** 悬停提示（渲染为 a-tooltip，不是原生 title） */
+    /** 悬停提示（渲染为 m-tooltip，不是原生 title） */
     title?: string;
     /** 自定义颜色，覆盖 status 语义色 */
     color?: string;

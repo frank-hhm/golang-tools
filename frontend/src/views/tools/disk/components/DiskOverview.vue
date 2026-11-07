@@ -1,7 +1,7 @@
 <template>
     <!-- 磁盘总览：版式对齐 Docker 总览（区块用 a-card，指标用首页同款 stat-card，
          下方卡片墙逐盘展示用量），数据全部来自父页面一次 DiskDrives 的结果 -->
-    <a-card class="card-head-tool ov-card" size="small" :body-style="collapsed ? { display: 'none' } : undefined">
+    <a-card class="card-head-tool ov-card" size="small" :body-style="{ padding: 0 }">
         <template #title>
             <span class="ov-title">磁盘总览</span>
             <span v-if="drives.length" class="ov-count">{{ drives.length }}</span>
@@ -16,55 +16,66 @@
                 <a-tooltip :content="collapsed ? '展开磁盘总览' : '收起磁盘总览（给文件列表让高度）'">
                     <a-button size="small" @click="emit('toggle')">
                         <template #icon>
-                            <icon-up v-if="!collapsed" />
-                            <icon-down v-else />
+                            <icon-up class="ov-toggle-icon" :style="{ transform: collapsed ? 'rotate(180deg)' : 'none' }" />
                         </template>
                     </a-button>
                 </a-tooltip>
             </a-space>
         </template>
 
-        <a-row :gutter="[12, 12]">
-            <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
-                <common-stat-card :icon="c.icon" :icon-value="c.p" :tone="c.tone" :label="c.title" :value="c.value"
-                    :detail="c.sub" :tip="c.tip" :ready="c.ready" />
-            </a-col>
-        </a-row>
+        <!-- 折叠体：JS 实测像素高度后过渡 height（grid 1fr↔0fr 会逐帧重排整棵卡片树，
+             子树大时明显卡顿），内层叠加淡出遮住重排抖动；卡片 body 常驻 padding 0，
+             内衬移到 ov-body 随高度一起收放，收起后不留空带 -->
+        <div ref="foldEl" class="ov-fold" :class="{ closed: collapsed }">
+            <div ref="innerEl" class="ov-fold-inner">
+                <div class="ov-body">
+                    <a-row :gutter="[12, 12]">
+                        <a-col v-for="c in cards" :key="c.key" :xs="24" :sm="12" :md="8" :xl="4">
+                            <common-stat-card :icon="c.icon" :icon-value="c.p" :tone="c.tone" :label="c.title"
+                                :value="c.value" :detail="c.sub" :tip="c.tip" :ready="c.ready" />
+                        </a-col>
+                    </a-row>
 
-        <!-- 盘符墙：点卡片直接进该盘根目录 -->
-        <div v-if="drives.length" class="drive-grid">
-            <div v-for="d in drives" :key="d.root" class="drive"
-                :class="{ active: activeRoot === d.root, 'is-off': !d.total }" @click="emit('jump', d.root)">
-                <div class="drive-head">
-                    <span class="drive-icon" :class="'tone-' + usageTone(d.usedPct)">
-                        <common-stat-icon name="disk" :value="d.usedPct" :size="20" />
-                    </span>
-                    <div class="drive-title">
-                        <div class="drive-name">{{ d.root }}</div>
-                        <a-tooltip :content="`${d.label || '无卷标'} · ${d.fsType || '未知文件系统'} · ${kindText(d.kind)}`">
-                            <div class="drive-sub">{{ kindText(d.kind) }}{{ d.label ? " · " + d.label : "" }}</div>
-                        </a-tooltip>
+                    <!-- 盘符墙：点卡片直接进该盘根目录 -->
+                    <div v-if="drives.length" class="drive-grid">
+                        <div v-for="d in drives" :key="d.root" class="drive"
+                            :class="{ active: activeRoot === d.root, 'is-off': !d.total }"
+                            @click="emit('jump', d.root)">
+                            <div class="drive-head">
+                                <span class="drive-icon" :class="'tone-' + usageTone(d.usedPct)">
+                                    <common-stat-icon name="disk" :value="d.usedPct" :size="20" />
+                                </span>
+                                <div class="drive-title">
+                                    <div class="drive-name">{{ d.root }}</div>
+                                    <a-tooltip
+                                        :content="`${d.label || '无卷标'} · ${d.fsType || '未知文件系统'} · ${kindText(d.kind)}`">
+                                        <div class="drive-sub">{{ kindText(d.kind) }}{{ d.label ? " · " + d.label : "" }}
+                                        </div>
+                                    </a-tooltip>
+                                </div>
+                                <span class="drive-pct" :class="'text-' + usageTone(d.usedPct)">{{ pct(d.usedPct) }}%</span>
+                            </div>
+                            <div class="drive-bar">
+                                <i :class="'tone-bg-' + usageTone(d.usedPct)" :style="{ width: pct(d.usedPct) + '%' }"></i>
+                            </div>
+                            <div class="drive-foot">
+                                <span>已用 {{ fmtSize(d.used) }}</span>
+                                <span>剩余 {{ fmtSize(d.free) }}</span>
+                                <span>共 {{ fmtSize(d.total) }}</span>
+                            </div>
+                        </div>
                     </div>
-                    <span class="drive-pct" :class="'text-' + usageTone(d.usedPct)">{{ pct(d.usedPct) }}%</span>
-                </div>
-                <div class="drive-bar">
-                    <i :class="'tone-bg-' + usageTone(d.usedPct)" :style="{ width: pct(d.usedPct) + '%' }"></i>
-                </div>
-                <div class="drive-foot">
-                    <span>已用 {{ fmtSize(d.used) }}</span>
-                    <span>剩余 {{ fmtSize(d.free) }}</span>
-                    <span>共 {{ fmtSize(d.total) }}</span>
+                    <div v-else class="ov-empty">
+                        <a-empty :image="false" description="没有读到任何盘符" />
+                    </div>
                 </div>
             </div>
-        </div>
-        <div v-else class="ov-empty">
-            <a-empty :image="false" description="没有读到任何盘符" />
         </div>
     </a-card>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { DRIVE_KIND, fmtSize, usageTone } from "../helpers";
 
 const props = withDefaults(defineProps<{
@@ -85,6 +96,39 @@ const emit = defineEmits<{
 
 const kindText = (k: string) => DRIVE_KIND[k] || k || "未知类型";
 const pct = (v: number) => Math.min(100, Math.max(0, Number(v) || 0)).toFixed(0);
+
+/* 折叠动画：不用 CSS 关键帧而是实测像素高度做 height 过渡——
+   起点取当前渲染高度（动画中途连点也不会跳），终点收起时归 0、展开时量内层 offsetHeight；
+   过渡结束后清掉内联高度交回 auto，盘符数据刷新时高度照常自适应 */
+const foldEl = ref<HTMLElement>();
+const innerEl = ref<HTMLElement>();
+
+async function animateFold(toClosed: boolean) {
+    const fold = foldEl.value, inner = innerEl.value;
+    if (!fold || !inner) return;
+    if (document.body.classList.contains("reduce-motion")) return;
+    const start = fold.getBoundingClientRect().height;
+    const end = toClosed ? 0 : inner.offsetHeight;
+    fold.style.transition = "none";
+    fold.style.height = `${start}px`;
+    void fold.offsetHeight; // 强制就位起点，否则浏览器直接跳到终值
+    fold.style.transition = "height .3s cubic-bezier(0.33, 1, 0.68, 1)";
+    fold.style.height = `${end}px`;
+    await nextTick();
+    inner.style.opacity = toClosed ? "0" : "1";
+    const done = (e: TransitionEvent) => {
+        if (e.propertyName !== "height") return;
+        fold.removeEventListener("transitionend", done);
+        fold.style.transition = "";
+        fold.style.height = "";
+    };
+    fold.addEventListener("transitionend", done);
+}
+
+watch(() => props.collapsed, (c, old) => {
+    if (old === undefined) return; // 首次挂载不算动画
+    animateFold(c);
+}, { flush: "post" });
 
 /** 五个指标：数量 / 总容量 / 已用 / 可用 / 最紧张 */
 const cards = computed(() => {
@@ -161,6 +205,41 @@ const cards = computed(() => {
 <style scoped>
 .ov-card {
     flex: none;
+}
+
+/* 折叠动画：height 由 JS 逐次实测像素值过渡，这里只留静止态样式；
+   内层淡出与高度同曲线，遮住重排抖动；减少动效档整体豁免 */
+.ov-fold {
+    overflow: hidden;
+}
+
+.ov-fold-inner {
+    transition: opacity 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+body.reduce-motion .ov-fold,
+body.reduce-motion .ov-fold-inner {
+    transition: none;
+}
+
+/* 内衬：原卡片 body 默认 padding 的同款度量（small 档 0.75/1），随折叠层一起收放 */
+.ov-body {
+    padding: calc(var(--base-padding) * 0.75) var(--base-padding);
+}
+
+/* 无边距模式：卡片头部已贴边，这层自管内衬左右同步去掉，保持对齐 */
+body.card-flush .ov-body {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* 收起/展开按钮图标跟做旋转，与折叠高度动画同时长同曲线 */
+.ov-toggle-icon {
+    transition: transform 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+body.reduce-motion .ov-toggle-icon {
+    transition: none;
 }
 
 .ov-count {

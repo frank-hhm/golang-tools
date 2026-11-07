@@ -11,13 +11,13 @@
                     :detail="c.sub" :tip="c.tip" :ready="c.ready" />
             </a-col>
         </a-row>
-        <!-- fill：容器列表吃掉可视区剩下的高度，卡片墙过多时在卡片内部滚，卡片下沿不会悬空 -->
-        <a-card class="card-head-tool ov-card fill">
-            <template #title>
-                <span class="ov-title">容器列表</span>
-                <span v-if="filtered.length" class="ov-count">{{ filtered.length }}</span>
-            </template>
-            <template #extra>
+        <!-- 容器列表：不再套 a-card，标题+筛选做成一行工具条，内容卡片直接铺在页面上 -->
+        <div class="ov-list fill">
+            <div class="ov-list-head">
+                <div class="ov-list-title">
+                    <span class="ov-title">容器列表</span>
+                    <span v-if="filtered.length" class="ov-count">{{ filtered.length }}</span>
+                </div>
                 <a-space :size="8" wrap>
                     <a-select v-model="stateFilter" size="small" :options="stateOptions" class="ov-select" />
                     <a-input v-model="keyword" size="small" class="ov-search" placeholder="搜索容器名称或镜像名" allow-clear>
@@ -27,7 +27,7 @@
                         <template #icon><icon-refresh /></template>
                     </a-button>
                 </a-space>
-            </template>
+            </div>
 
             <div v-if="!filtered.length" class="ov-empty">
                 <a-empty :image="false" :description="containers.length ? '没有匹配的容器' : '暂无容器'" />
@@ -54,11 +54,18 @@
                     </div>
                     <a-space>
                         <div class="cc-time">创建时间：{{ fmtTime(c.created) }}</div>
-                        <!-- 卡片整体可点：一句“监控/日志 →”把去向说清楚，别让人靠猜 -->
-                        <a-button class="cc-open" size="mini">{{ isRunning(c) ? '监控' : '日志' }}</a-button>
-                        <!-- 终端单独一个入口（会拦掉冒泡，不然卡片点击会盖过去） -->
-                        <a-button v-if="isRunning(c)" class="cc-open" size="mini"
-                            @click.stop="emit('open-term', c)">终端</a-button>
+                        <!-- 动作收进「…」下拉：监控/终端只对运行中有意义；卡片整体点击仍直达 监控(运行)/日志(停着) -->
+                        <a-dropdown trigger="click" @select="(v: any) => onCardAction(String(v), c)">
+                            <a-button class="cc-open" size="mini" @click.stop><template
+                                    #icon><icon-more /></template></a-button>
+                            <template #content>
+                                <a-doption v-if="isRunning(c)" value="monitor"><template
+                                        #icon><icon-dashboard /></template>监控</a-doption>
+                                <a-doption value="logs"><template #icon><icon-list /></template>日志</a-doption>
+                                <a-doption v-if="isRunning(c)" value="term"><template
+                                        #icon><icon-code /></template>终端</a-doption>
+                            </template>
+                        </a-dropdown>
                     </a-space>
 
                     <div class="cc-bars">
@@ -82,7 +89,7 @@
                     </div>
                 </div>
             </div>
-        </a-card>
+        </div>
     </div>
 </template>
 
@@ -242,6 +249,13 @@ function onOpen(c: any) {
     else emit("open-logs", c);
 }
 
+/** 卡片「…」下拉的选择回传：与容器表同名动作口径一致 */
+function onCardAction(v: string, c: any) {
+    if (v === "monitor") emit("open-monitor", c);
+    else if (v === "logs") emit("open-logs", c);
+    else if (v === "term") emit("open-term", c);
+}
+
 /** 多核容器 CPU 能超过 100%，进度条只按 100% 收，数字仍显示真实值 */
 function barWidth(pct: number): string {
     const v = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
@@ -265,25 +279,36 @@ function fmtTime(unixSec: number): string {
     box-sizing: border-box;
 }
 
-/* 概览卡按内容高度，容器列表卡占剩余 */
-.ov-card {
-    flex: none;
+/* 无边距模式（body.card-flush）：外层卡片自身左右内边距已归零、头部页签行贴边，
+   本页自管的这层左右内衬同步去掉，否则指标卡/容器列表比头部多缩进一截、左右对不齐；
+   上下留白与段间距不动，垂直节奏交回原体系 */
+body.card-flush .ov {
+    padding-left: 0;
+    padding-right: 0;
 }
 
-.ov-card.fill {
+/* 容器列表：吃掉可视区剩下的高度，卡片墙过多时在列表内部滚，下沿不悬空 */
+.ov-list.fill {
     flex: 1;
-    /* 窗口很矮时保底高度，再矮就交给外层滚动，不把卡片压成一条 */
+    /* 窗口很矮时保底高度，再矮就交给外层滚动，不把列表压成一条 */
     min-height: 220px;
     display: flex;
     flex-direction: column;
+    gap: var(--base-margin);
 }
 
-/* Arco 卡片默认是 block：要让它垂直分配空间，本体与 body 都得是 flex 列 */
-.ov-card.fill :deep(.arco-card-body) {
-    flex: 1;
-    min-height: 0;
+/* 标题 + 筛选工具条：左标题右控件，一行排开 */
+.ov-list-head {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--base-margin);
+    flex-wrap: wrap;
+}
+
+.ov-list-title {
+    display: flex;
+    align-items: center;
 }
 
 .ov-count {
@@ -480,6 +505,6 @@ function fmtTime(unixSec: number): string {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

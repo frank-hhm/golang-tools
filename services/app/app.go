@@ -106,12 +106,18 @@ type App struct {
 	pinData map[int]string
 	pinWins map[int]application.Window
 
-	// 主窗口 + 系统托盘：关闭主窗口时隐藏到托盘，托盘右键提供“打开主界面/设置/退出”
+	// 主窗口 + 系统托盘：关闭主窗口时隐藏到托盘，托盘右键提供“打开主界面/设置/切换主题/重启/退出”
 	mainWindow  application.Window // 主窗口句柄（由 main 注入）
 	trayIcon    []byte             // 托盘图标字节（PNG/ICO）
 	tray        *application.SystemTray
 	defaultLogo []byte      // 内置默认 logo PNG 字节
 	quitting    atomic.Bool // 为 true 时表示真正退出，关闭钩子不再拦截隐藏
+	restarting  atomic.Bool // 退出之外的额外标记：这次退出是「重启」，收尾时负责拉起新进程
+
+	// 窗口圆角档（主题「圆角」联动，见 windowcorner.go）：记最近一次下发的档位，
+	// OpenToolWindow 新建窗口后据此补应用，新窗不再落回系统默认圆角。
+	cornerMu     sync.Mutex
+	cornerRadius string
 
 	// 平台专属字段：Windows 侧有截图冻结帧，其它平台为空结构体。
 	// 抽到这里是为了让 App 本身留在无标签文件，server 构建能复用同一份。
@@ -319,6 +325,16 @@ func (a *App) ServiceShutdown() error {
 	a.unmountNavigateHost()
 	// 浏览器空间：销毁 controller 并释放 profile 锁（不然下次启动会报目录被占用）
 	a.BrowserCloseAll()
+	// 托盘「重启应用」：上面刚把转交端点与浏览器 profile 锁全放掉，系统热键也已在
+	// 这一步之前由框架注销，此刻拉起新进程才不会出现两个实例抢同一个端点/热键。
+	// 放在尾部而不是点击当下，就是为了把这个「先清理干净再交棒」的顺序钉死。
+	if a.restarting.Swap(false) {
+		if err := restartSelf(); err != nil {
+			applog.Warnf("tray", "重启：拉起新进程失败，程序将直接退出: %v", err)
+		} else {
+			applog.Infof("tray", "重启：已拉起新进程")
+		}
+	}
 	return nil
 }
 
@@ -357,7 +373,7 @@ func (a *App) setupCloseToTray() {
 	})
 }
 
-// setupTray 创建系统托盘图标及右键菜单（打开主界面 / 基本设置 / 退出）。
+// setupTray 创建系统托盘图标及右键菜单（打开主界面 / 基本设置 / 切换主题 / 重启应用 / 退出）。
 func (a *App) setupTray() {
 	if a.app == nil {
 		return
@@ -370,8 +386,10 @@ func (a *App) setupTray() {
 
 	menu := application.NewMenu()
 	menu.Add("打开主界面").OnClick(func(*application.Context) { a.showMainWindow() })
-	menu.Add("基本设置").OnClick(func(*application.Context) { a.openSettingsFromTray() })
+	menu.Add("基本设置").OnClick(func(*application.Context) { a.openSettingsFromTray("") })
+	menu.Add("切换主题").OnClick(func(*application.Context) { a.openSettingsFromTray(settingTabTheme) })
 	menu.AddSeparator()
+	menu.Add("重启应用").OnClick(func(*application.Context) { a.restartApp() })
 	menu.Add("退出").OnClick(func(*application.Context) { a.RealQuit() })
 	tray.SetMenu(menu)
 
@@ -442,13 +460,39 @@ func (a *App) toggleAllWindows() {
 	})
 }
 
+// settingTabTheme 设置页“主题”分类的 key，与前端 SETTING_TABS 里的 key 字面一致
+// （settings/index.vue）：托盘靠它把用户直接带到主题配置那一段。
+const settingTabTheme = "theme"
+
 // openSettingsFromTray 从托盘打开“设置”（单例工具窗口）。
 // 注意：需走 /win 前缀的空白布局路由（BlankLayout 自绘标题栏+菜单栏），
 // 与前端 useToolWindow 的 "/win"+path 约定保持一致，否则新窗口没有原有菜单栏。
-func (a *App) openSettingsFromTray() {
-	if err := a.OpenToolWindow("/win/tools/settings", "设置", true, false, 0, 0); err != nil {
-		applog.Warnf("tray", "打开设置失败: %v", err)
+// tab 非空时定位到指定分类，开法两条路互补：新开窗靠 URL query（?tab=）让页面
+// 挂载即落位；窗口早就开着时单例复用只 Show+Focus、query 不会重新生效，
+// 再补一条广播事件让它切分类（与工具窗 ?inst= + tool:select-inst 同一手法）。
+func (a *App) openSettingsFromTray(tab string) {
+	path := "/win/tools/settings"
+	if tab != "" {
+		path += "?tab=" + tab
 	}
+	if err := a.OpenToolWindow(path, "设置", true, false, 0, 0); err != nil {
+		applog.Warnf("tray", "打开设置失败: %v", err)
+		return
+	}
+	if tab != "" && a.app != nil {
+		a.app.Event.Emit("settings:tab", tab)
+	}
+}
+
+// restartApp 托盘“重启应用”：不直接拉新进程，只标记“这次退出是为了重启”再走
+// 正常退出流程，新进程由 ServiceShutdown 尾部拉起（那里转交监听、浏览器 profile
+// 锁都已释放、系统热键已被框架注销）。失败只记日志，退化成一次“退出”。
+// 注意：退出流程会停掉本程序拉起的服务实例（Redis/MySQL/PHP/Nginx/npm），新进程
+// 不会替用户自动把它们再拉起来——这是既有退出语义，不是重启额外带来的损失。
+func (a *App) restartApp() {
+	applog.Infof("tray", "托盘菜单：重启应用")
+	a.restarting.Store(true)
+	a.RealQuit()
 }
 
 // RealQuit 真正退出程序：置退出标志（使关闭钩子不再拦截）、销毁托盘，再终止应用。
@@ -581,6 +625,16 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 	}
 	applog.Infof("window", "新建窗口: %s (%s) single=%v fullscreen=%v %dx%d", path, title, single, fullscreen, width, height)
 	w := a.app.Window.NewWithOptions(opts)
+	// 新窗默认跟随系统圆角；主题设过圆角档时按档位补应用（none/small 直角），
+	// 否则切了「直角」后开的新工具窗又变回 Win11 默认圆角。
+	if r := a.rememberedCornerRadius(); r != "" {
+		win := w
+		application.InvokeAsync(func() {
+			if hwnd := uintptr(win.NativeWindow()); hwnd != 0 {
+				applyCornerPref(hwnd, r)
+			}
+		})
+	}
 	if isColorPicker {
 		// 兜底：前端若因异常没走到 Show（JS 报错等），超时直接显示——
 		// 宁可闪一下尺寸，也不能开出一个永远看不见的窗口。
@@ -2539,6 +2593,13 @@ func (h nativeHost) BallMenuItems() []winui.MenuItem {
 }
 
 func (h nativeHost) BallTheme() string { return config.CurrentConfig().General.Theme.Mode }
+
+// BallSurface 浮动球浮层的主题表面参数：把 glass/background 两维原样递给 winui，
+// 由原生层按与前端弹层相同的口径决定半透明玻璃底/描边还是不透明实面。
+func (h nativeHost) BallSurface() winui.BallSurface {
+	t := config.CurrentConfig().General.Theme
+	return winui.BallSurface{GlassOn: t.Glass.On, Alpha: t.Glass.Alpha, Border: t.Glass.Border, BgType: t.Background.Type}
+}
 
 func (h nativeHost) BallLogoPath() string { return config.CurrentConfig().General.AppLogo }
 

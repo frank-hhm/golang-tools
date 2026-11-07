@@ -197,6 +197,6 @@ function fmtSize(n: number): string {
   margin-top: 16px;
 }
 .mono {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
 }
 </style>

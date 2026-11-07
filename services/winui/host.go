@@ -48,12 +48,23 @@ type GuardHotkey struct {
 	Fn       func()
 }
 
+// BallSurface 浮动球浮层（右键菜单）要跟随的主题表面参数：
+// 玻璃维决定浮层是否做成半透明底+描边（与前端弹层 rgba 口径一致），
+// 背景维决定纹理档（mesh/photo/dark/image）时退回不透明实面——前端浮层在纹理档也是实面复刻。
+type BallSurface struct {
+	GlassOn bool
+	Alpha   int    // 表面不透明度 0-100（÷100，与前端 --app-glass-alpha 同源）
+	Border  int    // 描边不透明度 0-100（÷100；暗色前端再 ×0.4，本包自行折算）
+	BgType  string // none|mesh|photo|dark|image|native
+}
+
 // Host 由主程序（package main 的未导出适配类型）实现。
 // 全部方法都可能被原生线程/球线程调用，实现方须保证并发安全。
 type Host interface {
 	// —— 浮动球 ——
 	BallMenuItems() []MenuItem         // 标记为快捷（Quick=true）的工具
 	BallTheme() string                 // light / dark / auto（auto 时由本包读系统注册表）
+	BallSurface() BallSurface          // 浮层主题表面参数（玻璃/背景两维，不读则保持不透明实面）
 	BallLogoPath() string              // 自定义应用 logo 文件路径，空表示没有
 	BallIconMaskPath() (string, error) // 球心图标 alpha 遮罩 PNG 路径
 	BallDefaultLogo() []byte           // 内置默认 logo（PNG 字节）

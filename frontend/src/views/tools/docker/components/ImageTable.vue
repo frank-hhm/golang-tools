@@ -17,7 +17,7 @@
                 <a-table-column :title="isLocal ? '镜像' : '镜像名'" :width="300">
                     <template #cell="{ record }">
                         <a-space :size="6">
-                            <!-- 名字长到只看到省略号时，悬停拿完整引用（项目统一用 a-tooltip，不用原生 title） -->
+                            <!-- 名字长到只看到省略号时，悬停拿完整引用（项目统一用 m-tooltip，不用原生 title） -->
                             <a-tooltip :content="isLocal ? record.repo : record.name" position="tl">
                                 <span class="cname">{{ isLocal ? record.repo : record.name }}</span>
                             </a-tooltip>
@@ -62,22 +62,22 @@
                 <a-table-column title="操作" :width="isLocal ? 300 : 180" fixed="right" align="right">
                     <template #cell="{ record }">
                         <a-space :size="2">
-                            <a-button v-if="!isLocal" size="small" @click="emit('pull-remote', record)">
+                            <a-button v-if="!isLocal" size="mini" @click="emit('pull-remote', record)">
                                 <template #icon><icon-download /></template>拉取
                             </a-button>
-                            <a-button size="small" @click="emit('run', record)">
+                            <a-button size="mini" @click="emit('run', record)">
                                 <template #icon><icon-play-arrow /></template>创建容器
                             </a-button>
                             <template v-if="isLocal">
-                                <a-button size="small" @click="emit('push', record)">
+                                <a-button size="mini" @click="emit('push', record)">
                                     <template #icon><icon-upload /></template>推送
                                 </a-button>
-                                <a-button size="small" @click="emit('export-image', record)">
+                                <a-button size="mini" @click="emit('export-image', record)">
                                     <template #icon><icon-download /></template>导出
                                 </a-button>
                                 <a-popconfirm :content="`确定删除镜像「${record.repo}:${record.tag}」？有容器引用时会被拒绝。`"
                                     type="warning" position="lt" @ok="emit('remove', record)">
-                                    <a-button size="small" status="danger">
+                                    <a-button size="mini" status="danger">
                                         <template #icon><icon-delete /></template>删除
                                     </a-button>
                                 </a-popconfirm>
@@ -202,6 +202,6 @@ function fmtTime(unixSec: number): string {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

@@ -2,20 +2,60 @@
     padding: 0 !important;
 }
 
+/*
+ * 输入框「addon 里放按钮」统一复刻 arco search-button 形态（全局，所有主题档）：
+ * arco 默认把 .arco-input-append/.arco-input-prepend 做成带 padding + 分隔边框的一格，塞按钮时
+ * 按钮像浮在输入框端头的一块独立浅色格（玻璃/纹理档下更因与本体同铺半透明 --color-fill-2 二次
+ * 合成而发虚），与输入体脱节。search-button 那套（见 arco.css .arco-input-search .arco-input-append
+ * {padding:0;border:none} + .arco-input-search-btn 内侧圆角归零）让按钮齐平填满 addon、与输入体
+ * 连成一个控件。这里用 :has(.arco-btn) 精确命中「addon 内含按钮」的输入框（纯文字/单位 addon 不受
+ * 影响；:has() 连 arco 自身都在用，WebView2/Chromium 与 Linux 无头浏览器均可用），推广该形态：
+ * 去 addon 内边距与分隔边框、按钮填满高度并把贴合输入体那一侧圆角归零，同时清掉 wrapper 在该侧的
+ * 12px 内边距让按钮真正贴到圆角边缘。万一 :has() 不支持则整组规则不生效，回落原样，无副作用。
+ */
+.arco-input-wrapper:has(.arco-input-append .arco-btn) {
+    padding-right: 0;
+}
+
+.arco-input-wrapper:has(.arco-input-prepend .arco-btn) {
+    padding-left: 0;
+}
+
+.arco-input-append:has(.arco-btn),
+.arco-input-prepend:has(.arco-btn) {
+    padding: 0;
+    border: none;
+}
+
+.arco-input-append:has(.arco-btn) .arco-btn {
+    height: 100%;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.arco-input-prepend:has(.arco-btn) .arco-btn {
+    height: 100%;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
 /******card-form********/
 .card-form .arco-card-body {
     padding-bottom: 0 !important;
 }
 
-.arco-card-bordered{
-    border: 1px solid var(--color-border-1)!important;
+/* 带边框卡片描边取更浅的 --color-border-1。用 .arco-card.arco-card-bordered（0,2,0）稳压
+   arco.css 的 .arco-card-bordered（0,1,0），不再用 !important——否则玻璃档
+   body.app-glass .arco-card 的 border-color 反制不回来，「描边强度拉到 0」去不掉边框。 */
+.arco-card.arco-card-bordered {
+    border-color: var(--color-border-1);
 }
 /******loading********/
 .state-loading {
     position: relative;
     user-select: none;
     overflow: hidden;
-    border-radius: 3px;
+    border-radius: var(--border-radius-small);
 }
 
 .state-loading:before {
@@ -40,7 +80,7 @@
 
 .state-loading:after {
     background-color: var(--color-bg-3);
-    border-radius: 3px;
+    border-radius: var(--border-radius-small);
     /* border-radius: 4px; */
     content: "";
     height: 100%;
@@ -62,16 +102,15 @@
 /******card header********/
 /* 标题栏高度由内容撑开：全局按钮统一 small、单选组统一 medium 后，medium 单选组高 32px，
    超过固定 46/40 高度留下的内容盒（26/24px），overflow:hidden 会把控件上下裁掉 */
-.arco-card.card-head-tool > .arco-card-header,
-.m-card.card-head-tool > .m-card-header {
+.arco-card.card-head-tool > .arco-card-header {
     height: auto;
     min-height: 46px;
-    /* 右侧是按钮/按钮组时收窄留白，避免控件看起来被多缩进一层；左侧保持 16px，与 body 左基线对齐 */
-    padding-right: var(--card-head-tool-pad, 8px);
+    /* 左右内边距一律交回 arco 默认 16px（medium/small 两档 header 与 body 的左右 padding 都是 16px），
+       让右侧 extra 控件右缘与 body 右缘对齐。旧版这里收窄到 8px 是为「按钮别看着多缩一层」，
+       结果 extra 比 body 右缘多探出 8px、上下不对齐——已纠正为对称 16px，不再单独覆盖 padding-right。 */
 }
 
-.arco-card.arco-card-size-small.card-head-tool > .arco-card-header,
-.m-card.m-card-size-small.card-head-tool > .m-card-header {
+.arco-card.arco-card-size-small.card-head-tool > .arco-card-header {
     min-height: 40px;
 }
 
@@ -81,9 +120,7 @@
    用 padding-left + 等量负 margin-left 把裁剪边界（padding box）向左外扩 8px；
    实测其他内容的左外边距、标题右边界、头栏高度都不变（只给横向，纵向 padding 会撑高头栏） */
 .arco-card.card-head-tool > .arco-card-header > .arco-card-header-title,
-.arco-card.card-head-tool > .arco-card-header > .arco-card-header-extra,
-.m-card.card-head-tool > .m-card-header > .m-card-header-title,
-.m-card.card-head-tool > .m-card-header > .m-card-header-extra {
+.arco-card.card-head-tool > .arco-card-header > .arco-card-header-extra {
     padding-left: 8px;
     margin-left: -8px;
 }

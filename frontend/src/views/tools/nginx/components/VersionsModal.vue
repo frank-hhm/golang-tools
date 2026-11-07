@@ -281,7 +281,7 @@ onUnmounted(() => {
     background: var(--color-fill-2);
     padding: 8px;
     border-radius: var(--base-radius-default);
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
 }
 

@@ -42,6 +42,25 @@ func TestThemeConfigUnmarshalBackwardCompat(t *testing.T) {
 	}
 }
 
+// TestThemeConfigFlush 锁住「无边距模式」布尔维度：老配置/缺省应兜 false（不误开），显式 true 能读回。
+func TestThemeConfigFlush(t *testing.T) {
+	var legacy ThemeConfig
+	if err := json.Unmarshal([]byte(`"dark"`), &legacy); err != nil {
+		t.Fatalf("Unmarshal 老字符串报错: %v", err)
+	}
+	if legacy.Flush {
+		t.Errorf("老配置不应默认开启无边距: %+v", legacy)
+	}
+
+	var on ThemeConfig
+	if err := json.Unmarshal([]byte(`{"flush":true}`), &on); err != nil {
+		t.Fatalf("Unmarshal flush:true 报错: %v", err)
+	}
+	if !on.Flush {
+		t.Errorf("flush:true 应读回 true, 得到 %v", on.Flush)
+	}
+}
+
 // TestThemeGlassUnmarshalLegacyString 锁住 glass 从短名升级为对象后的兼容：
 // "surface" 映射成阶段一那组观感，"off"/其它兜默认关闭，对象走常规解析，null 保持零值。
 func TestThemeGlassUnmarshalLegacyString(t *testing.T) {

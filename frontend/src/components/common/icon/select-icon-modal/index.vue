@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <a-dropdown trigger="click" v-model:popup-visible="visible" ref="iconDropdown">
         <span></span>
         <template #content>
@@ -247,7 +247,7 @@ defineExpose({ open, close });
     flex: none;
 }
 
-.select-icon-search :deep(.arco-input-wrapper) {
+.select-icon-search :deep(.arco-input) {
     flex: 1;
     min-width: 0;
 }

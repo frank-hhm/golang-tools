@@ -39,7 +39,7 @@
                 <div class="vp-spacer"></div>
 
                 <a-popover v-model:popup-visible="speedOpen" trigger="click" position="top" :content-style="popStyle"
-                    content-class="vp-pop">
+                    content-class="vp-pop" arrow-class="vp-pop-arrow">
                     <button class="vp-txt" :class="{ on: rate !== 1 }" title="倍速播放">{{ rateLabel(rate) }}</button>
                     <template #content>
                         <div class="vp-menu">
@@ -49,7 +49,7 @@
                     </template>
                 </a-popover>
 
-                <a-popover trigger="hover" position="top" content-class="vp-pop"
+                <a-popover trigger="hover" position="top" content-class="vp-pop" arrow-class="vp-pop-arrow"
                     :content-style="{ padding: '14px 12px' }">
                     <button class="vp-btn" :title="muted ? '取消静音(M)' : '静音(M)'" @click="toggleMute">
                         <icon-mute v-if="muted || volume === 0" />
@@ -445,8 +445,9 @@ watch(hoverRatio, () => nextTick(placePreview));
     color: #fff;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
-:global(.vp-pop .arco-trigger-popup-arrow) {
+:global(.vp-pop-arrow) {
     background: rgba(18, 20, 24, 0.94);
+    border-color: rgba(18, 20, 24, 0.94);
 }
 .vp-menu {
     display: flex;

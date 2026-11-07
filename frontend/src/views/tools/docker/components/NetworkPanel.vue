@@ -41,11 +41,11 @@
                 <!-- 固定列宽度按实际按钮核算：删除（7px*2 + 12 图标 + 4 gap + 2 字 ≈ 62）+ 左右内边距 32 -->
                 <a-table-column title="操作" :width="110" fixed="right" align="right">
                     <template #cell="{ record }">
-                        <a-button v-if="record.builtin" size="small" status="danger" disabled>删除</a-button>
+                        <a-button v-if="record.builtin" size="mini" status="danger" disabled>删除</a-button>
                         <a-popconfirm v-else
                             :content="record.containers ? `网络「${record.name}」还有 ${record.containers} 个容器在接入，确定删除？` : `确定删除网络「${record.name}」？`"
                             type="warning" position="lt" @ok="emit('remove', record)">
-                            <a-button size="small" status="danger">
+                            <a-button size="mini" status="danger">
                                 <template #icon><icon-delete /></template>删除
                             </a-button>
                         </a-popconfirm>
@@ -157,7 +157,7 @@ function submit(): boolean {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 
 .fmt-tip {

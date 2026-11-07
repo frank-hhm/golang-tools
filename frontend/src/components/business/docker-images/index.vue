@@ -794,7 +794,7 @@ onUnmounted(() => {
 }
 
 .dv-port {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: 12px;
     color: var(--color-text-2);
 }
@@ -817,6 +817,6 @@ onUnmounted(() => {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

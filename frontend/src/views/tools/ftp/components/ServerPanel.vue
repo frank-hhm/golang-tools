@@ -112,7 +112,7 @@
                   </a-tag>
                 </template>
               </a-table-column>
-              <a-table-column title="备注" data-index="note" ellipsis />
+              <a-table-column title="备注" data-index="note" ellipsis tooltip />
               <a-table-column title="操作" :width="96">
                 <template #cell="{ record }">
                   <a-space :size="4">
@@ -144,8 +144,8 @@
           <a-table v-if="conns.length" :data="conns" :pagination="false" :bordered="false" size="small"
             row-key="id" :scroll="{ y: 252 }">
             <template #columns>
-              <a-table-column title="账号" data-index="username" :width="96" ellipsis />
-              <a-table-column title="客户端" data-index="clientIp" :width="112" ellipsis />
+              <a-table-column title="账号" data-index="username" :width="96" ellipsis tooltip />
+              <a-table-column title="客户端" data-index="clientIp" :width="112" ellipsis tooltip />
               <a-table-column title="已连" :width="88">
                 <template #cell="{ record }">{{ fmtDuration(now - record.connectedAt) }}</template>
               </a-table-column>
@@ -519,7 +519,7 @@ function fmtDuration(sec: number): string {
 
 .addr-tag {
   cursor: pointer;
-  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-family: var(--code-font-family);
 }
 
 .copy-icon {
@@ -549,7 +549,7 @@ function fmtDuration(sec: number): string {
   padding: 8px 10px;
   background: var(--color-fill-1);
   border-radius: 4px;
-  font-family: Consolas, 'Cascadia Mono', 'Microsoft YaHei', monospace;
+  font-family: var(--code-font-family);
   font-size: 12px;
   line-height: 1.7;
 }

@@ -841,7 +841,7 @@ const headerEntries = (hObj: Hdrs) =>
 }
 
 .mono {
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
 }
 
 .ca-tip {
@@ -1008,7 +1008,7 @@ const headerEntries = (hObj: Hdrs) =>
     min-height: 0;
 }
 
-.flow-table :deep(.arco-table-body) {
+.flow-table :deep(.arco-table-content) {
     flex: 1;
     min-height: 0;
 }

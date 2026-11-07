@@ -469,7 +469,7 @@ onBeforeUnmount(() => {
   border-radius: var(--base-radius-default);
   background: var(--color-bg-1);
   color: var(--color-text-1);
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
   font-size: var(--base-size-small);
   line-height: 1.6;
   white-space: pre-wrap;

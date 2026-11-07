@@ -4756,6 +4756,14 @@ export function SetTrayIcon(b: string | null): $CancellablePromise<void> {
 }
 
 /**
+ * SetWindowCorner 按主题圆角档设置全部原生窗口（主窗 + 工具窗）的窗口圆角。
+ * radius ∈ {none, small, default, large}（与 ThemeConfig.Radius 同一套取值）。
+ */
+export function SetWindowCorner(radius: string): $CancellablePromise<void> {
+    return $Call.ByID(1276544611, radius);
+}
+
+/**
  * SetWindowNativeBackdrop 对主窗口即时下发生成原生 DWM 材质档。
  * mode ∈ {acrylic, mica, tabbed, none}（none 关闭系统材质）。
  */

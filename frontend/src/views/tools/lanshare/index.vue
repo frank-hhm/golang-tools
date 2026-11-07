@@ -924,7 +924,7 @@ onUnmounted(() => {
 }
 
 .mono {
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
 }
 

@@ -10,7 +10,7 @@
                 <div class="br-tip">已选 <b>{{ entries.length }}</b> 项，按规则批量改名（保留各自扩展名）。</div>
 
                 <div class="br-label">命名结构</div>
-                <a-radio-group v-model="form.layout" size="mini">
+                <a-radio-group v-model="form.layout" type="radio" size="mini">
                     <a-radio value="prefix">固定前缀 + 规则后缀</a-radio>
                     <a-radio value="suffix">规则前缀 + 固定后缀</a-radio>
                 </a-radio-group>
@@ -45,7 +45,7 @@
                         <a-input-number v-model="form.lettersLen" :min="1" :max="16" size="mini" :step="1"
                             :precision="0" style="width: 72px" />
                     </span>
-                    <a-radio-group v-model="form.letterCase" size="mini">
+                    <a-radio-group v-model="form.letterCase" type="radio" size="mini">
                         <a-radio value="lower">小写</a-radio>
                         <a-radio value="upper">大写</a-radio>
                         <a-radio value="mixed">混合</a-radio>
@@ -100,7 +100,7 @@
             新名保留各自扩展名（目录不加）；顺序即列表显示顺序。名称不能为空、不能含
             <code>\ / : * ? " &lt; &gt; |</code>，也不能以空格或点结尾，且不能与目录内其它项重名。
         </div>
-        <!-- 自定义页脚：内置 OK 钮挂不了气泡，「应用」改包一层 a-popconfirm 二次确认（与全项目危险操作同一口径） -->
+        <!-- 自定义页脚：内置 OK 钮挂不了气泡，「应用」改包一层 m-popconfirm 二次确认（与全项目危险操作同一口径） -->
         <template #footer>
             <a-space :size="8">
                 <a-button @click="close">取消</a-button>
@@ -371,7 +371,7 @@ async function apply(): Promise<boolean> {
 
 .br-example b {
     color: rgb(var(--arcoblue-6));
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     word-break: break-all;
 }
 
@@ -478,7 +478,7 @@ async function apply(): Promise<boolean> {
 
 .br-new {
     color: var(--color-text-1);
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 
 .br-table tr.is-err .br-new {

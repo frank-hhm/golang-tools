@@ -722,8 +722,8 @@ async function goDownloadPage() {
   padding: 6px 8px;
   background: var(--color-fill-1);
   border-radius: var(--base-radius-default);
-  font-family: var(--gt-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  font-size: 11px;
+  font-family: var(--code-font-family);
+  font-size: var(--base-size-small);
   line-height: 1.6;
 }
 
@@ -738,10 +738,10 @@ async function goDownloadPage() {
 </style>
 
 <style>
-/* 全局（非 scoped）：Arco 的 .arco-drawer-title 默认 margin-right:auto 只占内容宽，
+/* 全局（非 scoped）：m-drawer 的 .arco-drawer-title 默认 margin-right:auto 只占内容宽，
    这里用 drawer-class 限定，仅对本任务抽屉把它撑满，好让标题内的 space-between
    把「下载管理」按钮推到右端、紧邻关闭 X。 */
-.task-hub-drawer .arco-drawer-header .arco-drawer-title {
+.task-hub-drawer .arco-drawer-title {
   flex: 1;
   min-width: 0;
 }

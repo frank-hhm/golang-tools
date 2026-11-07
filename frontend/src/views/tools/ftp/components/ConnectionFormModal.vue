@@ -291,7 +291,7 @@ async function onOk() {
   width: 100%;
 }
 
-.cred-row .arco-select {
+.cred-row .arco-select-view {
   flex: 1;
 }
 

@@ -169,7 +169,7 @@
             </template>
 
             <a-form ref="customFormRef" :model="customForm" class="st-form" layout="vertical"
-                @submit-prevent="saveCustom">
+                @submit="saveCustom">
                 <a-row :gutter="12" align="end">
                     <a-col :xs="24" :md="6">
                         <a-form-item field="name" label="节点名称">
@@ -288,7 +288,7 @@ const kindColor = (k: NodeKind) => (k === "global" ? "arcoblue" : k === "cn" ? "
 /** 该指标是否正在测量中（驱动 a-badge 呼吸点） */
 const busy = (n: SpeedNode, p: Phase) => n.status === "running" && n.phase === p;
 
-/** 显示值：测量中取实时速率，否则取结果；undefined 交给 a-statistic 的 placeholder */
+/** 显示值：测量中取实时速率，否则取结果；undefined 交给 m-statistic 的 placeholder */
 const dlVal = (n: SpeedNode) => (busy(n, "download") ? Number(n.liveRate) : n.downloadMbps ?? undefined);
 const ulVal = (n: SpeedNode) => (busy(n, "upload") ? Number(n.liveRate) : n.uploadMbps ?? undefined);
 
@@ -505,7 +505,7 @@ const customFormRef = ref();
 const customForm = reactive({ name: "", downloadUrl: "", uploadUrl: "" });
 const editingCustomId = ref("");
 
-/** 下载端点校验：必填 + 必须 http(s)，交给 a-form-item 展示 */
+/** 下载端点校验：必填 + 必须 http(s)，交给 m-form-item 展示 */
 const dlRules = [
     { required: true, message: "请填写下载地址" },
     { match: /^https?:\/\//i, message: "需以 http:// 或 https:// 开头" },
@@ -679,7 +679,7 @@ onUnmounted(() => {
     margin-bottom: 0;
 }
 
-.st-form :deep(.arco-form-label-item > label) {
+.st-form :deep(.arco-form-item-label) {
     font-size: 12px;
     color: var(--color-text-3);
 }

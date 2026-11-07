@@ -972,7 +972,7 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
 }
 
 .mono {
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
 }
 

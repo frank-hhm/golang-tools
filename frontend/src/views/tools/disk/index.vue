@@ -208,7 +208,7 @@
                                 </a-tooltip>
                             </template>
                         </a-table-column>
-                        <a-table-column title="修改时间" data-index="modTime" :width="160" />
+                        <a-table-column title="修改时间" data-index="modTime" :width="180" ellipsis />
                         <a-table-column title="权限" :width="80">
                             <template #cell="{ record }">
                                 <a-tooltip content="权限位来自文件模式；Windows 上只有只读/读写之分，仅供参考">
@@ -1519,7 +1519,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 }
 
 .cell-mode {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     color: var(--color-text-3);
 }
@@ -1679,7 +1679,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
     border-radius: var(--base-radius-default);
     box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
 }
-.ctx-menu :deep(.arco-menu-inner) {
+.ctx-menu :deep(.arco-menu) {
     padding: 2px;
 }
 .ctx-menu :deep(.arco-menu-item.ctx-del) {

@@ -16,3 +16,8 @@ import (
 func lockWorkstation() error {
 	return sysx.ErrUnsupported
 }
+
+// stripLauncherWindowBorder 非 Windows 没有“原生窗口自动边框”这一层：Linux 上快捷搜索
+// 整套服务在 server 构建里根本不挂载（见 launcherMounted），这里只是让无标签的
+// launcher.go 跨平台编过的空实现。
+func stripLauncherWindowBorder(hwnd uintptr) {}

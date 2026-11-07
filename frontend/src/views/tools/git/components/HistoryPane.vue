@@ -597,7 +597,7 @@ defineExpose({ load });
 }
 .hist-hash {
   flex: none;
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
 }
 .hist-detail {
   flex: none;
@@ -623,7 +623,7 @@ defineExpose({ load });
 }
 .hd-hash {
   flex: none;
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   font-size: 11px;
 }
 .hd-tip {
@@ -722,7 +722,7 @@ defineExpose({ load });
   flex: none;
   width: 62px;
   text-align: right;
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   font-size: 11px;
 }
 .hist-fnum .add {

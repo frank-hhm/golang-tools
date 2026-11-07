@@ -440,7 +440,7 @@ onBeforeUnmount(() => {
 .sg-fp-v {
   color: var(--color-text-1);
   word-break: break-all;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--code-font-family);
 }
 
 .sg-ip-row {

@@ -34,24 +34,50 @@
 
         <!-- 右侧：主区域，所有设置项修改后自动保存 -->
         <a-col :span="19" class="main-col">
-            <a-card class="main-panel card-head-tool" :body-style="{ padding: 0 }">
-                <template #title>
-                    <a-space>
-                        <component :is="activeTabMeta.icon" />
-                        <span class="panel-title">{{ activeTabMeta.label }}</span>
-                    </a-space>
-                </template>
-                <template #extra>
-                    <span class="auto-save-tip">
-                        <span class="save-dot" :class="{ busy: saving }" />
-                        {{ saving ? "正在保存…" : "修改后自动保存" }}
-                    </span>
-                </template>
-
+            <div class="main-panel">
                 <div class="tab-content">
+                    <!-- 15 个分类共用一张卡片：标题=当前 tab 图标+heading，右侧=自动保存提示 + panel/tools/browser 三个特例的操作区；
+                       每个分类的内容降级为普通 <div class="pane-body">，靠 v-show 互斥。tools 需要 body 不滚动+去内衬，故按 activeTab 动态挂 tools-card。 -->
+                    <a-card class="pane-card card-head-tool" :class="{ 'tools-card': activeTab === 'tools' }"
+                        :body-style="activeTab === 'tools' ? { padding: 0 } : {}">
+                        <template #title>
+                            <a-space>
+                                <component :is="activeTabMeta.icon" />
+                                <span>{{ activeTabMeta.heading }}</span>
+                            </a-space>
+                        </template>
+                        <template #extra>
+                            <a-space>
+                                <span class="auto-save-tip">
+                                    <span class="save-dot" :class="{ busy: saving }" />
+                                    {{ saving ? "正在保存…" : "修改后自动保存" }}
+                                </span>
+                                <template v-if="activeTab === 'panel'">
+                                    <a-tag v-if="panelInfo" size="small" :color="panelInfo.enabled ? 'green' : 'orangered'">
+                                        {{ panelInfo.enabled ? "登录保护已开启" : "登录保护已关闭" }}
+                                    </a-tag>
+                                    <a-link v-if="panelInfo?.accessURL" @click="copyAccess">复制访问地址</a-link>
+                                </template>
+                                <template v-if="activeTab === 'tools'">
+                                    <span class="hint hint-inline">快捷键为系统全局热键</span>
+                                    <a-popconfirm content="恢复默认功能列表？自定义的增删与排序会被覆盖。" type="warning" position="lt"
+                                        @ok="resetTools">
+                                        <a-button size="small">恢复默认列表</a-button>
+                                    </a-popconfirm>
+                                    <a-button size="small" @click="openAdd">
+                                        <template #icon><icon-plus /></template>新增功能
+                                    </a-button>
+                                </template>
+                                <template v-if="activeTab === 'browser'">
+                                    <span class="hint hint-inline">空间明细在浏览器页右上角齿轮里改</span>
+                                    <a-button size="small" @click="openBrowserWindow">
+                                        <template #icon><icon-compass /></template>打开浏览器
+                                    </a-button>
+                                </template>
+                            </a-space>
+                        </template>
                     <!-- ===================== 通用设置 ===================== -->
-                    <a-card v-show="activeTab === 'general'" class="pane-card card-head-tool">
-                        <template #title>应用与外观</template>
+                    <div v-show="activeTab === 'general'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="general.appName" data-skey="general.appName">
                                 <template #label>应用名称</template>
@@ -81,11 +107,10 @@
                                 <span class="hint">开启后 Windows 登录时自动启动应用。</span>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 主题设置 ===================== -->
-                    <a-card v-show="activeTab === 'theme'" class="pane-card card-head-tool">
-                        <template #title>主题与外观</template>
+                    <div v-show="activeTab === 'theme'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="general.theme" data-skey="general.theme">
                                 <template #label>主题模式</template>
@@ -97,73 +122,6 @@
                                 </a-radio-group>
                                 <span class="hint">明暗模式，切换后立即生效，所有窗口同步。</span>
                             </a-form-item>
-                            <a-form-item field="general.theme.preset" data-skey="general.theme">
-                                <template #label>主题种子色</template>
-                                <div class="theme-palette">
-                                    <a-tooltip v-for="p in COLOR_PRESETS" :key="p.name" :content="p.label">
-                                        <div class="swatch" :class="{ active: form.general.theme.preset === p.name }"
-                                            :style="{ background: p.seed }" @click="pickPreset(p.name)" />
-                                    </a-tooltip>
-                                    <a-tooltip content="自定义种子色">
-                                        <a-color-picker v-model="form.general.theme.primary" :show-alpha="false"
-                                            size="small" @change="pickCustomPrimary">
-                                            <div class="swatch custom"
-                                                :class="{ active: form.general.theme.preset === CUSTOM_PRESET }"
-                                                :style="form.general.theme.primary ? { background: form.general.theme.primary } : undefined">
-                                                <span v-if="!form.general.theme.primary" class="swatch-plus">+</span>
-                                            </div>
-                                        </a-color-picker>
-                                    </a-tooltip>
-                                </div>
-                                <span class="hint">选一个种子色（预设或取色器自定义），下方和谐模式自动搭配出一整套协调色。</span>
-                            </a-form-item>
-                            <a-form-item field="general.theme.harmony" data-skey="general.theme">
-                                <template #label>搭配方式（色彩和谐）</template>
-                                <a-radio-group v-model="form.general.theme.harmony" type="button" size="small"
-                                    @change="onThemeTokenChange">
-                                    <a-radio value="analogous">邻近</a-radio>
-                                    <a-radio value="complementary">互补</a-radio>
-                                    <a-radio value="split">分裂互补</a-radio>
-                                    <a-radio value="triadic">三等分</a-radio>
-                                </a-radio-group>
-                                <span class="hint">由种子色按色相环规则派生强调色/辅助色；OKLCH 感知色阶，浅色/暗黑各自生成。</span>
-                            </a-form-item>
-                            <a-form-item v-if="themePreview" field="general.theme" data-skey="general.theme">
-                                <template #label>配色预览</template>
-                                <div class="theme-preview">
-                                    <div class="tp-item">
-                                        <span class="tp-chip" :style="{ background: themePreview.brand }"></span>
-                                        <span class="tp-name">主色</span>
-                                    </div>
-                                    <div class="tp-item">
-                                        <span class="tp-chip" :style="{ background: themePreview.accent }"></span>
-                                        <span class="tp-name">强调</span>
-                                    </div>
-                                    <div class="tp-item">
-                                        <span class="tp-chip" :style="{ background: themePreview.secondary }"></span>
-                                        <span class="tp-name">辅助</span>
-                                    </div>
-                                </div>
-                                <span class="hint">实时呈现本主题的搭配（主/强调/辅助基准色），随种子与和谐模式变化。</span>
-                            </a-form-item>
-                            <a-form-item field="general.theme" data-skey="general.theme">
-                                <template #label>配色搭配总览</template>
-                                <div class="hm-grid">
-                                    <div class="hm-corner"></div>
-                                    <div v-for="h in harmonyChoices" :key="h.v" class="hm-colhead">{{ h.label }}</div>
-                                    <template v-for="row in harmonyMatrix" :key="row.name">
-                                        <div class="hm-rowhead">{{ row.label }}</div>
-                                        <div v-for="c in row.cells" :key="c.harmony" class="hm-cell"
-                                            :class="{ active: form.general.theme.preset === row.name && form.general.theme.harmony === c.harmony }"
-                                            @click="pickCombo(row.name, c.harmony)">
-                                            <span class="hm-chip" :style="{ background: c.brand }"></span>
-                                            <span class="hm-chip" :style="{ background: c.accent }"></span>
-                                            <span class="hm-chip" :style="{ background: c.secondary }"></span>
-                                        </div>
-                                    </template>
-                                </div>
-                                <span class="hint">预设 × 和谐模式的主/强调/辅助实色一览，点一格即套用该搭配（随当前明暗档变化）。</span>
-                            </a-form-item>
                             <a-form-item field="general.theme.radius" data-skey="general.theme">
                                 <template #label>圆角</template>
                                 <a-radio-group v-model="form.general.theme.radius" type="button" size="small"
@@ -173,6 +131,7 @@
                                     <a-radio value="default">标准</a-radio>
                                     <a-radio value="large">大</a-radio>
                                 </a-radio-group>
+                                <span class="hint">页面内圆角四档全量生效；主窗/工具窗的四角由系统接管，只有「直角（选直角/小）」与「系统默认圆角（标准/大）」两态。</span>
                             </a-form-item>
                             <a-form-item field="general.theme.density" data-skey="general.theme">
                                 <template #label>显示密度</template>
@@ -183,18 +142,6 @@
                                     <a-radio value="loose">宽松</a-radio>
                                 </a-radio-group>
                                 <span class="hint">调整字号与留白；对第三方控件为尽力优化。</span>
-                            </a-form-item>
-                            <a-form-item field="general.theme.contrast" data-skey="general.theme">
-                                <template #label>高对比度</template>
-                                <a-switch type="round" :model-value="form.general.theme.contrast === 'high'"
-                                    @change="setContrast" />
-                                <span class="hint">增强文字/边框对比与键盘焦点，便于无障碍与弱光环境。</span>
-                            </a-form-item>
-                            <a-form-item field="general.theme.motion" data-skey="general.theme">
-                                <template #label>减少动效</template>
-                                <a-switch type="round" :model-value="form.general.theme.motion === 'reduced'"
-                                    @change="setMotion" />
-                                <span class="hint">关闭过渡与动画，照顾动效敏感与低配设备。</span>
                             </a-form-item>
                             <a-form-item field="general.theme.fontSize" data-skey="general.theme.fontSize">
                                 <template #label>字体大小</template>
@@ -214,7 +161,6 @@
                                     <a-radio value="none">无</a-radio>
                                     <a-radio value="mesh">彩色网格</a-radio>
                                     <a-radio value="photo">风景照</a-radio>
-                                    <a-radio value="plain">纯色</a-radio>
                                     <a-radio value="dark">暗夜纹理</a-radio>
                                     <a-radio value="image">自定义图</a-radio>
                                     <a-radio v-if="caps.nativeWindows && caps.systemBackdrop" value="native">原生材质</a-radio>
@@ -272,12 +218,17 @@
                                         @change="onThemeTokenChange" />
                                 </a-form-item>
                             </template>
+                            <a-form-item field="general.theme.flush" data-skey="general.theme">
+                                <template #label>无边距模式</template>
+                                <a-switch type="round" v-model="form.general.theme.flush"
+                                    @change="onThemeTokenChange" />
+                                <span class="hint">卡片去掉左右内边距、不铺背景与投影，描边也固定去掉（hover/选中态照常），内容贴边铺满、整页更紧凑。</span>
+                            </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 目录设置 ===================== -->
-                    <a-card v-show="activeTab === 'paths'" class="pane-card card-head-tool">
-                        <template #title>全局目录布局</template>
+                    <div v-show="activeTab === 'paths'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="paths.plugins" data-skey="paths.plugins">
                                 <template #label>插件目录（plugins）</template>
@@ -335,19 +286,10 @@
                                 </div>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 访问与安全（仅 Web / 服务模式） ===================== -->
-                    <a-card v-show="activeTab === 'panel'" class="pane-card card-head-tool">
-                        <template #title>面板访问</template>
-                        <template #extra>
-                            <a-space>
-                                <a-tag v-if="panelInfo" size="small" :color="panelInfo.enabled ? 'green' : 'orangered'">
-                                    {{ panelInfo.enabled ? "登录保护已开启" : "登录保护已关闭" }}
-                                </a-tag>
-                                <a-link v-if="panelInfo?.accessURL" @click="copyAccess">复制访问地址</a-link>
-                            </a-space>
-                        </template>
+                    <div v-show="activeTab === 'panel'" class="pane-body">
 
                         <a-spin :loading="panelLoading" style="display: block">
                             <a-form :model="panelForm" :style="{ maxWidth: '720px' }" layout="vertical">
@@ -438,11 +380,10 @@
                                 </a-form-item>
                             </a-form>
                         </a-spin>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 浮动球设置 ===================== -->
-                    <a-card v-show="activeTab === 'ball'" class="pane-card card-head-tool">
-                        <template #title>桌面浮动球</template>
+                    <div v-show="activeTab === 'ball'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item field="ballEnabled" data-skey="ball.enabled">
                                 <template #label>显示桌面浮动球</template>
@@ -488,11 +429,10 @@
                                 <span class="hint">把浮动球拖到屏幕边缘时自动收成小胶囊 tab，指针碰到弹回完整球；拖离边缘即解除停靠。</span>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 快捷搜索设置 ===================== -->
-                    <a-card v-show="activeTab === 'launcher'" class="pane-card card-head-tool">
-                        <template #title>快捷搜索（Alt+Space 面板）</template>
+                    <div v-show="activeTab === 'launcher'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
                             <a-form-item field="lkEnabled" data-skey="launcher.enabled">
                                 <template #label>启用快捷搜索</template>
@@ -582,11 +522,10 @@
                                 <span class="hint">在搜索框里以 &gt; 开头可只搜命令，屏蔽应用与文件的干扰。</span>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 文件压缩设置 ===================== -->
-                    <a-card v-show="activeTab === 'archive'" class="pane-card card-head-tool">
-                        <template #title>文件压缩（系统右键挂载）</template>
+                    <div v-show="activeTab === 'archive'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
                             <a-form-item field="arEnabled" data-skey="archive.enabled">
                                 <template #label>启用右键压缩</template>
@@ -643,11 +582,10 @@
                                     类归档在类Unix系统上生成。</span>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== Git 右键集成 ===================== -->
-                    <a-card v-show="activeTab === 'git'" class="pane-card card-head-tool">
-                        <template #title>Git（系统右键挂载）</template>
+                    <div v-show="activeTab === 'git'" class="pane-body">
                         <a-form :model="form" :style="{ maxWidth: '760px' }" layout="vertical">
                             <a-form-item field="gitEnabled" data-skey="git.shellEnabled">
                                 <template #label>启用 Git 右键集成</template>
@@ -674,9 +612,8 @@
                                     菜单文案带 (Tools) 以便与 TortoiseGit 等别家区分。点某项时若该位置不在 Git 仓库内，会弹系统通知说明；命中仓库则在已运行的实例里打开 Git 工作台并定位到该仓库（推送/拉取/提交不盲跑，仍需你在工作台里确认）。</span>
                             </a-form-item>
                         </a-form>
-                    </a-card>
-                    <a-card v-show="activeTab === 'docspace'" class="pane-card card-head-tool">
-                        <template #title>文档中心</template>
+                    </div>
+                    <div v-show="activeTab === 'docspace'" class="pane-body">
                         <a-form :model="{}" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-alert type="normal" style="margin-bottom: 16px">
                                 P1 已接入：分类树与标签、版本快照/还原、回收站（仅本机 local 源移实体）。加密/备份/分享/远程在后续期接入。
@@ -714,11 +651,10 @@
                                 </a-space>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 云盘管理 ===================== -->
-                    <a-card v-show="activeTab === 'cloud'" class="pane-card card-head-tool">
-                        <template #title>云盘管理</template>
+                    <div v-show="activeTab === 'cloud'" class="pane-body">
                         <a-form :model="{}" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-alert type="warning" style="margin-bottom: 16px">
                                 本期（PR1）仅支持 <strong>Google Drive</strong>（官方 OAuth2）；阿里/百度与跨盘转存属后续。
@@ -754,11 +690,10 @@
                                 </a-space>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 下载管理 ===================== -->
-                    <a-card v-show="activeTab === 'download'" class="pane-card card-head-tool">
-                        <template #title>下载管理</template>
+                    <div v-show="activeTab === 'download'" class="pane-body">
                         <a-form :model="{}" :style="{ maxWidth: '760px' }" layout="vertical">
                             <a-alert type="info" style="margin-bottom: 16px">
                                 分块/续传/限速/重试引擎全跨平台（Linux 面板下载的是服务器本机目录）。
@@ -805,10 +740,9 @@
                                 </a-space>
                             </a-form-item>
                         </a-form>
-                    </a-card>
+                    </div>
                     <!-- ===================== 局域网互传 ===================== -->
-                    <a-card v-show="activeTab === 'lanshare'" class="pane-card card-head-tool">
-                        <template #title>局域网互传</template>
+                    <div v-show="activeTab === 'lanshare'" class="pane-body">
                         <a-form :model="{}" :style="{ maxWidth: '760px' }" layout="vertical">
                             <a-alert type="info" style="margin-bottom: 16px">
                                 这里是互传服务的<strong>启动默认值</strong>：改完保存，下次在互传页点「启动」时预填生效；
@@ -845,22 +779,8 @@
                                 </a-space>
                             </a-form-item>
                         </a-form>
-                    </a-card>
-                    <div v-show="activeTab === 'tools'" class="tools-pane">
-                        <a-card class="pane-card tools-card card-head-tool" :body-style="{ padding: 0 }" data-skey="tools.list">
-                            <template #title>功能列表</template>
-                            <template #extra>
-                                <a-space>
-                                    <span class="hint hint-inline">快捷键为系统全局热键</span>
-                                    <a-popconfirm content="恢复默认功能列表？自定义的增删与排序会被覆盖。" type="warning" position="lt"
-                                        @ok="resetTools">
-                                        <a-button size="small">恢复默认列表</a-button>
-                                    </a-popconfirm>
-                                    <a-button size="small" @click="openAdd">
-                                        <template #icon><icon-plus /></template>新增功能
-                                    </a-button>
-                                </a-space>
-                            </template>
+                    </div>
+                    <div v-show="activeTab === 'tools'" class="pane-body tools-pane" data-skey="tools.list">
                             <div class="tools-table-wrap" ref="toolsTableRef" @dragover="onToolsWrapDragOver"
                                 @dragleave="onToolsWrapDragLeave" @drop="onToolsWrapDrop">
                                 <a-table :data="tools" :pagination="false" size="small" row-key="id"
@@ -947,19 +867,9 @@
                                     </template>
                                 </a-table>
                             </div>
-                        </a-card>
                     </div>
                     <!-- ===================== 浏览器（全局默认） ===================== -->
-                    <a-card v-show="activeTab === 'browser'" class="pane-card card-head-tool">
-                        <template #title>浏览器默认设置</template>
-                        <template #extra>
-                            <a-space>
-                                <span class="hint hint-inline">空间明细在浏览器页右上角齿轮里改</span>
-                                <a-button size="small" @click="openBrowserWindow">
-                                    <template #icon><icon-compass /></template>打开浏览器
-                                </a-button>
-                            </a-space>
-                        </template>
+                    <div v-show="activeTab === 'browser'" class="pane-body">
                         <a-form :model="browserForm" :style="{ maxWidth: '720px' }" layout="vertical">
                             <a-form-item data-skey="browser.maxSpaces">
                                 <template #label>空间数量上限</template>
@@ -1047,11 +957,10 @@
                                 </a-table-column>
                             </template>
                         </a-table>
-                    </a-card>
+                    </div>
 
                     <!-- ===================== 配置导出 / 导入 ===================== -->
-                    <a-card v-show="activeTab === 'config'" class="pane-card card-head-tool">
-                        <template #title>配置同步</template>
+                    <div v-show="activeTab === 'config'" class="pane-body">
                         <div class="cfg-sync" data-skey="config.sync">
                             <div class="cfg-sync-label">导出 / 导入配置</div>
                             <a-space>
@@ -1072,9 +981,10 @@
                                 把文件放到云盘或另一台机器上，用“导入配置”即可恢复同样的环境。
                             </div>
                         </div>
+                    </div>
                     </a-card>
                 </div>
-            </a-card>
+            </div>
         </a-col>
     </a-row>
 
@@ -1167,6 +1077,7 @@
 <script setup lang="ts">
 import { computed, createVNode, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref, render as renderVNode, watch } from "vue";
 import { Events } from "@wailsio/runtime";
+import { useRoute } from "vue-router";
 import { Message } from "@arco-design/web-vue";
 import * as ArcoIconComps from "@arco-design/web-vue/es/icon";
 import iconData from "@/components/common/icon/select-icon-modal/icon.json";
@@ -1174,11 +1085,8 @@ import {
     applyThemeConfig,
     normalizeConfig,
     DEFAULT_THEME,
-    effectiveScheme,
     type ThemeConfig,
 } from "@/utils/theme";
-import { COLOR_PRESETS, CUSTOM_PRESET, resolveTheme } from "@/utils/presets";
-import { buildTheme, type HarmonyMode } from "@/utils/palette";
 import { useCaps } from "@/utils/caps";
 import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
 import PoolEditor, { type PoolRow } from "./PoolEditor.vue";
@@ -1291,27 +1199,40 @@ let saveChain: Promise<void> = Promise.resolve();
  */
 const SETTING_TABS = computed(() =>
     [
-        { key: "general", label: "通用", icon: "IconSettings", desktopOnly: false },
-        { key: "theme", label: "主题", icon: "IconPalette", desktopOnly: false },
-        { key: "paths", label: "目录", icon: "IconFolder", desktopOnly: false },
-        { key: "panel", label: "访问与安全", icon: "IconLock", desktopOnly: false, webOnly: true },
-        { key: "ball", label: "浮动球", icon: "IconDesktop", desktopOnly: true },
-        { key: "launcher", label: "快捷搜索", icon: "IconSearch", desktopOnly: true },
-        { key: "archive", label: "文件压缩", icon: "IconArchive", desktopOnly: true },
-        { key: "git", label: "Git 右键", icon: "IconCode", desktopOnly: true },
-        { key: "docspace", label: "文档中心", icon: "IconFolder", desktopOnly: false },
-        { key: "cloud", label: "云盘管理", icon: "IconCloud", desktopOnly: false },
-        { key: "download", label: "下载管理", icon: "IconSave", desktopOnly: false },
-        { key: "lanshare", label: "局域网互传", icon: "IconSend", desktopOnly: false },
-        { key: "browser", label: "浏览器", icon: "IconCompass", desktopOnly: true },
-        { key: "config", label: "配置", icon: "IconSync", desktopOnly: false },
-        { key: "tools", label: "工具", icon: "IconApps", desktopOnly: false },
+        { key: "general", label: "通用", heading: "应用与外观", icon: "IconSettings", desktopOnly: false },
+        { key: "theme", label: "主题", heading: "主题与外观", icon: "IconPalette", desktopOnly: false },
+        { key: "paths", label: "目录", heading: "全局目录布局", icon: "IconFolder", desktopOnly: false },
+        { key: "panel", label: "访问与安全", heading: "面板访问", icon: "IconLock", desktopOnly: false, webOnly: true },
+        { key: "ball", label: "浮动球", heading: "桌面浮动球", icon: "IconDesktop", desktopOnly: true },
+        { key: "launcher", label: "快捷搜索", heading: "快捷搜索（Alt+Space 面板）", icon: "IconSearch", desktopOnly: true },
+        { key: "archive", label: "文件压缩", heading: "文件压缩（系统右键挂载）", icon: "IconArchive", desktopOnly: true },
+        { key: "git", label: "Git 右键", heading: "Git（系统右键挂载）", icon: "IconCode", desktopOnly: true },
+        { key: "docspace", label: "文档中心", heading: "文档中心", icon: "IconFolder", desktopOnly: false },
+        { key: "cloud", label: "云盘管理", heading: "云盘管理", icon: "IconCloud", desktopOnly: false },
+        { key: "download", label: "下载管理", heading: "下载管理", icon: "IconSave", desktopOnly: false },
+        { key: "lanshare", label: "局域网互传", heading: "局域网互传", icon: "IconSend", desktopOnly: false },
+        { key: "browser", label: "浏览器", heading: "浏览器默认设置", icon: "IconCompass", desktopOnly: true },
+        { key: "config", label: "配置", heading: "配置同步", icon: "IconSync", desktopOnly: false },
+        { key: "tools", label: "工具", heading: "功能列表", icon: "IconApps", desktopOnly: false },
     ]
         .filter((t) => !t.desktopOnly || caps.nativeWindows)
         .filter((t) => !t.webOnly || !caps.nativeWindows),
 );
 const activeTab = ref("general");
 const activeTabMeta = computed(() => SETTING_TABS.value.find((t) => t.key === activeTab.value) || SETTING_TABS.value[0]);
+
+const route = useRoute();
+/**
+ * 定位到指定设置分类：托盘“切换主题”那条入口用的就是它。
+ * 两条路互补：新开窗口（含原生单例窗）靠 URL 上的 ?tab=，挂载时落一次；
+ * 窗口早已开着时单例复用不会重新挂载，靠后端广播的 settings:tab 事件切。
+ * 只认 SETTING_TABS 里真实存在的 key（Web 模式下就没有浮动球等原生分类），
+ * 认不出就当没这次请求，绝不把用户带到一个空白面板。
+ */
+function gotoTab(key: any) {
+    const k = String(key ?? "");
+    if (k && SETTING_TABS.value.some((t) => t.key === k)) activeTab.value = k;
+}
 
 /* ===================== 设置项全局搜索（借鉴 DeskBox「搜到任意设置」） =====================
  * 设置项分布在多个 v-show 面板里、没有统一元数据，采用手工维护的静态索引：
@@ -1716,71 +1637,7 @@ function onThemeTokenChange() {
     scheduleSave(0);
 }
 
-/** 实时预览当前主题搭配的主/强调/辅助基准色（种子+和谐模式+明暗档派生） */
-const themePreview = computed(() => {
-    const cfg = form.general.theme;
-    const { seed, harmony } = resolveTheme(cfg.preset, cfg.primary || "", cfg.harmony);
-    const t = buildTheme(seed, harmony, effectiveScheme(cfg.mode));
-    return t ? { brand: t.seeds.brand, accent: t.seeds.accent, secondary: t.seeds.secondary } : null;
-});
-
-/** 选预设皮肤（非 custom 时种子色取预设 seed） */
-function pickPreset(name: string) {
-    form.general.theme.preset = name;
-    onThemeTokenChange();
-}
-
-/** 和谐模式候选（与 radio 组同口径），供搭配总览网格用 */
-const harmonyChoices: { v: HarmonyMode; label: string }[] = [
-    { v: "analogous", label: "邻近" },
-    { v: "complementary", label: "互补" },
-    { v: "split", label: "分裂互补" },
-    { v: "triadic", label: "三等分" },
-];
-
-/** 预设×和谐的 brand/accent/secondary 实色矩阵（按当前明暗档派生） */
-const harmonyMatrix = computed(() => {
-    const scheme = effectiveScheme(form.general.theme.mode);
-    return COLOR_PRESETS.map((p) => ({
-        name: p.name,
-        label: p.label,
-        cells: harmonyChoices.map((h) => {
-            const t = buildTheme(p.seed, h.v, scheme);
-            return {
-                harmony: h.v,
-                brand: t ? t.seeds.brand : "",
-                accent: t ? t.seeds.accent : "",
-                secondary: t ? t.seeds.secondary : "",
-            };
-        }),
-    }));
-});
-
-/** 点搭配总览一格：同时套用预设与和谐模式 */
-function pickCombo(name: string, harmony: HarmonyMode) {
-    form.general.theme.preset = name;
-    form.general.theme.harmony = harmony;
-    onThemeTokenChange();
-}
-
-/** 取色器选色即切「自定义」并实时更新色阶 */
-function pickCustomPrimary(color: string) {
-    form.general.theme.preset = CUSTOM_PRESET;
-    form.general.theme.primary = color || "";
-    onThemeTokenChange();
-}
-
-/** 高对比度开关：switch 布尔 ↔ 配置短名 */
-function setContrast(v: string | number | boolean) {
-    form.general.theme.contrast = v ? "high" : "normal";
-    onThemeTokenChange();
-}
-
-/** 减少动效开关 */
-function setMotion(v: string | number | boolean) {
-    form.general.theme.motion = v ? "reduced" : "on";
-    onThemeTokenChange();
-}
+/** 和谐模式候选与搭配总览矩阵已按用户要求删除：预设/和谐字段仍由 normalizeConfig 兜默认（default/analogous，纯 no-op） */
 
 /* ===================== 主题背景图 / 玻璃材质 ===================== */
 /** 背景图文件输入（仅 Web/无头构建用：无原生对话框，读成 dataURL 再交后端落盘） */
@@ -2211,10 +2068,10 @@ function toolDragEnd() {
 }
 /** 事件落在哪一行：a-table 的 tr 在其 tbody 里的序号即数据下标（fixed 列的副本表体同序渲染，可直接用） */
 function trOf(t: EventTarget | null): HTMLElement | null {
-    return (t as HTMLElement | null)?.closest?.(".arco-table-tr") ?? null;
+    return (t as HTMLElement | null)?.closest?.(".m-table-tr") ?? null;
 }
 function rowIdxOfTr(tr: HTMLElement | null): number {
-    // 只认表体行：表头 tr 也叫 .arco-table-tr，落在 thead 里不参与排序
+    // 只认表体行：表头 tr 也叫 .m-table-tr，落在 thead 里不参与排序
     if (!tr || tr.parentElement?.tagName !== "TBODY") return -1;
     return Array.prototype.indexOf.call(tr.parentElement.children, tr);
 }
@@ -2379,7 +2236,7 @@ function calcTableScroll() {
     if (activeTab.value !== "tools") return;
     const wrap = toolsTableRef.value;
     if (!wrap) return;
-    const header = wrap.querySelector(".arco-table-header") as HTMLElement | null;
+    const header = wrap.querySelector(".m-table-thead") as HTMLElement | null;
     const headerH = header?.offsetHeight ?? 34;
     // 容器由 flex 撑出高度；隐藏（display:none）时高度为 0，跳过本次计算
     const avail = wrap.clientHeight;
@@ -2838,9 +2695,12 @@ async function uninstallGitShell() {
 
 let offConfigSaved: (() => void) | null = null;
 let offLauncherIndex: (() => void) | null = null;
+let offSettingsTab: (() => void) | null = null;
 
 onMounted(() => {
     load();
+    // 托盘“切换主题”新开窗时带的 ?tab=：同为“挂载即落位”那一条路（与工具页 ?inst= 同构）
+    gotoTab(route.query.tab);
     // 主页拖动快捷操作后同步工具表顺序（config:saved 由后端在配置落盘后广播）
     try {
         const ret = Events.On("config:saved", () => { void syncToolsFromConfig(); });
@@ -2851,6 +2711,9 @@ onMounted(() => {
             if (activeTab.value === "launcher") void loadLauncherInfo();
         });
         if (typeof ret2 === "function") offLauncherIndex = ret2 as () => void;
+        // 设置页已开着时托盘再点“切换主题”：query 不会重新生效，靠这条事件切分类
+        const ret3 = Events.On("settings:tab", (ev: any) => { gotoTab(ev?.data ?? ev); });
+        if (typeof ret3 === "function") offSettingsTab = ret3 as () => void;
     } catch { /* 非 Wails 环境没有事件总线 */ }
     window.addEventListener("resize", onWinResize);
     if (typeof ResizeObserver !== "undefined") {
@@ -2864,6 +2727,8 @@ onBeforeUnmount(() => {
     offConfigSaved = null;
     if (offLauncherIndex) offLauncherIndex();
     offLauncherIndex = null;
+    if (offSettingsTab) offSettingsTab();
+    offSettingsTab = null;
     window.removeEventListener("resize", onWinResize);
     ro?.disconnect();
     ro = null;
@@ -2908,11 +2773,22 @@ onBeforeUnmount(() => {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* 上下留一圈随密度的呼吸位：side-card body 是 padding:0，不给这里补的话
+       首项紧贴搜索框、末项贴死卡片下缘（用户反馈「上下边距不对，要随主题」）。
+       吃 --base-padding（紧凑8/标准12/宽松16），密度切换时上下边距同步长缩。 */
+    padding: calc(var(--base-padding) / 2) 0;
+    /* 菜单项纵向间距改由 flex gap 统一给：原 .cat-item 上下 margin 在普通流里会与相邻项
+       折叠（标准档实际只剩 ~2px），既偏挤又不随密度明显变化。flex gap 不折叠，取
+       --base-padding / 3（紧凑≈2.7/标准4/宽松≈5.3px），与 .side-search 的节奏一致，
+       上下间距真正随「显示密度」联动（用户反馈「上下边距不对，要随主题里的边距配置」）。 */
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--base-padding) / 3);
 }
 
-/* 搜索框：藏在左栏顶部，与分类导航同缩进节奏 */
+/* 搜索框：藏在左栏顶部，与分类导航同缩进节奏（间距随「显示密度」联动，标准档=原 8/8/4px）*/
 .side-search {
-    padding: 8px 8px 4px;
+    padding: calc(var(--base-padding) * 2 / 3) calc(var(--base-padding) * 2 / 3) calc(var(--base-padding) / 3);
     flex: none;
 }
 
@@ -2920,13 +2796,13 @@ onBeforeUnmount(() => {
 .s-item {
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: calc(var(--base-padding) / 6);
 }
 
 .s-main {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: calc(var(--base-padding) * 2 / 3);
     width: 100%;
 }
 
@@ -2956,7 +2832,7 @@ onBeforeUnmount(() => {
 }
 
 .s-empty {
-    padding: 16px 12px;
+    padding: calc(var(--base-padding) * 4 / 3) var(--base-padding);
     text-align: center;
     font-size: var(--base-size-small);
     color: rgb(var(--gray-5));
@@ -2979,15 +2855,17 @@ onBeforeUnmount(() => {
     }
 }
 
-/* 分类导航：胶囊项无分隔线；选中态按「短竖条+轻底」规范，不加深边框 */
+/* 分类导航：胶囊项无分隔线；选中态按「短竖条+轻底」规范，不加深边框；字号对齐正文表单文字（default 档） */
 .cat-item {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 2px 8px;
-    padding: 9px 12px;
-    font-size: var(--base-size-large);
+    gap: calc(var(--base-padding) * 5 / 6);
+    /* 纵向不再靠 margin（会与相邻项折叠）：上下间距已交给 .cat-list 的 flex gap；
+       这里只留左右 margin 把胶囊从列表两侧缩进，随密度联动。 */
+    margin: 0 calc(var(--base-padding) * 2 / 3);
+    padding: calc(var(--base-padding) * 3 / 4) var(--base-padding);
+    font-size: var(--base-size-default);
     color: var(--color-text-2);
     cursor: pointer;
     border-radius: var(--base-radius-default);
@@ -3024,7 +2902,7 @@ onBeforeUnmount(() => {
 }
 
 .cat-icon {
-    font-size: var(--base-size-large);
+    font-size: var(--base-size-default);
     color: inherit;
 }
 
@@ -3055,15 +2933,6 @@ onBeforeUnmount(() => {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    background: var(--color-bg-2);
-}
-
-.main-panel :deep(.arco-card-body) {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
 }
 
 .panel-title {
@@ -3071,14 +2940,24 @@ onBeforeUnmount(() => {
     font-weight: 600;
 }
 
-/* 内容区：同时只显示当前分类的子卡片 */
+/* 内容区：同时只显示当前分类的子卡片。
+   上下不铺 padding（避免与卡片 body 的上内边距叠成双层），但左右保留一圈 --base-padding：
+   子卡片 pane-card 的 body 左右内边距会被「无边距模式」(body.card-flush) 归零，若这里不管左右，
+   开了无边距或暗黑纹理下内容就贴死面板左右缘（用户反馈「这里还是不对，左右要有边距」）。
+   这圈左右 padding 属普通 div、不在 .arco-card 内，card-flush 天然管不到它，故单独补一条归零规则：
+   普通档给一个密度边距（随显示密度缩放），无边距档归零铺满——即「左右有边距且随主题」。 */
 .tab-content {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: var(--base-padding);
     overflow: hidden;
+    padding: 0 var(--base-padding);
+}
+
+body.card-flush .tab-content {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .pane-card {
@@ -3102,11 +2981,11 @@ onBeforeUnmount(() => {
 
 .path-row {
     display: flex;
-    gap: 8px;
+    gap: calc(var(--base-padding) * 2 / 3);
     width: 100%;
 }
 
-.path-row :deep(.arco-input-wrapper) {
+.path-row :deep(.arco-input) {
     flex: 1;
 }
 
@@ -3114,7 +2993,7 @@ onBeforeUnmount(() => {
 .cfg-sync {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: calc(var(--base-padding) * 2 / 3);
     max-width: 720px;
 }
 
@@ -3127,7 +3006,7 @@ onBeforeUnmount(() => {
 .bs-pair {
     display: grid;
     grid-template-columns: 1.6fr 1fr;
-    gap: 8px;
+    gap: calc(var(--base-padding) * 2 / 3);
     width: 100%;
 }
 
@@ -3135,8 +3014,8 @@ onBeforeUnmount(() => {
 .space-head {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: calc(var(--base-padding) / 2);
+    margin-bottom: calc(var(--base-padding) / 2);
 }
 
 .space-title {
@@ -3164,7 +3043,7 @@ onBeforeUnmount(() => {
 
 .hint {
     display: block;
-    margin-top: 4px;
+    margin-top: calc(var(--base-padding) / 3);
     color: rgb(var(--gray-5));
     font-size: var(--base-size-small);
     line-height: 1.5;
@@ -3175,12 +3054,12 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: calc(var(--base-padding) * 5 / 6);
     width: 100%;
 }
 
 .panel-access {
-    padding: 6px 10px;
+    padding: calc(var(--base-padding) / 2) calc(var(--base-padding) * 5 / 6);
     border: 1px solid var(--color-border-1);
     border-radius: var(--base-radius-default);
     background: var(--color-bg-1);
@@ -3204,7 +3083,7 @@ onBeforeUnmount(() => {
 .auto-save-tip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: calc(var(--base-padding) / 2);
     font-size: var(--base-size-small);
     color: rgb(var(--gray-5));
 }
@@ -3234,8 +3113,13 @@ onBeforeUnmount(() => {
     }
 }
 
+/* 工具页 pane-body：作为卡片 body（tools 档下 display:flex column / overflow:hidden）的唯一可见子项，
+   填满剩余高度，把滚动交给内部 a-table 的 :scroll。 */
 .tools-pane {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .tools-table-wrap {
@@ -3281,7 +3165,7 @@ onBeforeUnmount(() => {
 .icon-cell {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: calc(var(--base-padding) / 2);
 }
 
 .icon-cell .arco-preview,
@@ -3299,7 +3183,7 @@ onBeforeUnmount(() => {
 .builtin-option {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: calc(var(--base-padding) * 2 / 3);
 }
 
 .builtin-icon,
@@ -3326,7 +3210,7 @@ onBeforeUnmount(() => {
 .logo-picker {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: calc(var(--base-padding) * 4 / 3);
 }
 
 /* 主题皮肤色板：一排圆点选预设主色，末尾一枚取色器作为自定义入口 */
@@ -3334,7 +3218,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: calc(var(--base-padding) * 5 / 6);
 }
 
 .swatch {
@@ -3373,8 +3257,8 @@ onBeforeUnmount(() => {
 .bg-image-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-top: 8px;
+    gap: calc(var(--base-padding) * 5 / 6);
+    margin-top: calc(var(--base-padding) * 2 / 3);
     flex-wrap: wrap;
 }
 
@@ -3383,19 +3267,19 @@ onBeforeUnmount(() => {
 }
 
 .glass-presets {
-    margin-left: 12px;
+    margin-left: var(--base-padding);
 }
 
 .theme-preview {
     display: flex;
-    gap: 16px;
+    gap: calc(var(--base-padding) * 4 / 3);
     flex-wrap: wrap;
 }
 
 .tp-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: calc(var(--base-padding) / 2);
 }
 
 .tp-chip {
@@ -3408,54 +3292,6 @@ onBeforeUnmount(() => {
 .tp-name {
     font-size: var(--base-size-small);
     color: var(--color-text-2);
-}
-
-/* 配色搭配总览：预设×和谐 的实色矩阵，选中格用主色描边环 + 轻底（不加重硬边框） */
-.hm-grid {
-    display: grid;
-    grid-template-columns: 72px repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    align-items: center;
-    max-width: 560px;
-}
-
-.hm-colhead {
-    font-size: var(--base-size-small);
-    color: var(--color-text-3);
-    text-align: center;
-}
-
-.hm-rowhead {
-    font-size: var(--base-size-small);
-    color: var(--color-text-2);
-    padding-right: 6px;
-}
-
-.hm-cell {
-    display: flex;
-    justify-content: center;
-    gap: 4px;
-    padding: 6px 4px;
-    border-radius: var(--base-radius-default);
-    background: transparent;
-    cursor: pointer;
-    transition: box-shadow 0.15s ease, background 0.15s ease;
-}
-
-.hm-cell:hover {
-    background: var(--color-fill-2);
-}
-
-.hm-cell.active {
-    background: var(--color-fill-2);
-    box-shadow: 0 0 0 2px rgb(var(--primary-6));
-}
-
-.hm-chip {
-    width: 16px;
-    height: 16px;
-    border-radius: var(--base-radius-small);
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 .logo-preview {
@@ -3503,7 +3339,7 @@ onBeforeUnmount(() => {
 .lk-dirs {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: calc(var(--base-padding) / 2);
     width: 100%;
     align-items: flex-start;
 }
@@ -3511,9 +3347,9 @@ onBeforeUnmount(() => {
 .lk-dir-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: calc(var(--base-padding) * 2 / 3);
     width: 100%;
-    padding: 2px 8px;
+    padding: calc(var(--base-padding) / 6) calc(var(--base-padding) * 2 / 3);
     border: 1px solid var(--color-border-1);
     border-radius: var(--base-radius-default);
     background: var(--color-bg-1);
@@ -3531,13 +3367,13 @@ onBeforeUnmount(() => {
 
 /* 索引状态行：弱色小字，与下面的 hint 区分开层次 */
 .lk-idx-line {
-    margin-top: 6px;
+    margin-top: calc(var(--base-padding) / 2);
     font-size: var(--base-size-small);
     color: var(--color-text-2);
 }
 
 .lk-idx-err {
-    margin-top: 2px;
+    margin-top: calc(var(--base-padding) / 6);
     font-size: var(--base-size-small);
     color: rgb(var(--danger-6));
     word-break: break-all;
@@ -3547,11 +3383,11 @@ onBeforeUnmount(() => {
 .lk-cmds {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: calc(var(--base-padding) / 2);
 }
 
 .lk-cmd {
-    padding: 1px 8px;
+    padding: 1px calc(var(--base-padding) * 2 / 3);
     border: 1px solid var(--color-border-1);
     border-radius: 999px;
     font-size: var(--base-size-small);
@@ -3568,7 +3404,7 @@ onBeforeUnmount(() => {
 .ar-shell-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: calc(var(--base-padding) * 4 / 3);
     font-size: var(--base-size-small);
     color: var(--color-text-2);
 }
@@ -3576,12 +3412,15 @@ onBeforeUnmount(() => {
 .ar-slot b {
     color: var(--color-text-1);
     font-weight: 600;
-    margin-left: 2px;
+    margin-left: calc(var(--base-padding) / 6);
 }
 
 .ar-shell-btns {
     display: flex;
-    gap: 8px;
-    margin-top: 8px;
+    /* 「安装 / 修复」「卸载」推到本行最右侧对齐（用户要求）：与左侧的挂载状态文字拉开，
+       不再紧贴状态文案；容器宽由外层表单 maxWidth 决定，flex-end 即贴到行尾。 */
+    justify-content: flex-end;
+    gap: calc(var(--base-padding) * 2 / 3);
+    margin-top: calc(var(--base-padding) * 2 / 3);
 }
 </style>

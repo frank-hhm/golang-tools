@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="rec-widget">
     <!-- 等待录制状态同步 -->
     <div v-if="phase === 'starting'" class="row">
@@ -121,7 +121,7 @@ onUnmounted(() => {
 }
 
 .time {
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   font-size: var(--base-size-large);
   font-weight: 600;
   color: #ff7a7a;

@@ -69,6 +69,6 @@ function submit(): boolean {
 
 <style scoped>
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

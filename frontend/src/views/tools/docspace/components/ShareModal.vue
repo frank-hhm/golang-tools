@@ -170,7 +170,7 @@ function close() {
   margin-bottom: 8px;
 }
 .mono {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
 }
 .break {
   word-break: break-all;

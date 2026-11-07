@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <a-card class="cp-card" size="small" :title="isWin ? undefined : '颜色取色器'">
         <div ref="bodyEl" class="cp-body">
             <!-- 工具栏：自动复制开关 + 屏幕取色 -->
@@ -515,7 +515,7 @@ onMounted(() => {
     font-size: var(--base-size-small);
 }
 
-.cp-ro :deep(.arco-input-element) {
+.cp-ro :deep(.arco-num-el) {
     color: var(--color-text-3);
 }
 

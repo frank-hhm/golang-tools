@@ -35,7 +35,7 @@
                         <a-popconfirm
                             :content="record.inUse ? `「${record.name}」还被 ${record.inUse} 个容器挂着，删除会被 Docker 拒绝。仍要尝试？` : `确定删除存储卷「${record.name}」？卷里的数据会一起删除。`"
                             type="warning" position="lt" @ok="emit('remove', record)">
-                            <a-button size="small" status="danger">
+                            <a-button size="mini" status="danger">
                                 <template #icon><icon-delete /></template>删除
                             </a-button>
                         </a-popconfirm>
@@ -134,7 +134,7 @@ function submit(): boolean {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 
 .vol-tip {

@@ -170,7 +170,7 @@ function calcTableY() {
   if (!wrap) return;
   const avail = wrap.clientHeight;
   if (!avail) return; // 未布局/隐藏时高度为 0，跳过本次
-  const header = wrap.querySelector('.arco-table-header') as HTMLElement | null;
+  const header = wrap.querySelector('.m-table-thead') as HTMLElement | null;
   tableY.value = Math.max(140, avail - (header?.offsetHeight ?? 32));
 }
 
@@ -632,7 +632,7 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, downloa
 }
 
 /* 表体内部滚动时，横向滚动条要常驻可视区底部：Arco 的 x 滚动条挂在表体上 */
-.pane-body :deep(.arco-table-body) {
+.pane-body :deep(.arco-table-content) {
   overflow-x: auto;
 }
 

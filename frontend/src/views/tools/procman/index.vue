@@ -203,7 +203,7 @@ const columns: TableColumnData[] = [
   { title: '工作集', dataIndex: 'workingSet', slotName: 'ws', width: 110, align: 'right', titleSlotName: 'colTitle' },
   { title: 'PID', dataIndex: 'pid', width: 90, align: 'right', titleSlotName: 'colTitle' },
   { title: '描述', dataIndex: 'description', slotName: 'desc', width: 200, ellipsis: true, titleSlotName: 'colTitle' },
-  { title: '公司', dataIndex: 'company', slotName: 'company', width: 160, ellipsis: true, titleSlotName: 'colTitle' },
+  { title: '公司', dataIndex: 'company', slotName: 'company', width: 160, ellipsis: true, tooltip: true, titleSlotName: 'colTitle' },
 ];
 
 /* ==================== 排序（只排同级，不拆树） ==================== */

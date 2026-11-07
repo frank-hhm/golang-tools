@@ -51,8 +51,9 @@
             </template>
             <!-- 收起态：只留视角 + 常态操作 + 搜索图标，默认一行放得下 -->
             <template v-else>
-              <!-- 本地 / 线上视角：与表头同排，切视角只换列不换表 -->
-              <a-radio-group :model-value="imgScope" type="button" size="medium" @change="onScope">
+              <!-- 本地 / 线上视角：与表头同排，切视角只换列不换表；
+                   size 取 small 与本行其余 small 按钮/下拉同高（medium 会高出 4px 破坏对齐） -->
+              <a-radio-group :model-value="imgScope" type="button" size="small" @change="onScope">
                 <a-radio value="local"><icon-storage />本地（{{ images.length }}）</a-radio>
                 <a-radio value="remote"><icon-cloud />线上</a-radio>
               </a-radio-group>
@@ -2089,6 +2090,6 @@ onUnmounted(() => {
 
 /* 单值等宽：浮标里的镜像名会变长变短，别的字符宽度不跟着跳 */
 .mono {
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
 }
 </style>

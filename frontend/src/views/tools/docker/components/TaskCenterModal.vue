@@ -600,7 +600,7 @@ function timeText(t: ImageTask): string {
     padding: 6px 8px;
     border-radius: var(--border-radius-small);
     background: var(--color-fill-1);
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: 1.6;
 }
@@ -623,7 +623,7 @@ function timeText(t: ImageTask): string {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 
 .dim {

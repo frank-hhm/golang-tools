@@ -44,26 +44,26 @@
                 </div>
 
                 <div class="cp-foot">
-                    <a-button size="small" :loading="isAct(p, 'start')" :disabled="busy || p.running >= p.total"
+                    <a-button size="mini" :loading="isAct(p, 'start')" :disabled="busy || p.running >= p.total"
                         @click="emit('action', p, 'start')">
                         <template #icon><icon-play-arrow /></template>{{ isAct(p, 'start') ? '启动中' : '启动' }}
                     </a-button>
                     <!-- 停止/重启会批量断开项目内所有服务，先气泡确认 -->
                     <a-popconfirm :content="`停止项目「${p.name}」下的 ${p.total} 个容器？服务会随之中断。`"
                         type="warning" position="lt" :disabled="busy" @ok="emit('action', p, 'stop')">
-                        <a-button size="small" :loading="isAct(p, 'stop')" :disabled="busy || !p.running">
+                        <a-button size="mini" :loading="isAct(p, 'stop')" :disabled="busy || !p.running">
                             <template #icon><icon-pause /></template>{{ isAct(p, 'stop') ? '停止中' : '停止' }}
                         </a-button>
                     </a-popconfirm>
                     <a-popconfirm :content="`重启项目「${p.name}」的 ${p.total} 个容器？会先停再起，期间不可访问。`"
                         type="warning" position="lt" :disabled="busy" @ok="emit('action', p, 'restart')">
-                        <a-button size="small" :loading="isAct(p, 'restart')" :disabled="busy">
+                        <a-button size="mini" :loading="isAct(p, 'restart')" :disabled="busy">
                             <template #icon><icon-refresh /></template>{{ isAct(p, 'restart') ? '重启中' : '重启' }}
                         </a-button>
                     </a-popconfirm>
                     <a-popconfirm :content="`移除项目「${p.name}」的 ${p.total} 个容器？容器会先停再删，卷与网络不动。`"
                         type="warning" position="lt" :disabled="busy" @ok="emit('action', p, 'down')">
-                        <a-button size="small" status="danger" :loading="isAct(p, 'down')" :disabled="busy">
+                        <a-button size="mini" status="danger" :loading="isAct(p, 'down')" :disabled="busy">
                             <template #icon><icon-delete /></template>{{ isAct(p, 'down') ? '移除中' : '移除容器' }}
                         </a-button>
                     </a-popconfirm>
@@ -246,6 +246,6 @@ function tagColor(p: any): string {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

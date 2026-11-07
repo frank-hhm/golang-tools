@@ -326,7 +326,7 @@ onBeforeUnmount(destroyEditor);
   margin: 0;
   padding: 10px 12px;
   color: var(--color-text-1);
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--code-font-family);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre;

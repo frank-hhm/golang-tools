@@ -19,6 +19,7 @@ import type { ThemeScheme } from "./palette";
 import { buildTheme, normalizeHarmony, type HarmonyMode } from "./palette";
 import { resolveTheme } from "./presets";
 import { App } from "bindings/Tools/services/app/index";
+import { isNativeWindows, loadCaps } from "./caps";
 
 export type ThemeMode = "light" | "dark" | "auto";
 
@@ -34,7 +35,7 @@ export interface ThemeGlass {
 }
 
 /** 全局背景主题档（与后端 ThemeBackground 同构） */
-export type BackgroundType = "none" | "mesh" | "photo" | "plain" | "dark" | "image" | "native";
+export type BackgroundType = "none" | "mesh" | "photo" | "dark" | "image" | "native";
 export interface ThemeBackground {
   type: BackgroundType;
   image: string; // 绝对路径，仅 type=image
@@ -51,6 +52,8 @@ export interface ThemeConfig {
   fontSize: string;
   contrast: string;
   motion: string;
+  /** 无边距模式：卡片去左右内边距、不铺背景，描边固定归无（见 tokens.scss card-flush 段） */
+  flush: boolean;
   glass: ThemeGlass;
   background: ThemeBackground;
 }
@@ -84,6 +87,7 @@ export const DEFAULT_THEME: ThemeConfig = {
   fontSize: "default",
   contrast: "normal",
   motion: "on",
+  flush: false,
   glass: { ...DEFAULT_GLASS },
   background: { ...DEFAULT_BACKGROUND },
 };
@@ -152,6 +156,7 @@ export function normalizeConfig(input: unknown): ThemeConfig {
     fontSize: FONT_SCALE_MAP[src.fontSize || ""] ? src.fontSize! : DEFAULT_THEME.fontSize,
     contrast: src.contrast === "high" ? "high" : "normal",
     motion: src.motion === "reduced" ? "reduced" : "on",
+    flush: !!src.flush,
     glass: normalizeGlass(src.glass),
     background: normalizeBackground(src.background),
   };
@@ -182,7 +187,7 @@ export function normalizeGlass(input: unknown): ThemeGlass {
   };
 }
 
-const BG_TYPES: BackgroundType[] = ["none", "mesh", "photo", "plain", "dark", "image", "native"];
+const BG_TYPES: BackgroundType[] = ["none", "mesh", "photo", "dark", "image", "native"];
 
 /** 归一背景档：非法 type 兜 none；非 image 档清空残留路径 */
 export function normalizeBackground(input: unknown): ThemeBackground {
@@ -278,7 +283,7 @@ function renderTokens(cfg: ThemeConfig) {
     removeVars(root, sink);
   }
 
-  // ③ 圆角
+  // ③ 圆角：页面内令牌（--base-radius-* / --border-radius-*）+ 原生窗口四角两处。
   const r = RADIUS_MAP[cfg.radius] || RADIUS_MAP.default;
   setVars(root, {
     "--base-radius-small": `${r.base[0]}px`,
@@ -289,6 +294,7 @@ function renderTokens(cfg: ThemeConfig) {
     "--border-radius-medium": `${r.arco[1]}px`,
     "--border-radius-large": `${r.arco[2]}px`,
   });
+  applyWindowCorners(cfg.radius);
 
   // ④ 密度 + 字号：密度定间距（--base-margin/padding），字号按独立系数缩放 --base-size-*。
   //    两者正交：紧凑密度也能配大字号，字号不跟随密度。
@@ -306,9 +312,10 @@ function renderTokens(cfg: ThemeConfig) {
   body.classList.toggle("density-compact", cfg.density === "compact");
   body.classList.toggle("density-loose", cfg.density === "loose");
 
-  // ⑤ 高对比度 / 减少动效：body 类开关
+  // ⑤ 高对比度 / 减少动效 / 无边距模式：body 类开关
   body.classList.toggle("a11y-contrast", cfg.contrast === "high");
   body.classList.toggle("reduce-motion", cfg.motion === "reduced");
+  body.classList.toggle("card-flush", cfg.flush);
 
   // ⑥ 玻璃：body.app-glass 开关 + 材质类；开则把参数投进 --app-glass-*，关则撤除回落 :root 占位
   const g = cfg.glass;
@@ -332,6 +339,23 @@ function renderTokens(cfg: ThemeConfig) {
   }
 }
 
+/**
+ * 原生窗口四角跟随圆角档：主窗与工具窗的窗口角是 DWM 在合成层裁的，CSS 变量够不着，
+ * 只能经 SetWindowCorner 下发到 Go 侧（Win11 只有「系统默认圆角 / 直角」两态：
+ * none/small 直角，default/large 系统圆角）。
+ * Web/Linux 面板返回不支持、启动早期窗口未就绪等失败都静默忽略（页面内令牌照常生效，
+ * 新开窗由 Go 侧按记忆档位补应用）。
+ */
+function applyWindowCorners(radius: string) {
+  try {
+    App.SetWindowCorner(radius).catch(() => {
+      /* Web 模式返回不支持、启动早期窗口未就绪等：静默，新开窗由 Go 侧按记忆档位补应用 */
+    });
+  } catch {
+    /* 非桌面运行时没有该绑定，忽略 */
+  }
+}
+
 // 背景图 dataURL 异步加载序号：快速切换背景时丢弃过期回包，避免迟到的图片盖掉当前档。
 let bgReqSeq = 0;
 function applyBackgroundImage(path: string) {
@@ -347,9 +371,28 @@ function applyBackgroundImage(path: string) {
     });
 }
 
+/**
+ * 主题切换淡入开关：首屏那一次应用（initTheme 里）不淡入，避免开机看到「默认浅色→记忆主题」的
+ * 整屏渐变；启动完成后置 true，之后用户在设置里切明暗/玻璃/纹理/圆角/密度才淡入。
+ */
+let allowThemeAnim = false;
+let themeAnimTimer = 0;
+
+/** 给 <body> 临时挂 theme-anim 类，让本次令牌变化走颜色过渡（见 tokens.scss），约 360ms 后撤。 */
+function beginThemeAnim() {
+  if (!allowThemeAnim) return;
+  const body = document.body;
+  // 尊重「减少动效」偏好；即便漏判，tokens.scss 的近零时长也会兜底压平。
+  if (body.classList.contains("reduce-motion")) return;
+  body.classList.add("theme-anim");
+  if (themeAnimTimer) clearTimeout(themeAnimTimer);
+  themeAnimTimer = window.setTimeout(() => body.classList.remove("theme-anim"), 360);
+}
+
 /** 应用并持久化整套主题配置 */
 export function applyThemeConfig(cfg: ThemeConfig) {
   const norm = normalizeConfig(cfg);
+  beginThemeAnim(); // 必须在改令牌之前挂类，浏览器才会把「旧值→新值」当成过渡起点
   renderTokens(norm);
   localStorage.setItem(THEME_CFG_STORAGE_KEY, JSON.stringify(norm));
   localStorage.setItem(THEME_STORAGE_KEY, norm.mode); // 双写模式键，兼容旧 theme-switch 跨窗口同步
@@ -367,6 +410,13 @@ export function initTheme() {
   if (inited) return;
   inited = true;
   applyThemeConfig(currentThemeConfig());
+  // 首屏那一次不淡入；等应用与首帧绘制完成（两帧 rAF）后再放开，之后切主题才走过渡。
+  requestAnimationFrame(() => requestAnimationFrame(() => { allowThemeAnim = true; }));
+  // 启动时窗口角下发可能早于 Go 侧窗口就绪（失败被静默吞掉），能力探测落定后
+  // 按当前档再补一次；Web 模式 isNativeWindows 恒 false，不会白打这一枪。
+  void loadCaps().then(() => {
+    if (isNativeWindows()) applyWindowCorners(currentThemeConfig().radius);
+  });
   // auto 模式下系统深浅切换时重算（主色 ramp 明暗档也随之变）
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     applyThemeConfig(currentThemeConfig());
@@ -375,6 +425,7 @@ export function initTheme() {
   window.addEventListener("storage", (e) => {
     if (e.key === THEME_CFG_STORAGE_KEY && e.newValue) {
       try {
+        beginThemeAnim(); // 跨窗口同步也是一次主题变化，同样淡入
         renderTokens(normalizeConfig(JSON.parse(e.newValue)));
       } catch {
         /* 忽略非法同步值 */

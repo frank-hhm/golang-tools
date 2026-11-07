@@ -850,7 +850,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: var(--base-radius-small);
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   font-size: 11px;
   color: var(--color-text-3);
 }

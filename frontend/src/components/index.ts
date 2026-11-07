@@ -17,7 +17,9 @@ import CommonToolIcon from '@/components/common/icon/tool-icon/index.vue'
 import CommonFileIcon from '@/components/common/icon/file-icon/index.vue'
 import CommonTaskProgress from '@/components/common/task-progress/index.vue'
 import CommonUploadPanel from '@/components/common/upload-panel/index.vue'
-import MCard from '@/components/common/theme/m-card/index.vue'
+import MStatCard from '@/components/common/theme/m-stat-card/index.vue'
+import MSvcCard from '@/components/common/theme/m-svc-card/index.vue'
+import MToolCell from '@/components/common/theme/m-tool-cell/index.vue'
 import BodyViewer from '@/components/business/body-viewer/index.vue'
 import DockerImages from '@/components/business/docker-images/index.vue'
 import AnnotateCanvas from '@/components/business/annotate-canvas/AnnotateCanvas.vue'
@@ -71,8 +73,12 @@ export const ComponentsPlugin: Plugin = {
         app.component('common-task-progress', CommonTaskProgress);
         // common-upload-panel：公用上传面板（拖拽区+文件队列+切片续传），传输经 transport 注入与 UI 解耦，局域网互传等上传场景复用
         app.component('common-upload-panel', CommonUploadPanel);
-        // m-card：项目自绘卡片外壳（统一封装 a-card），带 inheritBg 控制「是否继承上级背景」，供主题背景系统统一穿透
-        app.component('m-card', MCard);
+        // m-stat-card：自绘指标卡（彩色图标 + 标签/数值同排 + 明细），m-* 家族，承接 common-stat-card 版式，带 inheritBg；新页一律用它
+        app.component('m-stat-card', MStatCard);
+        // m-svc-card：自绘服务/实体实例卡（logo + 名称/描述 + 状态行 + 操作区），m-* 家族，承接首页手写 svc-card 版式，带 inheritBg
+        app.component('m-svc-card', MSvcCard);
+        // m-tool-cell：自绘工具格（居中图标 + 可选名称），m-* 家族，承接首页快捷操作/全部工具弹窗手写 tool-cell；背景一对一复刻 m-svc-card，带 inheritBg
+        app.component('m-tool-cell', MToolCell);
         // select-icon-modal：图标选择弹层，通过 type 属性切换图标源
         //  - type="iconfont"（默认）：本地字体图标，emit `icon-xxx`
         //  - type="arco"：Arco Design 图标库，emit 图标名（如 camera / clock-circle）
@@ -89,4 +95,4 @@ export const ComponentsPlugin: Plugin = {
         app.component('ssh-gen-modal', SshGenModal);
     },
 };
-export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, CommonTaskProgress, CommonUploadPanel, MCard, selectIconModal, BodyViewer, DockerImages, AnnotateCanvas, SshGenModal };
+export { LayoutBody, CommonPager, CommonThemeSwitch, CommonCanvasClock, CommonBadge, CommonModalTip, CommonDockerOff, CommonStatIcon, CommonStatCard, CommonItemCard, CommonInfoRow, CommonLogModal, CommonTitleBar, CommonToolIcon, CommonFileIcon, CommonTaskProgress, CommonUploadPanel, MStatCard, MSvcCard, MToolCell, selectIconModal, BodyViewer, DockerImages, AnnotateCanvas, SshGenModal };

@@ -1096,6 +1096,9 @@ var (
 	ballMenuPillInY int32      // 高亮条上下内缩（物理像素）
 	ballMenuFont    uintptr    // 本次菜单 GDI 字体（弹出前创建、弹完删除）
 	ballMenuDark    bool       // 本次菜单深/浅配色
+	ballMenuGlass   bool       // 本次菜单是否用玻璃半透明表面（跟随主题「玻璃」维；纹理档退回不透明）
+	ballMenuGA      uint32     // 玻璃表面 alpha 0-255（与前端 --app-glass-alpha 同源）
+	ballMenuGB      uint32     // 玻璃描边 alpha 0-255（暗色已 ×0.4，与前端弹层描边同口径）
 
 	ballMenuClassOnce sync.Once
 	ballMenuClassName *uint16
@@ -1126,6 +1129,17 @@ func bmPx(dip int) int32 {
 	return v
 }
 
+// clamp01 把主题里可能越界的 0-100 整数参数夹回合法区间。
+func clamp01(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
 // ballShowMenu 在浮动球右上角弹出自绘快捷菜单（独立无边框圆角分层窗口）：
 // 用 WS_EX_LAYERED + UpdateLayeredWindow 逐像素 alpha 提交，实现真正抗锯齿圆角、零边框，
 // 并从根上消除区域裁剪/owner-draw 的齿轮残影（角外像素 alpha=0 直接透桌面）。
@@ -1133,6 +1147,19 @@ func bmPx(dip int) int32 {
 // 悬停高亮、点选/点菜单外/再次右键收起，选中项交回 Host.OnBallAction。
 func ballShowMenu(ballHwnd uintptr) {
 	ballMenuDark = ballEffectiveDark()
+	ballMenuGlass, ballMenuGA, ballMenuGB = false, 255, 0
+	if ballHost != nil {
+		// 玻璃开且非纹理档：浮层做成半透明玻璃底（无桌面模糊，同前端 native/去 blur 组）；
+		// 纹理档（mesh/photo/dark/image）前端弹层是不透明实面复刻，这里保持既有实面。
+		if s := ballHost.BallSurface(); s.GlassOn && (s.BgType == "none" || s.BgType == "native" || s.BgType == "") {
+			ballMenuGlass = true
+			ballMenuGA = uint32(clamp01(s.Alpha)) * 255 / 100
+			ballMenuGB = uint32(clamp01(s.Border)) * 255 / 100
+			if ballMenuDark {
+				ballMenuGB = ballMenuGB * 4 / 10 // 暗色描边强度 ×0.4，对齐前端 rgba(255,255,255,border*0.4)
+			}
+		}
+	}
 
 	// 组装菜单项：quick 工具（“关闭浮动球”入口已移除，关闭走设置页开关）
 	// + 末尾固定一项「打开主页」：不来自配置，没标任何快捷工具也一直在
@@ -1420,6 +1447,17 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 	cy := float64(margin) + halfH
 	mg := float64(margin)
 	const shadowMax = 50.0
+	// 玻璃半透明合成参数（跟随主题）：表面像素降为玻璃 alpha，文字/高亮药丸等
+	// “墨”像素保持不透明；边缘 1px 环带叠白色描边，与前端玻璃弹层同口径。
+	glass := ballMenuGlass
+	var surfA, borderA, sB, sG, sR uint32
+	if glass {
+		surfA, borderA = ballMenuGA, ballMenuGB
+		th := ballThemeColors(ballMenuDark)
+		sB = uint32(th.bg) & 0xFF
+		sG = (uint32(th.bg) >> 8) & 0xFF
+		sR = (uint32(th.bg) >> 16) & 0xFF
+	}
 	// 悬停高亮药丸的抗锯齿参数：GDI RoundRect 画出的药丸四角是锯齿的（看起来像“齿轮”），
 	// 这里在药丸理想边界 ±1.5px 的窄带内用 SDF 覆盖率把 底色↔药丸色 平滑重绘。
 	// 只碰边缘窄带，不碰药丸内部的文字（文字距药丸边缘≥4px）。
@@ -1481,7 +1519,27 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 						bits[idx+2] = byte((pBgR*inv + pFgR*ic) / 255)
 					}
 				}
-				bits[idx+3] = 255 // 内部：alpha 拉满
+				if glass {
+					pb := uint32(bits[idx])
+					pg := uint32(bits[idx+1])
+					pr2 := uint32(bits[idx+2])
+					A := uint32(255)
+					if ballNearGlassSurface(pb, pg, pr2, sB, sG, sR) {
+						A = surfA // 表面像素：降到玻璃透明度，透出后方桌面
+					}
+					pb = pb * A / 255
+					pg = pg * A / 255
+					pr2 = pr2 * A / 255
+					if bo := ballGlassBorder(dCov, borderA); bo > 0 {
+						inv := 255 - bo
+						// 白色描边 over 当前预乘像素：src_premult = 255*bo/255 = bo
+						pb, pg, pr2 = bo+pb*inv/255, bo+pg*inv/255, bo+pr2*inv/255
+						A = bo + A*inv/255
+					}
+					bits[idx], bits[idx+1], bits[idx+2], bits[idx+3] = byte(pb), byte(pg), byte(pr2), byte(A)
+				} else {
+					bits[idx+3] = 255 // 内部：alpha 拉满
+				}
 				continue
 			}
 			// 柔和投影：以到内容圆角矩形的外距离为准，边缘最深、向外二次衰减，四周均匀。
@@ -1500,16 +1558,57 @@ func ballMenuApplyAlpha(bits []byte, winW, winH, margin, rad int) {
 			b := uint32(bits[idx])
 			g := uint32(bits[idx+1])
 			rr := uint32(bits[idx+2])
-			a := ca + sh*(255-ca)/255
+			A := ca
+			if glass {
+				// 边缘抗锯齿环带只有表面底色（文字/药丸距边缘≥4px），直接按玻璃 alpha 预乘
+				A = ca * surfA / 255
+			}
+			pb := b * A / 255
+			pg := g * A / 255
+			pr2 := rr * A / 255
+			if glass {
+				if bo := ballGlassBorder(dCov, borderA); bo > 0 {
+					inv := 255 - bo
+					pb, pg, pr2 = bo+pb*inv/255, bo+pg*inv/255, bo+pr2*inv/255
+					A = bo + A*inv/255
+				}
+			}
+			a := A + sh*(255-A)/255
 			if a > 255 {
 				a = 255
 			}
-			bits[idx] = byte(b * ca / 255)
-			bits[idx+1] = byte(g * ca / 255)
-			bits[idx+2] = byte(rr * ca / 255)
+			bits[idx] = byte(pb)
+			bits[idx+1] = byte(pg)
+			bits[idx+2] = byte(pr2)
 			bits[idx+3] = byte(a)
 		}
 	}
+}
+
+// ballNearGlassSurface 颜色键判定：像素是否接近玻璃表面底色（各通道差≤ 16）。
+// 表面像素要降到玻璃 alpha；文字/药丸及其靠近墨色的 AA 过渡像素保持不透明。
+func ballNearGlassSurface(b, g, rr, sb, sg, sr uint32) bool {
+	return ballChDist(b, sb) <= 16 && ballChDist(g, sg) <= 16 && ballChDist(rr, sr) <= 16
+}
+
+func ballChDist(a, c uint32) uint32 {
+	if a > c {
+		return a - c
+	}
+	return c - a
+}
+
+// ballGlassBorder 描边环带在本像素的有效 alpha：以圆角边缘内侧 1px 为中心（dCov=-1）、
+// 向两侧各 1px 线性落零，强度 = borderA；描边不超表面，玻璃 alpha=100 时退化为纯描边。
+func ballGlassBorder(dCov float64, borderA uint32) uint32 {
+	if borderA == 0 {
+		return 0
+	}
+	w := 1 - math.Abs(dCov+1)
+	if w <= 0 {
+		return 0
+	}
+	return borderA * uint32(w*255+0.5) / 255
 }
 
 // ballSdfRR 点 (dx,dy)（相对内容中心）到半宽 halfW、半高 halfH、圆角 r 的圆角矩形的带符距离：内负外正。
@@ -1614,8 +1713,13 @@ func ballRGB(r, g, b int) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(
 // 鼠标停留高亮均为无描边的实心圆角块——浅色模式为黑色块（文字转白），暗黑模式为比底稍亮一档的灰色块（文字保持亮色）。
 func ballThemeColors(dark bool) ballMenuColors {
 	if dark {
+		// 不透明实面底色对齐 Arco 暗色 --color-bg-2（前端纹理档弹层就是 bg-2 实面复刻）
+		bg := ballRGB(0x23, 0x23, 0x24)
+		if ballMenuGlass {
+			bg = ballRGB(24, 26, 32) // 玻璃暗档弹层底色对齐前端 rgba(24,26,32,α)
+		}
 		return ballMenuColors{
-			bg:       ballRGB(0x2B, 0x2B, 0x2B),
+			bg:       bg,
 			text:     ballRGB(0xE8, 0xE8, 0xE8),
 			selBg:    ballRGB(0x45, 0x45, 0x45), // 图2：深底上稍亮一档的灰圆角块
 			selText:  ballRGB(0xFF, 0xFF, 0xFF),

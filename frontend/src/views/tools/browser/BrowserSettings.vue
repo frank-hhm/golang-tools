@@ -468,12 +468,12 @@ const save = async () => {
     padding-bottom: 2px;
 }
 
-.bs-collapse :deep(.arco-collapse-item-header) {
+.bs-collapse :deep(.arco-collapse-item-header-box) {
     background: var(--color-fill-1);
     border-radius: var(--border-radius-small);
 }
 
-.bs-collapse :deep(.arco-collapse-item-content-box) {
+.bs-collapse :deep(.arco-collapse-item-content) {
     padding: 8px 0 0;
 }
 

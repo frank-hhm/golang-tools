@@ -298,6 +298,6 @@ function close() {
   flex-shrink: 0;
 }
 .mono {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
 }
 </style>

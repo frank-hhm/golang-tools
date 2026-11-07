@@ -410,7 +410,7 @@ function closeWin() {
     padding: 10px;
     border-radius: var(--base-radius-default);
     background: rgba(128, 128, 128, 0.16);
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: 1.7;
     white-space: pre-wrap;

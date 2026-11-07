@@ -171,7 +171,7 @@ function doDelete(name: string) {
   color: rgb(var(--green-6));
 }
 .bm-name {
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--code-font-family);
 }
 .bm-ab-na {
   color: var(--color-text-3);

@@ -385,7 +385,7 @@ const pkgByManager = computed(() => {
     for (const p of packages.value) m[p.manager] = (m[p.manager] || 0) + 1;
     return Object.entries(m).map(([manager, count]) => ({ manager, count })).sort((a, b) => b.count - a.count);
 });
-/* 绑定现状：交给 a-descriptions 渲染，数组顺序即展示顺序 */
+/* 绑定现状：交给 m-descriptions 渲染，数组顺序即展示顺序 */
 const bindDesc = computed(() => ([
     { label: '生效作用域', value: scopeLabel(pathStatus.value?.boundScope) },
     { label: '绑定 Node', value: pathStatus.value?.boundVersion || '-' },
@@ -900,7 +900,7 @@ onUnmounted(() => {
 }
 
 .ov-other-dir {
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     word-break: break-all;
     padding-left: 8px;
 }

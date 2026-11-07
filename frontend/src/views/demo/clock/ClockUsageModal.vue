@@ -46,7 +46,7 @@ const PROPS = [
 </script>
 <style scoped>
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 
 .uc-code {
@@ -55,7 +55,7 @@ const PROPS = [
     border-radius: var(--border-radius-medium);
     background: var(--color-fill-1);
     color: var(--color-text-1);
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: 12px;
     line-height: 1.7;
     white-space: pre-wrap;

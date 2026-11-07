@@ -476,7 +476,7 @@ onBeforeUnmount(() => {
 }
 
 .inst-port {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
   font-size: var(--base-size-small);
   color: var(--color-text-3);
 }

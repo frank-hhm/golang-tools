@@ -666,7 +666,7 @@ onUnmounted(() => {
     overflow: auto;
     background: #1d2129;
     padding: var(--base-padding) 0;
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: 1.6;
 }

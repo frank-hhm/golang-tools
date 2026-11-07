@@ -48,6 +48,11 @@ const emit = defineEmits<{
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 
 const boxEl = ref<HTMLDivElement>();
+/**
+ * 等宽字体栈：xterm 在 JS 里创建吃不到 CSS 变量，这里与 styles/theme/code.scss
+ * 的 --code-font-family 保持同一组值，改动时两边同步（全站等宽内容的唯一口径）。
+ */
+const FONT_FAMILY = 'Consolas, "Cascadia Mono", Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace';
 /** 当前是否有选中内容（右键菜单里「复制」的可用性） */
 const hasSelection = ref(false);
 let term: Terminal | null = null;
@@ -161,7 +166,7 @@ onMounted(async () => {
 
   term = new Terminal({
     fontSize: props.fontSize,
-    fontFamily: 'Consolas, "Cascadia Mono", "Microsoft YaHei", monospace',
+    fontFamily: FONT_FAMILY,
     cursorBlink: true,
     scrollback: 5000,
     theme: themeOf(),

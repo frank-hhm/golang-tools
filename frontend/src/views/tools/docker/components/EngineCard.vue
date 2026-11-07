@@ -806,7 +806,7 @@ onMounted(() => {
 }
 
 .log-line {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     color: var(--color-text-2);
     line-height: 1.7;
@@ -821,6 +821,6 @@ onMounted(() => {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

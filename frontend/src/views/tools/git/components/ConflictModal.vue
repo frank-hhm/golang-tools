@@ -343,7 +343,7 @@ watch(() => props.visible, (v) => { if (v) load(); });
   overflow: auto;
   background: var(--color-fill-1);
   border-radius: var(--base-radius-small);
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--code-font-family);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;

@@ -1,12 +1,12 @@
-﻿<template>
+<template>
   <layout-body title="Go 消息提示 Demo">
     <a-card class="demo-card">
       <a-space direction="vertical" fill :size="16" style="max-width: 640px">
-        <a-typography-paragraph type="secondary">
+        <a-typography-text type="secondary">
           验证 Go 后端能否像前端 <code>import {{ '{ Message }' }} from "@arco-design/web-vue"</code> 一样弹提示。
           链路：Go <code>App.ShowMessage(level, text)</code> → 在 <b>WebView 之外的桌面</b>创建原生置顶通知小窗
           （<code>/widget/toast</code>，屏幕右下角（与系统通知同位置，避开任务栏）、4 秒自动消失、新通知替换旧通知）；前端可点 ✕ 手动关闭。
-        </a-typography-paragraph>
+        </a-typography-text>
 
         <a-form-item label="提示内容" style="margin-bottom: 0">
           <a-input v-model="text" placeholder="要显示的消息文本" allow-clear />

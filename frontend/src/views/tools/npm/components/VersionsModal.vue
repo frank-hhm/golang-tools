@@ -662,7 +662,7 @@ onBeforeUnmount(() => {
     margin: 0 14px 12px;
     padding: 8px;
     border-radius: 4px;
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: 12px;
 }
 
@@ -729,7 +729,7 @@ onBeforeUnmount(() => {
 .chain-big {
     font-size: 22px;
     font-weight: 600;
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     color: rgb(var(--primary-6));
 }
 
@@ -780,7 +780,7 @@ onBeforeUnmount(() => {
 
 .cli-name {
     font-size: 12px;
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     min-width: 96px;
 }
 

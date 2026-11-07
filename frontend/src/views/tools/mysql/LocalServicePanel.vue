@@ -728,8 +728,8 @@ onUnmounted(() => {
   line-height: 1;
 }
 
-.srv-empty :deep(.arco-empty-description),
-.side-card :deep(.arco-list-content .arco-empty .arco-empty-description) {
+.srv-empty :deep(.arco-empty-desc),
+.side-card :deep(.arco-list-content .arco-empty .arco-empty-desc) {
   display: block;
   font-size: var(--base-size-small);
   color: var(--color-text-3);
@@ -786,7 +786,7 @@ onUnmounted(() => {
   margin-top: var(--base-padding);
 }
 
-.ver-actions :deep(.arco-input-wrapper) {
+.ver-actions :deep(.arco-input) {
   flex: 1;
 }
 
@@ -797,7 +797,7 @@ onUnmounted(() => {
 }
 
 .mono {
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   background: var(--color-fill-2);
   padding: var(--base-radius-small) var(--base-radius-default);
   border-radius: var(--base-radius-small);
@@ -844,7 +844,7 @@ onUnmounted(() => {
 }
 
 .inst-log-line {
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   font-size: var(--base-size-small);
   color: var(--color-text-2);
   line-height: 1.6;

@@ -16,7 +16,7 @@
             <template #icon><icon-plus /></template>新建
           </a-button>
         </div>
-        <a-scrollbar style="height: 300px; overflow: auto">
+        <a-scrollbar style="height: 300px">
           <a-list :bordered="false" size="small">
             <a-list-item v-for="c in items" :key="c.id" :class="{ 'cred-active': c.id === form.id }"
               @click="pick(c)">

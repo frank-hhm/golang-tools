@@ -39,6 +39,23 @@
     --app-info: #4b7bec;
 }
 
+/*
+ * 主题切换淡入：用户在设置里改明暗/玻璃/纹理/圆角/密度时，utils/theme.ts 给 <body> 临时挂
+ * theme-anim 类（约 360ms 后撤），让这一窗口内的令牌变化走颜色过渡，而不是整屏硬跳。
+ * 只在切换瞬间存在，平时不挂→不干扰各组件自己的微交互过渡，也不影响首屏（首屏那一次不启用）。
+ * 只动颜色/阴影类属性（background-color / border-color / color / fill / box-shadow），
+ * 绝不碰尺寸与位置（width/height/margin/padding/transform），免得密度/圆角切换时布局抽动。
+ * 放在「减少动效」块之前：两者同为 !important 且特异性相当时，靠后的 reduce-motion 时长归零取胜，
+ * 确保开了减少动效就彻底不淡入（theme.ts 也已提前判掉，这里是双保险）。
+ */
+body.theme-anim,
+body.theme-anim *,
+body.theme-anim *::before,
+body.theme-anim *::after {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease,
+        fill 0.3s ease, box-shadow 0.3s ease !important;
+}
+
 /* 减少动效：body.reduce-motion 由 theme.ts 依 ThemeConfig.motion 挂载。
    统一压到近零时长，尊重偏好也照顾低配机与动效敏感用户。!important 是为压过组件内联过渡。 */
 body.reduce-motion,
@@ -53,6 +70,20 @@ body.reduce-motion *::after {
 
 body.reduce-motion {
     --base-shadow: none;
+}
+
+/* 减少动效豁免：加载转圈是「正在忙」的功能性反馈，不是装饰动效，不能停
+   （否则 loading 态看不出在加载）。特异性 (0,2,1) 高于上面的 body.reduce-motion * (0,1,1)，
+   同为 !important 时按特异性取胜，只把时长与循环数还原，animation-name 仍走原关键帧。
+   覆盖 Arco 的 icon-loading/spin（a-button 与 m-button 的加载图标都带这两个类）与 Spin 组件圆点。 */
+body.reduce-motion .arco-icon-loading,
+body.reduce-motion .arco-icon-spin,
+body.reduce-motion .arco-btn-loading .arco-icon,
+body.reduce-motion .arco-spin-dot-item,
+body.reduce-motion .arco-spin-mask-icon .arco-icon,
+body.reduce-motion .arco-message-loading .arco-icon {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
 }
 
 /* 高对比度 / 无障碍：body.a11y-contrast 由 theme.ts 依 ThemeConfig.contrast 挂载。
@@ -80,7 +111,9 @@ body.density-compact .arco-btn {
 }
 
 body.density-compact .arco-table-td,
-body.density-compact .arco-table-th {
+body.density-compact .arco-table-th,
+body.density-compact .arco-table-th.arco-table-cell,
+body.density-compact .arco-table-td.arco-table-cell {
     padding-top: 6px;
     padding-bottom: 6px;
 }
@@ -91,9 +124,61 @@ body.density-loose .arco-btn {
 }
 
 body.density-loose .arco-table-td,
-body.density-loose .arco-table-th {
+body.density-loose .arco-table-th,
+body.density-loose .arco-table-th.arco-table-cell,
+body.density-loose .arco-table-td.arco-table-cell {
     padding-top: 14px;
     padding-bottom: 14px;
+}
+
+/*
+ * a-card 主题联动（回退 m-card→a-card 后补齐）：arco.css 把卡片圆角写死在
+ * --border-radius-none/small、标题/正文字号写死 16/14px，都不读主题令牌，导致
+ * 「圆角档 / 字号档」对卡片无感。这里统一改吃 --base-* 令牌：
+ *  - 圆角 → --base-radius-default（随「圆角」档，none 档归 0）；
+ *  - 标题 → --base-size-large（14px，较 arco 原 16px 退一档，标题太大）、卡片正文 → --base-size-large（随「字号 × 密度」联动），
+ *    标题靠字重与正文区分层级。
+ *  - padding / header 高度 → 随「显示密度」联动（见下方 --base-padding 组），不再吃 arco 写死的 16/10px 与固定高。
+ * 选择器统一以 body 打头把特异性抬到 arco 之上，不依赖样式加载先后。
+ */
+body .arco-card {
+    border-radius: var(--base-radius-default);
+    font-size: var(--base-size-large);
+}
+
+body .arco-card-bordered > .arco-card-header,
+body .arco-card-bordered .arco-card-cover {
+    border-radius: var(--base-radius-default) var(--base-radius-default) 0 0;
+}
+
+body .arco-card .arco-card-header-title,
+body .arco-card .arco-card-meta-title {
+    font-size: var(--base-size-large);
+}
+
+/*
+ * a-card 内边距随「显示密度」联动：此前吃 arco 写死的定值（body 16px、header 10px 16px 且固定高 46/40px），
+ * 切「紧凑/标准/宽松」时卡片留白纹丝不动。改吃 --base-padding（theme.ts 按密度写入：紧凑 8 / 标准 12 / 宽松 16）：
+ * body 四边同一密度边距；header 去掉固定高、改由「内容行高 + 上下密度留白」撑开，于是随密度自动长缩。
+ * small 档纵向再收一档（×0.75，与下面玻璃 gap 公式同一系数）。玻璃档下 header 的 padding-bottom、body 的
+ * padding-top 由「段间距随描边联动」那组改写（同特异性、书写在后胜出），这里只铺其余边与非玻璃档基线。
+ * 用 :body-style="{ padding: 0 }" 主动归零的卡片靠内联样式覆盖本规则，不受影响（仍由页面自管内部排版）。
+ */
+body .arco-card .arco-card-header {
+    height: auto;
+    padding: calc(var(--base-padding) * 0.75) var(--base-padding);
+}
+
+body .arco-card .arco-card-body {
+    padding: var(--base-padding);
+}
+
+body .arco-card.arco-card-size-small .arco-card-header {
+    padding: calc(var(--base-padding) * 0.6) var(--base-padding);
+}
+
+body .arco-card.arco-card-size-small .arco-card-body {
+    padding: calc(var(--base-padding) * 0.75) var(--base-padding);
 }
 
 /*
@@ -111,9 +196,17 @@ body.density-loose .arco-table-th {
 $glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
 body.app-glass .arco-card,
-body.app-glass .m-card,
 body.app-glass .arco-modal,
-body.app-glass .arco-drawer {
+body.app-glass .arco-drawer,
+body.app-glass .arco-select-dropdown,
+body.app-glass .arco-dropdown,
+body.app-glass .arco-popconfirm-popup-content,
+/* 自定义右键菜单操作层（非 arco-dropdown）：portman/procman 自绘 div、mysql/docspace/disk 的 a-menu 弹层，
+   它们用 --color-bg-popup 实色铺底，玻璃/纹理下与主题脱节，并入浮层同一套处理 */
+body.app-glass .ctx-menu,
+body.app-glass .pt-menu,
+body.app-glass .pm-menu,
+body.app-glass .pm-submenu {
     background: rgba(255, 255, 255, var(--app-glass-alpha));
     backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
     -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
@@ -121,22 +214,117 @@ body.app-glass .arco-drawer {
     box-shadow: 0 8px 32px rgba(0, 0, 0, var(--app-glass-shadow));
 }
 
+/* m-card 头部隔线同样遵从描边强度（scoped 默认 --color-border-1，这里盖成受控 rgba） */
+body.app-glass .arco-card-header {
+    border-bottom-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+/* a-modal / a-drawer 头部与底部隔线同样遵从描边强度 */
+body.app-glass .arco-modal-header,
+body.app-glass .arco-drawer-header {
+    border-bottom-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+body.app-glass .arco-modal-footer,
+body.app-glass .arco-drawer-footer {
+    border-top-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+/*
+ * a-modal 段间距不随描边强度重算（旧自绘 m-modal 那套 gap 联动搬到 arco 上是错的）：
+ * .arco-modal 是 inline-block（非 flex），gap 根本不生效；把 body/footer 的 padding-top/bottom 乘描边强度，
+ * 会在描边 >0 时把 24px（modal body）压成 base-padding*描边（10% 才 1.2px）→ 内容紧贴分隔线、边距整个错乱。
+ * 弹窗分段本就靠固定 padding 撑开，无需卡片那套「描边→gap」补偿，所以这里只让分隔线颜色随描边强度淡入淡出（见上），
+ * 段间距一律交回 arco 默认。注：a-drawer 是 flex column（gap 生效），已并入下面 a-card 的「描边→gap」联动组（见后）。
+ */
+
+/*
+ * 卡片 header↔body 段间距与描边强度联动（m-card / arco-card 同一套公式，浅色暗色共用）：
+ * 正常态（描边 1px 可见）header 与 body 各自四边一个 --base-padding，靠隔线分段；
+ * 描边拉到 0（隔线消失）时，两侧多出的那半截 padding 平滑让位给「一个」gap: --base-padding，
+ * 两段相加恒为恰好一个密度边距，不会翻倍空洞也不会贴死；紧凑/标准/宽松自动缩放。
+ * gap 项 = (1 - 描边) × 一个边距；padding 收缩项 = 描边 × 一个边距；均走密度变量，不写死 px。
+ */
+body.app-glass .arco-card {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--base-padding) * (1 - var(--app-glass-border)));
+}
+
+body.app-glass .arco-card-header {
+    padding-bottom: calc(var(--base-padding) * var(--app-glass-border));
+}
+
+body.app-glass .arco-card-size-small .arco-card-header {
+    padding-bottom: calc(var(--base-padding) * 0.75 * var(--app-glass-border));
+}
+
+body.app-glass .arco-card-body {
+    padding-top: calc(var(--base-padding) * var(--app-glass-border));
+}
+
+body.app-glass .arco-card-size-small .arco-card-body {
+    padding-top: calc(var(--base-padding) * 0.75 * var(--app-glass-border));
+}
+
+/*
+ * a-drawer header↔body 段间距随描边强度收缩（用户要求「描边为 0 时一样去掉一个边距」）。
+ * 但不能照搬上面 a-card 的「gap + header 缩 pb + body 缩 pt」三件套：a-card 的 header/body 各自都有
+ * 一个 --base-padding 上下内边距（两段），描边 1=两段=2bp 恰等于 arco 默认、描边 0 收成一段 bp。
+ * 而 arco 的 .arco-drawer-header 是 padding:0 16px（上下都为 0，只有 border-bottom 分隔线），
+ * .arco-drawer-body 是 padding:12px 16px（只有这一段 padding-top）——只有一段可去。
+ * 若照搬卡片公式：描边 1 时硬把 header padding-bottom 从 0 抬成 bp，再加 body pt=bp，段间距被撑到 2bp
+ * （比 arco 默认 12px 凭空多一截）；描边 0 时又用 gap 把刚去掉的 bp 补回来，等于没去掉，方向整个反了。
+ * 正确做法：只让唯一那段 body padding-top 随描边线性收缩 bp×描边（描边 1→bp≈默认、描边 0→0 去掉一个边距），
+ * 不加 gap、不碰 header padding-bottom（交回 arco 默认 0）。modal 仍不介入（非 flex，见上段）。
+ */
+body.app-glass .arco-drawer-body {
+    padding-top: calc(var(--base-padding) * var(--app-glass-border));
+}
+
 body.app-glass[arco-theme="dark"] .arco-card,
-body.app-glass[arco-theme="dark"] .m-card,
 body.app-glass[arco-theme="dark"] .arco-modal,
-body.app-glass[arco-theme="dark"] .arco-drawer {
+body.app-glass[arco-theme="dark"] .arco-drawer,
+body.app-glass[arco-theme="dark"] .arco-select-dropdown,
+body.app-glass[arco-theme="dark"] .arco-dropdown,
+body.app-glass[arco-theme="dark"] .arco-popconfirm-popup-content,
+body.app-glass[arco-theme="dark"] .ctx-menu,
+body.app-glass[arco-theme="dark"] .pt-menu,
+body.app-glass[arco-theme="dark"] .pm-menu,
+body.app-glass[arco-theme="dark"] .pm-submenu {
     background: rgba(24, 26, 32, var(--app-glass-alpha));
     border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
 }
 
+body.app-glass[arco-theme="dark"] .arco-card-header {
+    border-bottom-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+    /* 暗色下 header↔body 段间距共用上面 body.app-glass 的密度联动公式，不再单独收缩 */
+}
+
+body.app-glass[arco-theme="dark"] .arco-modal-header,
+body.app-glass[arco-theme="dark"] .arco-drawer-header {
+    border-bottom-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+body.app-glass[arco-theme="dark"] .arco-modal-footer,
+body.app-glass[arco-theme="dark"] .arco-drawer-footer {
+    border-top-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
 /*
- * 玻璃也覆盖自定义卡片外壳（指标卡 .stat-card / 实体卡 .item-card / 服务卡 .svc-card）：
+ * 玻璃也覆盖自定义卡片外壳（指标卡 .stat-card / 实体卡 .item-card / 服务卡 .svc-card，
+ * 含 m-* 家族新外壳 .m-stat-card / .m-svc-card / .m-tool-cell，以及 Docker 编排项目卡 .cp-card）：
  * 这些是全站主力「卡片」面，描边强度必须能管到它们，否则关了描边仍留着 --color-border-1 实边。
  * 只铺 tint + 磨砂 + 受控描边；不给玻璃投影，保留各卡自己的 hover/选中/错误态阴影规范。
  */
 body.app-glass .stat-card,
 body.app-glass .item-card,
-body.app-glass .svc-card {
+body.app-glass .svc-card,
+body.app-glass .cp-card,
+body.app-glass .m-stat-card,
+body.app-glass .m-svc-card,
+body.app-glass .m-tool-cell,
+body.app-glass .cc {
     background: rgba(255, 255, 255, var(--app-glass-alpha));
     backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
     -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
@@ -145,21 +333,373 @@ body.app-glass .svc-card {
 
 body.app-glass[arco-theme="dark"] .stat-card,
 body.app-glass[arco-theme="dark"] .item-card,
-body.app-glass[arco-theme="dark"] .svc-card {
+body.app-glass[arco-theme="dark"] .svc-card,
+body.app-glass[arco-theme="dark"] .cp-card,
+body.app-glass[arco-theme="dark"] .m-stat-card,
+body.app-glass[arco-theme="dark"] .m-svc-card,
+body.app-glass[arco-theme="dark"] .m-tool-cell,
+body.app-glass[arco-theme="dark"] .cc {
     background: rgba(24, 26, 32, var(--app-glass-alpha));
     border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
 }
 
+/* 嵌套在玻璃卡片内的子卡不重复糊（父 .arco-card 已提供 backdrop-filter，子再套一层会双重模糊） */
+body.app-glass .arco-card .stat-card,
+body.app-glass .arco-card .item-card,
+body.app-glass .arco-card .svc-card,
+body.app-glass .arco-card .m-stat-card,
+body.app-glass .arco-card .m-svc-card,
+body.app-glass .arco-card .m-tool-cell,
+body.app-glass .arco-card .cc {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/*
+ * a-table 背景贴合主题（玻璃档）：表格普遍铺在玻璃卡片内（Docker 各 tab、FTP、Git 等），
+ * 而 arco 把 .arco-table-body/.arco-table-td 写死 --color-bg-2 不透明实色，会把卡片磨砂
+ * 糊盖成一块实心灰板、与主题脱节。
+ *
+ * 现在不再按「有无固定列」整块豁免：固定列表（如 Docker 网络表的右侧「操作」列）此前
+ * 走「整块不介入、保持 arco 原生不透明」，导致表体仍是一块与玻璃卡片脱节的实心灰板
+ * （用户反馈「docker 的 a-table 还有背景」）。改为：滚动表体与普通单元格一律涂透，
+ * 透出父卡玻璃（条纹/hover 的 --color-fill-1 本就是半透明叠加膜，落透明格子即磨砂斑马纹）。
+ *
+ * 固定列（.arco-table-col-fixed-left/right，position:sticky 挂在 th/td 上）是「钉住」的语义面，
+ * 必须不透明才能压住横向滚过来的列（半透明 tint + backdrop-filter 只糊不遮字，已验证渗字）。
+ * 但不能铺 arco 写死的 bg-2 实色——那会与涂透表体在列边界拼出一条孤立暗带（文件管理器/网络表实测）。
+ * 做法：底色 bg-2 保证完全不透明遮挡，上叠与卡片同源的玻璃 tint（暗色用暗 tint），二者合成本身不透明，
+ * 观感与涂透表体几乎一致，色差消失。非玻璃档同样不介入（body.app-glass 打头，默认纯 no-op）。
+ */
+body.app-glass .arco-table-container .arco-table-body,
+body.app-glass .arco-table-container .arco-table-td {
+    background-color: transparent;
+}
+
+/*
+ * 固定列表体单元：透明化后仍须不透明压住滚过的列（sticky 遮挡语义）。铺「bg-2 实底 + 玻璃 tint」
+ * 的不透明合成面，与涂透表体透出的卡片玻璃同源，避免列边界暗带。特异性 (0,3,0) 高于上面的
+ * .arco-table-td (0,2,0)，故能盖回不透明。
+ */
+body.app-glass .arco-table-td.arco-table-col-fixed-left,
+body.app-glass .arco-table-td.arco-table-col-fixed-right {
+    background-color: var(--color-bg-2);
+    background-image: linear-gradient(rgba(255, 255, 255, var(--app-glass-alpha)), rgba(255, 255, 255, var(--app-glass-alpha)));
+}
+
+body.app-glass[arco-theme="dark"] .arco-table-td.arco-table-col-fixed-left,
+body.app-glass[arco-theme="dark"] .arco-table-td.arco-table-col-fixed-right {
+    background-color: var(--color-bg-2);
+    background-image: linear-gradient(rgba(24, 26, 32, var(--app-glass-alpha)), rgba(24, 26, 32, var(--app-glass-alpha)));
+}
+
+/*
+ * 固定列表头单元：同上铺不透明同色面，压住横向滚过的列。表头本就由下面 .arco-table-th 铺 bg-2，
+ * 但那是 (0,2,0) 且没有玻璃 tint，会和固定列 body 的两层合成对不齐，这里一并覆盖到同源配方。
+ */
+body.app-glass .arco-table-th.arco-table-col-fixed-left,
+body.app-glass .arco-table-th.arco-table-col-fixed-right {
+    background-color: var(--color-bg-2);
+    background-image: linear-gradient(rgba(255, 255, 255, var(--app-glass-alpha)), rgba(255, 255, 255, var(--app-glass-alpha)));
+}
+
+body.app-glass[arco-theme="dark"] .arco-table-th.arco-table-col-fixed-left,
+body.app-glass[arco-theme="dark"] .arco-table-th.arco-table-col-fixed-right {
+    background-color: var(--color-bg-2);
+    background-image: linear-gradient(rgba(24, 26, 32, var(--app-glass-alpha)), rgba(24, 26, 32, var(--app-glass-alpha)));
+}
+
+/*
+ * 表头与卡片同面：arco 把 .arco-table-th 写死 --color-neutral-2，比卡片基色 --color-bg-2 暗
+ * 一档，在磨砂/纹理卡片里像一条孤立的实心暗带（端口管理/进程管理这类满屏表格尤其扎眼）。
+ * 改铺 --color-bg-2：仍不透明以压住纵向滚过的行（sticky 遮挡不能省，与固定列同理），但与卡片
+ * 同色不再突兀。只作用于有主题背景的档（body:not(.app-bg-none)：玻璃/纹理/native）；默认档
+ * (app-bg-none) 不动，保留 arco 原生表头层次。
+ */
+body:not(.app-bg-none) .arco-table-th {
+    background-color: var(--color-bg-2);
+}
+
+/*
+ * 暗色档再提亮一级：暗背景下 --color-bg-2(#232324) 与纹理/玻璃底太接近，表头仍读作一条黑带。
+ * 目标是 arco --color-fill-2 那层「比底色亮一档」的对比膜观感，但暗色下 --color-fill-2 =
+ * rgba(255,255,255,.08) 是半透明的——直接铺到 sticky 表头上，纵向滚过的行会透出来与表头文字
+ * 叠在一起（滚动内容打乱）。所以保留 --color-bg-2 作不透明底压住滚过的行，再用 background-image
+ * 叠一层 fill-2 膜提亮，二者合成后仍完全不透明。浅色档 --color-fill-2 本就是实色 neutral-2、
+ * 无透字风险也无需提亮，故只针对 [arco-theme="dark"]。
+ */
+body[arco-theme="dark"]:not(.app-bg-none) .arco-table-th {
+    background-color: var(--color-bg-2);
+    background-image: linear-gradient(var(--color-fill-2), var(--color-fill-2));
+}
+
+/*
+ * a-descriptions（带边框描述表）玻璃档：与 a-table 同一套思路。EngineCard 的运行时事实表铺在
+ * 玻璃卡片内，arco 把 label 单元写死 --color-fill-1、外框与格线写死 --color-neutral-3 实色，会把
+ * 卡片磨砂糊盖成一块实心表格。这里让 value 单元透明透出父卡玻璃、label 单元改铺与表头同源的
+ * 磨砂 tint，外框与行列格线颜色随描边强度淡入淡出。非玻璃档卡片本就实色 bg-2、描述表同色天然
+ * 一致，不介入（body.app-glass 打头，默认纯 no-op）。
+ */
+body.app-glass .arco-descriptions-item-value-block {
+    background-color: transparent;
+}
+
+body.app-glass .arco-descriptions-item-label-block {
+    background-color: rgba(255, 255, 255, var(--app-glass-alpha));
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+}
+
+body.app-glass[arco-theme="dark"] .arco-descriptions-item-label-block {
+    background-color: rgba(24, 26, 32, var(--app-glass-alpha));
+}
+
+body.app-glass.app-bg-native .arco-descriptions-item-label-block,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-descriptions-item-label-block {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* 外框 + 行列格线随描边强度：浅色用满 alpha，暗色 ×0.4（与卡片/浮层/表头同一档） */
+body.app-glass .arco-descriptions-border .arco-descriptions-body,
+body.app-glass .arco-descriptions-border .arco-descriptions-row:not(:last-child),
+body.app-glass .arco-descriptions-border .arco-descriptions-item,
+body.app-glass .arco-descriptions-border .arco-descriptions-item-label-block,
+body.app-glass .arco-descriptions-border .arco-descriptions-item-value-block {
+    border-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+body.app-glass[arco-theme="dark"] .arco-descriptions-border .arco-descriptions-body,
+body.app-glass[arco-theme="dark"] .arco-descriptions-border .arco-descriptions-row:not(:last-child),
+body.app-glass[arco-theme="dark"] .arco-descriptions-border .arco-descriptions-item,
+body.app-glass[arco-theme="dark"] .arco-descriptions-border .arco-descriptions-item-label-block,
+body.app-glass[arco-theme="dark"] .arco-descriptions-border .arco-descriptions-item-value-block {
+    border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+/*
+ * a-radio-group 分段控件容器：玻璃档下若铺「与卡片同色」的磨砂 tint，控件会和背后的卡片
+ * 糊成一片、看不出分段条（暗色 mesh 上尤其明显）。改铺 --color-text-1 的同源半透明对比膜
+ * （取 text-1 的 RGB 通道 --gray-10：浅色档 29,33,41 / 暗色档 246,246,246，随明暗自动反向），
+ * 低 alpha 叠在卡片上即「比卡片亮一点（暗色）/ 暗一点（浅色）」的磨砂芯片，明暗/网格/照片背景都自适配，
+ * 不再需要 [arco-theme="dark"] 分支。backdrop-filter 让芯片透出模糊的卡片底，保留轻量磨砂观感。
+ */
+body.app-glass .arco-radio-group {
+    background: rgba(var(--gray-10), 0.1);
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+}
+
+/*
+ * 纹理档（未开玻璃）的同源修正：arco 把分段控件轨道底色写死 --color-fill-2，
+ * 而 fill-2 明暗不对称——浅色档是不透明实色、暗色档本就是 rgba(255,255,255,.08) 半透明，
+ * 于是只有浅色 + 纹理背景时，轨道成了一块不透底纹的灰块（卡片 header 里尤其明显）。
+ * 与玻璃档同一套对比膜思路：铺 rgba(var(--gray-10), 0.08)（浅=深灰淡膜/暗=近白淡膜，
+ * 随明暗自动反向），alpha 比玻璃档略低——纹理档卡片底是实色 bg-2，膜叠在卡片上而非磨砂上，
+ * 略淡即可与背景纹理区分又不突兀。
+ * 特异性 (0,4,1) 高于玻璃组 (0,2,1)，但选择器带 :not(.app-glass)，两档互斥不打架；
+ * 默认档（app-bg-none）与 native 档不命中，纯 no-op。
+ */
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-radio-group {
+    background: rgba(var(--gray-10), 0.08);
+}
+
+/*
+ * a-input / a-textarea 底色同源修正：arco 把输入框静止/hover 底写死 --color-fill-2/--color-fill-3
+ * （浅色档不透明实色）、聚焦底写死 --color-bg-2（实白），在纹理/玻璃表面上就是两块
+ * 与主题脱节的实心灰白矩形（弹窗里尤其明显）。与 radio-group 同一套 --gray-10 对比膜：
+ * 静止淡膜、hover 略深、聚焦膜最淡（聚焦识别交给 primary 描边+光圈，膜只留一点底色变化）。
+ * error 态用 :not 排除，保留 danger-light 实色语义；禁用态不排除——膜下文字已被 arco 洗成
+ * text-4，灰字即禁用信号，膜底保持与主题同源。
+ * 纹理（未开玻璃）档：膜叠在「bg-2+纹理复刻」的浮层/卡片上，低 alpha 让底纹透出；
+ * 玻璃档：膜略高并带 backdrop-filter，与 radio-group 芯片同观感。
+ * 特异性：基础 (0,5,1)/(0,2,1)、hover (0,6,1)、聚焦 (0,7,1)，均压过 arco 同名规则 (0,2,0)；
+ * 玻璃组书写在后胜出纹理组（两选择器本互斥）；默认档（app-bg-none 且未开玻璃）不命中，纯 no-op。
+ */
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-input-wrapper:not(.arco-input-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-textarea-wrapper:not(.arco-textarea-error) {
+    background: rgba(var(--gray-10), 0.06);
+}
+
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-input-wrapper:not(.arco-input-error):hover,
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-textarea-wrapper:not(.arco-textarea-error):hover {
+    background: rgba(var(--gray-10), 0.1);
+}
+
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-input-wrapper.arco-input-focus:not(.arco-input-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-textarea-wrapper.arco-textarea-focus:not(.arco-textarea-error) {
+    background: rgba(var(--gray-10), 0.04);
+}
+
+body.app-glass .arco-input-wrapper:not(.arco-input-error),
+body.app-glass .arco-textarea-wrapper:not(.arco-textarea-error) {
+    background: rgba(var(--gray-10), 0.08);
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+}
+
+body.app-glass .arco-input-wrapper:not(.arco-input-error):hover,
+body.app-glass .arco-textarea-wrapper:not(.arco-textarea-error):hover {
+    background: rgba(var(--gray-10), 0.12);
+}
+
+body.app-glass .arco-input-wrapper.arco-input-focus:not(.arco-input-error),
+body.app-glass .arco-textarea-wrapper.arco-textarea-focus:not(.arco-textarea-error) {
+    background: rgba(var(--gray-10), 0.05);
+}
+
+/*
+ * 其余表单/信息表面同一套膜化（用户反馈「线色模式好多背景没对应」的批 1）：
+ * arco 浅色档把 --color-fill-1/2 写成实色 neutral-1/2（暗色档才是 rgba 半透膜），
+ * 于是 a-select 选择框、a-date/time-picker、a-input-tag、带边框 a-descriptions 的
+ * 标签格在纹理/玻璃表面上都是一块块实心灰矩形。口径与上面 input/textarea 完全一致：
+ * 静止淡膜、hover 略深、聚焦膜最淡（聚焦识别交给 primary 描边）；error/disabled 排除，
+ * 保留 arco 语义底；表头/固定列不动——sticky 遮挡必须实色（见上面 a-table 注释）。
+ * 特异性：基础 (0,5,1)/(0,3,1)、hover (0,6,1)、聚焦 (0,7,1)，均压过 arco 同名规则；
+ * 默认档不命中纯 no-op；纹理组与玻璃组选择器互斥，玻璃组书写在后。
+ */
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-select-view:not(.arco-select-view-disabled):not(.arco-select-view-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-input-tag:not(.arco-input-tag-disabled):not(.arco-input-tag-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-picker:not(.arco-picker-disabled):not(.arco-picker-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-descriptions-border .arco-descriptions-item-label-block {
+    background: rgba(var(--gray-10), 0.06);
+}
+
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-select-view:not(.arco-select-view-disabled):not(.arco-select-view-error):hover,
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-input-tag:not(.arco-input-tag-disabled):not(.arco-input-tag-error):hover,
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-picker:not(.arco-picker-disabled):not(.arco-picker-error):hover {
+    background: rgba(var(--gray-10), 0.1);
+}
+
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-select-view.arco-select-view-focus:not(.arco-select-view-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-input-tag.arco-input-tag-focus:not(.arco-input-tag-error),
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .arco-picker.arco-picker-focused:not(.arco-picker-error) {
+    background: rgba(var(--gray-10), 0.04);
+}
+
+body.app-glass .arco-select-view:not(.arco-select-view-disabled):not(.arco-select-view-error),
+body.app-glass .arco-input-tag:not(.arco-input-tag-disabled):not(.arco-input-tag-error),
+body.app-glass .arco-picker:not(.arco-picker-disabled):not(.arco-picker-error),
+body.app-glass .arco-descriptions-border .arco-descriptions-item-label-block {
+    background: rgba(var(--gray-10), 0.08);
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+}
+
+body.app-glass .arco-select-view:not(.arco-select-view-disabled):not(.arco-select-view-error):hover,
+body.app-glass .arco-input-tag:not(.arco-input-tag-disabled):not(.arco-input-tag-error):hover,
+body.app-glass .arco-picker:not(.arco-picker-disabled):not(.arco-picker-error):hover {
+    background: rgba(var(--gray-10), 0.12);
+}
+
+body.app-glass .arco-select-view.arco-select-view-focus:not(.arco-select-view-error),
+body.app-glass .arco-input-tag.arco-input-tag-focus:not(.arco-input-tag-error),
+body.app-glass .arco-picker.arco-picker-focused:not(.arco-picker-error) {
+    background: rgba(var(--gray-10), 0.05);
+}
+
+/*
+ * 快捷搜索小窗（launcher.vue 的 .lk-card）：透明无边框小窗，路由已标 noThemeBg 不挂全局
+ * .theme-bg 固定底。用户要求「面板背景要随主题背景（与主窗/设置页同一条纹理），不要描边」，
+ * 故这里按浮层同口径（与 modal/drawer 一致）用不透明实色复刻主题纹理：bg-2 基色 + --app-texture-bg，
+ * 不透出背后桌面、也不走玻璃磨砂（避免透明）。none/native 档不命中→容器回到 launcher.vue 的实色 bg-1。
+ * 描边与投影均由 launcher.vue 自身归无，不留边缘线。
+ */
+body:not(.app-bg-none):not(.app-bg-native) .lk-card {
+    background-color: var(--color-bg-2);
+    background-image: var(--app-texture-bg, none);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+/*
+ * a-button 中性底按钮（secondary/dashed）玻璃档：与 a-radio-group 同一套——铺 --color-text-1 同源
+ * 半透明对比膜（rgba(var(--gray-10),…)）而非与卡片同色的实色 tint，这样按钮在玻璃卡片上是一块
+ * 可辨的磨砂芯片、不会糊进背景；明暗自动反向，去掉 [arco-theme="dark"] 分支。
+ * 只在静止态带 backdrop-filter（hover 只加深 tint，模糊沿用静止态，避免与下方 native 修正打特异性）；
+ * primary/status 彩色变体用 :not(.arco-btn-status-*) 排除保持实色；非玻璃纹理档卡片本就实色、按钮走 arco 默认 fill，无需介入。
+ */
+body.app-glass .arco-btn-secondary:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success),
+body.app-glass .arco-btn-dashed:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success) {
+    background: rgba(var(--gray-10), 0.1);
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
+}
+body.app-glass .arco-btn-secondary:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success):hover,
+body.app-glass .arco-btn-dashed:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success):hover {
+    background: rgba(var(--gray-10), 0.16);
+}
+
+/*
+ * 玻璃档输入框 addon（.arco-input-append / .arco-input-prepend）：本体与 addon 都是半透明
+ * --color-fill-2(暗=rgba(255,255,255,.08))，addon 作为 wrapper 子元素再叠一层，二次合成后比
+ * 输入体更亮一档——在磨砂卡片上，输入框右侧的按钮/图标 addon（如时间戳「转换结果」的复制按钮）
+ * 就成了一块发虚的浅色矩形、与输入体脱节。让 addon 背景透明，统一透出本体那一层 fill-2 即与输入体
+ * 同色；addon 与本体间的分隔线（border-left/right）保留，只是不再叠色。非玻璃档卡片本就实色、
+ * addon 略亮是 arco 原生的分组观感，不介入（body.app-glass 打头，默认纯 no-op）。
+ */
+body.app-glass .arco-input-append,
+body.app-glass .arco-input-prepend {
+    background-color: transparent;
+}
+
+/*
+ * native 档下的玻璃修正：只铺 tint，去掉 CSS backdrop-filter——真桌面模糊由 DWM 在窗口
+ * 合成层提供，CSS 磨砂糊不到它（只作用于页内像素，卡片背后是透明 webview，
+ * 套用反而会把 tint 冲淡成看不糊）；与玻璃主组同特异性、靠书写顺序胜出。
+ */
+body.app-glass.app-bg-native .arco-card,
+body.app-glass.app-bg-native .arco-modal,
+body.app-glass.app-bg-native .arco-drawer,
+body.app-glass.app-bg-native .stat-card,
+body.app-glass.app-bg-native .item-card,
+body.app-glass.app-bg-native .svc-card,
+body.app-glass.app-bg-native .cp-card,
+body.app-glass.app-bg-native .m-stat-card,
+body.app-glass.app-bg-native .m-svc-card,
+body.app-glass.app-bg-native .m-tool-cell,
+body.app-glass.app-bg-native .arco-radio-group,
+body.app-glass.app-bg-native .arco-select-dropdown,
+body.app-glass.app-bg-native .arco-dropdown,
+body.app-glass.app-bg-native .arco-popconfirm-popup-content,
+body.app-glass.app-bg-native .arco-btn-secondary:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success),
+body.app-glass.app-bg-native .arco-btn-dashed:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.app-glass[arco-theme="dark"].app-bg-native .arco-card,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-modal,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-drawer,
+body.app-glass[arco-theme="dark"].app-bg-native .stat-card,
+body.app-glass[arco-theme="dark"].app-bg-native .item-card,
+body.app-glass[arco-theme="dark"].app-bg-native .svc-card,
+body.app-glass[arco-theme="dark"].app-bg-native .cp-card,
+body.app-glass[arco-theme="dark"].app-bg-native .m-stat-card,
+body.app-glass[arco-theme="dark"].app-bg-native .m-svc-card,
+body.app-glass[arco-theme="dark"].app-bg-native .m-tool-cell,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-radio-group,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-select-dropdown,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-dropdown,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-popconfirm-popup-content,
+body.app-glass[arco-theme="dark"].app-bg-native .arco-btn-secondary:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success),
+body.app-glass[arco-theme="dark"].app-bg-native .arco-btn-dashed:not(.arco-btn-status-warning):not(.arco-btn-status-danger):not(.arco-btn-status-success) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
 /* Acrylic 仿：表面再叠一层灰度噪点（::after，overlay 混合，opacity 受控），只盖表面不拦点击 */
 body.mat-acrylic.app-glass .arco-card,
-body.mat-acrylic.app-glass .m-card,
-body.mat-acrylic.app-glass .arco-modal,
-body.mat-acrylic.app-glass .arco-drawer {
+body.mat-acrylic.app-glass .arco-modal {
     position: relative;
 }
 
+/* 注：.arco-drawer 不列入上面的 position:relative 组——抽屉面板必须保持组件里的
+   position:absolute 才能贴住视口边缘；absolute 本身就是 ::after 噪点的包含块，
+   若强改 relative 会让面板脱离锚定掉进常规流（表现为不贴右、遮罩不铺满整屏）。 */
+
 body.mat-acrylic.app-glass .arco-card::after,
-body.mat-acrylic.app-glass .m-card::after,
 body.mat-acrylic.app-glass .arco-modal::after,
 body.mat-acrylic.app-glass .arco-drawer::after {
     content: "";
@@ -174,7 +714,6 @@ body.mat-acrylic.app-glass .arco-drawer::after {
 
 /* 减少动效时禁用磨砂模糊（backdrop-filter 开销大，动效敏感/低配优先可读与性能） */
 body.reduce-motion.app-glass .arco-card,
-body.reduce-motion.app-glass .m-card,
 body.reduce-motion.app-glass .arco-modal,
 body.reduce-motion.app-glass .arco-drawer {
     backdrop-filter: none;
@@ -182,13 +721,12 @@ body.reduce-motion.app-glass .arco-drawer {
 }
 
 /*
- * 全局主题背景层：.theme-bg（App.vue 挂的固定底）按 body.app-bg-<type> 绘制五种 CSS 背景。
- * 背景要让 .theme-bg 透出来，需把 body/#app 与外壳那几块实色底（--color-bg-1/2 铺的
- * .basic-layout/.layout-content/.blank-layout/.layout-body-main）在有背景时改透明——面板自身底色交给
- * 玻璃 tint 提供（未开玻璃时靠内容卡片自带底）。native 档不画（真桌面透出）；none 档完全 no-op。
+ * 纹理单一真相源：按档把完整纹理写入 body 上的 --app-texture-bg，
+ * 由 .theme-bg（固定底）与 m-modal / m-drawer（浮层复刻同款纹理）共同消费，避免多处各写一份。
+ * mesh/photo/dark 为纯渐变（无固有尺寸即自动铺满），image 为 theme.ts 异步写入的 --app-bg-image url。
  */
-body.app-bg-mesh .theme-bg {
-    background:
+body.app-bg-mesh {
+    --app-texture-bg:
         radial-gradient(circle at 20% 20%, #ff6b6b, transparent 45%),
         radial-gradient(circle at 80% 30%, #4ecdc4, transparent 45%),
         radial-gradient(circle at 40% 80%, #5470c6, transparent 45%),
@@ -196,47 +734,142 @@ body.app-bg-mesh .theme-bg {
         linear-gradient(135deg, #a8edea, #fed6e3);
 }
 
-body.app-bg-photo .theme-bg {
-    background: linear-gradient(160deg, #3a1c71, #d76d77, #ffaf7b);
-}
-
-body.app-bg-plain .theme-bg {
-    background: linear-gradient(160deg, #cfd9df, #e2ebf0);
+body.app-bg-photo {
+    --app-texture-bg: linear-gradient(160deg, #3a1c71, #d76d77, #ffaf7b);
 }
 
 /* 暗夜纹理：跟随明暗主题——浅色给近白纹理，深色给暗纹理 */
-body.app-bg-dark .theme-bg {
-    background:
+body.app-bg-dark {
+    --app-texture-bg:
         repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 7px),
         linear-gradient(160deg, #f5f7fa, #dfe4ec);
 }
 
-body[arco-theme="dark"].app-bg-dark .theme-bg {
-    background:
+body[arco-theme="dark"].app-bg-dark {
+    --app-texture-bg:
         repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 7px),
         linear-gradient(160deg, #2a2d34, #16181d);
 }
 
 /* 自定义图：--app-bg-image 由 theme.ts 经 ReadFileDataURI 异步写入（url(...)），未就绪时不画 */
-body.app-bg-image .theme-bg {
-    background-image: var(--app-bg-image, none);
+body.app-bg-image {
+    --app-texture-bg: var(--app-bg-image, none);
+}
+
+/* 固定底：统一消费 --app-texture-bg；none/native 档变量未定义→回落 none，不画纹理（真桌面由 DWM 提供） */
+.theme-bg {
+    background-image: var(--app-texture-bg, none);
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
 }
 
-/* 底色让路：有 CSS 背景时把根底与外壳实色底改透明，露出 .theme-bg（none/native 档不介入，保持原状） */
-body:not(.app-bg-none):not(.app-bg-native),
-body:not(.app-bg-none):not(.app-bg-native) #app {
+/*
+ * 浮层（modal / drawer / dropdown / select 下拉）：纹理档下把同款纹理复刻为浮层自身的不透明背景（不透出背后内容/遮罩），
+ * 底下铺 --color-bg-2 作基色供 mesh 渐变的 transparent 断点透出，与主窗口观感一致。
+ * none 档无纹理→实色；native 档真桌面糊在 DWM 层复刻不了→实色兜底。
+ * 注：a-select 的下拉弹层类名是 .arco-select-dropdown（非 .arco-dropdown），回退 m-dropdown→a-select 后需一并纳入，
+ * 否则它仍吃 arco 默认 --color-bg-popup(#373739，偏亮无纹理)，与其它浮层不一致。
+ */
+body:not(.app-bg-none):not(.app-bg-native) .arco-modal,
+body:not(.app-bg-none):not(.app-bg-native) .arco-drawer,
+body:not(.app-bg-none):not(.app-bg-native) .arco-dropdown,
+body:not(.app-bg-none):not(.app-bg-native) .arco-select-dropdown,
+body:not(.app-bg-none):not(.app-bg-native) .arco-popconfirm-popup-content,
+body:not(.app-bg-none):not(.app-bg-native) .ctx-menu,
+body:not(.app-bg-none):not(.app-bg-native) .pt-menu,
+body:not(.app-bg-none):not(.app-bg-native) .pm-menu,
+body:not(.app-bg-none):not(.app-bg-native) .pm-submenu {
+    background-color: var(--color-bg-2);
+    background-image: var(--app-texture-bg, none);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+/*
+ * a-select 下拉「选项」背景同步：上面把容器 .arco-select-dropdown 铺成 --color-bg-2+纹理（或玻璃 rgba），
+ * 比 arco 默认的 --color-bg-popup(#373739，偏亮) 更暗；但选中/禁用项 arco 仍写死 background-color: var(--color-bg-popup)，
+ * 于是浮出一条比主题化容器更亮的灰带，与背景档/玻璃脱节（用户反馈「下拉菜单还有背景灰色」「a-select 选项背景颜色不对」）。
+ * 让选中/禁用项透出已主题化的容器（transparent），选中态仍靠 arco 的主色文字+加粗+勾选图标辨识；
+ * hover/active 走 --color-fill-2 不动，保证可点击项仍能从容器底色拉开。
+ * 特异性：纹理选择器 (0,4,1)、玻璃 (0,2,1) 均压过 arco 的 .arco-select-dropdown .arco-select-option-selected (0,2,0)。
+ * 默认档(app-bg-none、无玻璃)不介入，纯 no-op。
+ */
+body:not(.app-bg-none):not(.app-bg-native) .arco-select-option-selected,
+body:not(.app-bg-none):not(.app-bg-native) .arco-select-option-disabled,
+body.app-glass .arco-select-option-selected,
+body.app-glass .arco-select-option-disabled {
+    background-color: transparent;
+}
+
+/*
+ * 未选中/未 hover 的普通选项同样透出主题化容器：上面只把 selected/disabled 归透明，但 arco 给
+ * .arco-select-option 基态（index.css line61）也写死 background-color: var(--color-bg-popup)（#373739，
+ * 比主题化容器 bg-2 偏亮），于是普通项仍浮一层灰底、与背景档/玻璃脱节（用户反馈「未选择的选项背景不随主题」）。
+ * 用 :not 排除 active/hover/selected/disabled，保证可点击项的 hover/active 高亮（--color-fill-2）不受影响。
+ * 特异性：带 4 个 :not(类)+1 个 :not(:hover) 约 (0,6,1)，压过 arco 基态 (0,2,0)；因已排除交互态，不与 hover/active 冲突。
+ * 默认档(app-bg-none、无玻璃)不介入，纯 no-op。
+ */
+body:not(.app-bg-none):not(.app-bg-native) .arco-select-option:not(.arco-select-option-active):not(.arco-select-option-selected):not(.arco-select-option-disabled):not(:hover),
+body.app-glass .arco-select-option:not(.arco-select-option-active):not(.arco-select-option-selected):not(.arco-select-option-disabled):not(:hover) {
+    background-color: transparent;
+}
+
+/*
+ * 菜单类浮层圆角统一口径：arco.css 把 dropdown / select 下拉 / popconfirm 的圆角写死
+ * --border-radius-medium（4px），比卡片与自绘右键菜单的 --base-radius-default（6px，随圆角档）
+ * 小一档，深色/纹理档下几乎看成直角。这里对齐到卡片口径，body 打头特异性 (0,2,1) 压过 arco.css
+ * 单类 (0,1,0)；none 圆角档时 --base-radius-default=0，仍随主题联动。
+ */
+body .arco-dropdown,
+body .arco-select-dropdown,
+body .arco-popconfirm-popup-content {
+    border-radius: var(--base-radius-default);
+}
+
+/*
+ * a-popconfirm（气泡确认框）方向小三角：面板 .arco-popconfirm-popup-content 已并入上面的
+ * 玻璃/纹理浮层组；三角 .arco-popconfirm-popup-arrow 是 8px 方块旋转 45°、靠 arco 的
+ * [trigger-placement] 规则只留 2 条边形成「指向触发元素」的箭头，arco 把它与面板一样写死
+ * --color-bg-popup 实色 + --color-neutral-3 描边，玻璃/纹理档下与主题脱节。这里只同步它的
+ * 「底色 + 描边色」，留哪两条边仍交回 arco。玻璃+纹理同开时纹理规则(0,3,1)胜出，与面板一致
+ * 走不透明纹理复刻；默认档(app-bg-none)不介入，纯 no-op。
+ */
+body.app-glass .arco-popconfirm-popup-arrow {
+    background-color: rgba(255, 255, 255, var(--app-glass-alpha));
+    border-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+body.app-glass[arco-theme="dark"] .arco-popconfirm-popup-arrow {
+    background-color: rgba(24, 26, 32, var(--app-glass-alpha));
+    border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+/* 纹理档：面板底为 bg-2 + 纹理，8px 旋转小三角铺不了纹理，取同源实色 bg-2 近似；
+   描边与面板同为 arco --color-neutral-3，本就一致，无需覆盖。 */
+body:not(.app-bg-none):not(.app-bg-native) .arco-popconfirm-popup-arrow {
+    background-color: var(--color-bg-2);
+}
+
+/*
+ * 底色让路：把根底与外壳实色底改透明。
+ * CSS 背景档（mesh/photo/dark/image）露出 .theme-bg；native 档同样必须让路——
+ * 窗口是 DWM translucent+Acrylic 建的，webview 不透明就会把系统级桌面模糊整个盖住
+ * （模糊在窗口合成层，backdrop-filter 够不着，只能靠页面自身透明露出）。
+ * none 档完全 no-op 保持原状。
+ */
+body:not(.app-bg-none),
+body:not(.app-bg-none) #app {
     background: transparent;
 }
 
-body:not(.app-bg-none):not(.app-bg-native) .basic-layout,
-body:not(.app-bg-none):not(.app-bg-native) .layout-content,
-body:not(.app-bg-none):not(.app-bg-native) .blank-layout,
-body:not(.app-bg-none):not(.app-bg-native) .win-titlebar,
-body:not(.app-bg-none):not(.app-bg-native) .layout-body-main.has-bg,
-body:not(.app-bg-none):not(.app-bg-native) .layout-body-main.has-bg .layout-body-main-content {
+body:not(.app-bg-none) .basic-layout,
+body:not(.app-bg-none) .layout-content,
+body:not(.app-bg-none) .blank-layout,
+body:not(.app-bg-none) .win-titlebar,
+body:not(.app-bg-none) .layout-body-main.has-bg,
+body:not(.app-bg-none) .layout-body-main.has-bg .layout-body-main-content {
     background: transparent;
 }
 
@@ -249,4 +882,66 @@ body.app-glass:not(.app-bg-none):not(.app-bg-native) .win-titlebar {
 
 body.app-glass[arco-theme="dark"]:not(.app-bg-none):not(.app-bg-native) .win-titlebar {
     background: rgba(24, 26, 32, var(--app-glass-alpha));
+}
+
+/* native 档标题栏：只铺 tint 不加 backdrop-filter——真桌面模糊由 DWM 在窗口层提供，
+ * CSS 磨砂糊不到它（只会糊页内像素，透明处反把 tint 冲淡） */
+body.app-glass.app-bg-native .win-titlebar {
+    background: rgba(255, 255, 255, var(--app-glass-alpha));
+}
+
+body.app-glass[arco-theme="dark"].app-bg-native .win-titlebar {
+    background: rgba(24, 26, 32, var(--app-glass-alpha));
+}
+
+/*
+ * 标题栏底边同样遵从主题描边强度（scoped 基线写死 --color-border-1，这里盖成受控 rgba）：
+ * 描边拉到 0 时整栏底边消失，与卡片外框/头部隔线同进退。全局外壳组件的可见描边
+ * 一律走 --app-glass-border，不留写死的 --color-border-*。
+ */
+body.app-glass .win-titlebar {
+    border-bottom-color: rgba(255, 255, 255, var(--app-glass-border));
+}
+
+body.app-glass[arco-theme="dark"] .win-titlebar {
+    border-bottom-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
+}
+
+/*
+ * 无边距模式（card-flush，设置→主题 开关）：a-card 去左右内边距、不铺背景（含磨砂/纹理复刻与
+ * 玻璃投影），描边固定归无（透明占位，不用 border:none 避免布局抖动），卡片只靠留白分段、
+ * 内容贴边铺满、整页更紧凑。自绘卡片家族（首页实例卡/指标卡/实体卡/容器卡等）同一口径：
+ * 常态无边无底，hover/选中描边照常回来（各页 scoped 的 :hover 组特异性更高，交互不丢）。
+ * 选择器用双类把特异性抬到 (0,3,1)，与玻璃暗色卡片组打平且书写在后胜出；本段位于全部
+ * 玻璃/纹理段之后，同档竞争一律靠书写序压过。关闭时纯 no-op。
+ * 只动左右：上下留白、header↔body 隔线、段间距联动等全部交回原主题体系。
+ */
+body.card-flush .arco-card.arco-card {
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    border-color: transparent;
+}
+
+body.card-flush .arco-card .arco-card-header,
+body.card-flush .arco-card .arco-card-body {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* 自绘卡片家族（与玻璃联动组同一张清单）：无边距档同样无底无边，双类压过玻璃暗色组 (0,3,1) */
+body.card-flush .stat-card.stat-card,
+body.card-flush .item-card.item-card,
+body.card-flush .svc-card.svc-card,
+body.card-flush .cp-card.cp-card,
+body.card-flush .m-stat-card.m-stat-card,
+body.card-flush .m-svc-card.m-svc-card,
+body.card-flush .m-tool-cell.m-tool-cell,
+body.card-flush .cc.cc {
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    border-color: transparent;
 }

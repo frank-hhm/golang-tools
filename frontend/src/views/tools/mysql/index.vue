@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <a-row class="mysql-page" :gutter="6">
     <a-col :span="5" class="side-col">
       <!-- 合并「外部连接」与「本地实例」为一个列表：点连接进库树工作区，点实例进右侧总览，用 a-tag 区分来源 -->
@@ -2718,8 +2718,8 @@ onUnmounted(() => {
 }
 
 /* 表体占满表头剩余高度，内容超出时才出现滚动条 */
-.data-table :deep(.arco-table-body),
-.read-table :deep(.arco-table-body) {
+.data-table :deep(.arco-table-content),
+.read-table :deep(.arco-table-content) {
   flex: 1;
   min-height: 0;
 }
@@ -2801,7 +2801,7 @@ onUnmounted(() => {
   border: 1px solid var(--color-border-2);
   border-radius: var(--base-radius-default);
   padding: var(--base-radius-large);
-  font-family: Consolas, monospace;
+  font-family: var(--code-font-family);
   font-size: var(--base-size-small);
   white-space: pre-wrap;
   word-break: break-all;
@@ -2844,7 +2844,7 @@ onUnmounted(() => {
 }
 
 /* ---- 对象树标题（右键区） ---- */
-:deep(.arco-tree-node-title-text) {
+:deep(.arco-tree-node-title) {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -2858,8 +2858,8 @@ onUnmounted(() => {
 }
 
 /* 选中态：主题主色为黑白时默认样式对比不足，改用中性底色 + 正文色 */
-.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title),
-.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-row),
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-row:hover) {
   color: var(--color-text-1);
   background-color: var(--color-fill-3);
   font-weight: 600;
@@ -2887,7 +2887,7 @@ onUnmounted(() => {
   box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
 }
 
-:deep(.ctx-menu .arco-menu-inner) {
+:deep(.ctx-menu .arco-menu) {
   padding: 2px;
 }
 
@@ -2912,7 +2912,7 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.path-row :deep(.arco-input-wrapper) {
+.path-row :deep(.arco-input) {
   flex: 1;
 }
 

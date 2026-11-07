@@ -59,16 +59,16 @@
                             <a-table-column title="操作" :width="220" fixed="right" align="right">
                                 <template #cell="{ record }">
                                     <a-space :size="2">
-                                        <a-button size="small" :loading="regTesting === record.id"
+                                        <a-button size="mini" :loading="regTesting === record.id"
                                             @click="testRegistry(record)">
                                             <template #icon><icon-link /></template>测试
                                         </a-button>
-                                        <a-button size="small" @click="editRegistry(record)">
+                                        <a-button size="mini" @click="editRegistry(record)">
                                             <template #icon><icon-edit /></template>编辑
                                         </a-button>
                                         <a-popconfirm :content="`删除仓库配置「${record.name}」？`" type="warning"
                                             position="lt" @ok="removeRegistry(record)">
-                                            <a-button size="small" status="danger">
+                                            <a-button size="mini" status="danger">
                                                 <template #icon><icon-delete /></template>删除
                                             </a-button>
                                         </a-popconfirm>
@@ -437,6 +437,6 @@ async function testRegistry(rec: any) {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

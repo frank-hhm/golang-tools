@@ -3,13 +3,14 @@
 @use './theme/style.scss' as *;
 @use './theme/editor.scss' as *;
 @use './theme/tokens.scss' as *;
+@use './theme/code.scss' as *;
 @use './modal.scss' as *;
 @use './popconfirm.scss' as *;
 @use './scrollbar.scss' as *;
 
 :root {
     
-    --base-size-small: 12px;
+    --base-size-small: 11px;
 
     --base-size-default: 12px;
 
@@ -17,7 +18,16 @@
 
     --base-size-large-x:16px;
 
-    --base-size-large-xx: 20px;
+    --base-size-large-xx:18px;
+
+    /* 数字别名：历史上全站 40+ 处直接引用 --base-size-8/12/13/14/24 等数字档但从未定义，
+       一直是空转回退（字体大小退回继承、间距退回 0）。这里按名字里的像素值补齐，
+       与变量名一致、行为可预测；不参与密度缩放（缩放语义由 --base-size-small/default/large 那组承担）。 */
+    --base-size-8: 8px;
+    --base-size-12: 12px;
+    --base-size-13: 13px;
+    --base-size-14: 14px;
+    --base-size-24: 24px;
 
     --base-radius-default: 6px;
 

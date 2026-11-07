@@ -540,22 +540,23 @@ async function copy() {
     margin: auto;
 }
 
-/* 代码视图：左侧行号 + 右侧内容，整体横纵向滚动；配色由局部 CSS 变量驱动，浅/暗各一套 */
+/* 代码视图：左侧行号 + 右侧内容，整体横纵向滚动。
+   配色不再局部硬编码，统一引用全局皮肤 styles/theme/code.scss 的 --code-* 变量，
+   明暗随 body[arco-theme] 自动翻面，与日志/终端等其它等宽面共用同一套色板。 */
 .bv-code {
-    /* 浅色（GitHub Light 取向） */
-    --bv-bg: #fbfcfd;
-    --bv-gutter-bg: #f2f3f5;
-    --bv-gutter-text: #86909c;
-    --bv-border: #e5e6eb;
-    --bv-text: #24292f;
-    --bv-key: #0b61a4;
-    --bv-str: #a31515;
-    --bv-num: #098658;
-    --bv-lit: #6f42c1;
-    --bv-tag: #22863a;
-    --bv-attr: #6f42c1;
-    --bv-punc: #6a737d;
-    --bv-com: #8b949e;
+    --bv-bg: var(--code-bg);
+    --bv-gutter-bg: var(--code-gutter-bg);
+    --bv-gutter-text: var(--code-gutter-text);
+    --bv-border: var(--code-border);
+    --bv-text: var(--code-text);
+    --bv-key: var(--code-tok-key);
+    --bv-str: var(--code-tok-str);
+    --bv-num: var(--code-tok-num);
+    --bv-lit: var(--code-tok-lit);
+    --bv-tag: var(--code-tok-tag);
+    --bv-attr: var(--code-tok-attr);
+    --bv-punc: var(--code-tok-punc);
+    --bv-com: var(--code-tok-com);
     --bv-pad: 8px;
     --bv-line: 1.6;
 
@@ -568,24 +569,6 @@ async function copy() {
     border-radius: var(--base-radius-default);
 }
 
-/* 暗黑：跟随 Arco 的 body[arco-theme='dark'] 同步切换（VS Code Dark 取向）
-   注：祖先选择器不参与作用域，scoped 编译后为 body[arco-theme="dark"] .bv-code[data-v-xxx] */
-body[arco-theme="dark"] .bv-code {
-    --bv-bg: #17171a;
-    --bv-gutter-bg: #1d1d20;
-    --bv-gutter-text: #6b7280;
-    --bv-border: #2b2b30;
-    --bv-text: #e6e6e6;
-    --bv-key: #79c0ff;
-    --bv-str: #7ec699;
-    --bv-num: #f08d49;
-    --bv-lit: #cc99cd;
-    --bv-tag: #e06c75;
-    --bv-attr: #f2c97d;
-    --bv-punc: #9aa4b2;
-    --bv-com: #7d8590;
-}
-
 .bv-gutter {
     flex: none;
     position: sticky;
@@ -596,7 +579,7 @@ body[arco-theme="dark"] .bv-code {
     color: var(--bv-gutter-text);
     background: var(--bv-gutter-bg);
     border-right: 1px solid var(--bv-border);
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: var(--bv-line);
     user-select: none;
@@ -607,7 +590,7 @@ body[arco-theme="dark"] .bv-code {
     margin: 0;
     padding: var(--bv-pad) 12px;
     color: var(--bv-text);
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: var(--bv-line);
     white-space: pre;

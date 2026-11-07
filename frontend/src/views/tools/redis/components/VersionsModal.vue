@@ -300,7 +300,7 @@ watch(() => props.visible, (open) => { if (open) openReset(); });
     margin-top: var(--base-padding);
 }
 
-.ver-actions :deep(.arco-input-wrapper) {
+.ver-actions :deep(.arco-input) {
     flex: 1;
 }
 
@@ -311,7 +311,7 @@ watch(() => props.visible, (open) => { if (open) openReset(); });
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     background: var(--color-fill-2);
     padding: var(--base-radius-small) var(--base-radius-default);
     border-radius: var(--base-radius-small);
@@ -360,7 +360,7 @@ watch(() => props.visible, (open) => { if (open) openReset(); });
 }
 
 .inst-log-line {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     color: var(--color-text-2);
     line-height: 1.6;

@@ -241,6 +241,9 @@ export default [{
         auth: false,
         blank: true,
         menu_name: "快捷搜索",
+        // 透明小窗靠窗口透明收点击/留呼吸：全局 .theme-bg 固定底会把整窗铺满纹理，须关掉；
+        // 主题背景只由面板容器 .lk-card 自己复刻（见 launcher.vue 与 tokens.scss 联动组）
+        noThemeBg: true,
     },
     component: () => import('@/views/widget/launcher.vue')
 }, {

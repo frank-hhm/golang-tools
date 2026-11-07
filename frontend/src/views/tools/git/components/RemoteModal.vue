@@ -166,7 +166,7 @@ function doRemove(name: string) {
   font-size: 12px;
 }
 .rm-name {
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--code-font-family);
 }
 .rm-empty {
   padding: 20px;

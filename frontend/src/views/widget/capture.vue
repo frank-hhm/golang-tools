@@ -1,6 +1,7 @@
 <template>
     <div v-if="!ready" class="cap-loading"></div>
-    <div v-else class="cap" :class="{ 'cap-draw': tool !== 'none' }" @mousedown="onDown" @contextmenu.prevent="onCancel">
+    <div v-else class="cap" :class="{ 'cap-draw': tool !== 'none' }" @mousedown="onDown"
+        @contextmenu.prevent="onCancel">
         <!-- 冻结帧：整屏背景。Go 侧多核并行时按水平带分张下发，这里按序上下拼接；
              浮层不透明，所以不需要 Wails 的透明窗口支持 -->
         <div v-for="(u, i) in bgUrls" :key="i" class="cap-bg" :style="bgStyle(i, u)"></div>
@@ -35,8 +36,8 @@
         <!-- 文字标注框：就地可编辑，拖边框移动、拖四角缩放（如图）。真 textarea 才有输入法候选窗；
              整块 .stop 掉 mousedown，避免在框内点击定位光标时冒泡到根 onDown 把框提前提交 -->
         <div v-if="editBox" class="cap-textbox" :style="boxStyle" @mousedown.stop="onBoxDown">
-            <textarea ref="textRef" v-model="editBox.text" class="cap-textarea" :style="areaStyle"
-                spellcheck="false" @contextmenu.stop.prevent @keydown.esc.stop.prevent="commitBox"></textarea>
+            <textarea ref="textRef" v-model="editBox.text" class="cap-textarea" :style="areaStyle" spellcheck="false"
+                @contextmenu.stop.prevent @keydown.esc.stop.prevent="commitBox"></textarea>
             <div v-for="d in BOX_HANDLES" :key="d" class="cap-box-h" :class="'bh-' + d"
                 @mousedown.stop="onBoxHandle(d, $event)"></div>
         </div>
@@ -46,8 +47,7 @@
             <div class="cap-main">
                 <a-tooltip v-for="t in TOOLS" :key="t.tool" :content="t.tip" :mouse-enter-delay="600">
                     <!-- 选中态单独给类：a-button 的 text 样式会压住背景，靠 type=primary 又与全局规范相左 -->
-                    <a-button size="small" type="text" class="cap-tool" :class="{ on: tool === t.tool }"
-                        @click="pickTool(t.tool)">
+                    <a-button size="small" class="cap-tool" :class="{ on: tool === t.tool }" @click="pickTool(t.tool)">
                         <component :is="t.icon" v-if="t.icon" />
                         <!-- Arco 没有空心矩形/椭圆/T 字，按其 48 网格 + 4px 圆头描边补齐 -->
                         <svg v-else class="cap-svg" viewBox="0 0 48 48">
@@ -59,26 +59,26 @@
                 </a-tooltip>
                 <i class="cap-sep"></i>
                 <a-tooltip content="撤销 (Ctrl+Z)" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" :disabled="!shapes.length" @click="undo"><icon-undo /></a-button>
+                    <a-button size="small" :disabled="!shapes.length" @click="undo"><icon-undo /></a-button>
                 </a-tooltip>
                 <a-tooltip content="保存 PNG 文件" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" @click="saveFile"><icon-save /></a-button>
+                    <a-button size="small" @click="saveFile"><icon-save /></a-button>
                 </a-tooltip>
                 <a-tooltip content="打开预览窗口" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" @click="finish(true)"><icon-eye /></a-button>
+                    <a-button size="small" @click="finish(true)"><icon-eye /></a-button>
                 </a-tooltip>
                 <a-tooltip content="图钉置顶" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" @click="pinIt"><icon-pushpin /></a-button>
+                    <a-button size="small" @click="pinIt"><icon-pushpin /></a-button>
                 </a-tooltip>
                 <a-tooltip content="提取文字" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" :loading="ocrLoading" @click="runOcr"><icon-translate /></a-button>
+                    <a-button size="small" :loading="ocrLoading" @click="runOcr"><icon-translate /></a-button>
                 </a-tooltip>
                 <i class="cap-sep"></i>
                 <a-tooltip content="取消截图 (Esc)" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" status="danger" @click="onCancel"><icon-close /></a-button>
+                    <a-button size="small" status="danger" @click="onCancel"><icon-close /></a-button>
                 </a-tooltip>
                 <a-tooltip content="复制并关闭 (Enter)" :mouse-enter-delay="600">
-                    <a-button size="small" type="text" status="success" @click="finish(false)"><icon-check /></a-button>
+                    <a-button size="small" status="success" @click="finish(false)"><icon-check /></a-button>
                 </a-tooltip>
             </div>
 
@@ -95,7 +95,7 @@
                     </a-button>
                 </template>
                 <i class="cap-sep cap-sep-dark"></i>
-                <a-button v-for="c in COLORS" :key="'cl' + c" size="mini" type="text"
+                <a-button class="cap-color-btn" v-for="c in COLORS" :key="'cl' + c" size="mini"
                     :class="{ 'cap-color-on': color === c }" @click="setColor(c)">
                     <i class="cap-swatch" :style="{ background: c }"></i>
                 </a-button>
@@ -103,8 +103,7 @@
         </div>
 
         <!-- 提取文字结果：就地弹窗展示，可编辑后复制；不关浮层，方便继续操 -->
-        <a-modal v-model:visible="ocrVisible" title="提取文字" :width="560" :footer="false" :mask-closable="true"
-            draggable>
+        <a-modal v-model:visible="ocrVisible" title="提取文字" :width="560" :footer="false" :mask-closable="true" draggable>
             <a-spin :loading="ocrLoading" class="cap-ocr-spin">
                 <a-textarea v-model="ocrText" :auto-size="{ minRows: 6, maxRows: 14 }"
                     :placeholder="ocrLoading ? '正在识别…' : '识别结果将显示在这里…'" class="cap-ocr-text" />
@@ -1282,10 +1281,25 @@ function blurAll() {
     border-radius: 2px;
 }
 
-.h-nw, .h-se { cursor: nwse-resize }
-.h-ne, .h-sw { cursor: nesw-resize }
-.h-n, .h-s { cursor: ns-resize }
-.h-e, .h-w { cursor: ew-resize }
+.h-nw,
+.h-se {
+    cursor: nwse-resize
+}
+
+.h-ne,
+.h-sw {
+    cursor: nesw-resize
+}
+
+.h-n,
+.h-s {
+    cursor: ns-resize
+}
+
+.h-e,
+.h-w {
+    cursor: ew-resize
+}
 
 .cap-tag {
     position: absolute;
@@ -1378,21 +1392,25 @@ function blurAll() {
     border-radius: 2px;
     box-sizing: border-box;
 }
+
 .bh-nw {
     left: 0;
     top: 0;
     cursor: nwse-resize;
 }
+
 .bh-ne {
     right: 0;
     top: 0;
     cursor: nesw-resize;
 }
+
 .bh-sw {
     left: 0;
     bottom: 0;
     cursor: nesw-resize;
 }
+
 .bh-se {
     right: 0;
     bottom: 0;
@@ -1445,13 +1463,34 @@ function blurAll() {
     padding: 0;
 }
 
-.cap-btn:hover:not(:disabled) { background: var(--color-fill-2); color: var(--color-text-1) }
-.cap-btn:disabled { opacity: .35; cursor: default }
-.cap-btn.on { background: var(--color-fill-3); color: var(--color-text-1) }
+.cap-btn:hover:not(:disabled) {
+    background: var(--color-fill-2);
+    color: var(--color-text-1)
+}
 
-.cap-sub .cap-btn { color: var(--color-text-2) }
-.cap-sub .cap-btn:hover:not(:disabled) { background: var(--color-fill-3); color: var(--color-text-1) }
-.cap-sub .cap-btn.on { background: var(--color-fill-4); color: var(--color-text-1) }
+.cap-btn:disabled {
+    opacity: .35;
+    cursor: default
+}
+
+.cap-btn.on {
+    background: var(--color-fill-3);
+    color: var(--color-text-1)
+}
+
+.cap-sub .cap-btn {
+    color: var(--color-text-2)
+}
+
+.cap-sub .cap-btn:hover:not(:disabled) {
+    background: var(--color-fill-3);
+    color: var(--color-text-1)
+}
+
+.cap-sub .cap-btn.on {
+    background: var(--color-fill-4);
+    color: var(--color-text-1)
+}
 
 .cap-btn-wide {
     width: auto;
@@ -1477,11 +1516,11 @@ function blurAll() {
 
 .cap-swatch {
     display: block;
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, .35);
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
     box-sizing: border-box;
+    border: 2px solid rgba(0, 0, 0, 0);
 }
 
 /* 选中的绘图工具：主色底 + 白图标，与子栏里选中的线宽/字号一套观感；
@@ -1492,17 +1531,36 @@ function blurAll() {
     color: #fff !important;
 }
 
-/* 颜色选中态：a-button 本身不加自定义形状，只给一个背景表示已选 */
-.cap-color-on { background: var(--color-fill-3) !important; }
+.cap-color-btn {
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 16px;
+    padding: 0;
+}
 
-.cap-ocr-spin { display: block; width: 100%; }
+/* 颜色选中态：a-button 本身不加自定义形状，只给一个背景表示已选 */
+.cap-color-on {
+    background: var(--color-fill-3) !important;
+}
+
+.cap-ocr-spin {
+    display: block;
+    width: 100%;
+}
+
 .cap-ocr-foot {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-top: 10px;
 }
-.cap-ocr-hint { font-size: 12px; color: var(--color-text-3); }
+
+.cap-ocr-hint {
+    font-size: 12px;
+    color: var(--color-text-3);
+}
 
 .cap-sep {
     width: 1px;
@@ -1511,5 +1569,7 @@ function blurAll() {
     background: var(--color-border-2);
 }
 
-.cap-sep-dark { background: var(--color-border-3) }
+.cap-sep-dark {
+    background: var(--color-border-3)
+}
 </style>

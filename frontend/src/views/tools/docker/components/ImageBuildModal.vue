@@ -91,6 +91,6 @@ function submit(): boolean {
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

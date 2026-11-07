@@ -245,7 +245,7 @@ onBeforeUnmount(() => { if (offInstall) offInstall(); });
     flex: 1;
     min-width: 0;
     color: var(--color-text-1);
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     word-break: break-all;
 }
 
@@ -281,7 +281,7 @@ onBeforeUnmount(() => { if (offInstall) offInstall(); });
     margin: 0 14px 12px;
     padding: 8px;
     border-radius: 4px;
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: 12px;
 }
 

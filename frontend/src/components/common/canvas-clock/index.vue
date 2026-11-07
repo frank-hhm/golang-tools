@@ -11,6 +11,8 @@ export default {
  * Canvas 指针时钟（贴合项目 Arco 主题，含暗黑模式）：
  *  - 颜色属性缺省时读 Arco CSS 变量（--primary-6/--color-bg-2/--color-text-1/3），
  *    浅色/暗黑切换（body[arco-theme] 变化）自动换肤；显式传值则固定配色
+ *  - 表盘底还随「表面玻璃」皮肤（body.app-glass）：开玻璃时改用与卡片同源的半透明 tint，
+ *    透出下层主题纹理，不再是一块孤立实心圆（详见 resolvePalette 的 faceColor 处理）
  *  - 外圈粗圆环 + 表盘内阴影（内阴影随圆环颜色自动着色）
  *  - 主色秒针带光晕，连续平滑走动；中心轴点同色
  *  - 盘面信息跑动：年份大字水印、"M月D日"、"星期X" 药丸徽章、"HH:mm:ss:百分秒" 毫秒跳动
@@ -110,6 +112,17 @@ function resolvePalette(): Record<ColorKey, string> {
         p[k] = v || FALLBACK[k];
     }
     palette = p;
+    // 表盘底跟随「表面玻璃」皮肤：开玻璃（body.app-glass）时全站卡片都退成半透明磨砂 tint
+    // （浅 rgba(255,255,255,α) / 暗 rgba(24,26,32,α)，α=--app-glass-alpha），首页时钟是直接铺在
+    // 纹理背景上的独立圆盘，若仍用不透明 --color-bg-2 实色就会在玻璃档下糊成一块与页面脱节的实心圆。
+    // canvas 无 backdrop-filter，这里让缺省表盘底改用与卡片同源的半透明 tint，透出下层主题纹理；
+    // 显式传 faceColor、或非玻璃档（卡片本就实色 bg-2、时钟同色天然一致）都保持上面的实色回落。
+    if (!props.faceColor && document.body.classList.contains("app-glass")) {
+        const a = parseFloat(cs.getPropertyValue("--app-glass-alpha"));
+        if (Number.isFinite(a) && a > 0) {
+            p.faceColor = dark ? `rgba(24,26,32,${a})` : `rgba(255,255,255,${a})`;
+        }
+    }
     return p;
 }
 
@@ -273,12 +286,15 @@ function loop() {
     raf = requestAnimationFrame(loop);
 }
 
-/** 主题切换（body 的 arco-theme/class/style 变化）时失效配色缓存，下一帧自动换肤 */
+/** 主题切换（body 的 arco-theme/class/style 变化）时失效配色缓存，下一帧自动换肤；
+ *  玻璃令牌（--app-glass-alpha 等）由 theme.ts inline 写在 <html> 的 style 上，拖动「玻璃强度」
+ *  滑杆只改 html 属性、不动 body class，故这里一并观察 documentElement 才能实时换肤 */
 let mo: MutationObserver | null = null;
 
 onMounted(() => {
     mo = new MutationObserver(() => (palette = null));
     mo.observe(document.body, { attributes: true, attributeFilter: ["arco-theme", "class", "style"] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
     loop();
 });
 onBeforeUnmount(() => {

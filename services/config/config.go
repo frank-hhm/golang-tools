@@ -59,8 +59,9 @@ type ThemeConfig struct {
 	FontSize   string          `json:"fontSize"`   // small | default | large | xlarge，默认 default（字号，独立于密度，前端消费后端仅持久化）
 	Contrast   string          `json:"contrast"`   // normal | high，默认 normal
 	Motion     string          `json:"motion"`     // on | reduced，默认 on
+	Flush      bool            `json:"flush"`      // 无边距模式：卡片去左右内边距、不铺背景，描边固定归无（前端消费，后端仅持久化，默认 false）
 	Glass      ThemeGlass      `json:"glass"`      // 表面玻璃材质参数；兼容老字符串 off|surface（见 UnmarshalJSON）
-	Background ThemeBackground `json:"background"` // 全局背景主题（网格/风景/纯色/暗夜纹理/自定义图/原生）
+	Background ThemeBackground `json:"background"` // 全局背景主题（网格/风景/暗夜纹理/自定义图/原生）
 }
 
 // ThemeGlass 表面磨砂/Acrylic 仿材质参数。数值全部存整数避免前后端 float 序列化歧义，
@@ -77,7 +78,7 @@ type ThemeGlass struct {
 
 // ThemeBackground 全局背景主题档。
 type ThemeBackground struct {
-	Type  string `json:"type"`  // none | mesh | photo | plain | dark | image | native，默认 none
+	Type  string `json:"type"`  // none | mesh | photo | dark | image | native，默认 none
 	Image string `json:"image"` // 导入后的绝对路径，仅 type=image；其它档清空
 }
 
@@ -106,7 +107,7 @@ func validGlassMaterial(v string) bool {
 
 func validBackgroundType(v string) bool {
 	switch v {
-	case "none", "mesh", "photo", "plain", "dark", "image", "native":
+	case "none", "mesh", "photo", "dark", "image", "native":
 		return true
 	}
 	return false

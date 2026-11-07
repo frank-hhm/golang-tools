@@ -755,15 +755,14 @@ onBeforeUnmount(() => {
     overflow: hidden;
 }
 
-/* 空间下拉用定宽容器夹住：Arco 的 .arco-select 自带 width:100%，
-   直接给组件本身写宽度容易被内部样式压回去，外层定宽最稳 */
+/* 空间下拉用定宽容器夹住：m-select 触发器自带 width:100%，撑满 .space-wrap 的定宽 */
 .space-wrap {
     flex: 0 0 120px;
     width: 120px;
     min-width: 0;
 }
 
-.space-wrap :deep(.arco-select) {
+.space-wrap :deep(.arco-select-view) {
     width: 100%;
 }
 

@@ -63,7 +63,7 @@
                     <template #cell="{ record, rowIndex }">
                         <a-space>
                             <a-tooltip :content="pending === record.url ? '正在测，点一下立刻停下' : '测这个站能不能下动数据'" position="tl">
-                                <a-button size="small" :status="pending === record.url ? 'danger' : 'normal'"
+                                <a-button size="mini" :status="pending === record.url ? 'danger' : 'normal'"
                                     :loading="pending === record.url && stopping"
                                     :disabled="!!pending && pending !== record.url"
                                     @click="pending === record.url ? stopOne(record.url) : probeOne(record.url)">
@@ -75,20 +75,20 @@
                                 </a-button>
                             </a-tooltip>
                             <a-tooltip content="上移（第一位是线上默认来源）" position="tl">
-                                <a-button size="small" :disabled="rowIndex === 0 || pending !== ''"
+                                <a-button size="mini" :disabled="rowIndex === 0 || pending !== ''"
                                     @click="move(rowIndex, -1)">
                                     <template #icon><icon-arrow-up /></template>
                                 </a-button>
                             </a-tooltip>
                             <a-tooltip content="下移" position="tl">
-                                <a-button size="small"
+                                <a-button size="mini"
                                     :disabled="rowIndex === rows.length - 1 || pending !== ''" @click="move(rowIndex, 1)">
                                     <template #icon><icon-arrow-down /></template>
                                 </a-button>
                             </a-tooltip>
                             <a-popconfirm :content="`从 daemon.json 的加速站名单里移除「${record.url}」？`" type="warning"
                                 position="lt" @ok="remove(rowIndex)">
-                                <a-button size="small" status="danger">
+                                <a-button size="mini" status="danger">
                                     <template #icon><icon-delete /></template>
                                 </a-button>
                             </a-popconfirm>
@@ -352,6 +352,6 @@ const rate = (m: number) => (!m ? "-" : m.toFixed(1) + " Mbps");
 }
 
 .mono {
-    font-family: Consolas, monospace;
+    font-family: var(--code-font-family);
 }
 </style>

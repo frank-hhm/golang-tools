@@ -37,6 +37,14 @@
                 repeating-linear-gradient(135deg, rgba(255, 255, 255, .028) 0 6px, transparent 6px 12px);
         }
 
+        /* 原生材质档（background.type=native）：窗口是 DWM 透明+Acrylic 建的，
+           骨架的实色底会把桌面模糊整个盖住——这档下骨架只留骨架条不铺底 */
+        #boot.native,
+        #boot.native.dk {
+            background-color: transparent;
+            background-image: none;
+        }
+
         /* 版式对齐工具窗：自绘标题栏一条 + 内容区一组卡片 */
         #boot .boot-tb {
             display: flex;
@@ -83,10 +91,108 @@
             border-radius: 10px;
         }
 
+        /*
+          分栏版式：左「参数设置」窄卡 + 右「预览/主面板」宽卡，对齐 qrcode/redis/git
+          等 24 栅格下 span6+span18（约 25%）与 mysql/php 的 span8+span16（约 33%）页面。
+          默认隐藏，仅当内联脚本按 location.hash 命中分栏路由、给 #boot 挂上
+          lay-split 时才显示（同时收起上面的通用卡片网格），版式与真实内容一致。
+        */
+        #boot .boot-split {
+            display: none;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        #boot.lay-split .boot-grid {
+            display: none;
+        }
+
+        #boot.lay-split .boot-split {
+            display: flex;
+            height: 100%;
+        }
+
+        /* 分栏下让内容区撑满标题栏以下的整块高度，两张卡随行高铺到底 */
+        #boot.lay-split .boot-body {
+            height: calc(100% - 40px);
+            box-sizing: border-box;
+        }
+
+        #boot .boot-col-side {
+            flex: 0 0 25%;
+            min-width: 0;
+        }
+
+        #boot.lay-split.r33 .boot-col-side {
+            flex-basis: 33.333%;
+        }
+
+        #boot .boot-col-main {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        #boot .boot-card {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-sizing: border-box;
+            padding: 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(128, 128, 140, .16);
+            background: rgba(128, 128, 140, .05);
+        }
+
+        #boot.dk .boot-card {
+            border-color: rgba(255, 255, 255, .09);
+            background: rgba(255, 255, 255, .025);
+        }
+
+        #boot .boot-card-hd {
+            width: 42%;
+            height: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        #boot .boot-field {
+            height: 28px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+
+        #boot .boot-field-tall {
+            height: 64px;
+        }
+
+        #boot .boot-btn {
+            height: 30px;
+            border-radius: 6px;
+            margin-top: auto;
+        }
+
+        #boot .boot-stage {
+            flex: 1 1 auto;
+            min-height: 160px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+        }
+
+        #boot .boot-foot {
+            width: 46%;
+            height: 14px;
+            border-radius: 7px;
+        }
+
         #boot .boot-dot,
         #boot .boot-bar,
         #boot .boot-line,
-        #boot .boot-cards i {
+        #boot .boot-cards i,
+        #boot .boot-card-hd,
+        #boot .boot-field,
+        #boot .boot-btn,
+        #boot .boot-stage,
+        #boot .boot-foot {
             position: relative;
             overflow: hidden;
             background: rgba(128, 128, 140, .14);
@@ -95,14 +201,24 @@
         #boot.dk .boot-dot,
         #boot.dk .boot-bar,
         #boot.dk .boot-line,
-        #boot.dk .boot-cards i {
+        #boot.dk .boot-cards i,
+        #boot.dk .boot-card-hd,
+        #boot.dk .boot-field,
+        #boot.dk .boot-btn,
+        #boot.dk .boot-stage,
+        #boot.dk .boot-foot {
             background: rgba(255, 255, 255, .06);
         }
 
         #boot .boot-dot::after,
         #boot .boot-bar::after,
         #boot .boot-line::after,
-        #boot .boot-cards i::after {
+        #boot .boot-cards i::after,
+        #boot .boot-card-hd::after,
+        #boot .boot-field::after,
+        #boot .boot-btn::after,
+        #boot .boot-stage::after,
+        #boot .boot-foot::after {
             content: "";
             position: absolute;
             inset: 0;
@@ -114,7 +230,12 @@
         #boot.dk .boot-dot::after,
         #boot.dk .boot-bar::after,
         #boot.dk .boot-line::after,
-        #boot.dk .boot-cards i::after {
+        #boot.dk .boot-cards i::after,
+        #boot.dk .boot-card-hd::after,
+        #boot.dk .boot-field::after,
+        #boot.dk .boot-btn::after,
+        #boot.dk .boot-stage::after,
+        #boot.dk .boot-foot::after {
             background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, .10) 50%, transparent 75%);
         }
 
@@ -143,7 +264,12 @@
             #boot .boot-dot::after,
             #boot .boot-bar::after,
             #boot .boot-line::after,
-            #boot .boot-cards i::after {
+            #boot .boot-cards i::after,
+            #boot .boot-card-hd::after,
+            #boot .boot-field::after,
+            #boot .boot-btn::after,
+            #boot .boot-stage::after,
+            #boot .boot-foot::after {
                 animation: none;
             }
         }
@@ -160,17 +286,55 @@
 <div id="boot" aria-hidden="true">
     <div class="boot-tb"><i class="boot-dot"></i><i class="boot-bar"></i></div>
     <div class="boot-body">
-        <div class="boot-line"></div>
-        <div class="boot-cards"><i></i><i></i><i></i><i></i></div>
+        <div class="boot-grid">
+            <div class="boot-line"></div>
+            <div class="boot-cards"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="boot-split">
+            <div class="boot-col boot-col-side">
+                <div class="boot-card">
+                    <i class="boot-card-hd"></i>
+                    <i class="boot-field boot-field-tall"></i>
+                    <i class="boot-field"></i>
+                    <i class="boot-field"></i>
+                    <i class="boot-field"></i>
+                    <i class="boot-btn"></i>
+                </div>
+            </div>
+            <div class="boot-col boot-col-main">
+                <div class="boot-card">
+                    <i class="boot-card-hd"></i>
+                    <i class="boot-stage"></i>
+                    <i class="boot-foot"></i>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 <script>
     (function () {
         try {
+            var el = document.getElementById("boot");
             var mode = localStorage.getItem("app-theme-mode") || "light";
             var dark = mode === "dark" ||
                 (mode !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-            if (dark) document.getElementById("boot").className = "dk";
+            if (dark) el.classList.add("dk");
+            // 整套配置里读了背景档：native 下骨架不铺实色底，免得启动瞬间盖住 DWM 桌面模糊
+            var cfg = JSON.parse(localStorage.getItem("app-theme-cfg") || "null");
+            if (cfg && cfg.background && cfg.background.type === "native") {
+                el.classList.add("native");
+            }
+            // 按路由感知版式：分栏页（左窄卡+右宽卡）用 split 骨架，其余保持通用卡片网格。
+            // 工具窗以 #/win/tools/<key> 或 #/tools/<key> 打开，取末尾 key 比对。
+            // settings 是真两栏（左分类导航 span5≈21% + 右表单 span19），归入 25% 档（最接近），
+            // 否则落回通用四卡网格，与设置页版式完全不符（用户反馈「设置页的骨架不对」）。
+            var SPLIT25 = { clouddrive: 1, encdec: 1, git: 1, hexconvert: 1, npm: 1, qrcode: 1,
+                redis: 1, settings: 1, strrandom: 1, timestamp: 1, usbserial: 1, video: 1, websocket: 1 };
+            var SPLIT33 = { mysql: 1, php: 1 };
+            var m = (location.hash || "").match(/[#\/]tools\/([a-z0-9]+)/i);
+            var key = m && m[1].toLowerCase();
+            if (key && SPLIT25[key]) el.classList.add("lay-split");
+            else if (key && SPLIT33[key]) el.classList.add("lay-split", "r33");
         } catch (e) {
             /* 隐私模式读不到 localStorage 就按浅色画，不影响后续挂载 */
         }

@@ -39,7 +39,7 @@
         </div>
         <!-- 不画 show-line：Arco 的连接线在暗色下几乎看不见，亮一点又像字符画，
              缩进 + hover/选中态已经足够表达层级 -->
-        <a-tree
+        <a-tree 
           :data="treeData"
           :selected-keys="selectedCat"
           block-node
@@ -1159,7 +1159,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   vertical-align: middle;
 }
 .mono {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
 }
 .ds-caret {
   margin-left: 2px;
@@ -1208,7 +1208,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 .left :deep(.arco-tree-node) {
   margin-bottom: 2px;
 }
-.left :deep(.arco-tree-node-title) {
+.left :deep(.arco-tree-node-row) {
   position: relative;
   padding: 5px 8px;
   border-radius: var(--base-radius-default);
@@ -1216,16 +1216,16 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   color: var(--color-text-1);
   transition: background-color 0.15s, color 0.15s;
 }
-.left :deep(.arco-tree-node-title:hover) {
+.left :deep(.arco-tree-node-row:hover) {
   background-color: var(--color-fill-3);
 }
-.left :deep(.arco-tree-node-selected .arco-tree-node-title),
-.left :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
+.left :deep(.arco-tree-node-selected .arco-tree-node-row),
+.left :deep(.arco-tree-node-selected .arco-tree-node-row:hover) {
   background-color: var(--color-fill-3);
   color: var(--color-text-1);
   font-weight: 600;
 }
-.left :deep(.arco-tree-node-selected .arco-tree-node-title)::before {
+.left :deep(.arco-tree-node-selected .arco-tree-node-row)::before {
   content: "";
   position: absolute;
   left: 1px;
@@ -1265,7 +1265,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   border-radius: var(--base-radius-default);
   box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
 }
-:deep(.ctx-menu .arco-menu-inner) {
+:deep(.ctx-menu .arco-menu) {
   padding: 2px;
 }
 .ctx-del {

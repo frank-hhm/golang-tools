@@ -241,18 +241,7 @@ function toggle(id: string) {
   opacity: 1;
 }
 
-/* Arco 把勾画在 8×14 的容器里，内层 svg 按 1em 取号；卡片继承了 12px 字号，
-   svg 就顶出 14px 的方框（实测 scrollWidth 19 > clientWidth 14），这里按容器锁死 */
-.ds-check :deep(.arco-checkbox-icon-check) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ds-check :deep(.arco-checkbox-icon-check > svg) {
-  width: 8px;
-  height: 8px;
-}
+/* 勾选图标已由 m-checkbox 组件内部锁死 8×8（不随卡片 12px 字号顶出），无需再在此覆写 */
 
 .ds-kind {
   position: absolute;

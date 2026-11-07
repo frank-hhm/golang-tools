@@ -347,7 +347,7 @@ const hasFooter = computed(() =>
 }
 
 /* 不定进度：满宽底槽 + 无限滑动亮带，比停在 0% 的灰条诚实 */
-.ctp-indeterminate :deep(.arco-progress-line-bar) {
+.ctp-indeterminate :deep(.arco-progress-bar) {
     position: relative;
     width: 36% !important;
     animation: ctp-slide 1.3s ease-in-out infinite;

@@ -203,7 +203,7 @@
     <a-modal v-model:visible="phoneVisible" title="手机号" @ok="genPhone" ok-text="确定">
         <a-form :model="phone" layout="vertical">
             <a-form-item field="type" label="类型">
-                <a-radio-group size="medium" v-model="phone.type">
+                <a-radio-group type="radio" size="medium" v-model="phone.type">
                     <a-radio value="tel">拨打电话</a-radio>
                     <a-radio value="smsto">发送短信</a-radio>
                 </a-radio-group>
@@ -235,7 +235,7 @@
                 <a-checkbox v-model="wifi.hidden" style="margin-left: 8px">隐藏</a-checkbox>
             </a-form-item>
             <a-form-item field="enc" label="加密方式">
-                <a-radio-group size="medium" v-model="wifi.enc">
+                <a-radio-group type="radio" size="medium" v-model="wifi.enc">
                     <a-radio value="nopass">无密码</a-radio>
                     <a-radio value="WPA">WPA加密</a-radio>
                     <a-radio value="WPA2">WPA2加密</a-radio>

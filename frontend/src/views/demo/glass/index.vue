@@ -62,7 +62,6 @@
                         <a-radio-group v-model="bgKind" type="button" size="small">
                             <a-radio value="mesh">彩色网格</a-radio>
                             <a-radio value="photo">风景照</a-radio>
-                            <a-radio value="plain">纯色</a-radio>
                             <a-radio value="dark">暗夜纹理</a-radio>
                             <a-radio value="theme">跟随主题背景</a-radio>
                             <template v-if="canNativeWin">
@@ -204,8 +203,8 @@ const blur = ref(0);
 const border = ref(0);
 /** 投影强度（表面 box-shadow 的不透明度，0 无 → 0.5 浓） */
 const shadow = ref(0.18);
-/** 背景 / 预览载体：mesh/photo/plain 走本页 CSS；acrylic/mica/tabbed/transparent 开原生窗（真 DWM） */
-type BgKind = "mesh" | "photo" | "plain" | "dark" | "theme" | "acrylic" | "mica" | "tabbed" | "transparent";
+/** 背景 / 预览载体：mesh/photo 走本页 CSS；acrylic/mica/tabbed/transparent 开原生窗（真 DWM） */
+type BgKind = "mesh" | "photo" | "dark" | "theme" | "acrylic" | "mica" | "tabbed" | "transparent";
 const NATIVE_LABEL: Record<string, string> = {
     acrylic: "原生 Acrylic",
     mica: "原生 Mica",
@@ -251,7 +250,6 @@ function resetPreset() {
 const BG_TO_TYPE: Partial<Record<BgKind, BackgroundType>> = {
     mesh: "mesh",
     photo: "photo",
-    plain: "plain",
     dark: "dark",
 };
 /** 把当前调参 + 当前背景档写进全局主题（localStorage + 后端配置），全站即时生效 */
@@ -347,7 +345,7 @@ const tokenDump = computed(() => {
     border-radius: var(--base-radius-default);
     background: var(--color-fill-2);
     color: var(--color-text-1);
-    font-family: Consolas, Monaco, "Courier New", monospace;
+    font-family: var(--code-font-family);
     font-size: var(--base-size-small);
     line-height: 1.7;
     white-space: pre-wrap;
@@ -399,10 +397,6 @@ const tokenDump = computed(() => {
 
 .preview.bg-photo {
     background: linear-gradient(160deg, #3a1c71, #d76d77, #ffaf7b);
-}
-
-.preview.bg-plain {
-    background: linear-gradient(160deg, #cfd9df, #e2ebf0);
 }
 
 /* 跟随主题背景：预览区自身不画底，直接透出全局 .theme-bg（未设全局背景时就是普通页面） */

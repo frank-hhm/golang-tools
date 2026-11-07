@@ -106,6 +106,9 @@ func (a *App) ensureLauncherWindow() (application.Window, error) {
 	// 把自己从"运行中的窗口"检索结果里摘掉：否则搜"快捷"永远能搜到面板自己。
 	if hwnd := launcherWindowHWND(win); hwnd != 0 {
 		launcher.ExcludeWindow(hwnd)
+		// Win11 会给无边框窗体自动描一条 1px 边框（取强调色/系统色），透明面板上
+		// 就是用户反馈的"还有边框"——CSS 侧 border/box-shadow 早已归无，剩下的只能是原生窗框。
+		stripLauncherWindowBorder(hwnd)
 	}
 	// 失焦即收起：这是这类面板的基本礼仪——用户点了别处就是不想搜了。
 	// 只认点亮超过 launcherBlurGrace 之后的第一次失焦，避免冷建时的 focus/blur 交替
@@ -179,6 +182,18 @@ func (a *App) toggleLauncher() error {
 	application.InvokeAsync(func() {
 		win.SetPosition(x, y)
 		win.Show()
+		// 建窗时（隐藏态）已去过一次原生边框与投影，但 Wails 在首次 Show 时还会自己下发窗口
+		// 样式（setFrameless 会把 GWL_STYLE 重算成 WS_OVERLAPPEDWINDOW，含 WS_CAPTION），那块
+		// DirectComposition 透明窗的矩形投影（用户反馈「webview2 这个 shadow 不要」）会重新出现。
+		// DWM 依据 WS_CAPTION/WS_THICKFRAME 判定“带标题栏窗”才画影，NC 渲染策略对透明窗无效，只能清样式位。
+		stripLauncherWindowBorder(launcherWindowHWND(win))
+		// 再延迟补一次：Show 之后 Wails 仍可能在随后的消息处理（DPI/resize/frameless 重下发）里把样式位
+		// 写回来，一次同步清理可能赶在它前面。延迟回主线程再清一次，确保窗口稳定后窗影仍被压住。
+		if hwnd := launcherWindowHWND(win); hwnd != 0 {
+			time.AfterFunc(120*time.Millisecond, func() {
+				application.InvokeAsync(func() { stripLauncherWindowBorder(hwnd) })
+			})
+		}
 		// 聚焦不走 win.Focus()：它底下是 chromium 的 MoveFocus，失败会 os.Exit(1)
 		// 把整个程序带走（本仓库踩过）。这里只要窗口到前台，输入框焦点交给页面自己。
 		if err := launcher.BringWindow(launcherWindowHWND(win)); err != nil {
@@ -273,7 +288,7 @@ func (a *App) launchToolByID(id string) error {
 func (a *App) runLauncherCommand(id string) error {
 	switch id {
 	case "open-settings":
-		a.openSettingsFromTray()
+		a.openSettingsFromTray("")
 	case "open-home":
 		a.showMainWindow()
 		if a.mainWindow != nil {

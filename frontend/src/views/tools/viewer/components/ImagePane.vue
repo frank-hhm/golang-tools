@@ -604,7 +604,7 @@ function saveB64() {
     color: var(--color-text-3);
 }
 .ip-b64-text :deep(textarea) {
-    font-family: var(--code-font-family, Consolas, monospace);
+    font-family: var(--code-font-family);
     font-size: var(--base-size-12);
     word-break: break-all;
 }

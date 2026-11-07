@@ -131,7 +131,7 @@ async function doSave() {
 }
 
 .rb-text.is-mono {
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--code-font-family);
 }
 
 .rb-actions {

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="notify-wrap">
     <div class="notify-card" :class="level">
       <!-- 头部：应用图标 + 名称 + ⋯ +  -->

@@ -261,7 +261,7 @@ function close() {
   margin-bottom: 12px;
 }
 .mono {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
 }
 .pathline {
   font-size: 12px;

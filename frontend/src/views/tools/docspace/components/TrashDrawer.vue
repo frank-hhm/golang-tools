@@ -162,6 +162,6 @@ function close() {
   margin-top: 2px;
 }
 .mono {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--code-font-family);
 }
 </style>

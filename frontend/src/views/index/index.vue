@@ -1,107 +1,97 @@
 ﻿<template>
   <layout-body height="full" :isBg="false">
-    <a-row :gutter="12" class="home-row">
-      <a-col :span="16" class="left-col">
-        <!-- ========== 左侧：系统信息 ========== -->
+    <div class="home-layout">
+    <!-- 行1：内容自适应高度（欢迎栏 + 时钟） -->
+    <a-row :gutter="[12,12]" class="home-row home-row-top">
+      <!-- ===== 行1：欢迎栏（左）+ 指针时钟（右，上下左右居中） ===== -->
+      <a-col :span="16" class="welcome-col">
+        <a-card class="welcome-card">
+          <template #title>
+            <!-- 欢迎栏 -->
+            <span>欢迎回来！</span>
+          </template>
+          <template #extra>
+            <a-space :size="8">
+              <!-- 测试入口：只在 dev 跑的前端服务里显示，打包产物隐藏入口但页面与路由保留（叠加不删） -->
+              <a-tooltip v-if="showTestHub" content="组件测试（仅开发环境）">
+                <a-button size="small" @click="openTestHub">
+                  <template #icon><icon-experiment /></template>
+                </a-button>
+              </a-tooltip>
+              <a-button size="small" :loading="sysLoading" @click="refreshSysInfo">
+                <template #icon><icon-refresh /></template>
+              </a-button>
+            </a-space>
+          </template>
 
-        <a-row class="left-inner">
-          <a-col :span="24">
-            <m-card>
-
-              <template #title>
-                <!-- 欢迎栏 -->
-                <span>欢迎回来！</span>
-              </template>
-              <template #extra>
-                <a-space :size="8">
-                  <!-- 测试入口：只在 dev 跑的前端服务里显示，打包产物隐藏入口但页面与路由保留（叠加不删） -->
-                  <a-tooltip v-if="showTestHub" content="组件测试（仅开发环境）">
-                    <a-button size="small" @click="openTestHub">
-                      <template #icon><icon-experiment /></template>
-                    </a-button>
-                  </a-tooltip>
-                  <a-button size="small" :loading="sysLoading" @click="refreshSysInfo">
-                    <template #icon><icon-refresh /></template>
-                  </a-button>
-                </a-space>
-              </template>
-
-              <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
-                   栅格用 a-row/a-col，横纵间距由 gutter 提供；顺序固定，不做拖拽排序；
-                   带 link 的卡片可点，跳到对应的监控面板（都不进工具列表） -->
-              <a-row :gutter="[12, 12]" class="stat-cards">
-                <a-col v-for="c in statCards" :key="c.key" :span="8" :class="{ 'stat-clickable': !!c.link }"
-                  :title="c.link ? '点击查看' + c.link : undefined" @click="onStatCardClick(c.key)">
-                  <common-stat-card :icon="c.icon" :icon-value="c.p" :icon-size="26" :tone="c.tone" :label="c.label"
-                    :value="c.big" :unit="c.unit" :detail="c.detail" />
-                </a-col>
-              </a-row>
-            </m-card>
-          </a-col>
-          <a-col :span="24" class="svc-col">
-            <a-card class="svc-card-fill">
-              <!-- 本地服务实例卡片 -->
-              <template #title>
-                <span class="svc-title">本地服务实例</span>
-              </template>
-              <template #extra>
-                <a-radio-group size="medium" v-model="svcFilter" type="button">
-                  <a-radio value="all">全部</a-radio>
-                  <a-radio value="redis">Redis</a-radio>
-                  <a-radio value="mysql">MySQL</a-radio>
-                  <a-radio value="php">PHP</a-radio>
-                  <a-radio value="nginx">Nginx</a-radio>
-                  <a-radio value="npm">Npm</a-radio>
-                  <a-radio value="docker">Docker</a-radio>
-                </a-radio-group>
-              </template>
-              <!-- 本地服务实例卡片：顺序跟随后端返回的实例列表，不做拖拽排序 -->
-              <div class="svc-cards" v-if="filteredServices.length">
-                <div v-for="s in filteredServices" :key="s.id" class="svc-card" @click="openServiceDetail(s)"
-                  @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
-                  <div class="svc-card-top">
-                    <div class="svc-logo" :class="'logo-' + s.type">
-                      <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />
-                      <span v-else-if="s.type === 'php'" class="icon icon-php" />
-                      <span v-else-if="s.type === 'mysql'" class="icon icon-MySQL" />
-                      <span v-else-if="s.type === 'nginx'" class="icon icon-ngnix" />
-                      <span v-else-if="s.type === 'npm'" class="icon icon-npm" />
-                      <icon-computer v-else-if="s.type === 'docker'" />
-                    </div>
-                    <div class="svc-meta">
-                      <a-tooltip :content="s.name">
-                        <div class="svc-name">{{ s.name }}</div>
-                      </a-tooltip>
-                      <div class="svc-desc">{{ svcDesc(s) }}</div>
-                    </div>
-                  </div>
-                  <div class="svc-card-bottom" @click.stop>
-                    <!-- 状态圆点承担颜色语义（与 a-badge 一致），文案只做说明；运行中开启动效 -->
-                    <div class="com-state" :class="s.running ? 'is-on' : 'is-dim'">
-                      <com-badge :status="s.running ? 'success' : 'normal'" :animated="s.running"></com-badge>
-                      <span>{{ s.running ? '已启用' : '已停止' }}</span>
-                    </div>
-                    <a-switch v-if="s.type !== 'docker'" :model-value="s.running" :loading="svcToggling === s.id"
-                      size="small" @change="toggleService(s)" />
-                    <a-tag v-else size="small" color="arcoblue" @click="openServiceDetail(s)">面板管理</a-tag>
-                  </div>
-                </div>
-              </div>
-              <a-empty v-else description="暂无服务实例" />
-            </a-card>
-          </a-col>
-        </a-row>
+          <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
+               栅格用 a-row/a-col，横纵间距由 gutter 提供；顺序固定，不做拖拽排序；
+               带 link 的卡片可点，跳到对应的监控面板（都不进工具列表） -->
+          <a-row :gutter="[12, 12]" class="stat-cards">
+            <a-col v-for="c in statCards" :key="c.key" :span="8" :class="{ 'stat-clickable': !!c.link }"
+              :title="c.link ? '点击查看' + c.link : undefined" @click="onStatCardClick(c.key)">
+              <m-stat-card :icon="c.icon" :icon-value="c.p" :icon-size="26" :tone="c.tone" :label="c.label"
+                :value="c.big" :unit="c.unit" :detail="c.detail" />
+            </a-col>
+          </a-row>
+        </a-card>
       </a-col>
 
-      <a-col :span="8" class="right-col">
-
-        <!-- ========== 右侧：当前时间 ========== -->
+      <!-- 指针时钟：行1 右侧独立格，时钟上下左右居中 -->
+      <a-col :span="8" class="clock-col">
         <div class="clock-body">
           <!-- Canvas 指针时钟：盘面已含日期/星期/年份/毫秒时间跑动信息 -->
           <common-canvas-clock :size="180" />
         </div>
+      </a-col>
+    </a-row>
 
-        <!-- ========== 右侧：快捷操作 ========== -->
+    <!-- 行2：铺满剩余高度到底（本地服务实例 + 快捷操作） -->
+    <a-row :gutter="[12,12]" class="home-row home-row-bottom">
+      <!-- ===== 行2：本地服务实例（左）+ 快捷操作（右） ===== -->
+      <a-col :span="16" class="svc-col">
+        <a-card class="svc-card-fill card-head-tool">
+          <!-- 本地服务实例卡片 -->
+          <template #title>
+            <span class="svc-title">本地服务实例</span>
+          </template>
+          <template #extra>
+            <a-radio-group size="medium" v-model="svcFilter" type="button">
+              <a-radio value="all">全部</a-radio>
+              <a-radio value="redis">Redis</a-radio>
+              <a-radio value="mysql">MySQL</a-radio>
+              <a-radio value="php">PHP</a-radio>
+              <a-radio value="nginx">Nginx</a-radio>
+              <a-radio value="npm">Npm</a-radio>
+              <a-radio value="docker">Docker</a-radio>
+            </a-radio-group>
+          </template>
+          <!-- 本地服务实例卡片：顺序跟随后端返回的实例列表，不做拖拽排序；
+               卡片外壳已封成公共组件 m-svc-card（logo/名称/描述/状态行/操作区），这里只填内容 -->
+          <div class="svc-cards" v-if="filteredServices.length">
+            <m-svc-card v-for="s in filteredServices" :key="s.id" :name="s.name" :desc="svcDesc(s)"
+              :tone="svcTone(s.type)" :running="s.running" @click="openServiceDetail(s)"
+              @mouseenter="prefetchRoute(SVC_TYPE_ROUTES[s.type])">
+              <template #logo>
+                <span v-if="s.type === 'redis'" class="icon icon-icon-redis" />
+                <span v-else-if="s.type === 'php'" class="icon icon-php" />
+                <span v-else-if="s.type === 'mysql'" class="icon icon-MySQL" />
+                <span v-else-if="s.type === 'nginx'" class="icon icon-ngnix" />
+                <span v-else-if="s.type === 'npm'" class="icon icon-npm" />
+                <icon-computer v-else-if="s.type === 'docker'" />
+              </template>
+              <template #extra>
+                <a-switch v-if="s.type !== 'docker'" :model-value="s.running" :loading="svcToggling === s.id"
+                  size="small" type="round" @change="toggleService(s)" />
+                <a-tag v-else size="small" color="arcoblue" @click="openServiceDetail(s)">面板管理</a-tag>
+              </template>
+            </m-svc-card>
+          </div>
+          <a-empty v-else description="暂无服务实例" />
+        </a-card>
+      </a-col>
+
+      <a-col :span="8" class="tools-col">
         <a-card class="tools-card">
           <template #title>
             <span>快捷操作</span>
@@ -117,31 +107,21 @@
           <div class="tools-grid">
             <a-tooltip v-for="(item, index) in orderedTools" :key="toolKeyOf(item, index)"
               :content="item.shortcut ? item.name + ' (' + item.shortcut + ')' : item.name">
-              <div class="tool-cell" @click="onToolClick(item)" @mouseenter="prefetchRoute(item.path)"
+              <m-tool-cell :icon="item.icon" @click="onToolClick(item)" @mouseenter="prefetchRoute(item.path)"
                 @pointerdown="prefetchRoute(item.path)" v-bind="toolsReo.handlers(toolKeyOf(item, index))"
-                :class="{ 'reorder-dragging': toolsReo.isDragging(toolKeyOf(item, index)), 'reorder-over': toolsReo.isOver(toolKeyOf(item, index)) }">
-                <div class="tool-icon-wrap">
-                  <i v-if="isIconfontIcon(item.icon)" class="icon tool-icon" :class="item.icon" />
-                  <component v-else :is="iconComp(item.icon) || 'IconApps'" class="tool-icon" />
-                </div>
-              </div>
+                :class="{ 'reorder-dragging': toolsReo.isDragging(toolKeyOf(item, index)), 'reorder-over': toolsReo.isOver(toolKeyOf(item, index)) }" />
             </a-tooltip>
           </div>
         </a-card>
       </a-col>
     </a-row>
+    </div>
 
-    <!-- 全部工具：无背景蒙层（mask=false），不阻断后方页面交互 -->
-    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" :footer="false" draggable class="tools-more-modal">
+    <!-- 全部工具：无背景蒙层，弹窗透明让主题背景透出，与主窗口一致 -->
+    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" :footer="false" draggable :mask="false">
       <div class="tools-grid tools-grid-modal">
-        <div v-for="item in orderedAllTools" :key="item.id || item.name" class="tool-cell tool-cell-named"
-          @click="onMoreToolClick(item)">
-          <div class="tool-icon-wrap">
-            <i v-if="isIconfontIcon(item.icon)" class="icon tool-icon" :class="item.icon" />
-            <component v-else :is="iconComp(item.icon) || 'IconApps'" class="tool-icon" />
-          </div>
-          <span class="tool-name">{{ item.name }}</span>
-        </div>
+        <m-tool-cell v-for="item in orderedAllTools" :key="item.id || item.name" :icon="item.icon"
+          :name="item.name" @click="onMoreToolClick(item)" />
       </div>
     </a-modal>
 
@@ -154,7 +134,7 @@ import { Events } from "@wailsio/runtime";
 import { IconCheckCircleFill, IconExclamationCircleFill } from "@arco-design/web-vue/es/icon";
 import { useToolEvents, type ToolItem } from "./events";
 import { useToolWindow } from "./useToolWindow";
-import { arcoIconComp as iconComp, isIconfontIcon, normalizeToolIcon } from "@/utils/tool-icon";
+import { normalizeToolIcon } from "@/utils/tool-icon";
 import { isToolAvailable } from "@/utils/caps";
 import { prefetchRoute } from "@/router/prefetch";
 import { useReorder, applyOrder, loadOrder } from "@/utils/reorder";
@@ -374,6 +354,14 @@ const SVC_TYPE_ROUTES: Record<string, string> = {
   docker: "/tools/docker",
 };
 
+/** 服务类型 → m-svc-card 的 logo 底色语义（沿用旧 logo-* 配色） */
+const SVC_TYPE_TONES: Record<string, string> = {
+  redis: "red", mysql: "blue", php: "purple", nginx: "green", npm: "red", docker: "arcoblue",
+};
+function svcTone(t: string): string {
+  return SVC_TYPE_TONES[t] || "gray";
+}
+
 /** 点击服务卡片：打开对应工具窗口并带 ?inst= 定位实例；窗口已存在（单例复用）时靠事件通知其切换实例 */
 function openServiceDetail(s: any) {
   const path = SVC_TYPE_ROUTES[s.type];
@@ -495,7 +483,18 @@ onUnmounted(() => {
 <style scoped>
 /* 统计卡片行：横纵间距由 a-row 的 gutter 提供，这里只留与下方内容块的间距 */
 .stat-cards {
-  margin-bottom: var(--base-padding);
+}
+
+/* 首页统计卡(m-stat-card)与服务实例卡(m-svc-card)嵌在 welcome-card / svc-card-fill 两个 a-card 里，
+   组件默认自铺 --color-bg-2 实底，与父卡叠成「卡中卡」双层底、显脏。这里只归零这层背景、透出父卡，
+   描边与 hover 投影照常保留（可点卡片的交互反馈不丢，比 inherit-bg 更保守——后者会连投影一起抹掉）。
+   :deep 编译成 .stat-cards[data-v] .m-stat-card (0,3,0)，稳过组件 scoped .m-stat-card[data-v] (0,2,0)。 */
+.stat-cards :deep(.m-stat-card) {
+  background: transparent;
+}
+
+.svc-cards :deep(.m-svc-card) {
+  background: transparent;
 }
 
 /* 可点击唤起面板的统计卡片（CPU / 内存 → 进程管理，磁盘 → 磁盘面板，网络 → 端口管理） */
@@ -503,9 +502,10 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-/* 服务实例卡片 */
+/* 服务实例卡片标题：字号不单独指定，继承全局 .arco-card-header-title 的 --base-size-large-x（16px），
+   与「欢迎回来！」「快捷操作」等卡片标题同大小、同随「字号×密度」缩放；这里只保留加粗。
+   （旧写法 font-size: var(--base-size-default) 在运行时 standard 档 = 12px，比其它标题小一截 → 已删） */
 .svc-title {
-  font-size: var(--base-size-default);
   font-weight: 600;
 }
 
@@ -529,140 +529,60 @@ onUnmounted(() => {
   display: none;
 }
 
-.svc-card {
-  background: var(--color-bg-2);
-  border: 1px solid var(--color-border-1);
-  border-radius: var(--base-radius-default);
-  padding: var(--base-padding);
-  cursor: pointer;
-}
-
-.svc-card:hover {
-  box-shadow: 0 4px 16px rgba(var(--primary-6), 0.08);
-}
+/* 单卡外壳样式（铺底/描边/logo 底色/名称描述/状态行）已封进公共组件 m-svc-card，这里只剩网格布局 */
 
 /* 拖拽排序反馈样式（.reorder-dragging/.reorder-over/[draggable] 光标）已下沉到全局 styles/index.scss，主页与各服务列表共用 */
 
-
-.svc-card-top {
-  display: flex;
-  align-items: center;
-  gap: var(--base-margin);
-  margin-bottom: var(--base-margin);
-}
-
-.svc-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--base-radius-default);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--base-size-large);
-  flex-shrink: 0;
-}
-
-.logo-redis {
-  background: rgba(var(--red-6), 0.05);
-  color: rgb(var(--red-6));
-}
-
-.logo-mysql {
-  background: rgba(var(--blue-6), 0.05);
-  color: rgb(var(--blue-6));
-}
-
-.logo-php {
-  background: rgba(var(--purple-6), 0.05);
-  color: rgb(var(--purple-6));
-}
-
-.logo-nginx {
-  background: rgba(var(--green-6), 0.05);
-  color: rgb(var(--green-6));
-}
-
-.logo-npm {
-  background: rgba(var(--red-6), 0.05);
-  color: rgb(var(--red-6));
-}
-
-.logo-docker {
-  background: rgba(var(--arcoblue-6), 0.05);
-  color: rgb(var(--arcoblue-6));
-}
-
-.svc-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.svc-name {
-  font-weight: 600;
-  font-size: var(--base-size-default);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.svc-desc {
-  font-size: var(--base-size-small);
-  color: var(--color-text-3);
-  margin-top: var(--base-radius-small);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.svc-card-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 /* ---- 右侧卡片 ---- */
 
-/* 当前时间：无卡片裸时钟居中展示，与下方快捷操作卡片间距对齐 12px 栅格 */
+/* 指针时钟：填满 clock-col 并上下左右居中（clock-col 与左侧欢迎卡同高，align-items 拉伸） */
 .clock-body {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
-  height: 232px;
-}
-
-/* 行继承主窗口可视高度（100vh − 40px 自绘标题栏 − 内容区/页面内边距），
-   使左右两列撞满整屏，右侧“快捷操作”卡片随之铺满到底，不留底部空白 */
-.home-row {
+  width: 100%;
   height: 100%;
 }
 
-/* 左列：纵向 flex，让“本地服务实例”卡片向下铺满剩余高度 */
-.left-col {
-  height: 100%;
-}
-
-.left-inner {
-  height: 100%;
+/* 主页整体：纵向 flex 两行——行1 内容自适应高度，行2 铺满剩余高度到底。
+   （原单个 m-row 折行 + height:100% 只能靠 align-content 均分两行高度，无法表达 auto+fill 分配，故拆成两个 m-row） */
+.home-layout {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  gap: 12px;
 }
 
-/* a-row(.arco-row) 的 flex-flow 简写带 wrap：纵向排布下 wrap 会把第二块
-   “本地服务实例”换到右侧新列，与右列时钟/快捷操作重叠。用更高优先级选择器强制不换行。 */
-.home-row .left-inner {
-  flex-wrap: nowrap;
+/* 行1：欢迎栏 + 时钟，高度由内容（欢迎卡）决定；align-items 默认 stretch 使时钟在欢迎栏高度内上下居中 */
+.home-row-top {
+  flex: none;
 }
 
-.left-inner :deep(.arco-col:first-child) {
-  flex: 0 0 auto;
-}
-
-.svc-col {
-  margin-top: 12px;
-  flex: 1 1 auto;
+/* 行2：本地服务实例 + 快捷操作，flex:1 铺满剩余高度到底；min-height:0 让内部卡片可滚动不溢出 */
+.home-row-bottom {
+  flex: 1;
   min-height: 0;
+}
+
+/* 行1 左：欢迎栏（含统计卡片），高度由内容决定 */
+.welcome-col {
   display: flex;
+}
+
+.welcome-card {
+  width: 100%;
+}
+
+/* 行1 右：时钟格，撑满行高供 clock-body 居中 */
+.clock-col {
+  display: flex;
+}
+
+/* 行2 左：本地服务实例，铺满行高（align-self:stretch 覆盖 m-col 默认 flex-basis:0 行为） */
+.svc-col {
+  display: flex;
+  align-self: stretch;
+  min-height: 0;
 }
 
 .svc-card-fill {
@@ -685,11 +605,11 @@ onUnmounted(() => {
   margin: auto;
 }
 
-/* 右侧列：时间卡片固定高度，快捷操作卡片拉伸填满剩余空间 */
-.right-col {
+/* 行2 右：快捷操作格，撑满行高供 tools-card 铺满 */
+.tools-col {
   display: flex;
-  flex-direction: column;
-  height: 100%;
+  align-self: stretch;
+  min-height: 0;
 }
 
 .tools-card {
@@ -721,57 +641,12 @@ onUnmounted(() => {
   scrollbar-width: none;
 }
 
-.tool-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* 正方形单元格随列宽自适应铺满卡片宽度 */
-  padding: var(--base-padding);
-  border-radius: var(--base-radius-default);
-  cursor: pointer;
-  border: none;
-  background: var(--color-fill-2);
-  color: rgb(var(--color-text-1));
-}
+/* 工具格本体（图标/背景/hover/名称排版）已封成 m-tool-cell 组件，这里只留网格布局 */
 
-.tool-cell:hover {
-  background: rgba(var(--primary-6), 0.12);
-}
-
-.tool-cell:active {
-  transform: scale(0.95);
-}
-
-
-.tool-icon {
-  font-size: 28px;
-  color: inherit;
-}
-
-/* “更多”弹窗内的网格：四列、不滚动（交给弹窗自身），格子带名称 */
+/* “更多”弹窗内的网格：五列、不滚动（交给弹窗自身），格子带名称 */
 .tools-grid-modal {
   grid-template-columns: repeat(5, 1fr);
   overflow-y: visible;
   flex: none;
-}
-
-.tool-cell-named {
-  gap: 6px;
-  padding: 8px 8px 4px;
-}
-
-.tool-cell-named .tool-icon {
-  font-size: 28px;
-}
-
-.tool-name {
-  font-size: var(--base-size-small);
-  color: var(--color-text-1);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
 }
 </style>

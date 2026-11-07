@@ -1152,7 +1152,7 @@ function showInstallError(version: string, note: string) {
                     : "可稍后重试；或将对应 php zip 放入以下插件目录后刷新本地版本，离线安装。"),
             h("div", {
                 style: "margin-top:6px;padding:6px 8px;border-radius:4px;background:var(--color-fill-2);" +
-                    "font-family:Consolas,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--color-text-2)",
+                    "font-family: var(--code-font-family);font-size:12px;word-break:break-all;color:var(--color-text-2)",
             }, sysPkg.value ? "由发行版包管理器提供（apt / dnf）" : (pluginsDirVal.value || "插件目录加载中…")),
         ]),
         onClose: () => { errModalOpen = false; },
@@ -1767,7 +1767,7 @@ onUnmounted(() => {
     background: var(--color-fill-1);
     border-radius: 4px;
     padding: 6px 8px;
-    font-family: Consolas, Menlo, monospace;
+    font-family: var(--code-font-family);
     font-size: 12px;
 }
 
