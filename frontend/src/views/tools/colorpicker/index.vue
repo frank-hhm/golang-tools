@@ -33,40 +33,19 @@
                         </a-tooltip>
                     </div>
 
-                    <div class="cp-grid">
-                        <div class="cp-row">
-                            <label>R:</label>
-                            <a-input-number class="cp-input-rgb" :model-value="rgb.r" :min="0" :max="255" size="mini"
-                                hide-button @change="(v: number | undefined) => setChannel('r', v ?? 0)" />
-                            <label class="cp-tag">C:</label>
-                            <a-input-number :model-value="cmyk.c" :min="0" :max="100" size="mini" hide-button disabled
-                                class="cp-ro" />
-                            <span class="cp-pct">%</span>
+                    <!-- 常用格式输出（点击复制）：原底部横条上移进面板，替代已删除的 RGB/CMYK 可编辑网格 -->
+                    <div class="cp-out">
+                        <div class="cp-field">
+                            <label>HTML:</label>
+                            <a-input :model-value="htmlHex" size="mini" readonly @click="copyText(htmlHex)" />
                         </div>
-                        <div class="cp-row">
-                            <label>G:</label>
-                            <a-input-number class="cp-input-rgb" :model-value="rgb.g" :min="0" :max="255" size="mini"
-                                hide-button @change="(v: number | undefined) => setChannel('g', v ?? 0)" />
-                            <label class="cp-tag">M:</label>
-                            <a-input-number :model-value="cmyk.m" :min="0" :max="100" size="mini" hide-button disabled
-                                class="cp-ro" />
-                            <span class="cp-pct">%</span>
+                        <div class="cp-field">
+                            <label>Hex:</label>
+                            <a-input :model-value="bgrHex" size="mini" readonly @click="copyText(bgrHex)" />
                         </div>
-                        <div class="cp-row">
-                            <label>B:</label>
-                            <a-input-number class="cp-input-rgb" :model-value="rgb.b" :min="0" :max="255" size="mini"
-                                hide-button @change="(v: number | undefined) => setChannel('b', v ?? 0)" />
-                            <label class="cp-tag">Y:</label>
-                            <a-input-number :model-value="cmyk.y" :min="0" :max="100" size="mini" hide-button disabled
-                                class="cp-ro" />
-                            <span class="cp-pct">%</span>
-                        </div>
-                        <div class="cp-row">
-                            <span class="cp-gap"></span>
-                            <label class="cp-tag">K:</label>
-                            <a-input-number :model-value="cmyk.k" :min="0" :max="100" size="mini" hide-button disabled
-                                class="cp-ro" />
-                            <span class="cp-pct">%</span>
+                        <div class="cp-field">
+                            <label>R,G,B:</label>
+                            <a-input :model-value="rgbStr" size="mini" readonly @click="copyText(rgbStr)" />
                         </div>
                     </div>
 
@@ -80,22 +59,6 @@
                             H: {{ hsl.h }}°&nbsp;&nbsp;S: {{ hsl.s }}%&nbsp;&nbsp;L: {{ hsl.l }}%
                         </span>
                     </div> -->
-                </div>
-            </div>
-
-            <!-- 底部：常用格式输出（点击复制） -->
-            <div class="cp-out">
-                <div class="cp-field">
-                    <label>HTML:</label>
-                    <a-input :model-value="htmlHex" size="mini" readonly @click="copyText(htmlHex)" />
-                </div>
-                <div class="cp-field">
-                    <label>Hex:</label>
-                    <a-input :model-value="bgrHex" size="mini" readonly @click="copyText(bgrHex)" />
-                </div>
-                <div class="cp-field">
-                    <label>R,G,B:</label>
-                    <a-input :model-value="rgbStr" size="mini" readonly @click="copyText(rgbStr)" />
                 </div>
             </div>
         </div>
@@ -165,16 +128,6 @@ function rgbToHsl(r: number, g: number, b: number) {
     return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
-function rgbToCmyk(r: number, g: number, b: number) {
-    const rr = r / 255, gg = g / 255, bb = b / 255;
-    const k = 1 - Math.max(rr, gg, bb);
-    if (k >= 1) return { c: 0, m: 0, y: 0, k: 100 };
-    const c = (1 - rr - k) / (1 - k);
-    const m = (1 - gg - k) / (1 - k);
-    const y = (1 - bb - k) / (1 - k);
-    return { c: Math.round(c * 100), m: Math.round(m * 100), y: Math.round(y * 100), k: Math.round(k * 100) };
-}
-
 function hexToRgb(hex: string) {
     const m = hex.replace("#", "");
     return {
@@ -186,19 +139,10 @@ function hexToRgb(hex: string) {
 
 const rgb = computed(() => hsvToRgb(hsv.h, hsv.s, hsv.v));
 const hsl = computed(() => rgbToHsl(rgb.value.r, rgb.value.g, rgb.value.b));
-const cmyk = computed(() => rgbToCmyk(rgb.value.r, rgb.value.g, rgb.value.b));
 const hexColor = computed(() => `#${toHex2(rgb.value.r)}${toHex2(rgb.value.g)}${toHex2(rgb.value.b)}`);
 const htmlHex = computed(() => hexColor.value);
 const bgrHex = computed(() => `${toHex2(rgb.value.b)}${toHex2(rgb.value.g)}${toHex2(rgb.value.r)}`);
 const rgbStr = computed(() => `${rgb.value.r},${rgb.value.g},${rgb.value.b}`);
-
-/* ============ 编辑入口 ============ */
-function setChannel(ch: "r" | "g" | "b", val: number) {
-    const cur = { ...rgb.value };
-    cur[ch] = clamp(Math.round(val || 0), 0, 255);
-    const nh = rgbToHsv(cur.r, cur.g, cur.b);
-    hsv.h = nh.h; hsv.s = nh.s; hsv.v = nh.v;
-}
 
 /* ============ 取色方块 / 色相条交互 ============ */
 const svEl = ref<HTMLElement | null>(null);
@@ -469,56 +413,6 @@ onMounted(() => {
     flex: 1;
 }
 
-.cp-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.cp-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.cp-row label {
-    flex: none;
-    width: 30px;
-    text-align: right;
-    color: var(--color-text-2);
-    font-size: var(--base-size-small);
-}
-
-.cp-tag {
-    width: 18px !important;
-}
-
-/* K 行占位：与「RGB 输入框」等宽，使 K 与 C/M/Y 列对齐 */
-.cp-gap {
-    flex: none;
-    width: 84px;
-}
-
-.cp-input-rgb {
-    flex: none;
-    width: 46px;
-}
-
-.cp-ro {
-    flex: 1;
-    min-width: 0;
-}
-
-.cp-pct {
-    flex: none;
-    color: var(--color-text-3);
-    font-size: var(--base-size-small);
-}
-
-.cp-ro :deep(.arco-num-el) {
-    color: var(--color-text-3);
-}
-
 .cp-modes {
     flex: none;
     font-size: var(--base-size-small);
@@ -533,18 +427,15 @@ onMounted(() => {
     color: var(--color-text-2);
 }
 
-/* 底部：常用格式输出（点击复制） */
+/* 常用格式输出：上移进右侧面板后改为纵向堆叠 */
 .cp-out {
     flex: none;
     display: flex;
-    gap: var(--base-padding);
-    border-top: 1px dashed var(--color-border-2);
-    padding-top: 10px;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .cp-field {
-    flex: 1;
-    min-width: 0;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -552,6 +443,8 @@ onMounted(() => {
 
 .cp-field label {
     flex: none;
+    width: 44px;
+    text-align: right;
     color: var(--color-text-2);
     font-size: var(--base-size-small);
 }
