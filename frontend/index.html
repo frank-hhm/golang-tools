@@ -139,12 +139,14 @@
             box-sizing: border-box;
             padding: 14px;
             border-radius: 10px;
-            border: 1px solid rgba(128, 128, 140, .16);
+            /* 描边随主题「描边强度」：下方内联脚本按 cfg.glass.border 算好写进 --boot-card-border；
+               玻璃关时不写该变量，落回这里的默认档中性描边（浅/暗各一档）。 */
+            border: 1px solid var(--boot-card-border, rgba(128, 128, 140, .16));
             background: rgba(128, 128, 140, .05);
         }
 
         #boot.dk .boot-card {
-            border-color: rgba(255, 255, 255, .09);
+            border-color: var(--boot-card-border, rgba(255, 255, 255, .09));
             background: rgba(255, 255, 255, .025);
         }
 
@@ -323,6 +325,18 @@
             var cfg = JSON.parse(localStorage.getItem("app-theme-cfg") || "null");
             if (cfg && cfg.background && cfg.background.type === "native") {
                 el.classList.add("native");
+            }
+            // 卡片描边随主题「描边强度」：口径与 tokens.scss 玻璃卡片一致——
+            // flush（无边距档）归无；玻璃开则 rgba(255,255,255, border/100)，暗色再 ×0.4；
+            // 玻璃关则不写变量，落回 CSS 里默认档的中性描边兜底（浅/暗各一档）。
+            if (cfg) {
+                if (cfg.flush) {
+                    el.style.setProperty("--boot-card-border", "transparent");
+                } else if (cfg.glass && cfg.glass.on) {
+                    var b = (typeof cfg.glass.border === "number" ? cfg.glass.border : 0) / 100;
+                    var a = dark ? b * 0.4 : b;
+                    el.style.setProperty("--boot-card-border", "rgba(255,255,255," + a.toFixed(3) + ")");
+                }
             }
             // 按路由感知版式：分栏页（左窄卡+右宽卡）用 split 骨架，其余保持通用卡片网格。
             // 工具窗以 #/win/tools/<key> 或 #/tools/<key> 打开，取末尾 key 比对。
