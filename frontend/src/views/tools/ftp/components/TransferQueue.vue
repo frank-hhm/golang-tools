@@ -16,33 +16,43 @@
       </a-space>
     </div>
 
-    <!-- 展开态始终渲染表体：无任务时靠 min-height 撑出一块可视区域放空态提示，
-         省得整条队列塌成一根细条，传输开始时高度也是从这里长而不是凭空插入 -->
-    <div v-show="!collapsed" class="tq-body">
-      <div v-if="!transfers.length" class="tq-empty">暂无传输任务</div>
-      <div v-for="t in transfers" :key="t.id" class="tq-row">
-        <common-task-progress variant="bare" size="small" :status="tpStatus(t)" :percent="percent(t)"
-          :show-text="false" :divided="false" :speed="t.state === 'running' ? fmtSpeed(t.speed) : ''">
-          <template #name>
-            <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
-            <a-tooltip :content="t.dir === 'up' ? `${t.local} → ${t.remote}` : `${t.remote} → ${t.local}`">
-              <span class="tq-name">{{ t.name }}</span>
-            </a-tooltip>
-            <a-tooltip v-if="t.err" :content="t.err">
-              <span class="tq-err"><icon-exclamation-circle-fill /> {{ t.err }}</span>
-            </a-tooltip>
-          </template>
-          <template #extra>
-            <span class="tq-num">{{ percentText(t) }}</span>
-            <span class="tq-state" :class="'s-' + t.state">{{ stateText(t.state) }}</span>
-          </template>
-          <template #actions>
-            <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" class="btn-quiet" status="danger"
-              @click="emit('cancel', t.id)">取消</a-button>
-            <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" class="btn-quiet"
-              @click="emit('retry', t.id)">重试</a-button>
-          </template>
-        </common-task-progress>
+    <!-- 展开/收起靠 grid-template-rows 0fr↔1fr 做高度过渡：内容高度不固定
+         （空态 96px、多任务到 156px 封顶）也能平滑收放，不用写死 max-height -->
+    <div class="tq-collapse" :class="{ 'is-collapsed': collapsed }">
+      <div class="tq-collapse-inner">
+        <div class="tq-body">
+          <div v-if="!transfers.length" class="tq-empty">
+            <div class="tq-empty-box">
+              <icon-clock-circle class="tq-empty-ic" />
+              <span class="tq-empty-t">暂无传输任务</span>
+              <span class="tq-empty-sub">在文件列表选中后点「上传 / 下载」即可加入队列</span>
+            </div>
+          </div>
+          <div v-for="t in transfers" :key="t.id" class="tq-row">
+            <common-task-progress variant="bare" size="small" :status="tpStatus(t)" :percent="percent(t)"
+              :show-text="false" :divided="false" :speed="t.state === 'running' ? fmtSpeed(t.speed) : ''">
+              <template #name>
+                <a-tag size="small" :color="t.dir === 'up' ? 'arcoblue' : 'purple'">{{ t.dir === 'up' ? '上传' : '下载' }}</a-tag>
+                <a-tooltip :content="t.dir === 'up' ? `${t.local} → ${t.remote}` : `${t.remote} → ${t.local}`">
+                  <span class="tq-name">{{ t.name }}</span>
+                </a-tooltip>
+                <a-tooltip v-if="t.err" :content="t.err">
+                  <span class="tq-err"><icon-exclamation-circle-fill /> {{ t.err }}</span>
+                </a-tooltip>
+              </template>
+              <template #extra>
+                <span class="tq-num">{{ percentText(t) }}</span>
+                <span class="tq-state" :class="'s-' + t.state">{{ stateText(t.state) }}</span>
+              </template>
+              <template #actions>
+                <a-button v-if="t.state === 'queued' || t.state === 'running'" size="mini" class="btn-quiet" status="danger"
+                  @click="emit('cancel', t.id)">取消</a-button>
+                <a-button v-else-if="t.state === 'failed' || t.state === 'canceled'" size="mini" class="btn-quiet"
+                  @click="emit('retry', t.id)">重试</a-button>
+              </template>
+            </common-task-progress>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -119,15 +129,16 @@ function fmtSpeed(n: number): string {
 
 <style scoped>
 .tq {
-  border-top: 1px solid var(--color-border-1);
-  background: var(--color-bg-2);
+  border-top: 1px solid var(--color-border-2);
+  background: var(--color-fill-1); /* 整块做成内凹托盘：与上方 bg-2 文件栏拉开一档 */
 }
 
+/* 头部：直接坐在托盘上，与正文之间靠下面的分隔线区分 */
 .tq-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 8px;
+  padding: 6px 10px;
 }
 
 .tq-title {
@@ -142,26 +153,91 @@ function fmtSpeed(n: number): string {
   font-weight: 600;
 }
 
+/* 展开/收起：grid-template-rows 0fr↔1fr 过渡，内容高度不固定也能平滑收放 */
+.tq-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.34, 0.06, 0.2, 1);
+}
+
+.tq-collapse.is-collapsed {
+  grid-template-rows: 0fr;
+}
+
+.tq-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 1;
+  transition: opacity 0.22s ease;
+}
+
+.tq-collapse.is-collapsed .tq-collapse-inner {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .tq-collapse,
+  .tq-collapse-inner {
+    transition: none;
+  }
+}
+
 .tq-body {
   max-height: 156px;
   overflow: auto;
-  border-top: 1px solid var(--color-border-1);
+  border-top: 1px solid var(--color-border-2);
 }
 
-/* 空态：占满 min-height 并居中提示，高度兜底让“暂无任务”不再是孤零零一行字 */
+/* 空态：占满 min-height，居中一个虚线圆角托盘，图标 + 主提示 + 副说明，
+   不再是扫平背景上一行孤字 */
 .tq-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 64px;
+  min-height: 96px;
+  padding: 12px;
+}
+
+.tq-empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  max-width: 380px;
+  padding: 16px 12px;
+  border: 1px dashed var(--color-border-2);
+  border-radius: var(--base-radius-default);
+  background: var(--color-fill-2); /* 比托盘略深一档的内凹占位，不再用高对比 bg-2 */
   color: var(--color-text-3);
   font-size: 12px;
 }
 
+.tq-empty-ic {
+  font-size: 22px;
+  color: var(--color-text-4, #c9cdd4);
+}
+
+.tq-empty-t {
+  color: var(--color-text-2);
+  font-weight: 600;
+}
+
+.tq-empty-sub {
+  font-size: var(--base-size-small);
+  color: var(--color-text-4, #c9cdd4);
+}
+
 .tq-row {
-  padding: 6px 8px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--color-border-1);
   font-size: 12px;
+  transition: background-color 0.15s;
+}
+
+.tq-row:hover {
+  background: var(--color-fill-2);
 }
 
 .tq-row:last-child {
@@ -242,7 +318,7 @@ function fmtSpeed(n: number): string {
 .arco-btn.btn-quiet:hover {
   background: transparent;
   border-color: transparent;
-  color: rgb(var(--primary-6));
+  color: var(--color-text-1);
 }
 
 .arco-btn.btn-quiet.arco-btn-status-danger {

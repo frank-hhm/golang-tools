@@ -1234,7 +1234,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   height: 14px;
   margin-top: -7px;
   border-radius: var(--base-radius-small);
-  background: rgb(var(--arcoblue-6));
+  background: var(--app-select-rail);
 }
 /* 树节点标题：真分类名可能很长，超出给省略号并靠 tooltip 补全，
    不与右侧徽标争抢换行 */

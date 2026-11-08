@@ -35,37 +35,32 @@
           <a-typography-text type="secondary" class="conn-count">{{ filtered.length }}/{{ hosts.length }}</a-typography-text>
         </div>
 
-        <a-list :bordered="false" size="small">
-          <!-- 选中高亮跟着右侧卡片走：当前会话的主机永远与右边对得上 -->
-          <a-list-item v-for="h in filtered" :key="h.id" :class="{ 'inst-active': (activeTab?.hostId || activeHostId) === h.id }"
-            @click="activeHostId = h.id" @dblclick="connect(h)">
-            <a-space>
-              <!-- 配color时用自定义色小圈，否则回退存活/普通状态 -->
-              <span v-if="h.color" class="color-dot" :style="{ background: h.color }" />
-              <com-badge v-else :status="alive(h.id) ? 'success' : 'normal'" :animated="alive(h.id)" />
-              <a-tooltip :content="`${h.name} ${credUserOf(h)}@${h.address}:${h.port}`">
-                <span class="conn-name">{{ h.name }}</span>
-              </a-tooltip>
-              <!-- 列表窄：标签只放地址，端口在悬停提示里（和原来 [IP] 的写法一致） -->
-              <a-tag size="small" color="arcoblue">{{ h.address }}</a-tag>
-              <a-tag v-for="t in (h.tags || []).slice(0, 2)" :key="t" size="small">{{ t }}</a-tag>
-            </a-space>
-            <template #actions>
-              <a-dropdown trigger="hover" @select="(v: any) => onHostAction(v, h)">
-                <icon-more class="conn-more" @click.stop />
-                <template #content>
-                  <a-doption value="open"><icon-code /> 打开终端</a-doption>
-                  <a-doption value="sftp"><icon-storage /> 在 SFTP 中打开</a-doption>
-                  <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                  <a-doption value="del"><icon-delete /> 删除</a-doption>
-                </template>
-              </a-dropdown>
-            </template>
-          </a-list-item>
-          <a-list-item v-if="!filtered.length">
-            <div class="conn-empty">{{ loading ? '读取中…' : hosts.length ? '没有匹配的服务器' : '暂无记录，点右上「添加」新建' }}</div>
-          </a-list-item>
-        </a-list>
+        <div class="conn-list">
+          <!-- 选中高亮跟着右侧卡片走：当前会话的主机永远与右边对得上。胶囊菜单项与设置页左侧分类导航同口径 -->
+          <div v-for="h in filtered" :key="h.id" class="conn-item"
+            :class="{ 'inst-active': (activeTab?.hostId || activeHostId) === h.id }" @click="activeHostId = h.id"
+            @dblclick="connect(h)">
+            <!-- 配color时用自定义色小圈，否则回退存活/普通状态 -->
+            <span v-if="h.color" class="color-dot" :style="{ background: h.color }" />
+            <com-badge v-else :status="alive(h.id) ? 'success' : 'normal'" :animated="alive(h.id)" />
+            <a-tooltip :content="`${h.name} ${credUserOf(h)}@${h.address}:${h.port}`">
+              <span class="conn-name">{{ h.name }}</span>
+            </a-tooltip>
+            <!-- 参考设置页菜单：地址用等宽次要文字，不再铺亮蓝标签底块，颜色只留给选中竖条 -->
+            <span class="conn-addr">{{ h.address }}</span>
+            <a-tag v-for="t in (h.tags || []).slice(0, 2)" :key="t" size="small">{{ t }}</a-tag>
+            <a-dropdown trigger="hover" @select="(v: any) => onHostAction(v, h)">
+              <icon-more class="conn-more" @click.stop />
+              <template #content>
+                <a-doption value="open"><icon-code /> 打开终端</a-doption>
+                <a-doption value="sftp"><icon-storage /> 在 SFTP 中打开</a-doption>
+                <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
+              </template>
+            </a-dropdown>
+          </div>
+          <div v-if="!filtered.length" class="conn-empty">{{ loading ? '读取中…' : hosts.length ? '没有匹配的服务器' : '暂无记录，点右上「添加」新建' }}</div>
+        </div>
       </a-card>
     </a-col>
 
@@ -479,6 +474,63 @@ onMounted(async () => {
   font-size: var(--base-size-small);
 }
 
+/* 主机列表：胶囊菜单项，与设置页左侧分类导航（.cat-item）/凭据弹窗同口径：
+   选中中性轻底 fill-2 + 加粗 + 左侧主色短竖条，hover fill-1，主色只走竖条不铺底 */
+.conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* 纵向间距由 flex gap 统一给，不用项 margin（相邻会折叠） */
+  padding: 6px 8px;
+}
+
+.conn-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* 左侧多留 4px：com-badge 用 -7px 负 margin 抵出血，会把状态点往左拉，
+     12px 不够会让圆点贴住左侧选中竖条，16px 后点与竖条拉开距离 */
+  padding: 8px 10px 8px 16px;
+  border-radius: var(--base-radius-default);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+/* 选中态的左侧短竖条：3px、高 55%，常态透明只留过渡 */
+.conn-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 55%;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+
+.conn-item:hover {
+  background: var(--color-fill-1);
+  color: var(--color-text-1);
+}
+
+.inst-active,
+.inst-active:hover {
+  background: var(--color-fill-2);
+  color: var(--color-text-1);
+}
+
+.inst-active::before {
+  background: var(--app-select-rail);
+}
+
+.inst-active .conn-name {
+  font-weight: 600;
+}
+
 .color-dot {
   width: 8px;
   height: 8px;
@@ -494,9 +546,23 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+/* 地址：等宽次要文字，与 FTP 列 inst-port 同款，避免彩色标签抢过选中态 */
+.conn-addr {
+  flex: none;
+  font-family: var(--code-font-family);
+  font-size: var(--base-size-small);
+  color: var(--color-text-3);
+}
+
 .conn-more {
+  flex: none;
+  margin-left: auto;
   cursor: pointer;
   color: var(--color-text-3);
+}
+
+.conn-more:hover {
+  color: var(--color-text-1);
 }
 
 .conn-empty {
@@ -504,15 +570,7 @@ onMounted(async () => {
   text-align: center;
   color: var(--color-text-3);
   font-size: var(--base-size-small);
-  padding: 6px 0;
-}
-
-.inst-active {
-  background: var(--color-primary-light-1);
-}
-
-:deep(.arco-list-item) {
-  cursor: pointer;
+  padding: 24px 0;
 }
 
 /* 多会话时标题里的名字就是切换入口 */

@@ -377,7 +377,7 @@ onBeforeUnmount(() => {
   width: 3px;
   height: 55%;
   border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
-  background: rgb(var(--primary-6));
+  background: var(--app-select-rail);
 }
 /* 图标位不再垫灰色方块：应用图标本身是彩色 PNG，背后铺一层灰只会看着脏 */
 .lk-item-ic {

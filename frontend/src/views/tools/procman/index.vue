@@ -589,8 +589,9 @@ onBeforeUnmount(() => {
   color: var(--color-text-1);
 }
 
+/* 当前排序列：caret 只出现在激活列，已足以标识，文字抬到中性 text-1，不用主色蓝（暗色下 primary-6 作字色低对比） */
 .pm-th.is-active {
-  color: rgb(var(--primary-6));
+  color: var(--color-text-1);
 }
 
 .pm-th-caret {
@@ -701,7 +702,7 @@ onBeforeUnmount(() => {
 
 /* 选中行按公共选中态规范：首列左侧短竖条，不加深边框也不改背景 */
 .pm-table :deep(.row-active > td:first-child) {
-  box-shadow: inset 3px 0 0 rgb(var(--primary-6));
+  box-shadow: inset 3px 0 0 var(--app-select-rail);
 }
 
 /* 卡片头左侧概览条：等宽数字防轮询时数值抖宽，项间用细分隔线 */

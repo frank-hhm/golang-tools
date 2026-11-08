@@ -2898,7 +2898,7 @@ onBeforeUnmount(() => {
 }
 
 .cat-item.active::before {
-    background: rgb(var(--primary-6));
+    background: var(--app-select-rail);
 }
 
 .cat-icon {
@@ -3137,7 +3137,8 @@ body.card-flush .tab-content {
 }
 
 .row-drag-handle:hover {
-    color: rgb(var(--primary-6));
+    /* hover 走中性文字色，主色蓝只留给选中/激活态 */
+    color: var(--color-text-1);
 }
 
 .row-drag-handle:active {

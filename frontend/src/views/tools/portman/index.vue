@@ -509,8 +509,9 @@ onBeforeUnmount(() => {
   color: var(--color-text-1);
 }
 
+/* 当前排序列：caret 只出现在激活列，已足以标识，文字抬到中性 text-1，不用主色蓝（暗色下 primary-6 作字色低对比） */
 .pt-th.is-active {
-  color: rgb(var(--primary-6));
+  color: var(--color-text-1);
 }
 
 .pt-th-caret {
@@ -583,8 +584,9 @@ onBeforeUnmount(() => {
   color: var(--color-text-2);
 }
 
+/* LISTEN 是基线监听态，用可读中性 text-2；活跃/过渡强调交给 ESTAB 绿、CLOSING 橙 */
 .pt-state.st-listen {
-  color: rgb(var(--primary-6));
+  color: var(--color-text-2);
 }
 
 .pt-state.st-estab {
@@ -652,7 +654,7 @@ onBeforeUnmount(() => {
 
 /* 选中行按公共选中态规范：首列左侧短竖条，不加深边框也不改背景 */
 .pt-table :deep(.row-active > td:first-child) {
-  box-shadow: inset 3px 0 0 rgb(var(--primary-6));
+  box-shadow: inset 3px 0 0 var(--app-select-rail);
 }
 
 /* 右键菜单（与进程管理同一套形态） */

@@ -113,6 +113,22 @@ onUnmounted(() => {
 <style scoped>
 .do-alert {
     margin-bottom: 8px;
+    /* Arco 给 .arco-alert 写死了 width:100%，而本组件又带左右外边距（全局 style.scss 10px、MySQL 页 scoped 8px）：
+       100% 宽 + 左右 margin 就比容器宽出 2×margin、越过左右分栏分隔线溢到右侧内容区。
+       改回 width:auto：块级自动宽 = 容器宽减去自身左右 margin，天然贴合；各页 margin 不同也不用写死 calc 数值。 */
+    width: auto;
+    min-width: 0;
+}
+
+/* a-alert 是 flex 容器、默认插槽落在 .arco-alert-body；body 没 min-width:0 时，
+   .do-sub 的 nowrap 长句把 body 的 min-content 撑成整句宽、body 溢出 alert（alert overflow:hidden）
+   → 第一行右侧「打开面板/重试」被裁到卡片外。给 body 松绑 min-width:0，让它收到 alert 宽度内，
+   do-sub/do-text 的 ellipsis 才生效、按钮留在框内。 */
+.do-alert :deep(.arco-alert-body) {
+    /* flex:1 1 0（basis 0）而非 arco 默认的 flex:initial（basis auto）：让 body 只按可用宽度填充、
+       绝不按内容撑宽，配合 min-width:0 才能真正把长句收进 ellipsis、不再顶宽整张告示。 */
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 /* 一行：结论吃掉剩余宽度并截断，按钮靠右不参与压缩 */
@@ -120,6 +136,7 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
 }
 
 .do-text {

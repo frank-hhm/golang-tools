@@ -1,20 +1,22 @@
 <template>
   <div class="rb">
-    <div v-if="label" class="rb-label">
-      <span>{{ label }}</span>
-      <a-typography-text v-if="hint" type="secondary" class="rb-hint">{{ hint }}</a-typography-text>
-    </div>
-    <div class="rb-body">
-      <textarea ref="taRef" class="rb-text" :class="{ 'is-mono': mono }" :value="text" readonly spellcheck="false" />
+    <!-- 头栏：左标题右动作，替代原先浮在文本区里的一角按钮；正文走 --code-* 表面色与全站代码面板同肤色 -->
+    <div class="rb-head">
+      <div v-if="label" class="rb-label">
+        <span>{{ label }}</span>
+        <a-typography-text v-if="hint" type="secondary" class="rb-hint">{{ hint }}</a-typography-text>
+      </div>
+      <span v-else />
       <div class="rb-actions">
-        <a-button size="mini" :disabled="!text" @click="doCopy">
+        <a-button size="mini" type="text" :disabled="!text" @click="doCopy">
           <template #icon><icon-copy /></template>复制
         </a-button>
-        <a-button size="mini" :disabled="!text || !dir || !filename" :loading="saving" @click="doSave">
+        <a-button size="mini" type="text" :disabled="!text || !dir || !filename" :loading="saving" @click="doSave">
           <template #icon><icon-save /></template>另存
         </a-button>
       </div>
     </div>
+    <textarea ref="taRef" class="rb-text" :class="{ 'is-mono': mono }" :value="text" readonly spellcheck="false" />
   </div>
 </template>
 
@@ -94,51 +96,67 @@ async function doSave() {
 
 <style scoped>
 .rb {
+  border: 1px solid var(--code-border);
+  border-radius: var(--base-radius-small);
+  overflow: hidden;
   margin-bottom: 12px;
+  background: var(--code-bg);
+}
+
+.rb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 4px 3px 10px;
+  border-bottom: 1px solid var(--code-border);
+  background: var(--color-fill-1);
 }
 
 .rb-label {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
   font-size: var(--base-size-small);
   color: var(--color-text-2);
-  margin-bottom: 4px;
 }
 
 .rb-hint {
   font-size: var(--base-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.rb-body {
-  position: relative;
+.rb-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
 }
 
 .rb-text {
+  display: block;
   width: 100%;
-  min-height: 56px;
+  min-height: 44px;
   padding: 8px 10px;
-  padding-bottom: 34px;
   box-sizing: border-box;
-  resize: vertical;
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--base-radius-default);
-  background: var(--color-bg-1);
-  color: var(--color-text-1);
+  border: 0;
+  resize: none;
+  background: transparent;
+  color: var(--code-text);
   font-size: var(--base-size-default);
   line-height: 1.5;
   outline: none;
+  cursor: text;
+}
+
+.rb-text:focus {
+  box-shadow: none;
 }
 
 .rb-text.is-mono {
   font-family: var(--code-font-family);
-}
-
-.rb-actions {
-  position: absolute;
-  right: 8px;
-  bottom: 7px;
-  display: flex;
-  gap: 6px;
 }
 </style>

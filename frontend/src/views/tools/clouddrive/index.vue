@@ -808,7 +808,7 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
 
 .acct.active {
     background: var(--color-primary-light-1);
-    box-shadow: inset 3px 0 0 var(--color-primary-6);
+    box-shadow: inset 3px 0 0 var(--app-select-rail);
 }
 
 .acct-name {
@@ -892,7 +892,8 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
 }
 
 .crumb:hover {
-    color: rgb(var(--primary-6));
+    /* hover 走中性文字色，主色蓝只留给选中/激活态 */
+    color: var(--color-text-1);
 }
 
 .crumb.cur {

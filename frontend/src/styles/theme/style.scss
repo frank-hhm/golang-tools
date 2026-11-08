@@ -50,6 +50,13 @@
 .arco-card.arco-card-bordered {
     border-color: var(--color-border-1);
 }
+
+/******alert********/
+/* a-alert 全局去描边：arco 默认给每种 type 铺 1px 同色系边框，玻璃/暗色下与底色叠加显脏。
+   用 .arco-alert.arco-alert（0,2,0）稳压 arco.css 的 .arco-alert（0,1,0），只去边框、保留底色与圆角。 */
+.arco-alert.arco-alert {
+    border: none;
+}
 /******loading********/
 .state-loading {
     position: relative;

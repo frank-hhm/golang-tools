@@ -681,7 +681,7 @@ onBeforeUnmount(() => {
   height: 16px;
   margin-top: -8px;
   border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
-  background: rgb(var(--primary-6));
+  background: var(--app-select-rail);
 }
 .repo-more {
   flex: none;
@@ -884,7 +884,8 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .file-path:hover {
-  color: rgb(var(--primary-6));
+  /* hover 走中性文字色，保留下划线作可点提示 */
+  color: var(--color-text-1);
   text-decoration: underline;
 }
 .changes-empty {

@@ -16,34 +16,29 @@
           </div>
         </template>
 
-        <!-- 卡片式选择列表：与 nginx 左侧同一套 common-item-card（选中短竖条 + hover 投影），单击选中、双击连接 -->
+        <!-- 胶囊菜单式选择列表：与终端页「我的连接」/设置页左侧分类导航同一口径（选中短竖条 + fill-2 轻底），单击选中、双击连接 -->
         <div class="inst-list">
-          <common-item-card v-for="c in filtered" :key="c.id"
-            :active="activeConnId === c.id"
+          <div v-for="c in filtered" :key="c.id" class="inst-item" :class="{ 'inst-active': activeConnId === c.id }"
             @click="activeConnId = c.id" @dblclick="connect(c)">
-            <template #status>
+            <div class="inst-line1">
               <com-badge :status="isConnected(c.id) ? 'success' : 'normal'" :animated="isConnected(c.id)" />
-            </template>
-            <template #title>
               <a-tooltip class="inst-name-tip" :content="`${c.name} ${c.user}@${c.host}:${c.port}`">
                 <span class="inst-name">{{ c.name }}</span>
               </a-tooltip>
-            </template>
-            <template #extra>
               <a-dropdown trigger="hover" @select="(v: any) => onAction(v, c)">
                 <icon-more class="inst-more" @click.stop />
                 <template #content>
                   <a-doption value="open"><icon-folder /> 打开文件管理</a-doption>
                   <a-doption value="term"><icon-terminal /> 在终端中打开</a-doption>
                   <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                  <a-doption value="del"><icon-delete /> 删除</a-doption>
+                  <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
                 </template>
               </a-dropdown>
-            </template>
+            </div>
             <div class="inst-line2">
               <span class="inst-port">{{ c.user }}@{{ c.host }}:{{ c.port }}</span>
             </div>
-          </common-item-card>
+          </div>
           <div v-if="!filtered.length" class="inst-empty">
             {{ loading ? '读取中…' : connections.length ? '没有匹配的记录' : '暂无记录，点右上「添加」新建' }}
           </div>
@@ -420,7 +415,8 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
-/* 左侧连接列表：卡片式条目，选中态用左侧短竖条 + 按需投影（外壳由 common-item-card 提供） */
+/* 左侧连接列表：胶囊菜单项，与设置页左侧分类导航（.cat-item）/终端页同口径：
+   选中中性轻底 fill-2 + 左侧主色短竖条，hover fill-1，主色只走竖条不铺底 */
 .side-title {
   font-size: var(--base-size-default);
   font-weight: 600;
@@ -440,8 +436,64 @@ onBeforeUnmount(() => {
 .inst-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: calc(var(--base-padding) / 2);
+  gap: 4px; /* 纵向间距由 flex gap 统一给，不用项 margin（相邻会折叠） */
+  padding: 6px 8px;
+}
+
+.inst-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  /* 左侧多留 4px：com-badge 用 -7px 负 margin 抵出血，会把状态点往左拉，
+     12px 不够会让圆点贴住左侧选中竖条，16px 后点与竖条拉开距离 */
+  padding: 8px 10px 8px 16px;
+  border-radius: var(--base-radius-default);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+/* 选中态的左侧短竖条：3px、高 55%，常态透明只留过渡 */
+.inst-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 55%;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+
+.inst-item:hover {
+  background: var(--color-fill-1);
+  color: var(--color-text-1);
+}
+
+.inst-active,
+.inst-active:hover {
+  background: var(--color-fill-2);
+  color: var(--color-text-1);
+}
+
+.inst-active::before {
+  background: var(--app-select-rail);
+}
+
+.inst-active .inst-name {
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.inst-line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .inst-name-tip {
@@ -449,10 +501,14 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+/* 参考设置页菜单：非选中项常规字重、颜色跟随行本身（text-2），只选中才加粗提亮 */
 .inst-name {
   display: block;
-  font-weight: 600;
-  color: var(--color-text-1);
+  /* 真正的 flex 子项是这个 span（a-tooltip 不产生参与布局的包裹层），
+     flex:1 + min-width:0 才能撑开并触发省略号，把 ⋯ 顶到右边 */
+  flex: 1;
+  min-width: 0;
+  color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -462,10 +518,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
   color: var(--color-text-3);
   flex: none;
+  /* 与终端页 conn-more 同口径：靠 margin-left:auto 顶到行最右 */
+  margin-left: auto;
 }
 
 .inst-more:hover {
-  color: rgb(var(--primary-6));
+  color: var(--color-text-1);
 }
 
 .inst-line2 {
@@ -473,6 +531,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  padding-left: 16px; /* 与第一行名称起点对齐（状态点净宽 8 + gap 8） */
 }
 
 .inst-port {
@@ -485,7 +544,7 @@ onBeforeUnmount(() => {
   color: var(--color-text-3);
   font-size: var(--base-size-small);
   text-align: center;
-  padding: 20px 0;
+  padding: 24px 0;
 }
 
 /* 双栏占满卡片正文，传输队列固定在底部 */

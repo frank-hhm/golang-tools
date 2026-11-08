@@ -572,6 +572,13 @@ onUnmounted(() => {
     margin-top: 4px;
 }
 
+/* 卡片头默认左右 16px，而 body 用 8px 10px——标题/按钮比下面的告警与表格多缩 6px、左缘错位。
+   把头部左右内边距收到 10px 与 body 对齐（card-head-tool 对 title/extra 的 -8/+8 padding 补偿后文字仍落 10px）。 */
+.dv-card :deep(.arco-card-header) {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
 .dv-title {
     display: inline-flex;
     align-items: center;

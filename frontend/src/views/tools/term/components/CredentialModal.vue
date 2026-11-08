@@ -1,95 +1,91 @@
 <template>
-  <a-modal :visible="visible" title="SSH 凭据管理" :width="620" :mask-closable="false" :footer="false"
-    @cancel="close" @update:visible="(v: boolean) => emit('update:visible', v)">
-    <template #title>
-      <a-space>
-        <span>SSH 凭据管理</span>
-        <a-tag size="small" color="gray">一处改密，多机生效</a-tag>
-      </a-space>
-    </template>
-
+  <a-modal :visible="visible" title="SSH 凭据管理" :width="640" :mask-closable="false" @cancel="close"
+    @update:visible="(v: boolean) => emit('update:visible', v)">
     <div class="cred-body">
-      <!-- 左：凭据列表 -->
+      <!-- 左：凭据列表（无题卡壳 + 圆角选中态，与任务中心弹窗同一版式） -->
       <div class="cred-list">
         <div class="cred-list-head">
+          <span class="cred-list-title">共享凭据</span>
           <a-button size="mini" type="primary" @click="newOne">
             <template #icon><icon-plus /></template>新建
           </a-button>
         </div>
         <a-scrollbar style="height: 300px">
-          <a-list :bordered="false" size="small">
-            <a-list-item v-for="c in items" :key="c.id" :class="{ 'cred-active': c.id === form.id }"
+          <div class="cred-items">
+            <div v-for="c in items" :key="c.id" class="cred-item" :class="{ 'cred-active': c.id === form.id }"
               @click="pick(c)">
-              <a-space>
-                <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
-                  {{ c.auth === 'key' ? '密钥' : '密码' }}
-                </a-tag>
-                <span class="cred-name">{{ c.name }}</span>
-                <a-typography-text v-if="c.user" type="secondary" class="cred-user">{{ c.user }}</a-typography-text>
-              </a-space>
-              <template #actions>
-                <a-dropdown trigger="hover" @select="(v: any) => onAction(v, c)">
-                  <icon-more class="cred-more" @click.stop />
-                  <template #content>
-                    <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                    <a-doption value="del"><icon-delete /> 删除</a-doption>
-                  </template>
-                </a-dropdown>
-              </template>
-            </a-list-item>
-            <a-list-item v-if="!items.length && !loading">
-              <div class="cred-empty">暂无凭据，点「新建」添加</div>
-            </a-list-item>
-          </a-list>
+              <icon-safe v-if="c.auth === 'key'" class="cred-item-ic" />
+              <icon-lock v-else class="cred-item-ic" />
+              <span class="cred-name">{{ c.name }}</span>
+              <a-typography-text v-if="c.user" type="secondary" class="cred-user">{{ c.user }}</a-typography-text>
+              <a-dropdown trigger="hover" @select="(v: any) => onAction(v, c)">
+                <icon-more class="cred-more" @click.stop />
+                <template #content>
+                  <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                  <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
+                </template>
+              </a-dropdown>
+            </div>
+            <div v-if="!items.length && !loading" class="cred-empty">暂无凭据，点「新建」添加</div>
+          </div>
         </a-scrollbar>
       </div>
 
-      <!-- 右：编辑表单 -->
+      <!-- 右：编辑表单：短字段两列并排，压缩纵向空白 -->
       <div class="cred-form">
-        <a-form :model="form" layout="vertical" size="small">
-          <a-form-item label="名称" required>
-            <a-input v-model="form.name" placeholder="如：生产部署账号" allow-clear />
-          </a-form-item>
-          <a-form-item label="验证方式">
-            <a-radio-group v-model="form.auth" type="button" size="small">
-              <a-radio value="password">密码</a-radio>
-              <a-radio value="key">密钥</a-radio>
-            </a-radio-group>
-          </a-form-item>
+        <a-form :model="form" layout="vertical" size="small" class="cred-vform">
+          <a-row :gutter="8">
+            <a-col :span="13">
+              <a-form-item label="名称" required>
+                <a-input v-model="form.name" placeholder="如：生产部署账号" allow-clear />
+              </a-form-item>
+            </a-col>
+            <a-col :span="11">
+              <a-form-item label="验证方式">
+                <a-radio-group v-model="form.auth" type="button" size="small">
+                  <a-radio value="password">密码</a-radio>
+                  <a-radio value="key">密钥</a-radio>
+                </a-radio-group>
+              </a-form-item>
+            </a-col>
+          </a-row>
           <a-form-item label="SSH 账号">
             <a-input v-model="form.user" placeholder="登录账号（主机未填账号时沿用此项）" allow-clear />
           </a-form-item>
 
-          <template v-if="form.auth === 'password'">
-            <a-form-item label="密码" :required="!form.id">
-              <a-input-password v-model="form.password"
-                :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入密码'" allow-clear />
-            </a-form-item>
-          </template>
+          <a-form-item v-if="form.auth === 'password'" label="密码" :required="!form.id">
+            <a-input-password v-model="form.password"
+              :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入密码'" allow-clear />
+          </a-form-item>
           <template v-else>
             <a-form-item label="私钥文件" required>
-              <a-space :size="8" class="key-row">
+              <div class="key-row">
                 <a-input v-model="form.keyPath" placeholder="OpenSSH 私钥文件" readonly class="key-input">
                   <template #prefix><icon-file /></template>
                 </a-input>
                 <a-button size="small" @click="chooseKey">选择</a-button>
-              </a-space>
+              </div>
             </a-form-item>
             <a-form-item label="私钥口令">
               <a-input-password v-model="form.passphrase"
                 :placeholder="form.id ? '留空表示沿用已保存的口令' : '无口令可留空'" allow-clear />
             </a-form-item>
           </template>
-
-          <div class="cred-form-foot">
-            <a-space>
-              <a-button size="small" @click="reset">重填</a-button>
-              <a-button size="small" type="primary" :loading="busy" @click="save">保存凭据</a-button>
-            </a-space>
-          </div>
         </a-form>
       </div>
     </div>
+
+    <!-- 动作进 footer：左说明右按钮，与仓库设置弹窗同一交互；表单区不再自带按钮 -->
+    <template #footer>
+      <div class="cred-footer">
+        <span class="cred-footer-hint">凭据与终端、FTP 共用一份，改一次多机生效</span>
+        <a-space :size="8">
+          <a-button size="small" @click="reset">重填</a-button>
+          <a-button size="small" @click="close">关闭</a-button>
+          <a-button size="small" type="primary" :loading="busy" @click="save">保存凭据</a-button>
+        </a-space>
+      </div>
+    </template>
   </a-modal>
 </template>
 
@@ -210,37 +206,112 @@ function close() {
   gap: 12px;
 }
 
+/* 左列：胶囊菜单项，与设置页左侧分类导航（.cat-item）同口径：
+   选中中性轻底 fill-2 + 加粗 + 左侧主色短竖条，hover fill-1，主色只走竖条不铺底 */
 .cred-list {
-  width: 260px;
+  width: 252px;
+  flex: none;
   border-right: 1px solid var(--color-border-2);
-  padding-right: 8px;
+  padding-right: 10px;
 }
 
 .cred-list-head {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 6px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
 }
 
-.cred-form {
-  flex: 1;
+.cred-list-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text-1);
+}
+
+.cred-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* 纵向间距由 flex gap 统一给，不用项 margin（相邻会折叠） */
+  padding-right: 4px; /* 给滚动条留位，免得 hover 背景被裁 */
+}
+
+.cred-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--base-radius-default);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+/* 选中态的左侧短竖条：3px、高 55%，常态透明只留过渡 */
+.cred-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 55%;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+
+.cred-item:hover {
+  background: var(--color-fill-1);
+  color: var(--color-text-1);
+}
+
+.cred-active,
+.cred-active:hover {
+  background: var(--color-fill-2);
+  color: var(--color-text-1);
+}
+
+.cred-active::before {
+  background: var(--app-select-rail);
+}
+
+.cred-item-ic {
+  flex: none;
+  color: inherit;
+  font-size: var(--base-size-default);
 }
 
 .cred-name {
-  max-width: 110px;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.cred-active .cred-name {
+  font-weight: 600;
+}
+
 .cred-user {
+  flex: none;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--base-size-small);
 }
 
 .cred-more {
+  flex: none;
   cursor: pointer;
   color: var(--color-text-3);
+}
+
+.cred-more:hover {
+  color: var(--color-text-1);
 }
 
 .cred-empty {
@@ -248,18 +319,33 @@ function close() {
   text-align: center;
   color: var(--color-text-3);
   font-size: var(--base-size-small);
-  padding: 10px 0;
+  padding: 24px 0;
 }
 
-.cred-active {
-  background: var(--color-primary-light-1);
+.cred-form {
+  flex: 1;
+  min-width: 0;
 }
 
-:deep(.arco-list-item) {
-  cursor: pointer;
+/* 纵向表单：字段间距由容器 gap 统一管，标签贴住输入框（与 FTP 连接表单同度量） */
+.cred-vform {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cred-vform :deep(.arco-form-item) {
+  margin-bottom: 0;
+}
+
+.cred-vform :deep(.arco-form-item-label-col) {
+  margin-bottom: 4px;
 }
 
 .key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
 }
 
@@ -268,9 +354,19 @@ function close() {
   min-width: 0;
 }
 
-.cred-form-foot {
+/* footer：左说明右按钮 */
+.cred-footer {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cred-footer-hint {
+  color: var(--color-text-3);
+  font-size: var(--base-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

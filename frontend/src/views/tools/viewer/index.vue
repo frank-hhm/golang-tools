@@ -650,7 +650,8 @@ onUnmounted(() => {
     color: var(--color-text-2);
 }
 .crumb:hover {
-    color: rgb(var(--primary-6));
+    /* hover 走中性文字色，主色蓝只留给选中/激活态 */
+    color: var(--color-text-1);
 }
 .crumb.cur {
     font-weight: 600;
@@ -788,7 +789,7 @@ onUnmounted(() => {
     background: transparent;
 }
 .vp-item.active::after {
-    background: rgb(var(--primary-6));
+    background: var(--app-select-rail);
 }
 .vp-item-name {
     flex: 1;

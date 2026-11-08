@@ -81,7 +81,7 @@ withDefaults(defineProps<{
 }
 
 .item-card.is-active .item-rail {
-  background: rgb(var(--primary-6));
+  background: var(--app-select-rail);
 }
 
 .item-body {

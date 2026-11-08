@@ -1402,7 +1402,8 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 }
 
 .crumb:hover {
-    color: rgb(var(--primary-6));
+    /* hover 走中性文字色，主色蓝只留给选中/激活态 */
+    color: var(--color-text-1);
 }
 
 .crumb.cur {
@@ -1485,6 +1486,11 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 }
 
 .name-text {
+    /* 收缩到内容宽度：name-box 是 flex column、交叉轴默认 stretch 会把 span 拉成整列宽，
+       tooltip 锚的是 span 中心，短名时气泡会浮到名字右侧一大截。align-self 不拉伸 + max-width 100%
+       既让短名气泡贴合文字，长名仍受列宽约束触发省略号 */
+    align-self: flex-start;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1497,7 +1503,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 }
 
 .name-text.dir:hover {
-    color: rgb(var(--primary-6));
+    color: var(--color-text-1);
 }
 
 .name-path {
@@ -1574,7 +1580,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
     width: 3px;
     height: 16px;
     border-radius: var(--base-radius-small);
-    background: rgb(var(--primary-6));
+    background: var(--app-select-rail);
 }
 
 .g-icon {
@@ -1704,6 +1710,6 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
     width: 3px;
     height: 15px;
     border-radius: var(--base-radius-small);
-    background: rgb(var(--primary-6));
+    background: var(--app-select-rail);
 }
 </style>

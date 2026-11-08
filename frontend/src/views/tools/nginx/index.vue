@@ -638,7 +638,8 @@ onUnmounted(() => {
 }
 
 .inst-more:hover {
-    color: rgb(var(--primary-6));
+    /* 与 FTP/终端 conn-more 同口径：hover 抬到中性 text-1，不抢主色蓝 */
+    color: var(--color-text-1);
 }
 
 .inst-line2 {

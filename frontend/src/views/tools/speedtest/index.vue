@@ -168,26 +168,31 @@
                 <a-button v-if="editingCustomId" size="small" @click="cancelEdit">取消编辑</a-button>
             </template>
 
+            <!-- 四列都常驻一行校验位（help），错误出现/消失不再把邻列顶得上下跳；
+                 按钮列用空标签占位对齐输入框基线；控件统一 small，跟上方工具条同一规格 -->
             <a-form ref="customFormRef" :model="customForm" class="st-form" layout="vertical"
                 @submit="saveCustom">
-                <a-row :gutter="12" align="end">
+                <a-row :gutter="12">
                     <a-col :xs="24" :md="6">
-                        <a-form-item field="name" label="节点名称">
-                            <a-input v-model="customForm.name" placeholder="如：我的服务器" allow-clear />
+                        <a-form-item field="name" label="节点名称" help=" ">
+                            <a-input v-model="customForm.name" size="small" placeholder="如：我的服务器" allow-clear />
                         </a-form-item>
                     </a-col>
                     <a-col :xs="24" :md="10">
-                        <a-form-item field="downloadUrl" label="下载地址" :rules="dlRules">
-                            <a-input v-model="customForm.downloadUrl" placeholder="需支持 CORS 的大文件地址" allow-clear />
+                        <a-form-item field="downloadUrl" label="下载地址" :rules="dlRules"
+                            help="需返回 CORS 头，否则前端读不到速率">
+                            <a-input v-model="customForm.downloadUrl" size="small"
+                                placeholder="如 https://speed.cloudflare.com/__down?bytes=104857600" allow-clear />
                         </a-form-item>
                     </a-col>
                     <a-col :xs="24" :md="5">
-                        <a-form-item field="uploadUrl" label="上传地址（可选）">
-                            <a-input v-model="customForm.uploadUrl" placeholder="分块 POST 端点" allow-clear />
+                        <a-form-item field="uploadUrl" label="上传地址（可选）" help=" ">
+                            <a-input v-model="customForm.uploadUrl" size="small" placeholder="分块 POST 端点" allow-clear />
                         </a-form-item>
                     </a-col>
                     <a-col :xs="24" :md="3">
-                        <a-form-item hide-label>
+                        <a-form-item help=" ">
+                            <template #label>&nbsp;</template>
                             <a-button size="small" html-type="submit" long>
                                 <template #icon><icon-plus /></template>
                                 {{ editingCustomId ? "保存" : "添加" }}
@@ -505,10 +510,20 @@ const customFormRef = ref();
 const customForm = reactive({ name: "", downloadUrl: "", uploadUrl: "" });
 const editingCustomId = ref("");
 
-/** 下载端点校验：必填 + 必须 http(s)，交给 m-form-item 展示 */
+/** 下载端点校验：必填 + 必须 http(s)，交给 m-form-item 展示；
+ *  格式规则自己跳过空值，否则必填与格式一起报错会出两行提示，把预留的一行校验位撑高 */
 const dlRules = [
     { required: true, message: "请填写下载地址" },
-    { match: /^https?:\/\//i, message: "需以 http:// 或 https:// 开头" },
+    {
+        validator: (value: any, cb: (error?: string) => void) => {
+            const v = String(value ?? "").trim();
+            if (v && !/^https?:\/\//i.test(v)) {
+                cb("需以 http:// 或 https:// 开头");
+                return;
+            }
+            cb();
+        },
+    },
 ];
 
 interface CustomDto { id: string; name: string; downloadUrl: string; uploadUrl: string }
@@ -674,9 +689,16 @@ onUnmounted(() => {
     text-overflow: ellipsis;
 }
 
-/* 自定义端点表单：标签小字与卡片指标标题对齐 */
+/* 自定义端点表单：字段不留底边，校验行由模板里的 help 常驻占位，行高固定 */
 .st-form :deep(.arco-form-item) {
     margin-bottom: 0;
+}
+
+/* 提示/报错只占一行：文案再长也省略号收掉，免得单列把整行顶高 */
+.st-form :deep(.arco-form-item-message) {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .st-form :deep(.arco-form-item-label) {

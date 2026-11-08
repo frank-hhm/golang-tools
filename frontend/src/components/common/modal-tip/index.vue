@@ -74,7 +74,12 @@ const detailLines = computed(() => {
     font-size: var(--base-size-small);
     line-height: 1.5;
     border-bottom: 1px solid rgba(var(--warning-6), 0.28);
-    background: rgba(var(--warning-6), 0.09);
+    /* 吸顶覆盖层必须不透明：a-modal-body 是 overflow:auto 的滚动容器，滚动时下方表单会从
+       半透明底里透出来（看着像与提示条叠在一起）。把语气色做成一层 tint 渐变、底下垫弹窗本体色
+       --color-bg-2，既保留色调又能完全遮挡滚过的内容。 */
+    background:
+        linear-gradient(rgba(var(--warning-6), 0.09), rgba(var(--warning-6), 0.09)),
+        var(--color-bg-2);
 }
 
 .mt-icon {
@@ -118,7 +123,9 @@ const detailLines = computed(() => {
 
 .tone-error {
     border-bottom-color: rgba(var(--danger-6), 0.28);
-    background: rgba(var(--danger-6), 0.09);
+    background:
+        linear-gradient(rgba(var(--danger-6), 0.09), rgba(var(--danger-6), 0.09)),
+        var(--color-bg-2);
 }
 
 .tone-error .mt-icon {
@@ -127,7 +134,9 @@ const detailLines = computed(() => {
 
 .tone-info {
     border-bottom-color: var(--color-border-1);
-    background: var(--color-fill-1);
+    background:
+        linear-gradient(var(--color-fill-1), var(--color-fill-1)),
+        var(--color-bg-2);
 }
 
 .tone-info .mt-icon {

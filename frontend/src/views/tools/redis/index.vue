@@ -27,12 +27,8 @@
                             </a-tooltip>
                         </template>
                         <template #extra>
-                            <!-- 删除改走气泡确认框：紧贴行内图标，不再弹居中大框 -->
-                            <a-popconfirm :content="delTip(it)" type="warning" position="lt" @ok="onDeleteItem(it)">
-                                <icon-delete class="conn-del" @click.stop />
-                            </a-popconfirm>
-                            <a-dropdown trigger="hover"
-                                @select="(v: any) => it.kind === 'instance' ? onSrvAction(v, it.inst) : onConnAction(v, it.conn)">
+                            <!-- 删除并入下拉菜单：不再单列行内垃圾桶图标，选中「删除」后走 Modal 二次确认 -->
+                            <a-dropdown trigger="hover" @select="(v: any) => onItemAction(String(v), it)">
                                 <icon-more class="conn-more" @click.stop />
                                 <template #content>
                                     <template v-if="it.kind === 'instance'">
@@ -41,10 +37,12 @@
                                         <a-doption value="logs"><icon-list /> 日志/状态</a-doption>
                                         <a-doption value="connect"><icon-link /> 连接</a-doption>
                                         <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                                        <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
                                     </template>
                                     <template v-else>
                                         <a-doption value="open"><icon-play-arrow /> 打开连接</a-doption>
                                         <a-doption value="edit"><icon-edit /> 编辑</a-doption>
+                                        <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
                                     </template>
                                 </template>
                             </a-dropdown>
@@ -429,7 +427,7 @@
 
 <script setup lang="ts">
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { Message } from "@arco-design/web-vue";
+import { Message, Modal } from "@arco-design/web-vue";
 import { Events } from "@wailsio/runtime";
 import { useRoute } from "vue-router";
 import { useReorder, applyOrder, loadOrder } from "@/utils/reorder";
@@ -1025,10 +1023,27 @@ function delTip(it: RedisListItem): string {
         : `确定删除连接「${it.name}」？`;
 }
 
-/** 气泡确认后真正执行删除 */
+/** 确认后真正执行删除 */
 function onDeleteItem(it: RedisListItem) {
     if (it.kind === "instance") doDeleteInst(it.inst);
     else doDeleteConn(it.conn);
+}
+
+/** 下拉菜单统一入口：删除走 Modal 二次确认（复用 delTip 文案与 onDeleteItem），其余分派到实例/连接动作 */
+function onItemAction(v: string, it: RedisListItem) {
+    if (v === "del") {
+        Modal.confirm({
+            title: "删除确认",
+            content: delTip(it),
+            okText: "删除",
+            cancelText: "取消",
+            okButtonProps: { status: "danger" },
+            onOk: () => onDeleteItem(it),
+        });
+        return;
+    }
+    if (it.kind === "instance") void onSrvAction(v, it.inst);
+    else onConnAction(v, it.conn);
 }
 
 async function doDeleteInst(inst: SrvInstanceConfig) {
@@ -1211,15 +1226,6 @@ onUnmounted(() => {
 
 .conn-more {
     color: var(--color-text-3);
-}
-
-.conn-del {
-    color: var(--color-text-3);
-    margin-right: 10px;
-}
-
-.conn-del:hover {
-    color: rgb(var(--danger-6));
 }
 
 .conn-empty {

@@ -602,7 +602,8 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, downloa
 }
 
 .crumb:hover {
-  color: rgb(var(--primary-6));
+  /* hover 走中性文字色，主色蓝只留给选中/激活态（与 conn-more、inst-name 同口径） */
+  color: var(--color-text-1);
 }
 
 .crumb.cur {
@@ -693,7 +694,7 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, downloa
 }
 
 .name-text:hover {
-  color: rgb(var(--primary-6));
+  color: var(--color-text-1);
 }
 
 /* 弱化操作按钮：替代被禁用的 type="text"，常态无底无框，hover 只变字色不加深边框/底色 */
@@ -707,7 +708,7 @@ defineExpose({ refresh: () => load(curPath.value), handleDrop, download, downloa
 .arco-btn.btn-quiet:hover {
   background: transparent;
   border-color: transparent;
-  color: rgb(var(--primary-6));
+  color: var(--color-text-1);
 }
 
 .arco-btn.btn-quiet.arco-btn-status-danger {

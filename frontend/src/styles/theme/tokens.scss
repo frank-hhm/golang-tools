@@ -37,6 +37,12 @@
     --app-warning: #e6a23c;
     --app-danger: #e35d5b;
     --app-info: #4b7bec;
+
+    /* 选中态「左侧短竖条」(rail) 的颜色：不跟随主色/强调色，改用随明暗翻转的中性正文色——
+       暗黑下近白、亮色下近黑。rail 只表达「哪一项被选中」的定位，本就该是中性高对比色；
+       若用主色绘制，一旦用户把主题主色设成黑/白等深色，选中竖条就会和背景糊在一起、看不见。
+       全站所有「左侧短竖条选中态」（实例卡 rail、列表/树/胶囊项 ::before、表格首列 inset 竖条）共用这一枚令牌。 */
+    --app-select-rail: var(--color-text-1);
 }
 
 /*
@@ -377,37 +383,42 @@ body.app-glass .arco-table-container .arco-table-td {
 }
 
 /*
- * 固定列表体单元：透明化后仍须不透明压住滚过的列（sticky 遮挡语义）。铺「bg-2 实底 + 玻璃 tint」
- * 的不透明合成面，与涂透表体透出的卡片玻璃同源，避免列边界暗带。特异性 (0,3,0) 高于上面的
- * .arco-table-td (0,2,0)，故能盖回不透明。
+ * 固定列表体单元：透明化后仍须不透明压住滚过的列（sticky 遮挡语义）。此前只铺「bg-2 实底 + 玻璃 tint」，
+ * 在带纹理的玻璃档里，固定列是一块无纹理的实心板，与两侧透出磨砂纹理的普通格对不齐（用户反馈“固定列不贴合背景”）。
+ * 改为再自绘一层与底层同源的 --app-texture-bg（background-attachment: fixed），使固定列显出与表体一致的纹理；
+ * 因是自绘不透明底（bg-2 实底 + 纹理 + tint 三层合成），横向滚过来的列被完全遮住，零渗漏。
+ * 注：卡片 backdrop-filter 会建包含块，令 fixed 实际锚到卡片而非视口——对 mesh/photo/dark 平滑渐变几乎无影响，
+ * image 自定义图会有轻微缩放错位，但仍是“同一条纹理”，远好于实心板。无纹理时 var 回落 none，退化为 tint+bg-2。
+ * 特异性 (0,3,1) 高于上面的 .arco-table-td 涂透 (0,3,1) 且书写在后，能盖回不透明。
  */
 body.app-glass .arco-table-td.arco-table-col-fixed-left,
 body.app-glass .arco-table-td.arco-table-col-fixed-right {
     background-color: var(--color-bg-2);
-    background-image: linear-gradient(rgba(255, 255, 255, var(--app-glass-alpha)), rgba(255, 255, 255, var(--app-glass-alpha)));
+    background-image:
+        linear-gradient(rgba(255, 255, 255, var(--app-glass-alpha)), rgba(255, 255, 255, var(--app-glass-alpha))),
+        var(--app-texture-bg, none);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
 }
 
 body.app-glass[arco-theme="dark"] .arco-table-td.arco-table-col-fixed-left,
 body.app-glass[arco-theme="dark"] .arco-table-td.arco-table-col-fixed-right {
     background-color: var(--color-bg-2);
-    background-image: linear-gradient(rgba(24, 26, 32, var(--app-glass-alpha)), rgba(24, 26, 32, var(--app-glass-alpha)));
+    background-image:
+        linear-gradient(rgba(24, 26, 32, var(--app-glass-alpha)), rgba(24, 26, 32, var(--app-glass-alpha))),
+        var(--app-texture-bg, none);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
 }
 
 /*
- * 固定列表头单元：同上铺不透明同色面，压住横向滚过的列。表头本就由下面 .arco-table-th 铺 bg-2，
- * 但那是 (0,2,0) 且没有玻璃 tint，会和固定列 body 的两层合成对不齐，这里一并覆盖到同源配方。
+ * 固定列表头单元不再单列配方：玻璃档表头统一见下方「玻璃档表头自绘纹理」规则。
+ * 固定列 th 同为 .arco-table-th，一并命中，与普通表头逐像素一致（attachment:fixed 让整行纹理连续、无格间缝）。
  */
-body.app-glass .arco-table-th.arco-table-col-fixed-left,
-body.app-glass .arco-table-th.arco-table-col-fixed-right {
-    background-color: var(--color-bg-2);
-    background-image: linear-gradient(rgba(255, 255, 255, var(--app-glass-alpha)), rgba(255, 255, 255, var(--app-glass-alpha)));
-}
-
-body.app-glass[arco-theme="dark"] .arco-table-th.arco-table-col-fixed-left,
-body.app-glass[arco-theme="dark"] .arco-table-th.arco-table-col-fixed-right {
-    background-color: var(--color-bg-2);
-    background-image: linear-gradient(rgba(24, 26, 32, var(--app-glass-alpha)), rgba(24, 26, 32, var(--app-glass-alpha)));
-}
 
 /*
  * 表头与卡片同面：arco 把 .arco-table-th 写死 --color-neutral-2，比卡片基色 --color-bg-2 暗
@@ -431,6 +442,50 @@ body:not(.app-bg-none) .arco-table-th {
 body[arco-theme="dark"]:not(.app-bg-none) .arco-table-th {
     background-color: var(--color-bg-2);
     background-image: linear-gradient(var(--color-fill-2), var(--color-fill-2));
+}
+
+/*
+ * 玻璃档表头自绘纹理：玻璃档下普通表体单元格涂透、透出磨砂纹理，而上面 .arco-table-th 仍平涂 bg-2(+fill-2)，
+ * 在带纹理的玻璃档里表头就成了一条与纹理脱节的实心暗带（用户反馈「表头背景要对应玻璃/纹理」）。
+ * 改为与固定列表体同一配方：bg-2 实底 + 视口对齐纹理(background-attachment: fixed) + 玻璃 tint 的不透明合成面——
+ * 既贴合纹理，又保持不透明以压住纵向滚过的行（sticky 遮挡）。attachment: fixed 让整行所有 th 连续铺同一张纹理，
+ * 固定列 th 与普通 th 同规则、无格间缝。书写在普通/暗色表头规则之后、特异性 (0,2,1)/(0,3,1) 盖回。
+ * 无纹理时 var 回落 none，退化为 bg-2 + tint（与旧观感一致）。
+ */
+body.app-glass .arco-table-th {
+    background-color: var(--color-bg-2);
+    background-image:
+        linear-gradient(rgba(255, 255, 255, var(--app-glass-alpha)), rgba(255, 255, 255, var(--app-glass-alpha))),
+        var(--app-texture-bg, none);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+body.app-glass[arco-theme="dark"] .arco-table-th {
+    background-color: var(--color-bg-2);
+    background-image:
+        linear-gradient(rgba(24, 26, 32, var(--app-glass-alpha)), rgba(24, 26, 32, var(--app-glass-alpha))),
+        var(--app-texture-bg, none);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+/*
+ * 玻璃档表体行 hover：涂透单元格上 arco 默认 hover 铺 --color-fill-1（白 0.05）太淡、几乎看不出，
+ * 且固定列不透明底叠加后与左侧普通列观感不一致。这里把整行（普通列 + 固定列 ::before）统一抬到 --color-fill-2，
+ * 与项目里列表项 hover 口径一致。选择器镜像 arco 并前置 body.app-glass 抬特异性，普通列 (0,10,1)、固定列 (0,11,1) 盖回 arco。
+ */
+body.app-glass .arco-table-hover:not(.arco-table-dragging) .arco-table-tr:not(.arco-table-tr-empty):not(.arco-table-tr-summary):hover .arco-table-td:not(.arco-table-col-fixed-left):not(.arco-table-col-fixed-right) {
+    background-color: var(--color-fill-2);
+}
+
+body.app-glass .arco-table-hover:not(.arco-table-dragging) .arco-table-tr:not(.arco-table-tr-empty):not(.arco-table-tr-summary):hover .arco-table-td.arco-table-col-fixed-left::before,
+body.app-glass .arco-table-hover:not(.arco-table-dragging) .arco-table-tr:not(.arco-table-tr-empty):not(.arco-table-tr-summary):hover .arco-table-td.arco-table-col-fixed-right::before {
+    background-color: var(--color-fill-2);
 }
 
 /*

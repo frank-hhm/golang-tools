@@ -23,9 +23,9 @@
             </a-space>
         </template>
 
-        <!-- 折叠体：JS 实测像素高度后过渡 height（grid 1fr↔0fr 会逐帧重排整棵卡片树，
-             子树大时明显卡顿），内层叠加淡出遮住重排抖动；卡片 body 常驻 padding 0，
-             内衬移到 ov-body 随高度一起收放，收起后不留空带 -->
+        <!-- 折叠体：静止态由 CSS 的 .closed 管（收起即高度归 0），动画期间才由 JS 实测像素高度
+             过渡 height（grid 1fr↔0fr 会逐帧重排整棵卡片树，子树大时明显卡顿），内层叠加淡出遮住
+             重排抖动；卡片 body 常驻 padding 0，内衬移到 ov-body 随高度一起收放，收起后不留空带 -->
         <div ref="foldEl" class="ov-fold" :class="{ closed: collapsed }">
             <div ref="innerEl" class="ov-fold-inner">
                 <div class="ov-body">
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { DRIVE_KIND, fmtSize, usageTone } from "../helpers";
 
 const props = withDefaults(defineProps<{
@@ -98,15 +98,25 @@ const kindText = (k: string) => DRIVE_KIND[k] || k || "未知类型";
 const pct = (v: number) => Math.min(100, Math.max(0, Number(v) || 0)).toFixed(0);
 
 /* 折叠动画：不用 CSS 关键帧而是实测像素高度做 height 过渡——
-   起点取当前渲染高度（动画中途连点也不会跳），终点收起时归 0、展开时量内层 offsetHeight；
-   过渡结束后清掉内联高度交回 auto，盘符数据刷新时高度照常自适应 */
+   起点取切换前的渲染高度（动画中途连点也不会跳），终点收起时归 0、展开时量内层 offsetHeight；
+   过渡结束后清掉内联高度交回 .closed 的静止态，盘符数据刷新时高度照常自适应。
+   观察器用默认 pre 冲刷：DOM 上还没挂/摘 closed 类，量到的才是切换前的真实高度。
+   动画中途连点时旧一轮只撤销钩子不回写样式，起点照常取当前渲染高度，不跳也不抖 */
 const foldEl = ref<HTMLElement>();
 const innerEl = ref<HTMLElement>();
+// 当前这轮动画的撤销句柄：连点时先拆掉旧监听与旧定时器，免得它们抹掉新一轮的内联高度
+let foldAbort: (() => void) | null = null;
 
-async function animateFold(toClosed: boolean) {
+function animateFold(toClosed: boolean) {
     const fold = foldEl.value, inner = innerEl.value;
     if (!fold || !inner) return;
-    if (document.body.classList.contains("reduce-motion")) return;
+    if (foldAbort) foldAbort();
+    // 减少动效档不测不渡，直接撤掉内联值让 .closed 瞬时接管
+    if (document.body.classList.contains("reduce-motion")) {
+        fold.style.transition = "";
+        fold.style.height = "";
+        return;
+    }
     const start = fold.getBoundingClientRect().height;
     const end = toClosed ? 0 : inner.offsetHeight;
     fold.style.transition = "none";
@@ -114,21 +124,33 @@ async function animateFold(toClosed: boolean) {
     void fold.offsetHeight; // 强制就位起点，否则浏览器直接跳到终值
     fold.style.transition = "height .3s cubic-bezier(0.33, 1, 0.68, 1)";
     fold.style.height = `${end}px`;
-    await nextTick();
-    inner.style.opacity = toClosed ? "0" : "1";
-    const done = (e: TransitionEvent) => {
-        if (e.propertyName !== "height") return;
-        fold.removeEventListener("transitionend", done);
-        fold.style.transition = "";
-        fold.style.height = "";
+    let over = false;
+    let timer = 0;
+    const onEnd = (e: Event) => {
+        if ((e as TransitionEvent).propertyName === "height") quit(true);
     };
-    fold.addEventListener("transitionend", done);
+    const quit = (apply: boolean) => {
+        if (over) return;
+        over = true;
+        fold.removeEventListener("transitionend", onEnd);
+        window.clearTimeout(timer);
+        if (foldAbort === abort) foldAbort = null;
+        if (apply) {
+            fold.style.transition = "";
+            fold.style.height = "";
+        }
+    };
+    const abort = () => quit(false);
+    foldAbort = abort;
+    // 窗口被后台节流时 transitionend 可能不来，兜一次定时收尾，免得内联高度一直压着静止态
+    timer = window.setTimeout(() => quit(true), 500);
+    fold.addEventListener("transitionend", onEnd);
 }
 
 watch(() => props.collapsed, (c, old) => {
     if (old === undefined) return; // 首次挂载不算动画
     animateFold(c);
-}, { flush: "post" });
+});
 
 /** 五个指标：数量 / 总容量 / 已用 / 可用 / 最紧张 */
 const cards = computed(() => {
@@ -207,14 +229,23 @@ const cards = computed(() => {
     flex: none;
 }
 
-/* 折叠动画：height 由 JS 逐次实测像素值过渡，这里只留静止态样式；
-   内层淡出与高度同曲线，遮住重排抖动；减少动效档整体豁免 */
+/* 折叠：静止态归 CSS（.closed 一处兜底，JS 动画结束后清掉内联高度即回到这里），
+   动画期间才由 JS 写内联 height 覆盖；内层淡出与高度同曲线，遮住重排抖动；
+   减少动效档整体豁免，靠 .closed 瞬时到位 */
 .ov-fold {
     overflow: hidden;
 }
 
+.ov-fold.closed {
+    height: 0;
+}
+
 .ov-fold-inner {
     transition: opacity 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.ov-fold.closed .ov-fold-inner {
+    opacity: 0;
 }
 
 body.reduce-motion .ov-fold,

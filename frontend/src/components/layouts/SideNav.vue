@@ -222,7 +222,7 @@ async function onLogout() {
     height: 18px;
     margin-top: -9px;
     border-radius: 0 3px 3px 0;
-    background: rgb(var(--primary-6));
+    background: var(--app-select-rail);
     transform: scaleY(0);
     transition: transform 0.18s ease;
 }

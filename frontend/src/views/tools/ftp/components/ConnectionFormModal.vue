@@ -1,90 +1,132 @@
 <template>
-  <a-modal :visible="visible" :title="form.id ? '编辑连接' : '添加连接'" :width="520" :mask-closable="false"
+  <a-modal :visible="visible" :title="form.id ? '编辑连接' : '添加连接'" :width="560" :mask-closable="false"
     ok-text="保存并连接" cancel-text="取消" :ok-loading="busy" :on-before-ok="onBeforeOk"
     @cancel="close" @update:visible="(v: boolean) => emit('update:visible', v)">
-    <a-form :model="form" layout="horizontal" :label-col-props="{ span: 5 }" :wrapper-col-props="{ span: 19 }">
-      <a-form-item label="协议">
-        <a-space :size="8">
-          <a-tag color="arcoblue">SFTP</a-tag>
-          <a-typography-text type="secondary">FTP / FTPS 在后续版本提供</a-typography-text>
-        </a-space>
-      </a-form-item>
-
-      <a-form-item label="主机" required>
-        <div class="ip-row">
-          <a-input v-model="form.host" class="ip-input" placeholder="IP 或域名" allow-clear />
-          <a-typography-text type="secondary">端口</a-typography-text>
-          <a-input-number v-model="form.port" class="port-input" :min="1" :max="65535" />
+    <!-- 三段式：服务器 / 登录方式 / 打开后。标签改纵向 + 分组小标题，横向布局那条空标签栏整条去掉，
+         弹窗矮一截；主机与端口、账号与验证方式、目录与备注各自并排，不再一行只放一个字段 -->
+    <a-form :model="form" layout="vertical" class="cf-form">
+      <div class="cf-group">
+        <div class="cf-group-head">
+          <span class="cf-group-title">服务器</span>
+          <span class="cf-group-tail">
+            <a-tag size="small" color="arcoblue">SFTP</a-tag>
+            <span class="cf-group-dim">FTP / FTPS 在后续版本提供</span>
+          </span>
         </div>
-      </a-form-item>
+        <a-row :gutter="8">
+          <a-col :span="17">
+            <a-form-item label="主机" required>
+              <a-input v-model="form.host" placeholder="IP 或域名，如 192.168.1.10" allow-clear />
+            </a-form-item>
+          </a-col>
+          <a-col :span="7">
+            <a-form-item label="端口">
+              <a-input-number v-model="form.port" :min="1" :max="65535" :step="1" :precision="0" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </div>
 
-      <a-form-item label="凭据">
-        <div class="cred-row">
-          <a-select v-model="form.credID" placeholder="选择已保存的凭据（推荐，与终端共享）" allow-clear allow-search
-            @change="onCredChange">
-            <a-option v-for="c in credentials" :key="c.id" :value="c.id">
-              <a-space :size="6">
-                <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
-                  {{ c.auth === 'key' ? '密钥' : '密码' }}
-                </a-tag>
-                <span>{{ c.name }}</span>
-                <span v-if="c.user" class="cred-opt-user">{{ c.user }}</span>
-              </a-space>
-            </a-option>
-          </a-select>
-          <a-button size="small" @click="credVisible = true">管理</a-button>
+      <div class="cf-group">
+        <div class="cf-group-head">
+          <span class="cf-group-title">登录方式</span>
+          <span class="cf-group-dim">凭据与终端共用一份，改一次两边生效</span>
         </div>
-      </a-form-item>
 
-      <!-- 选了共享凭据：账号/登录方式取自凭据，这里只作展示（一处改密 FTP 与终端同时生效） -->
-      <a-form-item v-if="form.credID" label="登录">
-        <a-typography-text type="secondary">{{ credSummary }}</a-typography-text>
-      </a-form-item>
-
-      <!-- 未选凭据：保留旧式内联填写（兼容路径） -->
-      <template v-else>
-        <a-form-item label="账号" required>
-          <a-input v-model="form.user" placeholder="root" allow-clear />
+        <a-form-item label="共享凭据">
+          <div class="cred-row">
+            <a-select v-model="form.credID" placeholder="选择已保存的凭据（推荐）" allow-clear allow-search
+              @change="onCredChange">
+              <a-option v-for="c in credentials" :key="c.id" :value="c.id">
+                <a-space :size="6">
+                  <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
+                    {{ c.auth === 'key' ? '密钥' : '密码' }}
+                  </a-tag>
+                  <span>{{ c.name }}</span>
+                  <span v-if="c.user" class="cred-opt-user">{{ c.user }}</span>
+                </a-space>
+              </a-option>
+            </a-select>
+            <a-button size="small" @click="credVisible = true">
+              <template #icon><icon-settings /></template>管理
+            </a-button>
+          </div>
+          <template #extra>选不到就留空，下面手动填账号与密码 / 私钥。</template>
         </a-form-item>
 
-        <a-form-item label="验证方式">
-          <a-radio-group v-model="form.auth" type="button">
-            <a-radio value="password">密码验证</a-radio>
-            <a-radio value="key">密钥验证</a-radio>
-          </a-radio-group>
-        </a-form-item>
+        <!-- 选了共享凭据：账号与登录方式取自凭据，这里只作展示（一处改密 FTP 与终端同时生效） -->
+        <div v-if="form.credID" class="cf-picked">
+          <icon-check-circle-fill class="cf-picked-ic" />
+          <span class="cf-picked-text">{{ credSummary }}</span>
+          <a-link size="mini" class="cf-picked-undo" @click="clearCred">改为手动填写</a-link>
+        </div>
 
-        <a-form-item v-if="form.auth === 'password'" label="密码" required>
-          <a-input-password v-model="form.password" :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入登录密码'"
-            allow-clear />
-        </a-form-item>
+        <!-- 未选凭据：保留旧式内联填写（兼容路径） -->
+        <template v-else>
+          <a-row :gutter="8">
+            <a-col :span="12">
+              <a-form-item label="账号" required>
+                <a-input v-model="form.user" placeholder="root" allow-clear />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="验证方式">
+                <a-radio-group v-model="form.auth" type="button" size="medium">
+                  <a-radio value="password">密码验证</a-radio>
+                  <a-radio value="key">密钥验证</a-radio>
+                </a-radio-group>
+              </a-form-item>
+            </a-col>
+          </a-row>
 
-        <a-form-item v-else label="私钥文件" required>
-          <a-space :size="8">
-            <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="key-input">
-              <template #prefix><icon-file /></template>
-            </a-input>
-            <a-button size="small" @click="chooseKey">选择</a-button>
-            <a-button size="small" @click="openSshGen">生成密钥</a-button>
-          </a-space>
-        </a-form-item>
-      </template>
+          <a-form-item v-if="form.auth === 'password'" label="密码" required>
+            <a-input-password v-model="form.password" :placeholder="form.id ? '留空表示沿用已保存的密码' : '请输入登录密码'"
+              allow-clear />
+          </a-form-item>
 
-      <a-form-item label="初始目录">
-        <a-input v-model="form.remoteDir" placeholder="留空则进入登录后的家目录，如 /var/www" allow-clear />
-      </a-form-item>
+          <a-form-item v-else label="私钥文件" required>
+            <div class="cf-key-row">
+              <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="cf-key-input">
+                <template #prefix><icon-file /></template>
+              </a-input>
+              <a-button size="small" @click="chooseKey">选择</a-button>
+              <a-button size="small" @click="openSshGen">生成密钥</a-button>
+            </div>
+          </a-form-item>
+        </template>
+      </div>
 
-      <a-form-item label="备注">
-        <a-input v-model="form.note" placeholder="如：测试服务器" allow-clear />
-      </a-form-item>
+      <div class="cf-group">
+        <div class="cf-group-head">
+          <span class="cf-group-title">打开后</span>
+          <span class="cf-group-dim">都可留空</span>
+        </div>
+        <a-row :gutter="8">
+          <a-col :span="15">
+            <a-form-item label="初始目录">
+              <a-input v-model="form.remoteDir" placeholder="如 /var/www，留空进家目录" allow-clear>
+                <template #prefix><icon-folder /></template>
+              </a-input>
+            </a-form-item>
+          </a-col>
+          <a-col :span="9">
+            <a-form-item label="备注">
+              <a-input v-model="form.note" placeholder="如：测试服务器" allow-clear />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </div>
     </a-form>
     <template #footer>
       <div class="conn-test-footer">
         <div class="conn-test-left">
           <a-button size="small" :loading="testing" @click="doTest">测试连接</a-button>
-          <span v-if="testResult" :class="['conn-test-msg', testStatus === 'ok' ? 'is-ok' : 'is-err']">{{ testResult }}</span>
+          <span v-if="testResult" :class="['conn-test-msg', testStatus === 'ok' ? 'is-ok' : 'is-err']">
+            <icon-check-circle-fill v-if="testStatus === 'ok'" />
+            <icon-exclamation-circle-fill v-else />{{ testResult }}
+          </span>
         </div>
-        <a-space>
+        <a-space :size="8">
           <a-button @click="close">取消</a-button>
           <a-button type="primary" :loading="busy" @click="onOk">保存并连接</a-button>
         </a-space>
@@ -136,6 +178,11 @@ function onCredChange() {
     form.password = '';
     form.keyPath = '';
   }
+}
+
+/** 展示条上的「改为手动填写」：退回内联分支（选凭据时已清过，这里只摘关联） */
+function clearCred() {
+  form.credID = '';
 }
 
 /** 密码不回填（记录里本来就没有明文），编辑时留空即沿用原密码 */
@@ -266,37 +313,119 @@ async function onOk() {
 </script>
 
 <style scoped>
-.ip-row {
+/* 分组：小标题走 php 扩展管理同一度量（13px/600 + 右侧说明），组间用发丝线分段 */
+.cf-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px; /* 字段间距统一由组容器管，不靠表单项自己的 margin */
+}
+
+.cf-group + .cf-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-1);
+}
+
+.cf-group-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
-.ip-input {
+.cf-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text-1);
+}
+
+.cf-group-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cf-group-dim {
+  color: var(--color-text-3);
+  font-size: var(--base-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 纵向布局下字段本身不留底边，间距全交给上面的组内 gap，免得 a-col 里那一项多撑一段 */
+.cf-form :deep(.arco-form-item) {
+  margin-bottom: 0;
+}
+
+/* Arco 给纵向表单项的标签留了 8px，这里压到 4px，让标签贴住自己的输入框 */
+.cf-form :deep(.arco-form-item-label-col) {
+  margin-bottom: 4px;
+}
+
+/* 已选凭据的回执条：主色淡底 + 图标，比原来一行灰色文字更像“已生效” */
+.cf-picked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--base-radius-small);
+  background: var(--color-primary-light-1);
+  border: 1px solid rgba(var(--primary-6), 0.2);
+}
+
+.cf-picked-ic {
+  flex: none;
+  color: rgb(var(--green-6));
+}
+
+.cf-picked-text {
   flex: 1;
+  min-width: 0;
+  color: var(--color-text-1);
+  font-size: var(--base-size-small);
 }
 
-.port-input {
-  width: 96px;
+.cf-picked-undo {
+  flex: none;
 }
 
-.key-input {
-  width: 300px;
-}
-
-.cred-row {
+.cred-row,
+.cf-key-row {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
 }
 
-.cred-row .arco-select-view {
+/* Arco 的 Select 根节点挂的是 arco-select-view（没有 arco-select 这个类），与终端页同一选择器 */
+.cred-row :deep(.arco-select-view) {
   flex: 1;
+  min-width: 0;
+}
+
+/* 数字框默认不撑满，放进 a-col 会缩成一小截，这里统一拉齐 */
+.cf-form :deep(.arco-input-number) {
+  width: 100%;
+}
+
+.cf-key-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .cred-opt-user {
   color: var(--color-text-3);
   font-size: var(--base-size-small);
+}
+
+/* 测试结果加图标：绿勾/红叹号比纯色文字更容易一眼看出成没成 */
+.conn-test-msg .arco-icon {
+  margin-right: 4px;
+  vertical-align: -2px;
 }
 </style>

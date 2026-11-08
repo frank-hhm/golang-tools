@@ -1655,7 +1655,9 @@ onUnmounted(() => {
 }
 
 .vm-section {
-    border: 1px solid var(--color-border-2);
+    /* 内部区块框用浅发丝线 --color-border-1（与卡片描边/分隔线同口径）；--color-border-2 是弹窗外框那档较重描边，
+       用在内部小盒子上偏重、与主题里其它浅描边不一致 */
+    border: 1px solid var(--color-border-1);
     border-radius: 6px;
     padding: 10px 12px;
     margin-bottom: 10px;
