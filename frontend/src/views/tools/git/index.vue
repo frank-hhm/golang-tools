@@ -102,7 +102,7 @@
                 <template #icon><icon-refresh /></template>刷新状态
               </a-button>
               <a-button size="small" @click="branchVisible = true">
-                <template #icon><icon-branches /></template>分支
+                <template #icon><icon-send /></template>分支
               </a-button>
               <a-button v-if="st?.conflicted?.length" size="small" status="danger" @click="openConflict()">
                 <template #icon><icon-exclamation-circle-fill /></template>解决冲突{{ st.conflicted.length }}

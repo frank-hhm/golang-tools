@@ -57,6 +57,20 @@
 .arco-alert.arco-alert {
     border: none;
 }
+
+/******pagination********/
+/* 分页「当前页」：arco 默认把选中页做成「主色文字 rgb(--primary-6) + --color-primary-light-1(=rgb(--primary-1)) 胶囊底」，
+   而主题用 OKLCH 从种子生成整套 --primary-1..10（primary-6 恒等于种子明度、primary-1 暗色档近乎全黑），
+   对偏暗的种子预设（石墨等）就变成「暗蓝字压在近黑胶囊上」，当前页数字几乎和背景糊在一起看不见。
+   改为实心主色胶囊 + 反白数字，口径与 arco 主色按钮完全一致（color:#fff / background:rgb(--primary-6)）：
+   primary-6 对所有内置预设都是中间调，明暗两档、任意主题都清晰，「选中」语义也更明确。
+   特异性 (0,2,0)/(0,3,0) 压过 arco .arco-pagination-item-active(0,1,0) 与其 :hover(0,2,0)；disabled 态仍交回 arco 原样式。 */
+.arco-pagination .arco-pagination-item-active,
+.arco-pagination .arco-pagination-item-active:hover {
+    color: #fff;
+    background-color: rgb(var(--primary-6));
+    border-color: transparent;
+}
 /******loading********/
 .state-loading {
     position: relative;

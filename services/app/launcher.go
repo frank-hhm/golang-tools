@@ -185,7 +185,8 @@ func (a *App) toggleLauncher() error {
 		// 建窗时（隐藏态）已去过一次原生边框与投影，但 Wails 在首次 Show 时还会自己下发窗口
 		// 样式（setFrameless 会把 GWL_STYLE 重算成 WS_OVERLAPPEDWINDOW，含 WS_CAPTION），那块
 		// DirectComposition 透明窗的矩形投影（用户反馈「webview2 这个 shadow 不要」）会重新出现。
-		// DWM 依据 WS_CAPTION/WS_THICKFRAME 判定“带标题栏窗”才画影，NC 渲染策略对透明窗无效，只能清样式位。
+		// 去投影组合拳见 launcher_windows.go：清掉重叠窗族全部样式位转裸 WS_POPUP + 关 frame
+		// backdrop/圆角待遇 + 灭自动描边；NC 渲染策略对透明窗无效，不走那条路。
 		stripLauncherWindowBorder(launcherWindowHWND(win))
 		// 再延迟补一次：Show 之后 Wails 仍可能在随后的消息处理（DPI/resize/frameless 重下发）里把样式位
 		// 写回来，一次同步清理可能赶在它前面。延迟回主线程再清一次，确保窗口稳定后窗影仍被压住。

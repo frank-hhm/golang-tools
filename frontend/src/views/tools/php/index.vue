@@ -111,7 +111,7 @@
                             <template #icon><icon-launch /></template>打开站点
                         </a-button>
                         <a-button size="small" @click="openLogModal">
-                            <template #icon><icon-face-folder-open /></template>查看日志
+                            <template #icon><icon-folder /></template>查看日志
                         </a-button>
                         <a-button size="small" @click="openIni(selectedId)">
                             <template #icon><icon-settings /></template>php.ini

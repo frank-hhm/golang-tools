@@ -11,7 +11,7 @@
             <div class="ip-tools">
                 <a-tooltip :content="actual ? '适应窗口' : '原始尺寸'">
                     <a-button size="mini" @click="actual = !actual">
-                        <template #icon><icon-full-screen v-if="!actual" /><icon-launch v-else /></template>
+                        <template #icon><icon-fullscreen v-if="!actual" /><icon-launch v-else /></template>
                         {{ actual ? '实际大小' : '适应' }}
                     </a-button>
                 </a-tooltip>

@@ -37,17 +37,17 @@
             <div class="ap-ctrls">
                 <button class="ap-icon" :class="{ on: loop }" :title="loop ? '取消单曲循环' : '单曲循环'"
                     @click="loop = !loop">
-                    <icon-repeat />
+                    <icon-loop />
                 </button>
                 <button class="ap-icon" title="上一首（单文件播放）" disabled>
-                    <icon-skip-back />
+                    <icon-skip-previous />
                 </button>
                 <button class="ap-play" :title="playing ? '暂停(空格)' : '播放(空格)'" @click="toggle">
                     <icon-pause v-if="playing" />
                     <icon-play-arrow v-else />
                 </button>
                 <button class="ap-icon" title="下一首（单文件播放）" disabled>
-                    <icon-skip-forward />
+                    <icon-skip-next />
                 </button>
                 <button class="ap-icon" title="播放列表（单文件播放）" disabled>
                     <icon-list />

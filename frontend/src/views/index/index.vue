@@ -99,7 +99,7 @@
           <template #extra>
             <!-- 更多入口收进卡片右侧插槽：与「欢迎回来」刷新按钮同一套方块图标钮 -->
             <a-tooltip content="全部工具">
-              <a-button size="small" @click="moreVisible = true">
+              <a-button size="small" @click="openMore">
                 <template #icon><icon-apps /></template>
               </a-button>
             </a-tooltip>
@@ -117,11 +117,29 @@
     </a-row>
     </div>
 
-    <!-- 全部工具：无背景蒙层，弹窗透明让主题背景透出，与主窗口一致 -->
-    <a-modal v-model:visible="moreVisible" title="全部工具" :width="600" :footer="false" draggable :mask="false">
-      <div class="tools-grid tools-grid-modal">
-        <m-tool-cell v-for="item in orderedAllTools" :key="item.id || item.name" :icon="item.icon"
-          :name="item.name" @click="onMoreToolClick(item)" />
+    <!-- 全部工具：带半透明蒙层压住首页内容，焦点回到弹窗本身；点蒙层即收起；标题右侧带搜索框实时过滤网格。
+         弹窗本体背景交回 Arco/主题默认（bg-3 基色或纹理/玻璃），比格子的 bg-2 略亮，格子才能从面板上拉开 -->
+    <a-modal v-model:visible="moreVisible" :width="600" :footer="false" draggable :mask="true">
+      <template #title>
+        <div class="more-head">
+          <span class="more-title">全部工具</span>
+          <!-- 标题栏整体就是拖拽把手，Arco 对它的 mousedown 无条件 preventDefault，而 preventDefault
+               在 Chromium 里连带把聚焦一起吞掉——搜索框落在标题插槽里就点不动（用户反馈的「不可用」）。
+               这里 .stop 住 mousedown 不让它冒到 header：输入框正常聚焦输入，标题文字那边照常能拖窗口。 -->
+          <div class="more-search-wrap" @mousedown.stop>
+            <a-input ref="moreSearchRef" v-model="moreQuery" size="small" placeholder="搜索工具（名称 / git / term…）"
+              allow-clear class="more-search" @keyup.enter="openFirstMatch" />
+            <span v-if="moreQuery.trim()" class="more-count">{{ filteredAllTools.length }}</span>
+          </div>
+        </div>
+      </template>
+      <!-- 固定高度面板：命中 34 个还是 3 个都占同一块高度，边打字弹窗不再上下跳；超出走内部滚动 -->
+      <div class="more-panel">
+        <div class="tools-grid tools-grid-modal" v-if="filteredAllTools.length">
+          <m-tool-cell v-for="item in filteredAllTools" :key="item.id || item.name" :icon="item.icon"
+            :name="item.name" @click="onMoreToolClick(item)" />
+        </div>
+        <a-empty v-else :description="moreQuery.trim() ? '没有匹配的工具：' + moreQuery.trim() : '暂无工具'" />
       </div>
     </a-modal>
 
@@ -129,7 +147,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { IconCheckCircleFill, IconExclamationCircleFill } from "@arco-design/web-vue/es/icon";
 import { useToolEvents, type ToolItem } from "./events";
@@ -304,8 +322,37 @@ const toolsReo = useReorder("home:tools", {
 const orderedTools = homeTools;
 const orderedAllTools = toolsList;
 
-/** “更多”弹窗（无蒙层）：展示全部工具，点一个即打开并收起 */
+/** “更多”弹窗（带蒙层）：展示全部工具，点一个即打开并收起；标题旁搜索框实时检索 */
 const moreVisible = ref(false);
+const moreQuery = ref("");
+const moreSearchRef = ref<{ focus?: () => void } | null>(null);
+
+/** 打开时清掉上次的关键词并直接聚焦输入框：点「全部工具」就是要搜，省一次点击 */
+function openMore() {
+  moreQuery.value = "";
+  moreVisible.value = true;
+  void nextTick(() => moreSearchRef.value?.focus?.());
+}
+
+/**
+ * 检索口径：除显示名以外还比 id / key / path，所以敲 git、term、ftp、mysql
+ * 这类英文（用户实际就这么搜）也能命中对应工具，而不只是中文名称。
+ */
+function matchTool(t: ToolRow, q: string): boolean {
+  return [t.name, t.id, t.key, t.path].some((f) => String(f || "").toLowerCase().includes(q));
+}
+
+const filteredAllTools = computed(() => {
+  const q = moreQuery.value.trim().toLowerCase();
+  if (!q) return orderedAllTools.value;
+  return orderedAllTools.value.filter((t) => matchTool(t, q));
+});
+
+/** 回车直达首个匹配项：键盘就能把工具开出来，不用回到鼠标 */
+function openFirstMatch() {
+  const first = filteredAllTools.value[0];
+  if (first) onMoreToolClick(first);
+}
 
 /**
  * 测试入口只在开发环境亮：MODE 判定而非只看 DEV，因为 `npm run build:dev` 是
@@ -643,10 +690,69 @@ onUnmounted(() => {
 
 /* 工具格本体（图标/背景/hover/名称排版）已封成 m-tool-cell 组件，这里只留网格布局 */
 
-/* “更多”弹窗内的网格：五列、不滚动（交给弹窗自身），格子带名称 */
+/* 「全部工具」面板：定高≈ 5 行格子，命中数多少只影响内部滚动，不影响弹窗尺寸 */
+.more-panel {
+  height: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 弹窗本体背景不在此处：交给 Arco/主题默认（bg-3 基色或纹理/玻璃），与格子的 bg-2 拉开对比 */
+
+/* 空态在定高面板里垂直居中，而不是顶在左上角 */
+.more-panel :deep(.arco-empty) {
+  margin: auto;
+}
+
+/* “更多”弹窗内的网格：五列、在定高面板内滚动，格子带名称 */
 .tools-grid-modal {
   grid-template-columns: repeat(5, 1fr);
-  overflow-y: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.tools-grid-modal::-webkit-scrollbar {
+  display: none;
+}
+
+/* 弹窗标题行：标题 + 搜索框横向排布（搜索框落在用户标记的标题右侧位置） */
+.more-head {
+  display: flex;
+  align-items: center;
+  gap: var(--base-padding);
+  width: 100%;
+  min-width: 0;
+}
+
+.more-title {
   flex: none;
+}
+
+/* 搜索框包一层：给 mousedown.stop 当挂点，并把输入框与命中数排成一行 */
+.more-search-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 300px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.more-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  /*  arco 标题是加粗字重，不压回来搜索文字会跟着变粗 */
+  font-weight: normal;
+}
+
+/* 命中数：排在输入框后面（不用绝对定位，否则跟 allow-clear 的清除图标撞位） */
+.more-count {
+  flex: none;
+  font-size: var(--base-size-small);
+  font-weight: normal;
+  color: rgb(var(--gray-5));
 }
 </style>

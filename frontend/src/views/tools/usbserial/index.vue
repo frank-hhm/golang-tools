@@ -440,6 +440,28 @@ function pushLine(line: RecvLine) {
     scrollToBottom();
 }
 
+/* 洪峰保护：后端已按时间窗合并逐包推送（每来源 ≤10 条/秒），前端同样不按事件
+   全量重渲染——recvText 是 2000 行整串 computed，逐事件重算+滚动会把主线程打满，
+   洪峰下连「关闭」都点不动（用户反馈的问题）。事件先进非响应式缓冲，100ms 一批。 */
+const pendingLines: RecvLine[] = [];
+let pendingTimer: number | null = null;
+
+function flushPending() {
+    pendingTimer = null;
+    if (!pendingLines.length) return;
+    recvLines.value.push(...pendingLines);
+    pendingLines.length = 0;
+    if (recvLines.value.length > MAX_LINES) {
+        recvLines.value.splice(0, recvLines.value.length - MAX_LINES);
+    }
+    scrollToBottom();
+}
+
+function pushPending(line: RecvLine) {
+    pendingLines.push(line);
+    if (pendingTimer === null) pendingTimer = window.setTimeout(flushPending, 100);
+}
+
 async function scrollToBottom() {
     await nextTick();
     if (recvRef.value) recvRef.value.scrollTop = recvRef.value.scrollHeight;
@@ -450,7 +472,7 @@ const onData = (ev: any) => {
     if (!d || !d.hex) return;
     const bytes = hexToBytes(d.hex);
     st.rx += bytes.length;
-    pushLine({ time: d.time || nowStamp(), bytes, dir: "in" });
+    pushPending({ time: d.time || nowStamp(), bytes, dir: "in" });
 };
 
 const onStatus = (ev: any) => {
@@ -466,6 +488,7 @@ const onStatus = (ev: any) => {
 
 function clearRecv() {
     recvLines.value = [];
+    pendingLines.length = 0;
     st.rx = 0;
     st.tx = 0;
 }
@@ -505,6 +528,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
     stopTimer();
+    if (pendingTimer !== null) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+    }
     if (offData) offData();
     if (offStatus) offStatus();
     if (st.opened) $GoTools.CloseConnection().catch(() => {});

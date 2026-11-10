@@ -114,7 +114,7 @@
               <template #icon><icon-link /></template>连接此实例
             </a-button>
             <a-button size="small" @click="openSrvLog">
-              <template #icon><icon-face-folder-open /></template>查看日志
+              <template #icon><icon-folder /></template>查看日志
             </a-button>
           </div>
 
@@ -187,7 +187,7 @@
                     <a-button size="small" @click="setMode('backup')"><template
                         #icon><icon-save /></template>备份</a-button>
                     <a-button size="small" @click="setMode('tx')"><template
-                        #icon><icon-select /></template>事务</a-button>
+                        #icon><icon-select-all /></template>事务</a-button>
                     <a-tooltip content="SQL 执行日志：开关 / 目录 / 清空">
                       <a-button size="small" @click="openSqlLog()"><template
                           #icon><icon-file /></template>SQL日志</a-button>
@@ -378,7 +378,7 @@
                 <!-- 事务 -->
                 <div v-else-if="st.mode === 'tx'" class="content">
                   <div class="grid-toolbar">
-                    <icon-select class="tool-ic" />
+                    <icon-select-all class="tool-ic" />
                     <a-select v-model="st.tx.connId" size="mini" :options="openedConnOptions" style="width: 170px"
                       placeholder="连接" :disabled="!!st.tx.id" @change="onPanelConnChange('tx')" />
                     <a-select v-model="st.tx.db" size="mini" :options="txDbOptions" style="width: 170px"
@@ -2574,6 +2574,10 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+/* 主内容区容器：不铺自己的底色，交回父级布局的「底色让路」处理（body/#app/basic-layout/layout-content
+   在纹理/玻璃/native 档下已经是透明，透出固定底 .theme-bg）——之前这里写死 background: var(--color-bg-2)
+   实心铺底，纹理/玻璃档下会把主题背景整块盖成一块无纹理的实心板，与左侧树区/其它工具页（同样叫
+   .main-panel，但都是 a-card，走卡片自己的主题联动）观感对不齐，跟设置页的 .main-panel（不铺底色）也不一致。 */
 .main-panel {
   width: 100%;
   height: 100%;
@@ -2581,7 +2585,6 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-2);
 }
 
 /* ---- 实例总览（对齐 PHP 主区域） ---- */
@@ -2849,17 +2852,23 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+/* 未选中项文字色：真实文本落在我们自己的 .tree-title span 上（被 a-tooltip、arco-tree-node-title-text 逐层包裹），
+   单靠从 .arco-tree-node 继承 --color-text-1 在某些包裹层会断链、回落到近黑默认色，暗底上几乎看不见。
+   这里显式取正文色令牌，与选中态同源，不再依赖继承链。 */
 .tree-title {
   display: block;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-text-1);
 }
 
-/* 选中态：主题主色为黑白时默认样式对比不足，改用中性底色 + 正文色 */
-.tree-card :deep(.arco-tree-node-selected .arco-tree-node-row),
-.tree-card :deep(.arco-tree-node-selected .arco-tree-node-row:hover) {
+/* 选中态：主题主色为黑白时默认样式（arco 自身写的是 rgb(--primary-6)）对比不足，改用中性底色 + 正文色。
+   之前这里选择器写的是 .arco-tree-node-row，但 Arco 树根本没有这个类名（真实结构是 .arco-tree-node > .arco-tree-node-title），
+   导致这段修正从未生效，选中项仍走 arco 默认的 primary-6 文字色——主色偏暗的预设（石墨等）下就跟背景糊在一起了。 */
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title),
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
   color: var(--color-text-1);
   background-color: var(--color-fill-3);
   font-weight: 600;

@@ -4,13 +4,13 @@
         @update:visible="(v: boolean) => emit('update:visible', v)">
         <div class="cfg-registry">
             <div class="ver-title">镜像源快捷切换</div>
-            <a-space wrap>
+            <div class="cfg-mirror">
                 <a-button v-for="r in commonRegistries" :key="r.value" size="small"
                     :type="registry === r.value ? 'primary' : 'outline'" @click="applyRegistry(r.value)">
                     {{ r.key }}
                 </a-button>
-            </a-space>
-            <a-input-search v-model="registryInput" placeholder="自定义 registry URL" style="margin-top:8px;width:420px"
+            </div>
+            <a-input-search v-model="registryInput" class="cfg-reg-input" placeholder="自定义 registry URL"
                 search-button button-text="应用" @search="applyRegistry(registryInput)" />
         </div>
         <a-divider style="margin: 12px 0" />
@@ -142,29 +142,58 @@ watch(() => props.visible, async (open) => {
 
 <style scoped>
 .cfg-registry {
-    margin-bottom: 4px;
+    margin-bottom: calc(var(--base-padding) / 2);
+}
+
+/* 镜像源：弹性换行，间距随密度联动，选中态主色填充 */
+.cfg-mirror {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--base-padding) * 2 / 3);
+}
+
+.cfg-reg-input {
+    margin-top: var(--base-padding);
+    width: 460px;
+    max-width: 100%;
 }
 
 .user-npmrc {
-    margin-top: 12px;
+    margin-top: var(--base-padding);
 }
 
+/* 分区标题：左侧主色短竖条 + 正文级字号，取代裸文字标题，层级更清晰 */
 .ver-title {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
+    padding-left: 10px;
     font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 8px;
+    font-size: var(--base-size-default);
+    color: var(--color-text-1);
+    margin-bottom: calc(var(--base-padding) * 3 / 4);
+}
+
+.ver-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 13px;
+    border-radius: 2px;
+    background: rgb(var(--primary-6));
 }
 
 .add-local {
-    margin-top: 10px;
+    margin-top: var(--base-padding);
 }
 
 .offline-tip {
-    margin-top: 8px;
-    font-size: 12px;
+    margin-top: calc(var(--base-padding) / 2);
+    font-size: var(--base-size-small);
     color: var(--color-text-3);
     word-break: break-all;
 }

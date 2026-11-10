@@ -1204,11 +1204,13 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   color: var(--color-text-3);
 }
 /* 分类树：行高与圆角统一，hover 才给底色；选中用「中性底色 + 左侧短竖条」，
-   与实体卡、列表项共用一套选中语言，不整块刷主色 */
+   与实体卡、列表项共用一套选中语言，不整块刷主色。
+   修正：Arco 树的真实类名是 .arco-tree-node > .arco-tree-node-title，根本没有 .arco-tree-node-row；
+   旧钩子把类名写错，导致下面这套 hover/选中底色、左侧短竖条与正文色从未生效（与 MySQL 对象树同一个坑），统一改用 .arco-tree-node-title。 */
 .left :deep(.arco-tree-node) {
   margin-bottom: 2px;
 }
-.left :deep(.arco-tree-node-row) {
+.left :deep(.arco-tree-node-title) {
   position: relative;
   padding: 5px 8px;
   border-radius: var(--base-radius-default);
@@ -1216,16 +1218,16 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   color: var(--color-text-1);
   transition: background-color 0.15s, color 0.15s;
 }
-.left :deep(.arco-tree-node-row:hover) {
+.left :deep(.arco-tree-node-title:hover) {
   background-color: var(--color-fill-3);
 }
-.left :deep(.arco-tree-node-selected .arco-tree-node-row),
-.left :deep(.arco-tree-node-selected .arco-tree-node-row:hover) {
+.left :deep(.arco-tree-node-selected .arco-tree-node-title),
+.left :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
   background-color: var(--color-fill-3);
   color: var(--color-text-1);
   font-weight: 600;
 }
-.left :deep(.arco-tree-node-selected .arco-tree-node-row)::before {
+.left :deep(.arco-tree-node-selected .arco-tree-node-title)::before {
   content: "";
   position: absolute;
   left: 1px;
@@ -1245,6 +1247,9 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
+  /* 未选中兜底：真实文本落在叶子 .tree-title 上，被 a-tooltip / arco-tree-node-title-text 逐层包裹，
+     单靠从 .arco-tree-node-title 继承正文色在部分包裹层会断链、回落到近黑默认色，暗底上几乎看不见，故显式取 text-1。 */
+  color: var(--color-text-1);
 }
 /* 分类树右键菜单：照 MySQL 对象树口径（fixed 遮罩 + fixed 定位的 a-menu），
    z-index 压过侧栏与内容区，菜单自身贴右上不溢出 */

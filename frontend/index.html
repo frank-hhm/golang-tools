@@ -92,10 +92,10 @@
         }
 
         /*
-          分栏版式：左「参数设置」窄卡 + 右「预览/主面板」宽卡，对齐 qrcode/redis/git
-          等 24 栅格下 span6+span18（约 25%）与 mysql/php 的 span8+span16（约 33%）页面。
-          默认隐藏，仅当内联脚本按 location.hash 命中分栏路由、给 #boot 挂上
-          lay-split 时才显示（同时收起上面的通用卡片网格），版式与真实内容一致。
+          表单分栏模板（lay-form）：左「参数设置」窄卡 + 右「预览/大结果」宽卡，
+          对齐 qrcode / encdec / hexconvert / timestamp / strrandom / usbserial /
+          websocket / video 这类「左侧填参、右侧出东西」的工具页。
+          模板互斥显隐统一见下方「版式模板总控」。
         */
         #boot .boot-split {
             display: none;
@@ -103,28 +103,11 @@
             align-items: stretch;
         }
 
-        #boot.lay-split .boot-grid {
-            display: none;
-        }
-
-        #boot.lay-split .boot-split {
-            display: flex;
-            height: 100%;
-        }
-
-        /* 分栏下让内容区撑满标题栏以下的整块高度，两张卡随行高铺到底 */
-        #boot.lay-split .boot-body {
-            height: calc(100% - 40px);
-            box-sizing: border-box;
-        }
-
         #boot .boot-col-side {
-            flex: 0 0 25%;
+            /* 左栏宽度由内联脚本按路由写进 --boot-side（真实页面 21%~33% 各不相同），
+               默认 25% 对应最早的 span6+span18 档 */
+            flex: 0 0 var(--boot-side, 25%);
             min-width: 0;
-        }
-
-        #boot.lay-split.r33 .boot-col-side {
-            flex-basis: 33.333%;
         }
 
         #boot .boot-col-main {
@@ -186,10 +169,235 @@
             border-radius: 7px;
         }
 
+        /*
+          主页专属版式：对齐 views/index/index.vue 的真实骨架——
+          行1 = 欢迎卡（span16，标题条 + 3×2 统计小卡）+ 时钟位（span8，圆盘居中）；
+          行2 = 本地服务实例（span16，多卡网格）+ 快捷操作（span8，五列图标格）。
+          默认隐藏，内联脚本命中主页路由（空 hash / #/ / #/index）时挂 lay-home。
+        */
+        #boot .boot-home {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #boot .boot-home {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #boot .boot-hrow {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        #boot .boot-hrow-top {
+            flex: none;
+        }
+
+        #boot .boot-hrow-bottom {
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        /* 列宽按真实页面的 16/8（≈2:1）分配 */
+        #boot .boot-hcol-wide {
+            flex: 2 1 0;
+            min-width: 0;
+        }
+
+        #boot .boot-hcol-narrow {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+
+        /* 时钟位：正方形占位圆盘，在格内上下左右居中（对齐 common-canvas-clock size=180） */
+        #boot .boot-clock {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #boot .boot-clock i {
+            display: block;
+            width: min(180px, 60%);
+            aspect-ratio: 1;
+            border-radius: 50%;
+        }
+
+        /* 快捷操作：五列小格，贴近 tools-grid 的 repeat(5, 1fr) */
+        #boot .boot-tools {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+        }
+
+        #boot .boot-tools i {
+            display: block;
+            height: 44px;
+            border-radius: 8px;
+        }
+
+        /* 统计小卡与服务实例卡：两种高度的通用圆角块 */
+        #boot .boot-mini {
+            display: block;
+            height: 72px;
+            border-radius: 8px;
+        }
+
+        /*
+          列表分栏模板（lay-list）：左窄卡是「行列表」（终端连接 / Git 仓库 / 服务实例 /
+          抓包会话 / 网盘账号 / FTP 连接记录），右宽卡是「工具条 + 表格行」。
+          与表单分栏（lay-form：左字段、右大舞台）区分：那些页的左栏是可输入的表单，
+          这里各管理页的左栏是一摡同类项。卡片外壳复用 .boot-card。
+        */
+        #boot .boot-list {
+            display: none;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        /* 左栏行列表：分组小标题 + 若干等高胶囊行 */
+        #boot .boot-side-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        #boot .boot-row {
+            display: block;
+            height: 34px;
+            border-radius: 8px;
+        }
+
+        /* 右栏工具条 + 表格行 */
+        #boot .boot-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        #boot .boot-tb-btn {
+            width: 72px;
+            height: 28px;
+            border-radius: 6px;
+        }
+
+        #boot .boot-tb-btn.grow {
+            flex: 1 1 auto;
+            width: auto;
+        }
+
+        #boot .boot-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        #boot .boot-trow {
+            display: block;
+            height: 24px;
+            border-radius: 6px;
+        }
+
+        #boot .boot-trow.hd {
+            height: 16px;
+        }
+
+        /* 分组小标题（管理页左栏标题 / 云盘分组 / npm 实例名等列表前的标题块） */
+        #boot .boot-cap {
+            width: 55%;
+            height: 14px;
+            border-radius: 7px;
+            margin-bottom: 10px;
+        }
+
+        /* 通栏模板（lay-table）：单张卡片纵向铺满（工具条 + 表格/内容区），
+           对齐 docker / disk / docspace / viewer / browser / guard / portman /
+           procman / archive / siteclone / speedtest / colorpicker / download 等无分栏页。
+           卡片外壳（铺底/描边/纵向 flex）全部复用 .boot-card，这里只负责默认收起 */
+        #boot .boot-full {
+            display: none;
+        }
+
+        /* 顶部指标卡组：只给 download / speedtest 亮（内联脚本额外挂 st 类） */
+        #boot .boot-stats {
+            display: none;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        #boot.st .boot-stats {
+            display: grid;
+        }
+
+        #boot .boot-stats i {
+            display: block;
+            height: 64px;
+            border-radius: 8px;
+        }
+
+        /* 设置页专档（lay-nav）：左导航行 + 右表单字段卡，默认比例 21% */
+        #boot .boot-nav {
+            display: none;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        /*
+          ===== 版式模板总控 =====
+          内联脚本按 location.hash 判定当前页，给 #boot 挂唯一的一个 lay-* 类；
+          六套模板互斥显示：grid=通用兜底 / home=主页 / form=左参数右大结果 /
+          list=左列表右表格 / nav=设置页（左导航右表单）/ table=通栏单卡。
+          分栏比例由 --boot-side 逐路由下发（21% / 25% / 29%），跟真实 a-col span 对齐。
+          未命中任何路由（新页面忘了登记、demo 小窗等）就留通用卡片网格兜底。
+        */
+        /* 命中任一 lay-* 就收起通用网格；内联脚本未跑到（无类）时仍留通用骨架兜底 */
+        #boot[class*="lay-"] .boot-grid {
+            display: none;
+        }
+
+        #boot.lay-home .boot-home,
+        #boot.lay-form .boot-split,
+        #boot.lay-list .boot-list,
+        #boot.lay-nav .boot-nav {
+            display: flex;
+            height: 100%;
+        }
+
+        #boot.lay-table .boot-full {
+            display: flex;
+        }
+
+        /* 铺到底的版式：body 撑满标题栏以下高度，卡片随行高拉伸 */
+        #boot.lay-home .boot-body,
+        #boot.lay-form .boot-body,
+        #boot.lay-list .boot-body,
+        #boot.lay-nav .boot-body,
+        #boot.lay-table .boot-body {
+            height: calc(100% - 40px);
+            box-sizing: border-box;
+        }
+
         #boot .boot-dot,
         #boot .boot-bar,
         #boot .boot-line,
         #boot .boot-cards i,
+        #boot .boot-mini,
+        #boot .boot-tools i,
+        #boot .boot-clock i,
+        #boot .boot-cap,
+        #boot .boot-row,
+        #boot .boot-tb-btn,
+        #boot .boot-trow,
+        #boot .boot-stats i,
         #boot .boot-card-hd,
         #boot .boot-field,
         #boot .boot-btn,
@@ -204,6 +412,14 @@
         #boot.dk .boot-bar,
         #boot.dk .boot-line,
         #boot.dk .boot-cards i,
+        #boot.dk .boot-mini,
+        #boot.dk .boot-tools i,
+        #boot.dk .boot-clock i,
+        #boot.dk .boot-cap,
+        #boot.dk .boot-row,
+        #boot.dk .boot-tb-btn,
+        #boot.dk .boot-trow,
+        #boot.dk .boot-stats i,
         #boot.dk .boot-card-hd,
         #boot.dk .boot-field,
         #boot.dk .boot-btn,
@@ -216,6 +432,14 @@
         #boot .boot-bar::after,
         #boot .boot-line::after,
         #boot .boot-cards i::after,
+        #boot .boot-mini::after,
+        #boot .boot-tools i::after,
+        #boot .boot-clock i::after,
+        #boot .boot-cap::after,
+        #boot .boot-row::after,
+        #boot .boot-tb-btn::after,
+        #boot .boot-trow::after,
+        #boot .boot-stats i::after,
         #boot .boot-card-hd::after,
         #boot .boot-field::after,
         #boot .boot-btn::after,
@@ -233,6 +457,14 @@
         #boot.dk .boot-bar::after,
         #boot.dk .boot-line::after,
         #boot.dk .boot-cards i::after,
+        #boot.dk .boot-mini::after,
+        #boot.dk .boot-tools i::after,
+        #boot.dk .boot-clock i::after,
+        #boot.dk .boot-cap::after,
+        #boot.dk .boot-row::after,
+        #boot.dk .boot-tb-btn::after,
+        #boot.dk .boot-trow::after,
+        #boot.dk .boot-stats i::after,
         #boot.dk .boot-card-hd::after,
         #boot.dk .boot-field::after,
         #boot.dk .boot-btn::after,
@@ -267,6 +499,14 @@
             #boot .boot-bar::after,
             #boot .boot-line::after,
             #boot .boot-cards i::after,
+            #boot .boot-mini::after,
+            #boot .boot-tools i::after,
+            #boot .boot-clock i::after,
+            #boot .boot-cap::after,
+            #boot .boot-row::after,
+            #boot .boot-tb-btn::after,
+            #boot .boot-trow::after,
+            #boot .boot-stats i::after,
             #boot .boot-card-hd::after,
             #boot .boot-field::after,
             #boot .boot-btn::after,
@@ -311,6 +551,87 @@
                 </div>
             </div>
         </div>
+        <div class="boot-home">
+            <div class="boot-hrow boot-hrow-top">
+                <div class="boot-hcol-wide boot-card">
+                    <i class="boot-card-hd"></i>
+                    <div class="boot-cards">
+                        <i class="boot-mini"></i><i class="boot-mini"></i><i class="boot-mini"></i>
+                        <i class="boot-mini"></i><i class="boot-mini"></i><i class="boot-mini"></i>
+                    </div>
+                </div>
+                <div class="boot-hcol-narrow boot-clock"><i></i></div>
+            </div>
+            <div class="boot-hrow boot-hrow-bottom">
+                <div class="boot-hcol-wide boot-card">
+                    <i class="boot-card-hd"></i>
+                    <div class="boot-cards">
+                        <i></i><i></i><i></i><i></i>
+                    </div>
+                </div>
+                <div class="boot-hcol-narrow boot-card">
+                    <i class="boot-card-hd"></i>
+                    <div class="boot-tools">
+                        <i></i><i></i><i></i><i></i><i></i>
+                        <i></i><i></i><i></i><i></i><i></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 列表分栏（lay-list）：左栏同类项行列表，右栏工具条 + 表格行 -->
+        <div class="boot-list">
+            <div class="boot-col-side boot-card">
+                <i class="boot-cap"></i>
+                <div class="boot-side-rows">
+                    <i class="boot-row"></i><i class="boot-row"></i><i class="boot-row"></i>
+                    <i class="boot-row"></i><i class="boot-row"></i><i class="boot-row"></i>
+                    <i class="boot-row"></i>
+                </div>
+            </div>
+            <div class="boot-col-main boot-card">
+                <div class="boot-toolbar">
+                    <i class="boot-tb-btn"></i><i class="boot-tb-btn grow"></i><i class="boot-tb-btn"></i>
+                </div>
+                <div class="boot-rows">
+                    <i class="boot-trow hd"></i>
+                    <i class="boot-trow"></i><i class="boot-trow"></i><i class="boot-trow"></i>
+                    <i class="boot-trow"></i><i class="boot-trow"></i><i class="boot-trow"></i>
+                    <i class="boot-trow"></i><i class="boot-trow"></i>
+                </div>
+            </div>
+        </div>
+        <!-- 设置页（lay-nav）：左导航胶囊行 + 右表单字段卡 -->
+        <div class="boot-nav">
+            <div class="boot-col-side boot-card">
+                <div class="boot-side-rows">
+                    <i class="boot-row"></i><i class="boot-row"></i><i class="boot-row"></i>
+                    <i class="boot-row"></i><i class="boot-row"></i><i class="boot-row"></i>
+                    <i class="boot-row"></i><i class="boot-row"></i>
+                </div>
+            </div>
+            <div class="boot-col-main boot-card">
+                <i class="boot-card-hd"></i>
+                <i class="boot-field boot-field-tall"></i>
+                <i class="boot-field"></i>
+                <i class="boot-field"></i>
+                <i class="boot-field"></i>
+                <i class="boot-btn"></i>
+            </div>
+        </div>
+        <!-- 通栏单卡（lay-table）：工具条 + 表格行；st 类下额外亮顶部指标卡组 -->
+        <div class="boot-full boot-card">
+            <div class="boot-stats"><i></i><i></i><i></i><i></i></div>
+            <div class="boot-toolbar">
+                <i class="boot-tb-btn"></i><i class="boot-tb-btn grow"></i><i class="boot-tb-btn"></i>
+            </div>
+            <div class="boot-rows">
+                <i class="boot-trow hd"></i>
+                <i class="boot-trow"></i><i class="boot-trow"></i><i class="boot-trow"></i>
+                <i class="boot-trow"></i><i class="boot-trow"></i><i class="boot-trow"></i>
+                <i class="boot-trow"></i><i class="boot-trow"></i><i class="boot-trow"></i>
+                <i class="boot-trow"></i>
+            </div>
+        </div>
     </div>
 </div>
 <script>
@@ -338,17 +659,40 @@
                     el.style.setProperty("--boot-card-border", "rgba(255,255,255," + a.toFixed(3) + ")");
                 }
             }
-            // 按路由感知版式：分栏页（左窄卡+右宽卡）用 split 骨架，其余保持通用卡片网格。
-            // 工具窗以 #/win/tools/<key> 或 #/tools/<key> 打开，取末尾 key 比对。
-            // settings 是真两栏（左分类导航 span5≈21% + 右表单 span19），归入 25% 档（最接近），
-            // 否则落回通用四卡网格，与设置页版式完全不符（用户反馈「设置页的骨架不对」）。
-            var SPLIT25 = { clouddrive: 1, encdec: 1, git: 1, hexconvert: 1, npm: 1, qrcode: 1,
-                redis: 1, settings: 1, strrandom: 1, timestamp: 1, usbserial: 1, video: 1, websocket: 1 };
-            var SPLIT33 = { mysql: 1, php: 1 };
+            // 按路由选定骨架版式：工具窗以 #/win/tools/<key> 或 #/tools/<key> 打开，取 key 比对。
+            // 每张表项 = [模板, 左栏宽度 %, 是否亮顶部指标卡组]；左栏比例按真实页 a-col span 换算
+            // （span5≈21 / 6≈25 / 7≈29 / 8≈33），通栏与主页无左栏所以留空。
+            // 新增工具页须在这里登记一行，否则落回通用四卡网格（版式对不上，之前已踩过）。
+            var LAY = {
+                // 表单分栏：左侧填参 / 右侧出东西的生成与转换类工具
+                qrcode: ["form", 25], encdec: ["form", 25], hexconvert: ["form", 25], timestamp: ["form", 25],
+                strrandom: ["form", 25], usbserial: ["form", 25], websocket: ["form", 25], video: ["form", 25],
+                // 列表分栏：左同类项列表（实例 / 仓库 / 连接 / 会话）+ 右工具条与表格
+                redis: ["list", 25], npm: ["list", 25], git: ["list", 25], clouddrive: ["list", 25],
+                ftp: ["list", 25],
+                term: ["list", 29], php: ["list", 29], nginx: ["list", 29], lanshare: ["list", 29],
+                mysql: ["list", 21], sniffer: ["list", 21], screenshot: ["list", 21],
+                // 通栏单卡：无分栏，顶部工具条 + 表格/内容区
+                docker: ["table"], disk: ["table"], docspace: ["table"], viewer: ["table"],
+                browser: ["table"], guard: ["table"], portman: ["table"], procman: ["table"],
+                archive: ["table"], siteclone: ["table"], colorpicker: ["table"],
+                // 打开就有一排指标卡的通栏页（download 的 dl-stats / speedtest 的三块元信息）
+                speedtest: ["table", 0, 1], download: ["table", 0, 1],
+                // 设置页：左分类导航 span5 + 右表单 span19
+                settings: ["nav", 21]
+            };
             var m = (location.hash || "").match(/[#\/]tools\/([a-z0-9]+)/i);
             var key = m && m[1].toLowerCase();
-            if (key && SPLIT25[key]) el.classList.add("lay-split");
-            else if (key && SPLIT33[key]) el.classList.add("lay-split", "r33");
+            var lay = key && LAY[key];
+            // 透明浮层小窗（截图选区 / 图钉 / 通知 / 快捷搜索）靠窗口透明看桌面与冻帧，
+            // 任何骨架块都是脏东西：挂 lay-blank 收起全部模板，只留一块空层等页面自己画。
+            if (lay) {
+                el.classList.add("lay-" + lay[0]);
+                if (lay[1]) el.style.setProperty("--boot-side", lay[1] + "%");
+                if (lay[2]) el.classList.add("st");
+            } else if (/^#?\/widget\//i.test(location.hash || "")) el.classList.add("lay-blank");
+            // 主页（空 hash / #/ / #/index，大小写不敏感）用专属两行版式，与真实首页对齐
+            else if (/^#?\/?(index\/?)?$/i.test(location.hash || "")) el.classList.add("lay-home");
         } catch (e) {
             /* 隐私模式读不到 localStorage 就按浅色画，不影响后续挂载 */
         }

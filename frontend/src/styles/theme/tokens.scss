@@ -319,7 +319,8 @@ body.app-glass[arco-theme="dark"] .arco-drawer-footer {
 
 /*
  * 玻璃也覆盖自定义卡片外壳（指标卡 .stat-card / 实体卡 .item-card / 服务卡 .svc-card，
- * 含 m-* 家族新外壳 .m-stat-card / .m-svc-card / .m-tool-cell，以及 Docker 编排项目卡 .cp-card）：
+ * 含 m-* 家族新外壳 .m-stat-card / .m-svc-card / .m-tool-cell，以及 Docker 编排项目卡 .cp-card，
+ * 下载管理页的裸 div 面板 .dl-side / .dl-detail）：
  * 这些是全站主力「卡片」面，描边强度必须能管到它们，否则关了描边仍留着 --color-border-1 实边。
  * 只铺 tint + 磨砂 + 受控描边；不给玻璃投影，保留各卡自己的 hover/选中/错误态阴影规范。
  */
@@ -330,6 +331,8 @@ body.app-glass .cp-card,
 body.app-glass .m-stat-card,
 body.app-glass .m-svc-card,
 body.app-glass .m-tool-cell,
+body.app-glass .dl-side,
+body.app-glass .dl-detail,
 body.app-glass .cc {
     background: rgba(255, 255, 255, var(--app-glass-alpha));
     backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
@@ -344,6 +347,8 @@ body.app-glass[arco-theme="dark"] .cp-card,
 body.app-glass[arco-theme="dark"] .m-stat-card,
 body.app-glass[arco-theme="dark"] .m-svc-card,
 body.app-glass[arco-theme="dark"] .m-tool-cell,
+body.app-glass[arco-theme="dark"] .dl-side,
+body.app-glass[arco-theme="dark"] .dl-detail,
 body.app-glass[arco-theme="dark"] .cc {
     background: rgba(24, 26, 32, var(--app-glass-alpha));
     border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));

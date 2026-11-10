@@ -202,34 +202,124 @@ func typLabel(t string) string {
 	}
 }
 
-// startReader 为给定 reader 启动一个读协程，收到数据即推送 serial:data 事件。
+/* ============================ 接收洪峰保护 ============================ */
+
+// 洪峰（高波特率串口噪声、TCP 大块传输、UDP 广播）下逐次 Read 就 emit 一条
+// serial:data 事件，每秒可达数千条：前端事件队列被打爆、主线程饱和，连「关闭」
+// 都点不动（用户反馈的问题）。dataPump 把同一读协程收到的字节按来源攒进时间窗，
+// 每 100ms（或单来源攒满 64KB）合并成一条事件发出，事件量降 1～2 个数量级；
+// RX 字节计数仍在读侧逐包累加，统计不丢。
+const (
+	dataFlushEvery = 100 * time.Millisecond // 时间窗 flush 周期
+	dataFlushBytes = 64 * 1024              // 单来源窗内攒满这么多字节立即 flush
+	dataPumpQueue  = 64                     // 读侧→泵 队列深度，满时丢显示数据保响应
+)
+
+type pumpItem struct {
+	source string
+	bytes  []byte
+}
+
+type pumpBuf struct {
+	data  []byte
+	first string // 窗内首包时间戳，作合并事件的展示时间
+}
+
+// dataPump 生命周期跟随拥有它的读协程：feed 永不阻塞，finish 排空补尾后退出。
+type dataPump struct {
+	in   chan pumpItem
+	done chan struct{}
+}
+
+func newDataPump() *dataPump {
+	p := &dataPump{in: make(chan pumpItem, dataPumpQueue), done: make(chan struct{})}
+	go p.run()
+	return p
+}
+
+// feed 把一段字节交给泵合并。队列满时直接丢弃本次显示数据——RX 计数已在读侧
+// 累加过，洪峰下「界面不卡死、关闭点得动」比刷屏完整性优先。
+func (p *dataPump) feed(source string, b []byte) {
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	select {
+	case p.in <- pumpItem{source: source, bytes: cp}:
+	default:
+	}
+}
+
+// finish 由读协程退出时 defer：关输入、把已到达的数据排空补发一次再等泵退出，
+// 关连接前的尾部数据不丢。
+func (p *dataPump) finish() {
+	close(p.in)
+	<-p.done
+}
+
+func (p *dataPump) run() {
+	defer close(p.done)
+	tick := time.NewTicker(dataFlushEvery)
+	defer tick.Stop()
+	bufs := make(map[string]*pumpBuf)
+	flush := func() {
+		for src, b := range bufs {
+			if len(b.data) == 0 {
+				continue
+			}
+			emit("serial:data", SerialData{Source: src, Hex: hex.EncodeToString(b.data), Count: len(b.data), Time: b.first})
+			b.data = b.data[:0]
+			b.first = ""
+		}
+	}
+	for {
+		select {
+		case it, ok := <-p.in:
+			if !ok {
+				flush()
+				return
+			}
+			b := bufs[it.source]
+			if b == nil {
+				b = &pumpBuf{}
+				bufs[it.source] = b
+			}
+			if b.first == "" {
+				b.first = time.Now().Format("15:04:05.000")
+			}
+			b.data = append(b.data, it.bytes...)
+			if len(b.data) >= dataFlushBytes {
+				flush()
+			}
+		case <-tick.C:
+			// 周期性 flush： bursts 停了也不把窗内数据留到下一包/关闭才显示
+			flush()
+		}
+	}
+}
+
+// startReader 为给定 reader 启动一个读协程，收到的字节交 dataPump 按时间窗合并后
+// 推送 serial:data 事件。调用前必须已 begin（依赖其刚下发的 stopCh）。
 func startReader(r io.Reader, source string) {
+	stop := mgr.stopCh
 	mgr.wg.Add(1)
 	go func() {
 		defer mgr.wg.Done()
+		p := newDataPump()
+		defer p.finish()
 		buf := make([]byte, 2048)
 		for {
 			select {
-			case <-mgr.stopCh:
+			case <-stop:
 				return
 			default:
 			}
 			n, err := r.Read(buf)
 			if n > 0 {
 				atomic.AddInt64(&mgr.rxBytes, int64(n))
-				emit("serial:data", SerialData{
-					Source: source,
-					Hex:    hex.EncodeToString(buf[:n]),
-					Count:  n,
-					Time:   time.Now().Format("15:04:05.000"),
-				})
+				p.feed(source, buf[:n])
 			}
 			if err != nil {
 				if isTimeout(err) {
 					continue
-				}
-				if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "use of closed") {
-					return
 				}
 				return
 			}
@@ -386,6 +476,7 @@ func ListenTCPServer(cfg ConnConfig) error {
 	}
 	label := net.JoinHostPort(defaultStr(cfg.LocalAddr, "0.0.0.0"), fmt.Sprintf("%d", cfg.LocalPort))
 	begin("tcpserver", label)
+	stop := mgr.stopCh
 
 	var (
 		cMu     sync.Mutex
@@ -427,14 +518,14 @@ func ListenTCPServer(cfg ConnConfig) error {
 		defer mgr.wg.Done()
 		for {
 			select {
-			case <-mgr.stopCh:
+			case <-stop:
 				return
 			default:
 			}
 			conn, err := ln.Accept()
 			if err != nil {
 				select {
-				case <-mgr.stopCh:
+				case <-stop:
 					return
 				default:
 				}
@@ -452,22 +543,19 @@ func ListenTCPServer(cfg ConnConfig) error {
 			mgr.wg.Add(1)
 			go func(c net.Conn) {
 				defer mgr.wg.Done()
+				p := newDataPump()
+				defer p.finish()
 				buf := make([]byte, 2048)
 				for {
 					select {
-					case <-mgr.stopCh:
+					case <-stop:
 						return
 					default:
 					}
 					n, err := c.Read(buf)
 					if n > 0 {
 						atomic.AddInt64(&mgr.rxBytes, int64(n))
-						emit("serial:data", SerialData{
-							Source: remote,
-							Hex:    hex.EncodeToString(buf[:n]),
-							Count:  n,
-							Time:   time.Now().Format("15:04:05.000"),
-						})
+						p.feed(remote, buf[:n])
 					}
 					if err != nil {
 						break
@@ -533,10 +621,13 @@ func OpenUDP(cfg ConnConfig) error {
 	mgr.wg.Add(1)
 	go func() {
 		defer mgr.wg.Done()
+		stop := mgr.stopCh
+		p := newDataPump()
+		defer p.finish()
 		buf := make([]byte, 2048)
 		for {
 			select {
-			case <-mgr.stopCh:
+			case <-stop:
 				return
 			default:
 			}
@@ -546,23 +637,14 @@ func OpenUDP(cfg ConnConfig) error {
 				lastAddr = addr
 				rMu.Unlock()
 				atomic.AddInt64(&mgr.rxBytes, int64(n))
-				emit("serial:data", SerialData{
-					Source: addr.String(),
-					Hex:    hex.EncodeToString(buf[:n]),
-					Count:  n,
-					Time:   time.Now().Format("15:04:05.000"),
-				})
+				// UDP 多发送方：来源逐包带地址，泵按来源分流合并
+				p.feed(addr.String(), buf[:n])
 			}
 			if err != nil {
 				if isTimeout(err) {
 					continue
 				}
-				select {
-				case <-mgr.stopCh:
-					return
-				default:
-					return
-				}
+				return
 			}
 		}
 	}()

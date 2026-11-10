@@ -97,7 +97,7 @@
                             <a-button size="small" :disabled="stopBusy" @click="doRestart">重启</a-button>
                         </a-tooltip>
                         <a-button size="small" @click="openLogModal(selCfg!.id)">
-                            <template #icon><icon-face-folder-open /></template>日志
+                            <template #icon><icon-folder /></template>日志
                         </a-button>
                         <a-button size="small" :disabled="!selState?.running"
                             @click="openSite(selCfg?.port)">在新窗口打开</a-button>
@@ -233,7 +233,7 @@
                                 <template #icon><icon-launch /></template>打开站点
                             </a-button>
                             <a-button size="small" @click="openLogModal(selCfg!.id)">
-                                <template #icon><icon-face-folder-open /></template>查看日志
+                                <template #icon><icon-folder /></template>查看日志
                             </a-button>
                         </div>
 

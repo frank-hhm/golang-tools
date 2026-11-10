@@ -29,7 +29,7 @@
                 <icon-more class="inst-more" @click.stop />
                 <template #content>
                   <a-doption value="open"><icon-folder /> 打开文件管理</a-doption>
-                  <a-doption value="term"><icon-terminal /> 在终端中打开</a-doption>
+                  <a-doption value="term"><icon-code /> 在终端中打开</a-doption>
                   <a-doption value="edit"><icon-edit /> 编辑</a-doption>
                   <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
                 </template>
