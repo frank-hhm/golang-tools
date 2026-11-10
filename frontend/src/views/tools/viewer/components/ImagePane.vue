@@ -450,6 +450,7 @@ function saveB64() {
     justify-content: center;
     overflow: auto;
     padding: var(--base-size-12);
+    /* 内容面只叠 fill-1 淡膜、不铺实色：父面板 .vp-main 由全局主题规则接管，铺 bg-2 会把主题纹理截断。 */
     background: var(--color-fill-1);
 }
 .ip-mask {
@@ -458,6 +459,7 @@ function saveB64() {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* 加载/错误遮罩与画布同面。 */
     background: var(--color-fill-1);
 }
 .ip-canvas img {

@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -460,5 +461,66 @@ func TestGrantExpired(t *testing.T) {
 	ok := Grant{ID: "o", Path: t.TempDir()}
 	if !ok.alive(now) {
 		t.Fatal("未过期长期授权应可用")
+	}
+}
+
+// TestPinPortalGate 验证设了 PIN 后首页真正被拦：未授权回 PIN 输入页，
+// 输入正确 PIN 后落 cookie 并 302，带 cookie 再访问才放行。
+func TestPinPortalGate(t *testing.T) {
+	s, _ := newTestServer(t)
+	s.pin = "1234"
+
+	// 未授权访问首页 → 401 + PIN 输入页
+	w := httptest.NewRecorder()
+	s.handle(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "访问需要 PIN") {
+		t.Fatalf("未授权访问应回 PIN 页: %d %s", w.Code, w.Body.String())
+	}
+
+	// 提交错误 PIN → 仍 200 表单，不下发 cookie
+	form := url.Values{"pin": {"0000"}, "next": {"/"}}
+	req := httptest.NewRequest(http.MethodPost, "/pin", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	s.handle(w, req)
+	if w.Code != http.StatusOK || len(w.Result().Cookies()) != 0 {
+		t.Fatalf("错误 PIN 不应放行: %d cookie=%d", w.Code, len(w.Result().Cookies()))
+	}
+
+	// 提交正确 PIN → 302 + cookie
+	form = url.Values{"pin": {"1234"}, "next": {"/"}}
+	req = httptest.NewRequest(http.MethodPost, "/pin", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	s.handle(w, req)
+	if w.Code != http.StatusFound || len(w.Result().Cookies()) == 0 {
+		t.Fatalf("正确 PIN 应 302 并落 cookie: %d", w.Code)
+	}
+	ck := w.Result().Cookies()[0]
+
+	// 带 cookie 再访问首页 → 200
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: ck.Name, Value: ck.Value})
+	w = httptest.NewRecorder()
+	s.handle(w, req)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "上传到这台机器") {
+		t.Fatalf("带 cookie 应放行首页: %d", w.Code)
+	}
+}
+
+// TestSafeNextTarget 验证登录后跳转目标只允许站内绝对路径，挡协议相对开放重定向。
+func TestSafeNextTarget(t *testing.T) {
+	cases := map[string]string{
+		"/s/abc":     "/s/abc",
+		"/":          "/",
+		"//evil.com": "/",
+		`/\evil`:     "/",
+		"http://x/y": "/",
+		"":           "/",
+	}
+	for in, want := range cases {
+		if got := safeNextTarget(in); got != want {
+			t.Fatalf("safeNextTarget(%q)=%q 期望 %q", in, got, want)
+		}
 	}
 }

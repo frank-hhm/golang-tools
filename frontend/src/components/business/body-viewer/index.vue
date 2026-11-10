@@ -710,4 +710,38 @@ async function copy() {
 .bv-visual :deep(.arco-tree) {
     background: transparent;
 }
+
+/* 可视化树选中语言与 MySQL/docspace/viewer 分类树统一：中性底色 fill-3 + 左侧短竖条 rail + 正文 text-1。
+   此前这里零颜色覆盖，block-node 下点选节点直接吃 Arco 默认的 .arco-tree-node-selected .arco-tree-node-title
+   { color: rgb(--primary-6) }，主色偏暗的预设（石墨等）下选中报文节点文字和背景糊在一起看不清。 */
+.bv-visual :deep(.arco-tree-node) {
+    margin-bottom: 2px;
+}
+.bv-visual :deep(.arco-tree-node-title) {
+    position: relative;
+    padding: 4px 8px;
+    border-radius: var(--base-radius-default);
+    color: var(--color-text-1);
+    transition: background-color 0.15s, color 0.15s;
+}
+.bv-visual :deep(.arco-tree-node-title:hover) {
+    background-color: var(--color-fill-2);
+}
+.bv-visual :deep(.arco-tree-node-selected .arco-tree-node-title),
+.bv-visual :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
+    background-color: var(--color-fill-2);
+    color: var(--color-text-1);
+    font-weight: 600;
+}
+.bv-visual :deep(.arco-tree-node-selected .arco-tree-node-title)::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 50%;
+    width: 3px;
+    height: 14px;
+    margin-top: -7px;
+    border-radius: var(--base-radius-small);
+    background: var(--app-select-rail);
+}
 </style>

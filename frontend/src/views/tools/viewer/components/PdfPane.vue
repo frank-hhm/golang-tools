@@ -24,6 +24,7 @@ defineProps<{ url: string; name: string }>();
     width: 100%;
     height: 100%;
     border: 0;
+    /* 内容面只叠 fill-1 淡膜、不铺实色：父面板 .vp-main 由全局主题规则接管，铺 bg-2 会把主题纹理截断。 */
     background: var(--color-fill-1);
 }
 </style>

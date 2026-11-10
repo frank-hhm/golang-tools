@@ -41,8 +41,8 @@
                             <div class="field">
                                 <div class="field-label">接收类型黑名单（留空 = 全类型收）</div>
                                 <a-select v-model="ctl.blockExt" size="small" mode="tags" allow-clear
-                                    :token-separators="[',', ' ', ';']" placeholder="如 exe、dll、ps1；回车添加"
-                                    :disabled="cfgSaving" />
+                                    :options="blockExtOptions" :token-separators="[',', ' ', ';']"
+                                    placeholder="选择或直接输入要拒收的扩展名，如 exe、dll、ps1；回车添加" :disabled="cfgSaving" />
                                 <a-space :size="6" class="blk-actions">
                                     <a-button size="mini" :disabled="cfgSaving" @click="fillDangerTypes">一键填危险类型</a-button>
                                     <a-button size="mini" :disabled="cfgSaving" @click="ctl.blockExt = []">清空（全收）</a-button>
@@ -388,6 +388,8 @@ const srv = reactive<LsStatus>({
 const ctl = reactive({ host: "", stopMin: 120, pin: "", port: 0, blockExt: [] as string[] });
 /** 常见危险类型（一键填入）：与旧版写死的后端黑名单对齐，供用户随时找回安全默认 */
 const DANGER_TYPES = ["exe", "dll", "bat", "cmd", "com", "msi", "scr", "vbs", "js", "jse", "wsf", "wsh", "ps1", "psm1", "lnk", "sh", "desktop", "jar", "reg"];
+/** 黑名单下拉的可选项：tags 模式下这些选项可多选，同时仍允许自由输入新扩展名（回车成 tag） */
+const blockExtOptions = DANGER_TYPES.map((x) => ({ label: x, value: x }));
 /** 接收类型黑名单保存中标记 */
 const cfgSaving = ref(false);
 const links = ref<LsLink[]>([]);

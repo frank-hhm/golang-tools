@@ -1421,6 +1421,7 @@ body.card-flush .tab-content {
 }
 
 .key-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--base-padding);
@@ -1434,8 +1435,22 @@ body.card-flush .tab-content {
     background: var(--color-fill-2);
 }
 
+/* 选中态：fill-2 轻底 + 左侧短竖条 + 正文色，对齐设置页菜单语言 */
 .key-item.active {
-    background: var(--color-primary-light-1);
+    background: var(--color-fill-2);
+    color: var(--color-text-1);
+}
+
+.key-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 55%;
+    border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
+    background: var(--app-select-rail);
 }
 
 .key-name {

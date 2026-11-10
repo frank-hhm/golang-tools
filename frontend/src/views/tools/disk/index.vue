@@ -155,7 +155,7 @@
                         剪贴板：{{ clipboard.mode === "cut" ? "剪切" : "复制" }} {{ clipboard.paths.length }} 项
                         <a-button size="mini" type="text" @click="clipboard = null">清空</a-button>
                     </span>
-                    <a-radio-group v-model="view" type="button" size="mini">
+                    <a-radio-group v-model="view" type="button" size="small">
                         <a-radio value="list"><icon-list /></a-radio>
                         <a-radio value="grid"><icon-apps /></a-radio>
                     </a-radio-group>
@@ -1569,7 +1569,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 
 /* 选中：中性淡底 + 左上短竖条，不用整块主色边框，与列表 / 树节点一套语言 */
 .g-item.sel {
-    background: var(--color-fill-3);
+    background: var(--color-fill-2);
 }
 
 .g-item.sel::before {
@@ -1695,7 +1695,7 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 /* 列表选中态：不再整行刷主色，改中性淡底 + 名称列左侧短竖条，
    与 Git 仓库项、docspace 树节点共用一套选中语言 */
 .fb-table :deep(.arco-table-tr-selected .arco-table-td) {
-    background: var(--color-fill-3);
+    background: var(--color-fill-2);
 }
 .name-cell {
     position: relative;

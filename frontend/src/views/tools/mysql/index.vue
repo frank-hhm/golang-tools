@@ -2476,14 +2476,28 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-/* 左栏列表行（连接/实例）对齐 PHP：整行可点、选中高亮、hover 背景 */
+/* 左栏列表行（连接/实例）对齐设置页菜单选中语言：fill-2 轻底 + 左侧短竖条 + 正文色 */
 .side-card :deep(.arco-list-item) {
   cursor: pointer;
+  position: relative;
 }
 
 .side-card :deep(.arco-list-item.active),
 .side-card :deep(.arco-list-item.active:hover) {
-  background: var(--color-primary-light-1);
+  background: var(--color-fill-2);
+  color: var(--color-text-1);
+}
+
+.side-card :deep(.arco-list-item.active::before) {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 55%;
+  border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
+  background: var(--app-select-rail);
 }
 
 .side-card :deep(.arco-list-item:hover) {
@@ -2847,9 +2861,40 @@ onUnmounted(() => {
 }
 
 /* ---- 对象树标题（右键区） ---- */
-:deep(.arco-tree-node-title) {
+/* 选中语言与 MySQL/docspace/viewer 三页分类树统一：中性底色 fill-3 + 左侧短竖条 rail + 正文 text-1，
+   不整块刷主色。Arco 默认选中态写的是 rgb(--primary-6)（真实类名是 .arco-tree-node > .arco-tree-node-title，
+   根本没有 .arco-tree-node-row），主色偏暗的预设（石墨等）下选中文字和背景糊在一起；
+   rail 用 --app-select-rail（随明暗翻转的高对比中性色）而非主色，保证深色主色下竖条仍看得见。 */
+.tree-card :deep(.arco-tree-node) {
+  margin-bottom: 2px;
+}
+.tree-card :deep(.arco-tree-node-title) {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--base-radius-default);
+  transition: background-color 0.15s, color 0.15s;
+}
+.tree-card :deep(.arco-tree-node-title:hover) {
+  background-color: var(--color-fill-2);
+}
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title),
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
+  color: var(--color-text-1);
+  background-color: var(--color-fill-2);
+  font-weight: 600;
+}
+.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title)::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: var(--base-radius-small);
+  background: var(--app-select-rail);
 }
 
 /* 未选中项文字色：真实文本落在我们自己的 .tree-title span 上（被 a-tooltip、arco-tree-node-title-text 逐层包裹），
@@ -2862,16 +2907,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-1);
-}
-
-/* 选中态：主题主色为黑白时默认样式（arco 自身写的是 rgb(--primary-6)）对比不足，改用中性底色 + 正文色。
-   之前这里选择器写的是 .arco-tree-node-row，但 Arco 树根本没有这个类名（真实结构是 .arco-tree-node > .arco-tree-node-title），
-   导致这段修正从未生效，选中项仍走 arco 默认的 primary-6 文字色——主色偏暗的预设（石墨等）下就跟背景糊在一起了。 */
-.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title),
-.tree-card :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
-  color: var(--color-text-1);
-  background-color: var(--color-fill-3);
-  font-weight: 600;
 }
 
 /* ---- 对象树右键菜单 ---- */

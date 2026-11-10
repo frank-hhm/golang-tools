@@ -796,9 +796,24 @@ onUnmounted(() => {
     padding: 6px 0;
 }
 
+/* 选中态：fill-2 轻底 + 左侧短竖条 + 正文色，对齐设置页菜单语言 */
 .inst-active {
-    background: var(--color-primary-light-1);
+    position: relative;
+    background: var(--color-fill-2);
+    color: var(--color-text-1);
     cursor: pointer;
+}
+
+.inst-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 55%;
+    border-radius: 0 var(--base-radius-small) var(--base-radius-small) 0;
+    background: var(--app-select-rail);
 }
 
 :deep(.arco-list-item) {

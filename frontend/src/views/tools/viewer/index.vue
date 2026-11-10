@@ -674,7 +674,9 @@ onUnmounted(() => {
     min-height: 0;
     border: 1px solid var(--color-border-1);
     border-radius: var(--base-radius-default);
-    background: var(--color-bg-1);
+    /* 背景不在此写：由 styles/theme/tokens.scss 的全局主题联动规则接管——
+       纹理档让路透出窗口 .theme-bg 固定底、玻璃档铺磨砂 tint、默认/native 档回落实色 bg-2。
+       scoped 里留一条 background 会和全局同特异性且注入在后，把联动规则盖掉。 */
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -706,6 +708,41 @@ onUnmounted(() => {
     overflow: auto;
     padding: 0 8px 8px;
     border-bottom: 1px solid var(--color-border-1);
+}
+/* 分类树选中态：查看器这里的树是纯 a-tree（无自定义 #title 插槽），此前没有任何颜色覆盖，
+   选中节点直接吃 Arco 默认的 .arco-tree-node-selected .arco-tree-node-title { color: rgb(--primary-6) }；
+   一旦主题主色偏暗（石墨等暗色档预设），选中分类的文字就和暗底糊在一起、发暗看不清（与 MySQL/docspace 同一个坑）。
+   统一到文档中心页同款「中性底色 + 左侧短竖条」选中语言：不整块刷主色，正文始终取 text-1。 */
+.vp-ds-tree :deep(.arco-tree-node) {
+    margin-bottom: 2px;
+}
+.vp-ds-tree :deep(.arco-tree-node-title) {
+    position: relative;
+    padding: 4px 8px;
+    border-radius: var(--base-radius-default);
+    font-size: 13px;
+    color: var(--color-text-1);
+    transition: background-color 0.15s, color 0.15s;
+}
+.vp-ds-tree :deep(.arco-tree-node-title:hover) {
+    background-color: var(--color-fill-2);
+}
+.vp-ds-tree :deep(.arco-tree-node-selected .arco-tree-node-title),
+.vp-ds-tree :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
+    background-color: var(--color-fill-2);
+    color: var(--color-text-1);
+    font-weight: 600;
+}
+.vp-ds-tree :deep(.arco-tree-node-selected .arco-tree-node-title)::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 50%;
+    width: 3px;
+    height: 14px;
+    margin-top: -7px;
+    border-radius: var(--base-radius-small);
+    background: var(--app-select-rail);
 }
 .vp-ds-list {
     flex: 1;
@@ -775,7 +812,7 @@ onUnmounted(() => {
 }
 /* 选中态：中性淡底 + 左侧短竖条（不加深边框 / 不加投影），与磁盘管理、Git、docspace 一套语言 */
 .vp-item.active {
-    background: var(--color-fill-3);
+    background: var(--color-fill-2);
 }
 .vp-item::after {
     content: "";
@@ -811,7 +848,7 @@ onUnmounted(() => {
     min-height: 0;
     border: 1px solid var(--color-border-1);
     border-radius: var(--base-radius-default);
-    background: var(--color-bg-1);
+    /* 同 .vp-side：背景交给全局主题联动规则，scoped 不写，避免盖掉纹理/玻璃档的让路与 tint。 */
     overflow: hidden;
     display: flex;
     flex-direction: column;

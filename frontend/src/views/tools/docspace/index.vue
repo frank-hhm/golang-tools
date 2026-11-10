@@ -1219,11 +1219,11 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
   transition: background-color 0.15s, color 0.15s;
 }
 .left :deep(.arco-tree-node-title:hover) {
-  background-color: var(--color-fill-3);
+  background-color: var(--color-fill-2);
 }
 .left :deep(.arco-tree-node-selected .arco-tree-node-title),
 .left :deep(.arco-tree-node-selected .arco-tree-node-title:hover) {
-  background-color: var(--color-fill-3);
+  background-color: var(--color-fill-2);
   color: var(--color-text-1);
   font-weight: 600;
 }

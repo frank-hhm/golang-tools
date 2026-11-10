@@ -306,20 +306,27 @@ func (s *httpServer) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "请求过于频繁", http.StatusTooManyRequests)
 		return
 	}
+	// PIN 输入页路由本身不门禁，否则登录后跳回会自锁循环。
+	if r.URL.Path == "/pin" {
+		s.handlePin(w, r)
+		return
+	}
+	// 设了 PIN 时，面向浏览器的访问面（上传首页 / 、授权门户 /g 、分享下载 /s/）
+	// 一律先过 PIN：未授权就渲染输入页，输入正确后落 cookie 再放行并跳回原路径。
+	// 上传接口 /upload* 不在门禁内——门户页拿到 cookie 后同源 fetch 自动带上；
+	// curl/老页面直投仍按「上传免密靠护栏」的既定口径放行，不受这次改动影响。
+	if s.pin != "" && r.Method == http.MethodGet &&
+		(r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/g") || strings.HasPrefix(r.URL.Path, "/s/")) &&
+		!s.pinAuthorized(r) {
+		s.requirePin(w, r)
+		return
+	}
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/":
 		s.serveIndex(w)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/s/"):
-		if !s.pinOK(r) {
-			http.Error(w, "需要正确 PIN", http.StatusUnauthorized)
-			return
-		}
 		s.handleDownload(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/g"):
-		if !s.pinOK(r) {
-			http.Error(w, "需要正确 PIN", http.StatusUnauthorized)
-			return
-		}
 		s.handleGrant(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/upload":
 		s.handleUpload(w, r)
@@ -339,14 +346,95 @@ func (s *httpServer) handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// pinOK 未设 PIN 时恒真；设了则查询参数 ?pin= 必须逐字相等。
-// 失败与未授权下载一样不区分细节，只回一个笼统 401。
-func (s *httpServer) pinOK(r *http.Request) bool {
+// pinCookieName 登录成功后落在浏览器上的 cookie 名；值即 PIN 本身——本功能的
+// 定位是「挡无意访问」，不是严格鉴权，故不额外做哈希/会话表。
+const pinCookieName = "ls_pin"
+
+// pinAuthorized 未设 PIN 恒真；设了则 ?pin= 命中或带上正确 cookie 都算已授权。
+// 失败与未授权下载一样不区分细节，只回笼统的 PIN 输入页。
+func (s *httpServer) pinAuthorized(r *http.Request) bool {
 	if s.pin == "" {
 		return true
 	}
-	return r.URL.Query().Get("pin") == s.pin
+	if r.URL.Query().Get("pin") == s.pin {
+		return true
+	}
+	if c, err := r.Cookie(pinCookieName); err == nil && c.Value == s.pin {
+		return true
+	}
+	return false
 }
+
+// requirePin 未授权时渲染 PIN 输入页（401），next 指向原始请求，登录后跳回。
+func (s *httpServer) requirePin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = io.WriteString(w, pinFormHTML(r.URL.RequestURI(), ""))
+}
+
+// handlePin /pin：GET 或 POST 提交 pin；正确则落 cookie 并 302 跳回 next，错误就地重渲染表单。
+func (s *httpServer) handlePin(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	next := safeNextTarget(r.FormValue("next"))
+	if s.pin == "" {
+		http.Redirect(w, r, next, http.StatusFound)
+		return
+	}
+	got := strings.TrimSpace(r.FormValue("pin"))
+	if got == s.pin {
+		http.SetCookie(w, &http.Cookie{
+			Name: pinCookieName, Value: s.pin, Path: "/",
+			HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 24 * 3600,
+		})
+		http.Redirect(w, r, next, http.StatusFound)
+		return
+	}
+	msg := ""
+	if got != "" {
+		msg = "PIN 不正确，请重试"
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, pinFormHTML(next, msg))
+}
+
+// safeNextTarget 只允许站内绝对路径，挡 //evil 与 /\ 这类协议相对跳转。
+func safeNextTarget(next string) string {
+	next = strings.TrimSpace(next)
+	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, `/\`) {
+		return "/"
+	}
+	return next
+}
+
+// pinFormHTML 渲染 PIN 输入页：纯内联 HTML，与服务其它页面一样零静态资源依赖。
+func pinFormHTML(next, msg string) string {
+	return fmt.Sprintf(pinFormTmpl, escapeHTML(msg), escapeHTML(next))
+}
+
+// pinFormTmpl 经 fmt.Sprintf 注入 msg/next，字面 % 一律写成 %%。
+const pinFormTmpl = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>局域网互传 · 需要 PIN</title><style>
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;min-height:100vh;padding:32px 16px;background:linear-gradient(180deg,#eef1f6,#f6f7f9);color:#1d2129;display:flex;align-items:flex-start;justify-content:center}
+.card{background:#fff;border:1px solid #eceef2;border-radius:16px;padding:28px;max-width:420px;width:100%%;margin:0 auto;box-shadow:0 10px 30px rgba(29,33,41,.06)}
+h1{font-size:18px;margin:0 0 6px;font-weight:600}
+.sub{font-size:13px;color:#86909c;margin:0 0 18px}
+input{width:100%%;padding:12px 14px;font-size:16px;letter-spacing:2px;border:1px solid #d5d9e0;border-radius:10px;outline:none}
+input:focus{border-color:#165dff}
+button{display:block;width:100%%;margin-top:16px;background:linear-gradient(135deg,#165dff,#4080ff);color:#fff;border:0;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:500;cursor:pointer}
+.err{color:#e53935;font-size:13px;margin-top:12px;min-height:18px}
+.foot{font-size:12px;color:#c97900;margin-top:16px}
+</style></head><body><div class="card">
+<h1>访问需要 PIN</h1><div class="sub">这台机器为局域网互传设置了访问 PIN，请输入后继续。</div>
+<form method="post" action="/pin">
+<input name="pin" type="password" inputmode="numeric" autocomplete="off" autofocus placeholder="请输入 PIN">
+<button type="submit">进入</button>
+<div class="err">%s</div>
+<input type="hidden" name="next" value="%s">
+</form>
+<div class="foot">仅挡无意访问，不是严格访问控制。</div>
+</div></body></html>`
 
 func (s *httpServer) serveIndex(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

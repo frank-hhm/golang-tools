@@ -333,6 +333,8 @@ body.app-glass .m-svc-card,
 body.app-glass .m-tool-cell,
 body.app-glass .dl-side,
 body.app-glass .dl-detail,
+body.app-glass .vp-side,
+body.app-glass .vp-main,
 body.app-glass .cc {
     background: rgba(255, 255, 255, var(--app-glass-alpha));
     backdrop-filter: blur(var(--app-glass-blur)) saturate(1.4);
@@ -349,6 +351,8 @@ body.app-glass[arco-theme="dark"] .m-svc-card,
 body.app-glass[arco-theme="dark"] .m-tool-cell,
 body.app-glass[arco-theme="dark"] .dl-side,
 body.app-glass[arco-theme="dark"] .dl-detail,
+body.app-glass[arco-theme="dark"] .vp-side,
+body.app-glass[arco-theme="dark"] .vp-main,
 body.app-glass[arco-theme="dark"] .cc {
     background: rgba(24, 26, 32, var(--app-glass-alpha));
     border-color: rgba(255, 255, 255, calc(var(--app-glass-border) * 0.4));
@@ -845,6 +849,34 @@ body:not(.app-bg-none):not(.app-bg-native) .pm-submenu {
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
+}
+
+/*
+ * 文件查看器的两块面板（.vp-side 文件列表 / .vp-main 预览区）统一交给下面两条全局规则接管，
+ * 页面 scoped 里不再写 background（否则 scoped 属性选择器 (0,2,0) 与全局同特异性、且注入在后会盖住联动规则）。
+ *
+ * 默认档 app-bg-none（无主题背景层）与 native 档（真 DWM 桌面模糊，透出的是桌面、满屏正文不可读）：
+ * 面板用不透明卡片档 bg-2（与 arco 卡片同色）。特异性 (0,3,0)，作为下面纹理档 (0,4,1) 的基线。
+ */
+body.app-bg-none .vp-side,
+body.app-bg-none .vp-main,
+body.app-bg-native .vp-side,
+body.app-bg-native .vp-main {
+    background: var(--color-bg-2);
+}
+
+/*
+ * 纹理档（mesh/photo/dark/image，未开玻璃）：面板让路透明，透出本窗口自己的 .theme-bg 固定底
+ * （z-index:-1、position:fixed 铺满视口），与面板四周那条缝隙是同一张连续纹理，
+ * 不再是一块与主题脱节的实心板。
+ * 与浮层组（上面 .arco-modal 等）刻意不同：浮层 teleport 到 body、背后是遮罩，只能自绘复刻纹理；
+ * 这两块面板就在窗口内，直接让路透出固定底更省事、且天然逐像素对齐。
+ * native 档（真 DWM 桌面糊）不列入——透出的是桌面模糊，满屏正文不可读，回落 bg-2。
+ * 特异性 (0,4,1) 高于上面 bg-2 基线与 scoped 基线，稳定胜出；玻璃档由上面的 tint 组接管（互斥）。
+ */
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .vp-side,
+body:not(.app-bg-none):not(.app-bg-native):not(.app-glass) .vp-main {
+    background: transparent;
 }
 
 /*

@@ -123,6 +123,9 @@ watch(() => props.url, load, { immediate: true });
     line-height: 1.6;
     color: var(--color-text-1);
     white-space: pre;
+    /* 内容面不铺实色：父面板 .vp-main 已由全局主题规则接管（纹理档透出固定底、玻璃档铺 tint），
+       这里只叠一层 fill-1 淡膜（暗色档 rgba(255,255,255,.04)）让正文从底纹上拉开一点对比，
+       整块预览区随主题走；若铺成 bg-2 实色反而会把主题纹理截成一块孤立实心板。 */
     background: var(--color-fill-1);
 }
 </style>
