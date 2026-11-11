@@ -26,6 +26,18 @@ const (
 
 	AuthPassword = "password"
 	AuthKey      = "key"
+
+	// 连接类型：空/ssh=远程 SSH（默认），local=本机 shell
+	KindSSH   = "ssh"
+	KindLocal = "local"
+
+	// 本地 shell 种类
+	ShellCmd = "cmd"
+	ShellPS  = "powershell"
+
+	// 两条常驻本地默认连接的稳定 id（ensureLocalDefaults 按此幂等补种）
+	LocalIDCmd = "local-cmd"
+	LocalIDPS  = "local-powershell"
 )
 
 // Host 一条连接记录（前端列表/表单共用）。
@@ -48,6 +60,8 @@ type Host struct {
 	Tags      []string `json:"tags,omitempty"`     // 标签（列表筛选）
 	Color     string   `json:"color,omitempty"`    // 列表圆点/标签配色
 	Note      string   `json:"note,omitempty"`     // 备注，列表里显示为“名称”
+	Kind      string   `json:"kind,omitempty"`     // 空/ssh=远程 SSH；local=本机 shell
+	Shell     string   `json:"shell,omitempty"`    // local 专用：cmd | powershell
 	UpdatedAt int64    `json:"updatedAt"`
 }
 
@@ -55,7 +69,7 @@ type Host struct {
 type SessionInfo struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
-	Kind  string `json:"kind"` // ssh | docker
+	Kind  string `json:"kind"` // ssh | docker | local
 }
 
 // DataEvent 终端输出：Base64 编码，既避开 JSON 转义又能原样带过二进制控制序列
@@ -134,7 +148,8 @@ func (r hostRecord) toHost() Host {
 	return h
 }
 
-// ListHosts 记录列表（新建的排在前面）
+// ListHosts 记录列表（新建的排在前面）。
+// 每次加载都确保两条本地默认连接（CMD / PowerShell）存在（用户选的「每次确保存在」，删除后下次回来）。
 func ListHosts() ([]Host, error) {
 	storeMu.Lock()
 	defer storeMu.Unlock()
@@ -142,11 +157,37 @@ func ListHosts() ([]Host, error) {
 	if err != nil {
 		return nil, err
 	}
+	if next, added := ensureLocalDefaults(recs); added {
+		_ = writeRecords(next) // 落盘失败不阻塞：本次仍在内存里补上，下次再试
+		recs = next
+	}
 	out := make([]Host, 0, len(recs))
 	for _, r := range recs {
 		out = append(out, r.toHost())
 	}
 	return out, nil
+}
+
+// ensureLocalDefaults 按稳定 id 幂等补种两条本地默认连接：已存在则不动，缺失则前置。
+func ensureLocalDefaults(recs []hostRecord) ([]hostRecord, bool) {
+	have := make(map[string]bool, len(recs))
+	for _, r := range recs {
+		have[r.ID] = true
+	}
+	added := false
+	seed := func(id, shell, name string) {
+		if have[id] {
+			return
+		}
+		recs = append([]hostRecord{{Host: Host{
+			ID: id, Name: name, Kind: KindLocal, Shell: shell,
+			System: SystemWindows, UpdatedAt: time.Now().Unix(),
+		}}}, recs...)
+		added = true
+	}
+	seed(LocalIDPS, ShellPS, "本地 PowerShell")
+	seed(LocalIDCmd, ShellCmd, "本地 CMD")
+	return recs, added
 }
 
 // SaveHost 新建或更新一条记录。
@@ -162,34 +203,56 @@ func SaveHost(in Host) ([]Host, error) {
 	in.Group = strings.TrimSpace(in.Group)
 	in.Color = strings.TrimSpace(in.Color)
 	in.Tags = normalizeTags(in.Tags)
-	if in.System != SystemWindows {
-		in.System = SystemLinux
-	}
-	if in.Address == "" {
-		return nil, fmt.Errorf("请填写服务器 IP 或域名")
-	}
-	if in.Port <= 0 || in.Port > 65535 {
-		return nil, fmt.Errorf("端口需在 1-65535 之间")
-	}
-	if in.CredID == "" {
-		// 旧式内联凭据：仍按原规则校验账号与认证方式
-		if in.Auth != AuthKey {
-			in.Auth = AuthPassword
+	in.Kind = strings.TrimSpace(in.Kind)
+	in.Shell = strings.TrimSpace(in.Shell)
+	if in.Kind == KindLocal {
+		// 本地 shell：不涉地址/端口/凭据，只认 Shell
+		in.Shell = normalizeShell(in.Shell)
+		if in.Shell == "" {
+			return nil, fmt.Errorf("本地连接需指定 shell（cmd 或 powershell）")
 		}
-		if in.User == "" {
-			return nil, fmt.Errorf("请填写 SSH 账号")
-		}
-		if in.Auth == AuthKey {
-			if in.KeyPath == "" {
-				return nil, fmt.Errorf("请选择私钥文件")
-			}
-			if _, err := os.Stat(in.KeyPath); err != nil {
-				return nil, fmt.Errorf("私钥文件不可读: %v", err)
-			}
+		in.System = SystemWindows
+		in.Address = ""
+		in.Port = 0
+		in.User = ""
+		in.Auth = ""
+		in.Password = ""
+		in.KeyPath = ""
+		in.CredID = ""
+		if in.Name == "" {
+			in.Name = localShellLabel(in.Shell)
 		}
 	} else {
-		// 走凭据：主机自身不再存内联密码，认证细节全部交给凭据表
-		in.Password = ""
+		in.Kind = "" // 归一：远程记录不写 kind（空即 ssh）
+		if in.System != SystemWindows {
+			in.System = SystemLinux
+		}
+		if in.Address == "" {
+			return nil, fmt.Errorf("请填写服务器 IP 或域名")
+		}
+		if in.Port <= 0 || in.Port > 65535 {
+			return nil, fmt.Errorf("端口需在 1-65535 之间")
+		}
+		if in.CredID == "" {
+			// 旧式内联凭据：仍按原规则校验账号与认证方式
+			if in.Auth != AuthKey {
+				in.Auth = AuthPassword
+			}
+			if in.User == "" {
+				return nil, fmt.Errorf("请填写 SSH 账号")
+			}
+			if in.Auth == AuthKey {
+				if in.KeyPath == "" {
+					return nil, fmt.Errorf("请选择私钥文件")
+				}
+				if _, err := os.Stat(in.KeyPath); err != nil {
+					return nil, fmt.Errorf("私钥文件不可读: %v", err)
+				}
+			}
+		} else {
+			// 走凭据：主机自身不再存内联密码，认证细节全部交给凭据表
+			in.Password = ""
+		}
 	}
 
 	storeMu.Lock()
@@ -216,7 +279,7 @@ func SaveHost(in Host) ([]Host, error) {
 		if rec.ID == "" {
 			rec.ID = fmt.Sprintf("h%d", time.Now().UnixNano())
 		}
-		if rec.Note == "" {
+		if rec.Note == "" && rec.Kind != KindLocal {
 			rec.Note = fmt.Sprintf("服务器%d", len(recs)+1)
 		}
 	}
@@ -277,4 +340,24 @@ func DeleteHost(id string) ([]Host, error) {
 		out = append(out, r.toHost())
 	}
 	return out, nil
+}
+
+// normalizeShell 把任意输入归一成 cmd|powershell，非法返回空串。
+func normalizeShell(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case ShellCmd:
+		return ShellCmd
+	case ShellPS:
+		return ShellPS
+	default:
+		return ""
+	}
+}
+
+// localShellLabel 本地连接的默认展示名。
+func localShellLabel(shell string) string {
+	if normalizeShell(shell) == ShellPS {
+		return "本地 PowerShell"
+	}
+	return "本地 CMD"
 }

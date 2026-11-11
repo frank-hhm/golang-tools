@@ -215,6 +215,70 @@ func (m *Manager) Add(url string, opts AddOpts) (*Task, error) {
 	return &snap, nil
 }
 
+// AddSource 新建一笔「外部流源」任务：字节不来自 HTTP URL，而来自 RegisterSource 登记的
+// SourceResolver。kind 对应解析器未登记时直接拒绝入队（避免建出一个跑不动的任务）。
+// opts.Name 必填（无法从 URL 推）；SaveDir 空则用默认下载目录。
+func (m *Manager) AddSource(kind string, params map[string]string, opts AddOpts) (*Task, error) {
+	if kind == "" {
+		return nil, fmt.Errorf("下载源类型不能为空")
+	}
+	if _, ok := lookupSource(kind); !ok {
+		return nil, fmt.Errorf("未登记的下载源类型：%q", kind)
+	}
+	name := sanitizeName(opts.Name)
+	if name == "" {
+		return nil, fmt.Errorf("流源任务必须指定文件名")
+	}
+	saveDir := opts.SaveDir
+	if saveDir == "" {
+		saveDir = m.defaultSaveDir()
+	}
+	if saveDir == "" {
+		return nil, fmt.Errorf("未指定下载目录")
+	}
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		return nil, err
+	}
+	cat := opts.Category
+	if cat == "" {
+		cat = categoryOf(name)
+	}
+	// ID 种子：kind + 文件名 + 排序后的 params，保证同一源重复入队能避让而不互相覆盖。
+	seed := kind + "|" + name
+	for _, k := range sortedParamKeys(params) {
+		seed += "|" + k + "=" + params[k]
+	}
+	now := m.clk().UnixMilli()
+	t := &Task{
+		ID:           uniqueID(seed),
+		Name:         name,
+		SavePath:     filepath.Join(saveDir, name),
+		Category:     cat,
+		Status:       StatusPending,
+		Stage:        "info",
+		Connections:  1, // 流不支持分块，固定单连接
+		Proxy:        opts.Proxy,
+		SourceKind:   kind,
+		SourceParams: params,
+		ScheduledAt:  opts.ScheduledAt,
+		AutoStart:    opts.AutoStart || opts.ScheduledAt > 0,
+		StartedAt:    now,
+		UpdatedAt:    now,
+	}
+	t.SavePath = avoidCollision(t.SavePath)
+	t.Name = filepath.Base(t.SavePath)
+
+	m.mu.Lock()
+	m.tasks[t.ID] = t
+	m.order = append(m.order, t.ID)
+	snap := cloneTask(t)
+	m.persistLocked()
+	m.mu.Unlock()
+	m.signal()
+	m.emitTask(snap)
+	return &snap, nil
+}
+
 // Start 立即开始（未开始 / 暂停 / 出错 / 已取消都能拉起）。
 func (m *Manager) Start(id string) error { return m.activate(id, false) }
 
@@ -539,6 +603,11 @@ func (m *Manager) launchLocked(t *Task) {
 // runTask 单任务编排：造 client → 调 downloadFile（内部并发分块）→ 收尾。
 // t 是入队时的快照（值拷贝）：字段只读，实时进度经 id 回查 m.tasks，不碰这份。
 func (m *Manager) runTask(t Task, r *runner, ctx context.Context) {
+	// 外部流源任务（如云盘）：字节来自注册的 resolver，不走 HTTP Range 那套。
+	if t.SourceKind != "" {
+		m.runStreamTask(t, r, ctx)
+		return
+	}
 	client := newClient(t.Proxy, defaultTimeoutSec*time.Second)
 	conns := t.Connections
 	if conns <= 0 {

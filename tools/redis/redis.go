@@ -128,6 +128,38 @@ func addrOf(cfg ConnConfig) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
+// InstanceConnConfig 按实例登记 ID 拼一个本机连接参数：host 固定 127.0.0.1（本地拉起的
+// redis-server 与映射到本机端口的容器都走这个地址），密码取实例登记里那个，DB 序号留给
+// 调用方自己设。给需要按实例 ID 直连的内部模块用，不走连接页的收藏夹。
+func InstanceConnConfig(id string) (ConnConfig, error) {
+	cfg, err := findInstance(id)
+	if err != nil {
+		return ConnConfig{}, err
+	}
+	port := cfg.Port
+	if port <= 0 {
+		port = 6379
+	}
+	return ConnConfig{
+		ID:       "datastore:" + id,
+		Name:     cfg.Name,
+		Host:     "127.0.0.1",
+		Port:     port,
+		Password: cfg.Password,
+	}, nil
+}
+
+// Command 对已登记的连接执行一条命令。给内部模块做 SET/HSET/HGETALL 这类 KV 与哈希操作，
+// 不必为每种命令各开一个导出方法。参数按字符串传：RESP 编码按字节长度写，Go string 里放
+// 二进制内容照送不误。回复里的批量字符串同样以 string 返回（见 resp.go readReply）。
+func Command(id string, args ...string) (any, error) {
+	c, err := getConn(id)
+	if err != nil {
+		return nil, err
+	}
+	return c.Command(args...)
+}
+
 // Open 建立并登记一个连接（同 id 会先关闭旧连接）。
 func Open(cfg ConnConfig) error {
 	if cfg.ID == "" {

@@ -394,6 +394,76 @@ func AddObjectStore(kind, label, bucket, endpoint, region, akID, akSecret string
 	return toView(a), nil
 }
 
+// UpdateObjectStore 编辑已存在的对象存储账号：label/bucket/endpoint/region 属非敏感
+// 配置，按传入覆盖（label 留空沿用旧名）；AccessKey ID/Secret 留空表示沿用已保存的旧
+// 密钥——前端不回显密文，改密钥只能整对重填，因此这里成对处理：只填一个则另一侧仍取旧值，
+// 最终若 AK 任一为空则报错（首次配置需填全）。
+func UpdateObjectStore(id, label, bucket, endpoint, region, akID, akSecret string) error {
+	label = strings.TrimSpace(label)
+	bucket = strings.TrimSpace(bucket)
+	akID = strings.TrimSpace(akID)
+	akSecret = strings.TrimSpace(akSecret)
+	if bucket == "" {
+		return fmt.Errorf("bucket 不能为空")
+	}
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	accs, err := readAccounts()
+	if err != nil {
+		return err
+	}
+	idx := -1
+	for i := range accs {
+		if accs[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("账号不存在: %s", id)
+	}
+	if !isObjectStoreKind(accs[idx].Kind) {
+		return fmt.Errorf("账号 %s 不是对象存储类型", id)
+	}
+	if label == "" {
+		label = accs[idx].Label
+	}
+	// 读出旧密钥包：AK 留空即沿用，填了才覆盖（避免编辑非敏感项时误抹密钥）。
+	var b tokenBlob
+	if accs[idx].SecretEnc != "" {
+		if plain, e := secret.Unprotect(accs[idx].SecretEnc); e == nil {
+			_ = json.Unmarshal([]byte(plain), &b)
+		}
+	}
+	if akID != "" {
+		b.AkID = akID
+	}
+	if akSecret != "" {
+		b.AkSecret = akSecret
+	}
+	if b.AkID == "" || b.AkSecret == "" {
+		return fmt.Errorf("AccessKey ID / Secret 不能为空（首次配置请填写完整）")
+	}
+	bs, err := json.Marshal(b)
+	if err != nil {
+		return err
+	}
+	enc, err := secret.Protect(string(bs))
+	if err != nil {
+		return err
+	}
+	accs[idx].Label = label
+	accs[idx].Bucket = bucket
+	accs[idx].Endpoint = strings.TrimSpace(endpoint)
+	accs[idx].Region = strings.TrimSpace(region)
+	accs[idx].SecretEnc = enc
+	accs[idx].UpdatedAt = time.Now().UnixMilli()
+	if err := writeAccounts(accs); err != nil {
+		return fmt.Errorf("保存云盘账号失败: %w", err)
+	}
+	return nil
+}
+
 // osKindLabel 对象存储账号的默认显示名（与注册文件里的 Name() 文案保持一致）。
 func osKindLabel(kind string) string {
 	switch kind {

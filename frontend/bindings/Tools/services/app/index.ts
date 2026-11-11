@@ -9,6 +9,7 @@ export {
 };
 
 export type {
+    StorageSettings,
     UIMessage,
     VideoStatus
 } from "./models.js";

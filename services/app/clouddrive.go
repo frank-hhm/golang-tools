@@ -13,6 +13,7 @@ import (
 	"Tools/services/applog"
 	"Tools/services/config"
 	"Tools/tools/clouddrive"
+	"Tools/tools/downloader"
 )
 
 /*
@@ -79,6 +80,21 @@ func (a *App) CloudRemoveAccount(id string) error {
 // CloudRenameAccount 修改账号显示名。
 func (a *App) CloudRenameAccount(id, label string) error {
 	return clouddrive.RenameAccount(id, label)
+}
+
+// CloudUpdateObjectStore 编辑对象存储账号（阿里 OSS / 腾讯 COS / 通用 S3）：
+// label/bucket/endpoint/region 按传入覆盖，akID/akSecret 留空表示沿用已保存的旧密钥
+// （前端不回显密文，改密钥只能整对重填）。密钥只进加密账号表，绝不回前端。
+func (a *App) CloudUpdateObjectStore(id, label, bucket, endpoint, region, akID, akSecret string) error {
+	if !cloudEnabled() {
+		return fmt.Errorf("云盘功能未启用，请到设置 → 云盘管理打开")
+	}
+	if err := clouddrive.UpdateObjectStore(id, label, bucket, endpoint, region, akID, akSecret); err != nil {
+		applog.Warnf("clouddrive", "编辑对象存储账号失败 id=%s bucket=%s: %v", id, bucket, err)
+		return err
+	}
+	applog.Infof("clouddrive", "已编辑对象存储账号 id=%s bucket=%s", id, bucket)
+	return nil
 }
 
 // CloudClientReady 用户是否已在设置里填好 Google OAuth 客户端凭证。
@@ -245,13 +261,19 @@ func (a *App) CloudShareLink(acctID, id string) (string, error) {
 	return p.ShareLink(ctx, id)
 }
 
-// CloudDownload 把云端文件流式下载到本地目录 dstDir 下并命名 name。
+// CloudDownload 把云端文件投递进「下载管理器」引擎排队下载（M9 打通）。
 // dstDir 留空走 config.Cloud.SaveDir 或 appdirs.Data("clouddrive")/downloads。
-// 返回落盘的绝对路径。
+// 返回的是下载器任务 id（不再是落盘路径）；进度经 download:progress 事件回流，
+// 在「下载管理」页可暂停 / 续传（流不支持 Range，续传=整段重下）/ 限速。
 func (a *App) CloudDownload(acctID, fileID, name, dstDir string) (string, error) {
-	p, err := cloudProvider(acctID)
-	if err != nil {
-		return "", err
+	if !cloudEnabled() {
+		return "", fmt.Errorf("云盘功能未启用")
+	}
+	if strings.TrimSpace(acctID) == "" || strings.TrimSpace(fileID) == "" {
+		return "", fmt.Errorf("缺少账号或文件标识")
+	}
+	if name == "" {
+		name = sanitizeBase(name)
 	}
 	dir := strings.TrimSpace(dstDir)
 	if dir == "" {
@@ -265,35 +287,32 @@ func (a *App) CloudDownload(acctID, fileID, name, dstDir string) (string, error)
 			dir = filepath.Join(base, "downloads")
 		}
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("创建下载目录失败: %w", err)
-	}
-	out := filepath.Join(dir, sanitizeBase(name))
-	ctx, cancel := withCloudCtx()
-	defer cancel()
-	rc, size, err := p.Open(ctx, fileID)
+	t, err := downloader.Instance().AddSource("cloud", map[string]string{
+		"acct": acctID,
+		"file": fileID,
+	}, downloader.AddOpts{Name: name, SaveDir: dir, AutoStart: true})
 	if err != nil {
 		return "", err
 	}
-	defer rc.Close()
-	tr := clouddrive.NewOpTracker(clouddrive.OpDownload, "", sanitizeBase(name), size)
-	f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	applog.Infof("clouddrive", "已把云盘下载 %s 投递进下载队列 task=%s", name, t.ID)
+	return t.ID, nil
+}
+
+// cloudSourceResolver 把「cloud」这一 kind 的下载源解析成 provider.Open 的只读流。
+// 引擎只当 params 是黑盒，这里按 acct/file 取回对应 Provider 并开流；账号被删/不存在
+// 时 Open 直接返错，任务落 error 态而非静默。
+type cloudSourceResolver struct{}
+
+func (cloudSourceResolver) Open(ctx context.Context, params map[string]string) (io.ReadCloser, int64, error) {
+	p, err := cloudProvider(params["acct"])
 	if err != nil {
-		tr.Fail(err)
-		return "", err
+		return nil, 0, err
 	}
-	if _, err := io.Copy(f, tr.Wrap(ctx, rc)); err != nil {
-		_ = f.Close()
-		tr.Fail(err)
-		return "", fmt.Errorf("下载写盘失败: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		tr.Fail(err)
-		return "", err
-	}
-	tr.Done(fmt.Sprintf("已下载到 %s", out))
-	applog.Infof("clouddrive", "已下载 %s → %s", name, out)
-	return out, nil
+	return p.Open(ctx, params["file"])
+}
+
+func init() {
+	downloader.RegisterSource("cloud", cloudSourceResolver{})
 }
 
 // CloudUpload 把本机文件 localPath 上传到 parentID 目录下，命名 name。

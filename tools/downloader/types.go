@@ -53,15 +53,20 @@ type Task struct {
 	Proxy       string   `json:"proxy"`
 	Mirrors     []string `json:"mirrors"`
 	Source      string   `json:"source"` // 当前实际使用的源 URL（多镜像时）
-	Parts       []Part   `json:"parts"`
-	Err         string   `json:"err"`
-	Note        string   `json:"note"`
-	StartedAt   int64    `json:"startedAt"`
-	UpdatedAt   int64    `json:"updatedAt"`
-	EndedAt     int64    `json:"endedAt"`
-	ScheduledAt int64    `json:"scheduledAt"` // >0：到点自动开始（unix 毫秒）
-	RetryCount  int      `json:"retryCount"`
-	AutoStart   bool     `json:"autoStart"`
+	// SourceKind 非空 = 外部流源任务（字节来自注册的 SourceResolver 而非 HTTP URL）；
+	// 空 = 传统 HTTP 任务，行为逐字节不变。
+	SourceKind string `json:"sourceKind,omitempty"`
+	// SourceParams 交给对应 kind 解析器的不透明参数（如 {"acct":..,"file":..}），引擎自身不解读。
+	SourceParams map[string]string `json:"sourceParams,omitempty"`
+	Parts        []Part            `json:"parts"`
+	Err          string            `json:"err"`
+	Note         string            `json:"note"`
+	StartedAt    int64             `json:"startedAt"`
+	UpdatedAt    int64             `json:"updatedAt"`
+	EndedAt      int64             `json:"endedAt"`
+	ScheduledAt  int64             `json:"scheduledAt"` // >0：到点自动开始（unix 毫秒）
+	RetryCount   int               `json:"retryCount"`
+	AutoStart    bool              `json:"autoStart"`
 }
 
 // Options 引擎级默认参数与护栏。零值字段由 New 填默认。

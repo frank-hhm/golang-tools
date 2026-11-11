@@ -2,9 +2,10 @@ package clouddrive
 
 // 百度网盘（pan.baidu.com）适配器（计划-云盘管理工具 PR2）。
 //
-// 授权：用户从浏览器抓一份 BDUSS Cookie 粘进来（SetCredential 存 Cookie 字段），
-// 之后每个请求都带 `Cookie: BDUSS=<值>`。百度 xpan 接口以**路径**为主键，故本适配器
-// 用条目的完整 path 作为 Entry.ID（阿里/Google 用原生 id，接口寻址一律用 ID，语义自洽）。
+// 授权：用户从浏览器粘一份 Cookie 进来（SetCredential 存 Cookie 字段）。可只给 BDUSS 值
+// （够浏览），也可给整串 `BDUSS=..;STOKEN=..;BDCLND=..`（下载会触发设备绑定校验，需 STOKEN/BDCLND）。
+// setAuth 据是否含 ';' 或 "BDUSS=" 前缀决定原样发送还是补 "BDUSS=" 前缀。百度 xpan 接口以**路径**
+// 为主键，故本适配器用条目的完整 path 作为 Entry.ID（阿里/Google 用原生 id，接口寻址一律用 ID，语义自洽）。
 //
 // 现实提醒：这同样是**现网逆向**、无官方保证的私有接口（且真网常需 csrf/sign/UA 校验），
 // 不保证真网可用；单测全走 httptest 假后端，只验「请求形态 + 响应解析 + 凭证流转」契约。
@@ -13,6 +14,7 @@ package clouddrive
 // 跨平台零 cgo、无 build tag（Linux 面板构建同样存在）。端点为包级变量供 httptest 改写。
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/md5"
@@ -62,8 +64,18 @@ func (b *baiduProvider) bduss() (string, error) {
 	return tk.Cookie, nil
 }
 
+// setAuth 带上账号存的 Cookie。兼容两种粘贴：
+//   - 只给 BDUSS 值（老用法，够浏览）→ 补 "BDUSS=" 前缀；
+//   - 给整串 Cookie（含 STOKEN/BDCLND，下载的设备绑定校验需要）→ 原样发送。
+//
+// 判据用 ';' 或 "BDUSS=" 前缀，避免把 BDUSS 值里的 base64 '=' padding 误判成整串。
 func (b *baiduProvider) setAuth(req *http.Request, ck string) {
-	req.Header.Set("Cookie", "BDUSS="+ck)
+	ck = strings.TrimSpace(ck)
+	if strings.Contains(ck, ";") || strings.HasPrefix(ck, "BDUSS=") {
+		req.Header.Set("Cookie", ck)
+	} else {
+		req.Header.Set("Cookie", "BDUSS="+ck)
+	}
 	req.Header.Set("User-Agent", baiduUserAgent)
 }
 
@@ -305,22 +317,32 @@ func (b *baiduProvider) Quota(ctx context.Context) (Quota, error) {
 	return Quota{Used: used, Total: total}, nil
 }
 
-// Open 走 pcs file download（?method=download&path=），返回只读流。调用方 Close。
+// Open 走 pan.baidu.com 的 Web 下载端点（?app_id=..&path=..&web=1），吃 Cookie。
+// 早期版本用的是 d.pcs.baidu.com 的 PCS 端点，但那条只认 OAuth access_token（网关从
+// token 里解析 appid），纯 Cookie 请求会被判成 errno 31024「appid is empty」——本工具全程
+// 用 Cookie 认证，故改走与 List 同源、能接受 Cookie 的 Web 端点。成功时百度回 302 到带
+// sign/expires 的签名直链，由 http.Client 自动跟随（直链自证，跳转后无需再带 Cookie）。
+// 坑：鉴权/设备绑定失败时百度用 **HTTP 200 + JSON**（如 {"errno":-6}）返回而非文件流，
+// 若不识别就会把这段几十字节的错误体当文件存下来（表现为「下载成功但只有 1KB」）。
+// 调用方 Close。仍属现网逆向，下载需完整 Cookie（含 STOKEN/BDCLND）才能过设备绑定。
 func (b *baiduProvider) Open(ctx context.Context, id string) (io.ReadCloser, int64, error) {
 	ck, err := b.bduss()
 	if err != nil {
 		return nil, 0, err
 	}
 	q := url.Values{}
-	q.Set("method", "download")
 	q.Set("app_id", baiduAppID)
 	q.Set("path", id)
-	u := baiduPCSBase + "/rest/2.0/pcs/file?" + q.Encode()
+	q.Set("web", "1")
+	u := baiduWebBase + "/api/download?" + q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 	b.setAuth(req, ck)
+	// 补齐 Web 端特征头：缺 Referer/Origin 易被风控判成非法请求（errno -9）。
+	req.Header.Set("Referer", baiduWebBase+"/disk/home")
+	req.Header.Set("Origin", baiduWebBase)
 	resp, err := b.hc.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("云盘下载请求失败: %w", err)
@@ -330,12 +352,55 @@ func (b *baiduProvider) Open(ctx context.Context, id string) (io.ReadCloser, int
 		_ = resp.Body.Close()
 		return nil, 0, fmt.Errorf("云盘下载返回 %d：%s", resp.StatusCode, apiErrMsg(bs))
 	}
+	// 预读首字节探错误体：Peek 不消费，不是百度 JSON 错误就原样当文件流交出。
+	// 只有解析出非 0 errno 才判失败，避免误伤恰好以 '{' 开头的正常 JSON 文件。
+	br := bufio.NewReaderSize(resp.Body, 8192)
+	if first, perr := br.Peek(1); perr == nil && first[0] == '{' {
+		if head, _ := br.Peek(br.Buffered()); baiduErrnoOf(head) != 0 {
+			_ = resp.Body.Close()
+			return nil, 0, baiduDownloadErr(head)
+		}
+	}
 	var size int64 = -1
 	if resp.ContentLength >= 0 {
 		size = resp.ContentLength
 	}
-	return resp.Body, size, nil
+	return &streamBody{r: br, b: resp.Body}, size, nil
 }
+
+// baiduErrnoOf 从响应头里取 errno；非 JSON、无 errno 字段或解析失败一律当 0（即按文件流处理）。
+func baiduErrnoOf(bs []byte) int {
+	var probe struct {
+		Errno *int `json:"errno"`
+	}
+	if json.Unmarshal(bs, &probe) == nil && probe.Errno != nil {
+		return *probe.Errno
+	}
+	return 0
+}
+
+// baiduDownloadErr 把下载拿到的 JSON 错误体翻成带排查线索的 error。
+func baiduDownloadErr(bs []byte) error {
+	hint := ""
+	switch errno := baiduErrnoOf(bs); errno {
+	case -6:
+		hint = "（设备绑定校验：请在授权里粘贴完整 Cookie，含 BDUSS/STOKEN/BDCLND）"
+	case -3:
+		hint = "（登录态失效：请重新登录 pan.baidu.com 后再复制 Cookie）"
+	case -9:
+		hint = "（非法请求/风控：Cookie 可能不完整或 UA 被拦）"
+	}
+	return fmt.Errorf("百度下载失败 errno=%d：%s%s", baiduErrnoOf(bs), apiErrMsg(bs), hint)
+}
+
+// streamBody 把已 Peek 预读但尚未消费的响应体继续作为只读流交出，Close 关底层 body。
+type streamBody struct {
+	r *bufio.Reader
+	b io.Closer
+}
+
+func (s *streamBody) Read(p []byte) (int, error) { return s.r.Read(p) }
+func (s *streamBody) Close() error               { return s.b.Close() }
 
 // Upload 走「precreate → superfile2 上传块 → create 提交」三段式（整段缓冲 + md5）。
 // 分片/断点续传留给后续 PR；真网风控可能失败，属逆向适配器的已知边界。

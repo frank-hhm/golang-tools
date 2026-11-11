@@ -230,6 +230,7 @@ type fakeBaidu struct {
 	uploaded   []byte // 最近一次上传上去的内容
 	listResp   string
 	failErrno  int
+	dlErrno    int // 非 0 时 /api/download 用 HTTP 200+JSON 返回该 errno（模拟设备绑定/风控失败）
 	lastCookie string
 }
 
@@ -291,7 +292,11 @@ func newFakeBaidu(t *testing.T) *fakeBaidu {
 			}
 		case "/rest/2.0/pcs/quota":
 			_, _ = w.Write([]byte(`{"total_size":1000,"used_size":100,"request_id":1}`))
-		case "/rest/2.0/pcs/file":
+		case "/rest/2.0/pcs/file", "/api/download":
+			if r.URL.Path == "/api/download" && f.dlErrno != 0 {
+				_, _ = w.Write([]byte(fmt.Sprintf(`{"errno":%d,"request_id":1}`, f.dlErrno)))
+				return
+			}
 			bs := f.getMedia()
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(bs)))
 			w.Write(bs)
@@ -405,6 +410,36 @@ func TestBaiduOpenUpload(t *testing.T) {
 	}
 	if e.Name != "up.txt" || e.ID != "/up.txt" {
 		t.Fatalf("Upload 结果错: %+v", e)
+	}
+}
+
+// TestBaiduOpenDetectsJSONError 守住回归：百度鉴权/设备绑定失败时用 HTTP 200 + {"errno":-6}
+// 返回，Open 必须把它当错误抛出，而不是当成文件流存下来（旧行为=下载成功但只有几十字节）。
+func TestBaiduOpenDetectsJSONError(t *testing.T) {
+	b, f := newTestBaidu(t)
+	f.dlErrno = -6
+	rc, _, err := b.Open(context.Background(), "/a.txt")
+	if err == nil {
+		_ = rc.Close()
+		t.Fatal("200+JSON errno 应被识别为错误，而不是当文件流存下")
+	}
+	if !strings.Contains(err.Error(), "-6") {
+		t.Fatalf("错误信息应含 errno： %v", err)
+	}
+}
+
+// TestBaiduOpenPassesThroughJsonFile 验证恰好以 '{' 开头但不含 errno 的正常文件不会被误判。
+func TestBaiduOpenPassesThroughJsonFile(t *testing.T) {
+	b, f := newTestBaidu(t)
+	f.media = []byte(`{"some":"payload","n":123}`)
+	rc, _, err := b.Open(context.Background(), "/data.json")
+	if err != nil {
+		t.Fatalf("正常 JSON 文件不应被判错: %v", err)
+	}
+	bs, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if string(bs) != `{"some":"payload","n":123}` {
+		t.Fatalf("内容不一致: %q", bs)
 	}
 }
 

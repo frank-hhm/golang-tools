@@ -7,12 +7,15 @@ package docspace
 // sftp/webdav 取不到大小就排除——不猜。整盘/内容检索复用 tools/disk 的
 // DiskSearch/DiskSearchContent，前端把命中结果一键纳管，闭环同样成立。
 //
-// 笔记不建独立存储（计划 §五）：笔记就是一个归类到「笔记」分类的 .md 文件，
-// 实体落在库内 notes/ 目录（属于"被纳管文件"心智下的最自然存放点，可在
-// 条目里改名/移动），编辑走查看器 CodePane 的双栏 Markdown 预览。
+// 笔记不建独立存储（计划 §五）：笔记就是一个归类到「笔记」分类的文本文件，
+// 支持 Markdown(.md) 与富文本(.html) 两种格式，实体落在库内 notes/ 目录
+// （属于"被纳管文件"心智下的最自然存放点，可在条目里改名/移动）；
+// 编辑入口已拆到独立笔记模块（/tools/note，wangeditor 所见即所得），
+// 查看器的裸 md 双栏编辑仍保留供普通 markdown 文件使用。
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"sort"
@@ -175,11 +178,16 @@ func descendantCategorySet(cats []Category, root string, withSub bool) map[strin
 
 // ---------- 在线笔记 ----------
 
-// NewNote 在库内 notes/ 建一个 .md 文件并纳管到「笔记」分类（惰性创建分类）。
-// name 可缺省（自动生成带时间戳名）；已存在同名笔记时报错，绝不覆盖。
-func (s *Store) NewNote(name string) (Item, error) {
+// NewNote 在库内 notes/ 建一个 .md 或 .html 文件并纳管到「笔记」分类（惰性创建分类）。
+// format 取 "md"（默认，空值也按 md）或 "html"；name 可缺省（自动生成带时间戳名）；
+// 已存在同名笔记时报错，绝不覆盖。md 写标题骨架，html 写最小富文本骨架（标题做 HTML 转义）。
+func (s *Store) NewNote(name string, format string) (Item, error) {
+	ext := ".md"
+	if strings.EqualFold(strings.TrimSpace(format), "html") {
+		ext = ".html"
+	}
 	title := sanitizeNoteName(name)
-	fileName := title + ".md"
+	fileName := title + ext
 	dir := s.pathOf("notes")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Item{}, err
@@ -195,7 +203,12 @@ func (s *Store) NewNote(name string) (Item, error) {
 		return Item{}, err
 	}
 
-	content := "# " + title + "\n\n"
+	var content string
+	if ext == ".html" {
+		content = "<h1>" + html.EscapeString(title) + "</h1><p><br></p>"
+	} else {
+		content = "# " + title + "\n\n"
+	}
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		return Item{}, err
 	}
@@ -249,9 +262,12 @@ func sanitizeNoteName(name string) string {
 		b.WriteRune(r)
 	}
 	name = strings.TrimSpace(b.String())
-	// 去掉误带的 .md 后缀再统一补，避免 a.md.md；大小写原样保留
-	if len(name) > 3 && strings.EqualFold(name[len(name)-3:], ".md") {
-		name = name[:len(name)-3]
+	// 去掉误带的笔记后缀（.md/.html/.htm）再按所选格式统一补，避免 a.md.md / a.html.md；大小写原样保留
+	for _, suf := range []string{".md", ".html", ".htm"} {
+		if len(name) > len(suf) && strings.EqualFold(name[len(name)-len(suf):], suf) {
+			name = name[:len(name)-len(suf)]
+			break
+		}
 	}
 	name = strings.TrimSpace(name)
 	if len([]rune(name)) > 80 {

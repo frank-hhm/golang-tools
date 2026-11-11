@@ -80,7 +80,7 @@
                 </a-button>
               </a-tooltip>
               <!-- 任务入口：拉取中也能关掉弹窗去干别的，这里随时回来 -->
-              <a-button v-if="taskList.length" size="small" type="outline" @click="openTasks()">
+              <a-button v-if="taskList.length" size="small" @click="openTasks()">
                 <template #icon><icon-download /></template>
                 任务 {{ taskList.length }}<template v-if="runningCount">（{{ runningCount }} 进行中）</template>
               </a-button>

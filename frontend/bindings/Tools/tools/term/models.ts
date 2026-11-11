@@ -121,6 +121,16 @@ export interface Host {
      * 备注，列表里显示为“名称”
      */
     "note"?: string;
+
+    /**
+     * 空/ssh=远程 SSH；local=本机 shell
+     */
+    "kind"?: string;
+
+    /**
+     * local 专用：cmd | powershell
+     */
+    "shell"?: string;
     "updatedAt": number;
 }
 
@@ -192,7 +202,7 @@ export interface SessionInfo {
     "title": string;
 
     /**
-     * ssh | docker
+     * ssh | docker | local
      */
     "kind": string;
 }

@@ -1,7 +1,8 @@
 <template>
-  <!-- 全局任务浮标：左下角常驻，跟在哪个页面无关 -->
-  <div v-if="st.hasTasks" class="task-hub">
-    <div class="th-fab" :class="{ 'is-bad': isBad }" @click="open = true">
+  <!-- 全局任务浮标：只在「主页」或「该任务的来源操作页」露头（严格二选一），
+       取色器/时间戳等无关工具窗不再叠这个浮标；下载管理页自带完整列表也不显示。 -->
+  <div v-if="showFab" class="task-hub">
+    <div class="th-fab" :class="{ 'is-run': st.runningCount, 'is-bad': isBad, 'is-ok': !st.runningCount && !isBad }" @click="open = true">
       <!-- 前导状态圆点：与下载页同款语义（进行中主色脉冲 / 失败红晕 / 完成绿） -->
       <span class="th-fab-dot" :class="st.runningCount ? 'dot-run' : (isBad ? 'dot-bad' : 'dot-ok')"></span>
       <div class="th-fab-body">
@@ -97,6 +98,10 @@
               @click="dlRetry(t)">重试</a-button>
             <a-button v-if="['running', 'queued', 'pending', 'paused'].includes(liveStatus(t))" size="mini"
               status="danger" @click="dlStop(t)">停止</a-button>
+            <!-- 完成态下载：回查引擎取落盘路径后进文件查看器预览（图片/文本等由查看器按类型识别） -->
+            <a-button v-if="liveStatus(t) === 'done'" size="mini" class="th-link" @click="dlPreview(t)">
+              <icon-eye />预览
+            </a-button>
           </template>
           <!-- 非下载任务：开对应工具页。下载任务的入口统一收到标题栏“下载面板”，行内不再放。 -->
           <a-button size="mini" v-if="!isDownloadTask(t)" class="th-link" @click="goTool(t)">
@@ -134,6 +139,7 @@
  * 通知：桌面版由 Go 弹 Windows 系统原生通知（右下角 Toast）；面板/浏览器版走 Notification（见 store）。
  */
 import { computed, getCurrentInstance, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { Events } from "@wailsio/runtime";
 import { Message } from "@arco-design/web-vue";
 import { IconDown, IconUp } from "@arco-design/web-vue/es/icon";
@@ -145,7 +151,71 @@ import { useToolWindow } from "@/views/index/useToolWindow";
 
 const st = useTasksStoreHook();
 const { openToolWindow } = useToolWindow();
+const route = useRoute();
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+
+/**
+ * 浮标显示落点（严格二选一）：
+ *  - 来源操作页：当前路由的 tools 段命中某活跃任务的 tool（下载页除外，它自带完整列表）。
+ *  - 主页：桌面版仅当“还有活跃任务的来源页当前没开”时才兜底提示（来源页开着就归它提示，
+ *    避免两处重复）；Web 版是单窗口路由，只会停在一处，主页有任务即显示。
+ * 取色器、时间戳等与任务无关的工具窗：既不是主页也不是来源页，showFab 恒为 false。
+ */
+const isNative = isNativeWindows();
+/** 当前页所属工具 key：/tools/php 与 /win/tools/php 都解析为 "php"；主页/demo 返回 ""。 */
+const currentTool = computed(() => {
+  const segs = route.path.split("/").filter(Boolean);
+  const ti = segs.lastIndexOf("tools");
+  return ti >= 0 && ti + 1 < segs.length ? segs[ti + 1] : "";
+});
+/** 是否主页（含根路径 "/" 重定向前的那一瞬）。 */
+const isHome = computed(() => route.path === "/index" || route.path === "/");
+/** 活跃任务（进行中 + 未读结果）涉及的来源工具集合。 */
+const activeTools = computed(() => {
+  const s = new Set<string>();
+  for (const t of st.running) s.add(t.tool);
+  for (const t of st.unseen) s.add(t.tool);
+  return s;
+});
+/** 桌面版：当前开着窗的来源工具集合（Web 版恒空，不参与二选一判定）。 */
+const openSourceTools = ref<Set<string>>(new Set());
+async function refreshOpenSources() {
+  if (!isNative || typeof GoTools?.IsToolWindowOpen !== "function") return;
+  const next = new Set<string>();
+  for (const tool of activeTools.value) {
+    try {
+      if (await GoTools.IsToolWindowOpen("/tools/" + tool)) next.add(tool);
+    } catch { /* 查询失败当作没开：宁可主页多提示，也不漏 */ }
+  }
+  openSourceTools.value = next;
+}
+/** 主页要不要替“来源页没开”的那些任务兜底提示。 */
+const homeShouldShow = computed(() => {
+  if (!isNative) return true; // Web 单窗口：停在主页即该主页提示
+  for (const tool of activeTools.value) if (!openSourceTools.value.has(tool)) return true;
+  return false;
+});
+/** 浮标总开关。 */
+const showFab = computed(() => {
+  if (!st.hasTasks) return false;
+  if (isHome.value) return homeShouldShow.value;
+  const tool = currentTool.value;
+  if (!tool || tool === "download") return false; // 无关窗 / 下载页不显示
+  return activeTools.value.has(tool);
+});
+// 桌面版：有活跃任务期间轮询开窗状态（用户随时可能关掉来源页，主页要接住提示）；无任务即停表。
+let pollTimer: number | null = null;
+function startPoll() {
+  if (pollTimer != null) return;
+  void refreshOpenSources();
+  pollTimer = window.setInterval(() => void refreshOpenSources(), 1500);
+}
+function stopPoll() {
+  if (pollTimer != null) { clearInterval(pollTimer); pollTimer = null; }
+}
+watch(() => st.hasTasks, (v) => { if (v && isNative) startPoll(); else stopPoll(); }, { immediate: true });
+watch(activeTools, () => { if (isNative && st.hasTasks) void refreshOpenSources(); });
+onUnmounted(stopPoll);
 
 /** 下载行就地操作：直转引擎绑定方法（id 就是引擎任务 id）；动作后引擎会回流 download:progress，按钮自动切换 */
 async function dlCall(fn: () => Promise<unknown>) {
@@ -155,6 +225,19 @@ const dlPause = (t: Task) => dlCall(() => GoTools.DownloadPause(t.id));
 const dlResume = (t: Task) => dlCall(() => GoTools.DownloadResume(t.id));
 const dlRetry = (t: Task) => dlCall(() => GoTools.DownloadRetry(t.id));
 const dlStop = (t: Task) => dlCall(() => GoTools.DownloadStop(t.id));
+/**
+ * 预览已完成的下载文件：台账 Task 不带落盘路径，按引擎任务 id（与 t.id 同一口径）
+ * 回查 DownloadList 拿 savePath，再走与下载页/云盘同一通路进文件查看器。
+ */
+async function dlPreview(t: Task) {
+  try {
+    const list = (await GoTools.DownloadList()) || [];
+    const hit = list.find((x: any) => x?.id === t.id);
+    if (!hit?.savePath) { Message.warning("未找到该下载任务的本机文件，无法预览"); return; }
+    openToolWindow(`/tools/viewer?path=${encodeURIComponent(hit.savePath)}`, "文件查看器", { single: true });
+    try { Events.Emit("viewer:open-path", { path: hit.savePath }); } catch { /* 非 Wails 环境忽略 */ }
+  } catch (e) { Message.error(String((e as any)?.message || e)); }
+}
 /** 工具 key → 原生新窗口选项（single/尺寸…）：首次点「打开页面」时从配置懒加载一次 */
 const toolWinMeta = ref<Record<string, any>>({});
 let toolWinMetaLoaded = false;
@@ -419,7 +502,7 @@ async function goDownloadPage() {
   max-width: 320px;
   padding: 8px 10px;
   background: var(--color-bg-2);
-  border: 1px solid var(--color-border-1);
+  border: none;
   border-radius: var(--base-radius-default);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
   cursor: pointer;
@@ -432,8 +515,17 @@ async function goDownloadPage() {
   transform: translateY(-1px);
 }
 
+/* 状态浅色做背景（不描边）：进行中主色浅底 / 完成绿浅底 / 失败红浅底，与前置圆点同一语义 */
+.th-fab.is-run {
+  background: var(--color-primary-light-1);
+}
+
+.th-fab.is-ok {
+  background: var(--color-success-light-1);
+}
+
 .th-fab.is-bad {
-  border-color: rgb(var(--danger-6));
+  background: var(--color-danger-light-1);
   animation: th-fab-breathe 2.4s ease-in-out infinite;
 }
 

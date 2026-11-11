@@ -23,6 +23,10 @@ export interface TermHost {
   /** 列表配色 */
   color?: string;
   note?: string;
+  /** 空/ssh=远程 SSH；local=本机 shell（本地 CMD / PowerShell 默认项） */
+  kind?: string;
+  /** local 专用：cmd | powershell */
+  shell?: string;
   updatedAt?: number;
 }
 

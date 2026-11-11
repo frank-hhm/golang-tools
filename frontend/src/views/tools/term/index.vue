@@ -43,19 +43,19 @@
             <!-- 配color时用自定义色小圈，否则回退存活/普通状态 -->
             <span v-if="h.color" class="color-dot" :style="{ background: h.color }" />
             <com-badge v-else :status="alive(h.id) ? 'success' : 'normal'" :animated="alive(h.id)" />
-            <a-tooltip :content="`${h.name} ${credUserOf(h)}@${h.address}:${h.port}`">
+            <a-tooltip :content="isLocal(h) ? h.name : `${h.name} ${credUserOf(h)}@${h.address}:${h.port}`">
               <span class="conn-name">{{ h.name }}</span>
             </a-tooltip>
-            <!-- 参考设置页菜单：地址用等宽次要文字，不再铺亮蓝标签底块，颜色只留给选中竖条 -->
-            <span class="conn-addr">{{ h.address }}</span>
+            <!-- 参考设置页菜单：地址用等宽次要文字，不再铺亮蓝标签底块，颜色只留给选中竖条；本地项显示 shell 标签 -->
+            <span class="conn-addr">{{ isLocal(h) ? h.shell : h.address }}</span>
             <a-tag v-for="t in (h.tags || []).slice(0, 2)" :key="t" size="small">{{ t }}</a-tag>
             <a-dropdown trigger="hover" @select="(v: any) => onHostAction(v, h)">
               <icon-more class="conn-more" @click.stop />
               <template #content>
                 <a-doption value="open"><icon-code /> 打开终端</a-doption>
-                <a-doption value="sftp"><icon-storage /> 在 SFTP 中打开</a-doption>
-                <a-doption value="edit"><icon-edit /> 编辑</a-doption>
-                <a-doption value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
+                <a-doption v-if="!isLocal(h)" value="sftp"><icon-storage /> 在 SFTP 中打开</a-doption>
+                <a-doption v-if="!isLocal(h)" value="edit"><icon-edit /> 编辑</a-doption>
+                <a-doption v-if="!isLocal(h)" value="del" style="color: rgb(var(--red-6))"><icon-delete /> 删除</a-doption>
               </template>
             </a-dropdown>
           </div>
@@ -94,7 +94,7 @@
             </a-dropdown>
             <span v-else>{{ activeHost?.name || '终端' }}</span>
             <a-tag v-if="activeHost" size="small" color="arcoblue">
-              {{ credUserOf(activeHost) }}@{{ activeHost.address }}:{{ activeHost.port }}
+              {{ isLocal(activeHost) ? activeHost.shell : `${credUserOf(activeHost)}@${activeHost.address}:${activeHost.port}` }}
             </a-tag>
             <a-tag v-if="activeTab?.dead" size="small" color="gray">已断开</a-tag>
           </a-space>
@@ -199,6 +199,11 @@ function credUserOf(h: TermHost): string {
     if (c?.user) return c.user;
   }
   return '?';
+}
+
+/** 是否本地默认项（CMD / PowerShell）：不走地址/凭据/SFTP，菜单只留「打开终端」 */
+function isLocal(h: TermHost | null | undefined): boolean {
+  return !!h && h.kind === 'local';
 }
 
 const filtered = computed(() => {
@@ -334,7 +339,7 @@ function connect(h: TermHost) {
   const tab: TermTab = {
     key: `tab${tabSeq}`,
     hostId: h.id,
-    title: `${h.name} [${h.address}]`,
+    title: isLocal(h) ? h.name : `${h.name} [${h.address}]`,
   };
   tabs.value.push(tab);
   activeKey.value = tab.key;
@@ -342,7 +347,10 @@ function connect(h: TermHost) {
 
 /** 交给 term-console 的建会话回调：组件只管行列，不关心是 SSH 还是容器 */
 async function openSession(t: TermTab, cols: number, rows: number) {
-  const info = await GoTools.TermOpenSSH(t.hostId, cols, rows);
+  const h = hosts.value.find((x) => x.id === t.hostId);
+  const info = isLocal(h)
+    ? await GoTools.TermOpenLocal(t.hostId, cols, rows)
+    : await GoTools.TermOpenSSH(t.hostId, cols, rows);
   if (!info?.id) throw new Error('创建终端会话失败');
   return info as { id: string };
 }

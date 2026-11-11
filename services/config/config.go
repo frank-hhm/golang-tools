@@ -712,6 +712,125 @@ func normalizeLanShareConfig(cfg *AppConfig) {
 	l.BlockExt = out
 }
 
+/* ==================== 数据保存位置（本地 / MySQL / Redis 外存副本） ==================== */
+
+// DefaultStorageDatabase MySQL 外存库默认名（不存在时自动 CREATE DATABASE IF NOT EXISTS）。
+const DefaultStorageDatabase = "tools_data"
+
+// DefaultStorageIntervalSec 受管文档变更扫描的默认间隔秒数。
+const DefaultStorageIntervalSec = 5
+
+// MaxStorageIntervalSec 间隔秒上限：外存副本是备份类工作，不该有人拿它当高频同步用，
+// 也顺手挡住设置页被填出一个吃掉 CPU 的取值。
+const MaxStorageIntervalSec = 3600
+
+// StorageConfig 数据保存位置设置：决定「我们自己的配置数据」除了本地文件之外，
+// 还往哪里再写一份持久副本。语义见 docs/plan/计划-数据保存位置与外存副本-20261111.md：
+//   - 本地永远是权威可读源（各服务存量代码直接 os.ReadFile，不改它们）；
+//   - Local=true（默认）：本地同时算作受管保存位置，远端只是副本，远端不可用只标脏、不打扰；
+//   - Local=false：本地降级为临时工作缓存，远端才是保存位置——启动时远端优先回写本地，
+//     远端不可达则由前端弹窗让用户「启动服务」或「本次使用默认数据」；
+//   - 这里只存实例 ID 与库坐标，真正的凭据仍在各服务自己的实例登记表里，
+//     这一段本身不含任何密钥，可以放心落 config.json 并随配置导出/导入。
+type StorageConfig struct {
+	// Local 是否把本地文件算作保存位置，默认 true。
+	Local bool `json:"local"`
+	// MySQL 是否把副本写入一个 MySQL 实例，默认 false。
+	MySQL bool `json:"mysql"`
+	// Redis 是否把副本写入一个 Redis 实例，默认 false。
+	Redis bool `json:"redis"`
+	// MySQLInstance 绑定的 MySQL 实例 ID（tools/mysql 实例登记表里的 ID）。
+	MySQLInstance string `json:"mysqlInstance,omitempty"`
+	// MySQLDatabase 外存库名，留空取 DefaultStorageDatabase；只接受 [A-Za-z0-9_]{1,64}。
+	MySQLDatabase string `json:"mysqlDatabase,omitempty"`
+	// RedisInstance 绑定的 Redis 实例 ID。
+	RedisInstance string `json:"redisInstance,omitempty"`
+	// RedisDB Redis 库序号（命令侧的 SELECT n），0~15，越界回落 0。
+	RedisDB int `json:"redisDb,omitempty"`
+	// IncludeSensitive 勾选后把「含凭据」那一组文档也外存：写入前走信封加密。
+	// 默认 false —— 主密钥只在本机，换机器解不开，跨机恢复从来不包括这一组。
+	IncludeSensitive bool `json:"includeSensitive,omitempty"`
+	// Exclude 显式排除的文档键（形如 mysql/mysql-instances.json），大小写敏感。
+	Exclude []string `json:"exclude,omitempty"`
+	// IntervalSec 变更扫描间隔秒；<=0 用 DefaultStorageIntervalSec。
+	IntervalSec int `json:"intervalSec,omitempty"`
+}
+
+// defaultStorageConfig 默认设置：只勾本地、远端全关。老配置文件里根本没有这一段时
+// 读回来是 nil，序列化随之省略，不会凭空给用户加一段他没写过的东西。
+func defaultStorageConfig() *StorageConfig { return &StorageConfig{Local: true} }
+
+// StorageSection 取数据保存位置设置。配置里从未出现过这一段时返回默认值，调用方不用判空。
+func StorageSection(cfg AppConfig) StorageConfig {
+	if cfg.Storage == nil {
+		s := *defaultStorageConfig()
+		normalizeStorage(&s)
+		return s
+	}
+	s := *cfg.Storage
+	normalizeStorage(&s)
+	return s
+}
+
+// StorageCfg 当前缓存配置里的数据保存位置设置，供 services/datastore 读取。
+func StorageCfg() StorageConfig { return StorageSection(CurrentConfig()) }
+
+// StorageIdentOK 判断 MySQL 库名是否是可安全拼进 DDL 的标识符。库名是整条链路里
+// 唯一必须由我们自己拼进 SQL 文本的部分（表名、列名都是写死的），所以卡得比正则
+// 白名单更严也不为过：只许字母数字下划线、不以数字开头、长度 1~64。
+func StorageIdentOK(s string) bool {
+	if len(s) == 0 || len(s) > 64 || s[0] < 'A' || s[0] > 'z' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// normalizeStorage 清洗数据保存位置设置：库名去空白、非法或留空回落默认库；
+// Redis 库序号越界回落 0；间隔秒非法回落默认；排除项归一成 slash 相对路径并去重去空；
+// 一个远端都没勾时把 Redis/MySQL 的绑定留着（用户可能只是暂时关掉，下次开还回到原绑定）。
+func normalizeStorage(s *StorageConfig) {
+	s.MySQLDatabase = strings.TrimSpace(s.MySQLDatabase)
+	if s.MySQLDatabase == "" || !StorageIdentOK(s.MySQLDatabase) {
+		s.MySQLDatabase = DefaultStorageDatabase
+	}
+	s.MySQLInstance = strings.TrimSpace(s.MySQLInstance)
+	s.RedisInstance = strings.TrimSpace(s.RedisInstance)
+	if s.RedisDB < 0 || s.RedisDB > 15 {
+		s.RedisDB = 0
+	}
+	if s.IntervalSec <= 0 {
+		s.IntervalSec = DefaultStorageIntervalSec
+	} else if s.IntervalSec > MaxStorageIntervalSec {
+		s.IntervalSec = MaxStorageIntervalSec
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(s.Exclude))
+	for _, k := range s.Exclude {
+		k = strings.Trim(strings.ReplaceAll(strings.TrimSpace(k), "\\", "/"), "/")
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	s.Exclude = out
+}
+
+// normalizeStorageConfig 清洗 AppConfig 里的存储段：nil 段跳过（调用方走 StorageSection 拿默认值）。
+func normalizeStorageConfig(cfg *AppConfig) {
+	if cfg.Storage == nil {
+		return
+	}
+	normalizeStorage(cfg.Storage)
+}
+
 // DefaultArchiveFormat 默认压缩格式。两个短名与 sysx.ArchiveZip / ArchiveTarGz
 // 对齐；本包不导那个包（应用配置层保持零依赖，字面量在两端各定一次、靠单测锁住）。
 const DefaultArchiveFormat = "zip"
@@ -825,12 +944,15 @@ func normalizeLauncherConfig(cfg *AppConfig) {
 
 // AppConfig 应用总配置
 type AppConfig struct {
-	Log          LogConfig               `json:"log"`
-	Ball         BallConfig              `json:"ball"`
-	General      GeneralConfig           `json:"general"`
-	Paths        PathsConfig             `json:"paths"`
-	Browser      BrowserConfig           `json:"browser"`
-	Tools        []ToolConfig            `json:"tools"`
+	Log     LogConfig     `json:"log"`
+	Ball    BallConfig    `json:"ball"`
+	General GeneralConfig `json:"general"`
+	Paths   PathsConfig   `json:"paths"`
+	Browser BrowserConfig `json:"browser"`
+	Tools   []ToolConfig  `json:"tools"`
+	// ToolsDefault 用户「保存为默认」的功能列表快照：设置页「恢复默认列表」优先还原到这份，
+	// 没存过（nil）才回落到内置基线。随整份配置导出/导入。
+	ToolsDefault []ToolConfig            `json:"toolsDefault,omitempty"`
 	ToolSettings map[string]ToolSettings `json:"toolSettings"` // 工具级设置，键为工具 Key（如 mysql）
 	// Order 各列表的拖拽自定义顺序：键为“面”标识（如 php:list / nginx:list / home:tools），
 	// 值为该面内条目 ID 的有序列表。主页与各服务列表各用独立键，互不共用。随整份配置导出/导入。
@@ -858,6 +980,9 @@ type AppConfig struct {
 	// LanShare 局域网互传接收设置。同样是指针类型：老配置里没有这一段时读回来是 nil，
 	// 序列化随之省略。见 LanShareConfig（接收类型黑名单，默认空=全收）。
 	LanShare *LanShareConfig `json:"lanShare,omitempty"`
+	// Storage 数据保存位置设置（本地 / MySQL / Redis 外存副本）。同样是指针类型：
+	// 老配置里没有这一段时读回来是 nil，序列化随之省略。见 StorageConfig 各字段。
+	Storage *StorageConfig `json:"storage,omitempty"`
 }
 
 // DefaultMaxSpaces 浏览器空间数量默认上限。
@@ -900,6 +1025,7 @@ func DefaultConfig() AppConfig {
 		Cloud:    defaultCloudConfig(),
 		Download: defaultDownloadConfig(),
 		LanShare: defaultLanShareConfig(),
+		Storage:  defaultStorageConfig(),
 		ToolSettings: map[string]ToolSettings{
 			// MySQL：默认开启 SQL 日志，目录留空走 DefaultSQLLogDir
 			"mysql": {SQLLogEnabled: true},
@@ -932,6 +1058,7 @@ func DefaultConfig() AppConfig {
 			{ID: "archive", Key: "archive", Name: "文件压缩", Path: "/tools/archive", Icon: "archive", Single: true, Width: 1120, Height: 760, Home: homeOff()},
 			{ID: "download", Key: "download", Name: "下载管理", Path: "/tools/download", Icon: "icon-xiazai", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "docspace", Key: "docspace", Name: "文档中心", Path: "/tools/docspace", Icon: "folder", Single: true, Width: 1280, Height: 820, Home: homeOff()},
+			{ID: "note", Key: "note", Name: "笔记", Path: "/tools/note", Icon: "icon-book", Single: true, Width: 1200, Height: 800, Home: homeOff()},
 			{ID: "lanshare", Key: "lanshare", Name: "局域网互传", Path: "/tools/lanshare", Icon: "icon-wangluo1", Single: true, Width: 1280, Height: 820, Home: homeOff()},
 			{ID: "clouddrive", Key: "clouddrive", Name: "云盘管理", Path: "/tools/clouddrive", Icon: "icon-yun", Single: true, Width: 1320, Height: 860, Home: homeOff()},
 			{ID: "git", Key: "git", Name: "Git管理", Path: "/tools/git", Icon: "code", Single: true, Width: 1360, Height: 860, Home: homeOff()},
@@ -957,6 +1084,10 @@ func dockOn() *bool {
 func ApplogConfig(l LogConfig) applog.Config {
 	return applog.Config{Enabled: l.Enabled, Level: l.Level, Path: l.Path}
 }
+
+// ConfigFilePath 导出版：用户配置目录里 config.json 的绝对路径。
+// 「数据保存位置」把它当成一份受管文档看待，需要与内部写入用的是同一个来源。
+func ConfigFilePath() (string, error) { return configFilePath() }
 
 // configFilePath 返回配置文件路径，必要时创建目录。
 func configFilePath() (string, error) {
@@ -1225,6 +1356,7 @@ func normalizeConfig(cfg *AppConfig) {
 	normalizeCloudConfig(cfg)
 	normalizeDownloadConfig(cfg)
 	normalizeLanShareConfig(cfg)
+	normalizeStorageConfig(cfg)
 	normalizeThemeConfig(&cfg.General.Theme)
 	for i := range cfg.Tools {
 		if cfg.Tools[i].ID == "" {
@@ -1282,6 +1414,7 @@ func normalizeConfig(cfg *AppConfig) {
 		{"archive", "archive", "文件压缩", "/tools/archive", "archive"},
 		{"download", "download", "下载管理", "/tools/download", "icon-xiazai"},
 		{"docspace", "docspace", "文档中心", "/tools/docspace", "folder"},
+		{"note", "note", "笔记", "/tools/note", "icon-book"},
 		{"lanshare", "lanshare", "局域网互传", "/tools/lanshare", "icon-wangluo1"},
 		{"clouddrive", "clouddrive", "云盘管理", "/tools/clouddrive", "icon-yun"},
 		{"git", "git", "Git管理", "/tools/git", "code"},
@@ -1341,6 +1474,11 @@ func normalizeConfig(cfg *AppConfig) {
 			if extra.key == "docspace" {
 				// 左分类树 + 右条目列表，跟查看器/下载一样要宽窗才不挤；主页不占格，走工具表进入
 				newTool.Width, newTool.Height = 1280, 820
+				newTool.Home = homeOff()
+			}
+			if extra.key == "note" {
+				// 笔记：左清单 + 右 wangeditor 编辑区，走工具表进入，不占主页格
+				newTool.Width, newTool.Height = 1200, 800
 				newTool.Home = homeOff()
 			}
 			cfg.Tools = append(cfg.Tools[:ins:ins], append([]ToolConfig{newTool}, cfg.Tools[ins:]...)...)
@@ -1415,6 +1553,10 @@ func LoadAppConfig() AppConfig {
 				// 互传接收：同上，nil 就保住默认值（黑名单空=全收）。
 				if loaded.LanShare != nil {
 					cfg.LanShare = loaded.LanShare
+				}
+				// 数据保存位置：同上，nil 就保住默认值（只勾本地，远端全关）。
+				if loaded.Storage != nil {
+					cfg.Storage = loaded.Storage
 				}
 			}
 		}

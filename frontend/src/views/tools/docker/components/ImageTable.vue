@@ -175,7 +175,7 @@ function fmtTime(unixSec: number): string {
 /* 提示占一行：不再浮在表头之上（否则会盖住「操作」与行内按钮） */
 .remote-alert {
     flex: 0 0 auto;
-    margin: 8px 12px 0;
+    margin: 0 0 8px;
 }
 
 /* 长错误串（connectex、管道名）允许折行，但提示不能撑到半个屏幕 */

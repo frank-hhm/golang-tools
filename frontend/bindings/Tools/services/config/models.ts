@@ -13,6 +13,12 @@ export interface AppConfig {
     "tools": ToolConfig[] | null;
 
     /**
+     * ToolsDefault 用户「保存为默认」的功能列表快照：设置页「恢复默认列表」优先还原到这份，
+     * 没存过（nil）才回落到内置基线。随整份配置导出/导入。
+     */
+    "toolsDefault"?: ToolConfig[] | null;
+
+    /**
      * 工具级设置，键为工具 Key（如 mysql）
      */
     "toolSettings": { [_ in string]?: ToolSettings } | null;
@@ -66,6 +72,12 @@ export interface AppConfig {
      * 序列化随之省略。见 LanShareConfig（接收类型黑名单，默认空=全收）。
      */
     "lanShare"?: LanShareConfig | null;
+
+    /**
+     * Storage 数据保存位置设置（本地 / MySQL / Redis 外存副本）。同样是指针类型：
+     * 老配置里没有这一段时读回来是 nil，序列化随之省略。见 StorageConfig 各字段。
+     */
+    "storage"?: StorageConfig | null;
 }
 
 /**
@@ -561,6 +573,69 @@ export interface ProxyItem {
     "id": string;
     "name": string;
     "url": string;
+}
+
+/**
+ * StorageConfig 数据保存位置设置：决定「我们自己的配置数据」除了本地文件之外，
+ * 还往哪里再写一份持久副本。语义见 docs/plan/计划-数据保存位置与外存副本-20261111.md：
+ *   - 本地永远是权威可读源（各服务存量代码直接 os.ReadFile，不改它们）；
+ *   - Local=true（默认）：本地同时算作受管保存位置，远端只是副本，远端不可用只标脏、不打扰；
+ *   - Local=false：本地降级为临时工作缓存，远端才是保存位置——启动时远端优先回写本地，
+ *     远端不可达则由前端弹窗让用户「启动服务」或「本次使用默认数据」；
+ *   - 这里只存实例 ID 与库坐标，真正的凭据仍在各服务自己的实例登记表里，
+ *     这一段本身不含任何密钥，可以放心落 config.json 并随配置导出/导入。
+ */
+export interface StorageConfig {
+    /**
+     * Local 是否把本地文件算作保存位置，默认 true。
+     */
+    "local": boolean;
+
+    /**
+     * MySQL 是否把副本写入一个 MySQL 实例，默认 false。
+     */
+    "mysql": boolean;
+
+    /**
+     * Redis 是否把副本写入一个 Redis 实例，默认 false。
+     */
+    "redis": boolean;
+
+    /**
+     * MySQLInstance 绑定的 MySQL 实例 ID（tools/mysql 实例登记表里的 ID）。
+     */
+    "mysqlInstance"?: string;
+
+    /**
+     * MySQLDatabase 外存库名，留空取 DefaultStorageDatabase；只接受 [A-Za-z0-9_]{1,64}。
+     */
+    "mysqlDatabase"?: string;
+
+    /**
+     * RedisInstance 绑定的 Redis 实例 ID。
+     */
+    "redisInstance"?: string;
+
+    /**
+     * RedisDB Redis 库序号（命令侧的 SELECT n），0~15，越界回落 0。
+     */
+    "redisDb"?: number;
+
+    /**
+     * IncludeSensitive 勾选后把「含凭据」那一组文档也外存：写入前走信封加密。
+     * 默认 false —— 主密钥只在本机，换机器解不开，跨机恢复从来不包括这一组。
+     */
+    "includeSensitive"?: boolean;
+
+    /**
+     * Exclude 显式排除的文档键（形如 mysql/mysql-instances.json），大小写敏感。
+     */
+    "exclude"?: string[] | null;
+
+    /**
+     * IntervalSec 变更扫描间隔秒；<=0 用 DefaultStorageIntervalSec。
+     */
+    "intervalSec"?: number;
 }
 
 /**

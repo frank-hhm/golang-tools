@@ -18,7 +18,7 @@
         <a-button size="mini" @click="$emit('export-list')">复制清单</a-button>
         <a-button size="mini" status="warning" @click="$emit('trash')">回收站</a-button>
         <a-button size="mini" status="danger" @click="$emit('remove')">移出</a-button>
-        <a-link @click="$emit('clear')">取消选择</a-link>
+        <a-button size="mini" @click="$emit('clear')">取消选择</a-button>
       </a-space>
     </div>
   </transition>

@@ -24,6 +24,9 @@
             </a-space>
           </template>
 
+          <!-- 数据保存位置提醒条已搬进设置页（/tools/settings 顶部浮动），主页不再占行展示；
+               真到了「没本地又没可用远端」那一步才弹下面的模态 -->
+
           <!-- 统计卡片行：右上角大号数值 + 下方详情（核/线程、开机时间、占用明细等）；
                栅格用 a-row/a-col，横纵间距由 gutter 提供；顺序固定，不做拖拽排序；
                带 link 的卡片可点，跳到对应的监控面板（都不进工具列表） -->
@@ -143,12 +146,31 @@
       </div>
     </a-modal>
 
+    <!-- ===== 数据保存位置：没勾选本地、绑定的远端又都不可用时的选择弹窗 =====
+         不自己判：后端 Startup 真跑过一轮远端优先、真没拿到可用位置，才会报 needsChoice。
+         不可关（无关闭按钮 / 点遮罩不关）：选哪一条都得给个明确答案；选完靠状态重算自然消失。 -->
+    <a-modal :visible="storageChoiceVisible" title="没有可用的数据保存位置" :closable="false"
+      :mask-closable="false" :esc-to-close="false" :footer="false" :width="540">
+      <div class="sc-body">
+        <div class="sc-lead">{{ storageChoiceText }}</div>
+        <a-space direction="vertical" fill :size="8">
+          <a-button v-for="k in storageChoiceStarts" :key="k" type="primary" long
+            :loading="storageStarting === k" @click="chooseStartSink(k)">启动 {{ storageKindLabel(k) }} 服务后继续</a-button>
+          <a-button long :type="storageChoiceStarts.length ? 'secondary' : 'primary'"
+            @click="chooseDefaultData">本次使用默认数据（本机文件）</a-button>
+          <a-button long type="text" @click="chooseOpenSetting">去修改保存位置设置</a-button>
+        </a-space>
+        <div class="hint sc-note">「本次使用默认数据」只影响当前进程，不改设置里的勾选：下次启动还是会问你一次。</div>
+      </div>
+    </a-modal>
+
   </layout-body>
 </template>
 
 <script setup lang="ts">
 import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
+import { Message } from "@arco-design/web-vue";
 import { IconCheckCircleFill, IconExclamationCircleFill } from "@arco-design/web-vue/es/icon";
 import { useToolEvents, type ToolItem } from "./events";
 import { useToolWindow } from "./useToolWindow";
@@ -488,6 +510,100 @@ function fmtBootTime(sec: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/* ==================== 数据保存位置（不可用弹窗） ====================
+ * 引擎在 services/datastore：本地文件永远是可读源，勾了 MySQL/Redis 则是「再写一份持久副本」。
+ * 提醒条已搬进设置页顶部；主页只在“没本地 + 没一个可用远端”（needsChoice）时弹窗。
+ * 状态口径与设置页同一份（同源 DataStoreStatus），不在这重新编一套。 */
+const storageView = ref<any>(null);
+const storageStarting = ref("");
+const storageChoiceVisible = ref(false);
+/** 弹窗里点「去修改设置」时先收起来：拦着面让人去改配置不是本意，状态再变会重新计算 */
+const storageChoiceDismissed = ref(false);
+
+function storageKindLabel(kind: string): string {
+  return kind === "mysql" ? "MySQL" : kind === "redis" ? "Redis" : "本地";
+}
+
+async function loadStorageStatus() {
+  try {
+    storageView.value = (await GoTools?.DataStoreStatus()) ?? null;
+  } catch {
+    /* 后端未连时提示条与弹窗都不出现，不影响主页其余内容 */
+  }
+  applyStorageChoice();
+}
+
+/** needsChoice 从真变假（远端通了、或用户选了默认数据）弹窗就自己收起，不留一个悬着的模态 */
+function applyStorageChoice() {
+  const need = !!storageView.value?.needsChoice;
+  if (!need) storageChoiceDismissed.value = false;
+  storageChoiceVisible.value = need && !storageChoiceDismissed.value;
+}
+
+/** 弹窗里的一句话：本地叉了、远端又全用不上时的现状描述 */
+const storageChoiceText = computed(() => {
+  const v = storageView.value;
+  if (!v) return "";
+  const on: any[] = (v.sinks ?? []).filter((s: any) => s.enabled);
+  if (!on.length) return "保存位置只勾了远端，可一个远端都没选；同时“本地文件”又被取消勾选。"
+  const why = on
+    .map((s: any) => `${storageKindLabel(s.kind)}：${s.instanceMissing ? "绑定的实例已不存在" : !s.running ? "实例未启动" : "连不上" + (s.lastError ? "（" + s.lastError + "）" : "")}`)
+    .join("；");
+  return `本地文件已取消勾选，而绑定的远端现在都用不上——${why}。`;
+});
+
+/** 能启动才给启动按钮：没绑定、实例已被删掉这两类启动不了，只能去设置 */
+const storageChoiceStarts = computed<string[]>(() => {
+  const v = storageView.value;
+  if (!v) return [];
+  return (v.sinks ?? [])
+    .filter((s: any) => s.enabled && s.bound && !s.instanceMissing && !s.running)
+    .map((s: any) => s.kind);
+});
+
+async function startStorageSink(kind: string) {
+  if (storageStarting.value) return;
+  storageStarting.value = kind;
+  try {
+    await GoTools?.DataStoreStartBound(kind);
+    Message.info(`已请求启动 ${storageKindLabel(kind)} 实例，起来后待同步的副本会自动补完`);
+  } catch (e: any) {
+    Message.error(`启动失败：${String(e?.message ?? e ?? "操作失败")}`);
+  } finally {
+    storageStarting.value = "";
+    // 实例起来要几秒：立刻看一眼，再延后看一次；更长的链路靠 datastore:status 事件回来
+    void loadStorageStatus();
+    setTimeout(() => { void loadStorageStatus(); void loadSysInfo(true); }, 6000);
+  }
+}
+
+function openStorageSetting() {
+  // 设置页认 ?tab=storage（单例窗口已开着时它会切到分类）
+  void openToolWindow("/tools/settings?tab=storage", "设置", { single: true });
+}
+
+/** 弹窗里的选择：启动服务 = 同提示条那个动作，选完等状态重算自动收起 */
+function chooseStartSink(kind: string) {
+  void startStorageSink(kind);
+}
+
+/** 本次使用默认数据：只影响当前进程（sessionLocal），不改设置里的勾选 */
+async function chooseDefaultData() {
+  try {
+    await GoTools?.DataStoreSetLocalOverride(true);
+    Message.info("本次先用本机文件；下次启动会重新确认保存位置");
+  } catch (e: any) {
+    Message.error(`设置失败：${String(e?.message ?? e ?? "操作失败")}`);
+  }
+  void loadStorageStatus();
+}
+
+function chooseOpenSetting() {
+  storageChoiceDismissed.value = true;
+  storageChoiceVisible.value = false;
+  openStorageSetting();
+}
+
 /* ==================== 当前时间 ==================== */
 /* 时间展示已改用 common-canvas-clock 组件（盘面自带日期/星期/毫秒信息），此处不再维护定时器 */
 
@@ -501,6 +617,8 @@ function listen(name: string, cb: (id: string) => void) {
 }
 
 let sysTimer: ReturnType<typeof setInterval> | null = null;
+/** 保存位置状态单独一条慢节奏：Snapshot 会重扫受管文档，跟 5 秒的系统信息同频就多余了 */
+let storageTimer: ReturnType<typeof setInterval> | null = null;
 
 /** 后台轮询：静默路径（不闪刷新按钮）；窗口隐藏/收进托盘时干脆不查，不白耗后端 */
 function pollSysInfo() {
@@ -518,9 +636,20 @@ onMounted(async () => {
   listen("tool:activate", activateById);
   // 设置页保存工具列表后刷新快捷操作（新增/删除/改名称/改图标等）
   listen("config:saved", () => { void loadTools(); });
+  // 数据保存位置：启动时看一次（弹窗的触发点就在此），之后靠事件 + 慢轮询补
+  void loadStorageStatus();
+  storageTimer = setInterval(() => { if (!document.hidden) void loadStorageStatus(); }, 30000);
+  try {
+    const ret = Events.On("datastore:status", (ev: any) => {
+      storageView.value = ev?.data ?? ev ?? null;
+      applyStorageChoice();
+    });
+    if (typeof ret === "function") cancels.push(ret as () => void);
+  } catch { /* 非 Wails 环境没有事件总线 */ }
 });
 onUnmounted(() => {
   if (sysTimer) clearInterval(sysTimer);
+  if (storageTimer) clearInterval(storageTimer);
   document.removeEventListener("visibilitychange", pollSysInfo);
   cancels.forEach((f) => { try { f(); } catch { /* */ } });
   cancels.length = 0;
@@ -754,5 +883,23 @@ onUnmounted(() => {
   font-size: var(--base-size-small);
   font-weight: normal;
   color: rgb(var(--gray-5));
+}
+
+/* ---- 保存位置不可用弹窗 ---- */
+.sc-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--base-margin);
+}
+
+.sc-lead {
+  color: var(--color-text-1);
+  line-height: 1.6;
+}
+
+.sc-note {
+  color: rgb(var(--gray-5));
+  font-size: var(--base-size-small);
+  line-height: 1.5;
 }
 </style>

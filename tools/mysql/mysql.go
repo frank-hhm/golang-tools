@@ -226,6 +226,39 @@ func dsnOf(cfg ConnConfig, database string) string {
 		user, cfg.Password, net.JoinHostPort(host, strconv.Itoa(port)), database)
 }
 
+// DSN 导出版的本机连接串拼装：让内部使用者（如「数据保存位置」的外存 sink）自建
+// *sql.DB 而不必再抄一遍参数串 —— DSN 格式在这里只有这一处定义。
+func DSN(cfg ConnConfig, database string) string { return dsnOf(cfg, database) }
+
+// InstanceConnConfig 按实例登记 ID 拼一个本机连接参数：host 固定 127.0.0.1（实例要么
+// 是本程序在本机拉起的 mysqld，要么是映射到本机端口的容器），user 固定 root，密码取
+// 实例登记里那个。给需要按实例 ID 直连的内部模块用，不走 SQL 页的连接登记表。
+func InstanceConnConfig(id string) (ConnConfig, error) {
+	cfgs, err := loadInstances()
+	if err != nil {
+		return ConnConfig{}, err
+	}
+	for i := range cfgs {
+		if cfgs[i].ID != id {
+			continue
+		}
+		inst := cfgs[i]
+		port := inst.Port
+		if port <= 0 {
+			port = 3306
+		}
+		return ConnConfig{
+			ID:       "datastore:" + id,
+			Name:     inst.Name,
+			Host:     "127.0.0.1",
+			Port:     port,
+			User:     "root",
+			Password: inst.RootPassword,
+		}, nil
+	}
+	return ConnConfig{}, fmt.Errorf("未找到 MySQL 实例: %s", id)
+}
+
 // Open 建立并登记一个连接（同 id 先关闭旧连接）。
 func Open(cfg ConnConfig) error {
 	if cfg.ID == "" {

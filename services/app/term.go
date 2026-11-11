@@ -68,6 +68,12 @@ func (a *App) TermOpenDocker(containerID, title string, cols, rows int) (term.Se
 	return term.OpenDocker(containerID, title, cols, rows)
 }
 
+// TermOpenLocal 按一条本地连接记录起交互式 shell（cmd / PowerShell）。
+// 仅 Windows 经 ConPTY 提供真终端；Linux/macOS 返回「暂不支持」。
+func (a *App) TermOpenLocal(hostID string, cols, rows int) (term.SessionInfo, error) {
+	return term.OpenLocal(hostID, cols, rows)
+}
+
 // TermWrite 终端按键输入（data 为 Base64）
 func (a *App) TermWrite(sessionID string, data string) error {
 	return term.Write(sessionID, data)

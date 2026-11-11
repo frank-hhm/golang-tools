@@ -68,9 +68,9 @@
                         <div class="vp-side-sort">
                             <span class="vp-sort-label">{{ listing.entries.length }} 项</span>
                             <div class="vp-sort-group">
-                                <a-button size="mini" :type="sortKey === 'name' ? 'primary' : 'outline'"
+                                <a-button size="mini" :type="sortKey === 'name' ? 'primary' : undefined"
                                     @click="toggleSort('name')">名称</a-button>
-                                <a-button size="mini" :type="sortKey === 'size' ? 'primary' : 'outline'"
+                                <a-button size="mini" :type="sortKey === 'size' ? 'primary' : undefined"
                                     @click="toggleSort('size')">大小</a-button>
                             </div>
                         </div>

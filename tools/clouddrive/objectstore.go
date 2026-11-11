@@ -42,14 +42,15 @@ import (
 
 // objectStore 三家对象存储共用的 Provider 实现。
 type objectStore struct {
-	acctID string
-	hc     *http.Client
-	bucket string
-	host   string // 访问域名（虚拟主机式为 <bucket>.<endpoint host>；IP endpoint 不含 bucket）
-	region string
-	kind   string
-	name   string
-	signer signer
+	acctID      string
+	hc          *http.Client
+	bucket      string
+	host        string // 访问域名（虚拟主机式为 <bucket>.<endpoint host>；IP endpoint 不含 bucket）
+	region      string
+	kind        string
+	name        string
+	signer      signer
+	virtualHost bool // host 已把 bucket 作为子域（真实 OSS/COS/S3 域名寻址），path 不能再带 bucket
 }
 
 // osHost 按 kind 从 endpoint/region 推导访问域名（不含 scheme）。endpoint 允许填
@@ -110,13 +111,31 @@ func virtualHostDisabled(host string) bool {
 // ipLikeHost 判断是不是点分数字 IP。
 var ipLikeHost = regexp.MustCompile(`^\d{1,3}(\.\d{1,3}){3}$`)
 
-// ossHostPattern 各家按 region 推导访问域名。
+// ossHostPattern 各家按 region 推导访问域名。region 为空必须返回空串，否则会拼出
+// bucket.oss-.aliyuncs.com / bucket.cos..myqcloud.com 这种坏主机（DNS 解析失败）。
+// 另需容错：Region 框常被误填成 Endpoint 形态（如把 oss-cn-hangzhou 或
+// oss-cn-hangzhou.aliyuncs.com 粘进来），盲拼会得 oss-oss-cn-hangzhou... 双前缀坏主机。
+// 这里：整串已是本家域名就直接当 host 用；只是多带了 oss-/cos. 前缀就剥掉再拼。
 func ossHostPattern(kind, region string) string {
+	region = strings.TrimSpace(region)
+	if region == "" {
+		return ""
+	}
 	switch kind {
 	case KindAliyunOSS:
-		return fmt.Sprintf("oss-%s.aliyuncs.com", region)
+		if strings.Contains(region, ".aliyuncs.com") {
+			if h, err := normalizeHost(region); err == nil && h != "" {
+				return h
+			}
+		}
+		return fmt.Sprintf("oss-%s.aliyuncs.com", strings.TrimPrefix(region, "oss-"))
 	case KindTencentCOS:
-		return fmt.Sprintf("cos.%s.myqcloud.com", region)
+		if strings.Contains(region, ".myqcloud.com") {
+			if h, err := normalizeHost(region); err == nil && h != "" {
+				return h
+			}
+		}
+		return fmt.Sprintf("cos.%s.myqcloud.com", strings.TrimPrefix(region, "cos."))
 	}
 	return ""
 }
@@ -135,6 +154,9 @@ func newObjectStoreAcct(kind, name, acctID string, a Account, b tokenBlob) (Prov
 		region: a.Region,
 		kind:   kind,
 		name:   name,
+		// bucket 进了 host 子域就是虚拟主机式（path 只到 /<key>）；IP endpoint（MinIO 等）
+		// 走 path-style，bucket 留在 path 里。
+		virtualHost: a.Bucket != "" && strings.HasPrefix(host, a.Bucket+"."),
 	}
 	ak, sk := b.AkID, b.AkSecret
 	if kind == KindAliyunOSS {
@@ -152,16 +174,40 @@ func (o *objectStore) Name() string { return o.name }
 
 /* ============================ 请求构造 ============================ */
 
-// resource 签名用的资源路径：始终是 /<bucket>/<key>（两种寻址形式同规则）。
+// resource 阿里 OSS V1 CanonicalizedResource 与 copy-source 用的资源路径：
+// 恒为 /<bucket>/<key>（OSS 无论虚拟主机式还是 path-style 都把 bucket 计入 canonical）。
 func (o *objectStore) resource(key string) string {
 	return "/" + o.bucket + "/" + strings.TrimPrefix(key, "/")
 }
 
+// urlResource 实际 URL 里承载的资源（未编码，保留目录 key 的尾斜杠）：虚拟主机式下
+// bucket 已在 host 子域里，path 只能到 /<key>（再拼一次 bucket 会被服务端当成 object
+// key 的一部分，导致 CanonicalizedResource / canonical URI 对不上→ SignatureDoesNotMatch）；
+// path-style（IP endpoint）才把 bucket 拼进 path。
+func (o *objectStore) urlResource(key string) string {
+	key = strings.TrimPrefix(key, "/")
+	if o.virtualHost {
+		return "/" + key
+	}
+	return "/" + o.bucket + "/" + key
+}
+
+// signResource 交给签名器的 canonical 资源：
+//   - OSS V1：恒 /<bucket>/<key>（CanonicalizedResource 规则与寻址方式无关）；
+//   - S3/COS SigV4：canonical URI 必须等于**实际发出的 path**，故随寻址方式变（虚拟
+//     主机式 /<key>，path-style /<bucket>/<key>）。
+func (o *objectStore) signResource(key string) string {
+	if o.kind == KindAliyunOSS {
+		return o.resource(key)
+	}
+	return o.urlResource(key)
+}
+
 // urlFor 拼访问 URL（含查询串）。key 里保留 `/` 作层级，其余按百分号编码。
-// 虚拟主机式下 host 已含 bucket 子域（真实服务会把它归一到 path），path-style
-// （IP endpoint）则由 host 原样 + path 携带 bucket。
+// 虚拟主机式下 host 已含 bucket 子域，path 只到 /<key>；path-style（IP endpoint）
+// 则由 host 原样 + path 携带 bucket。
 func (o *objectStore) urlFor(key, query string) string {
-	u := osBase(o.host) + uriPathFromResource(o.resource(key))
+	u := osBase(o.host) + uriPathFromResource(o.urlResource(key))
 	if query != "" {
 		u += "?" + query
 	}
@@ -182,7 +228,7 @@ func (o *objectStore) do(ctx context.Context, method, key, query string, payload
 	for k, v := range extra {
 		req.Header.Set(k, v)
 	}
-	if err := o.signer.sign(req, o.resource(key), payload); err != nil {
+	if err := o.signer.sign(req, o.signResource(key), payload); err != nil {
 		return nil, err
 	}
 	resp, err := o.hc.Do(req)
@@ -198,13 +244,20 @@ func (o *objectStore) do(ctx context.Context, method, key, query string, payload
 }
 
 // osErrMsg 从 XML 错误体里取 Code/Message（非 XML 时截断原样返回）。
+// OSS/COS 用错地域的 endpoint 访问桶时，错误体会带 <Endpoint> 指明正确域名（如
+// oss-cn-heyuan.aliyuncs.com）——把它翻成可操作提示，免得用户去控制台猜桶到底在哪个 region。
 func osErrMsg(bs []byte) string {
 	var e struct {
-		Code    string `xml:"Code"`
-		Message string `xml:"Message"`
+		Code     string `xml:"Code"`
+		Message  string `xml:"Message"`
+		Endpoint string `xml:"Endpoint"`
 	}
 	if xml.Unmarshal(bs, &e) == nil && (e.Code != "" || e.Message != "") {
-		return firstNonEmptyStr(e.Message, e.Code, "无详情")
+		msg := firstNonEmptyStr(e.Message, e.Code, "无详情")
+		if hint := osEndpointHint(e.Endpoint); hint != "" {
+			msg += hint
+		}
+		return msg
 	}
 	s := strings.TrimSpace(string(bs))
 	if s == "" {
@@ -214,6 +267,25 @@ func osErrMsg(bs []byte) string {
 		return s[:200] + "…"
 	}
 	return s
+}
+
+// osEndpointHint 从 OSS/COS 错误体的 <Endpoint> 反解地域名，拼成「该怎么改账号」的一句话；
+// 解不出就只提示把 Endpoint 改成该域名。正则按子串匹配，带 bucket 前缀的 host 也能解。
+func osEndpointHint(raw string) string {
+	ep := strings.TrimSpace(raw)
+	if ep == "" {
+		return ""
+	}
+	if h, err := normalizeHost(ep); err == nil && h != "" {
+		ep = h
+	}
+	if m := ossRegionFromHost.FindStringSubmatch(ep); m != nil {
+		return fmt.Sprintf("（endpoint 与桶实际地域不符：请把账号 Region 改成 %s，或直接把 Endpoint 填成 %s）", m[1], ep)
+	}
+	if m := cosRegionFromHost.FindStringSubmatch(ep); m != nil {
+		return fmt.Sprintf("（endpoint 与桶实际地域不符：请把账号 Region 改成 %s，或直接把 Endpoint 填成 %s）", m[1], ep)
+	}
+	return fmt.Sprintf("（endpoint 与桶实际地域不符：请把账号 Endpoint 改成 %s）", ep)
 }
 
 /* ============================ XML 响应 ============================ */
@@ -297,7 +369,7 @@ func dirKey(parentID, name string) string {
 // isDirKey 目录（占位对象）的 key 以 / 结尾。
 func isDirKey(key string) bool { return strings.HasSuffix(key, "/") }
 
-// unescKey 还原响应里被 URL 编码的 key（encoding-type=utf-8 时服务端按此回传）。
+// unescKey 还原响应里被 URL 编码的 key（encoding-type=url 时服务端按此回传）。
 func unescKey(s string) string {
 	if v, err := url.QueryUnescape(s); err == nil {
 		return v
@@ -325,10 +397,13 @@ const osListMaxPages = 50
 const osListMaxPageKeys = 1000
 
 // listBaseQuery 列表请求的公共参数骨架（prefix + 编码声明 + 页大小）。
+// encoding-type 三家（OSS/S3/COS）唯一合法取值是 url，写 utf-8 等其它值 OSS 直接回
+// 400 InvalidEncodingMethod；开启后响应里的 Key/Prefix/Marker/NextMarker 变 URL 编码态，
+// 由 unescKey 还原（这样带中文/空格/+ 的 key 不会在 XML 里歧义）。
 func listBaseQuery(prefix string) url.Values {
 	q := url.Values{}
 	q.Set("prefix", prefix)
-	q.Set("encoding-type", "utf-8")
+	q.Set("encoding-type", "url")
 	q.Set("max-keys", strconv.Itoa(osListMaxPageKeys))
 	return q
 }
@@ -351,7 +426,7 @@ func (o *objectStore) listPage(ctx context.Context, q url.Values) (*osListResp, 
 	return &out, nil
 }
 
-// nextListMarker 算下一页游标：encoding-type=utf-8 时 NextMarker 也是编码态，还原后才
+// nextListMarker 算下一页游标：encoding-type=url 时 NextMarker 也是编码态，还原后才
 // 能当游标；服务端没回 NextMarker 时退回本页最后一个 key。回空串表示游标拿不到或没有
 // 前进，调用方应停在已取到的部分，不冒死循环风险。
 func nextListMarker(out *osListResp, marker string) string {
@@ -999,7 +1074,7 @@ func (o *objectStore) deleteKey(ctx context.Context, key string) error {
 // ShareLink 生成预签名 GET URL（默认 24 小时）。对象存储没有「分享页」，
 // 这条 URL 就是可直接下载的临时链接。
 func (o *objectStore) ShareLink(ctx context.Context, id string) (string, error) {
-	u, err := o.signer.presign(http.MethodGet, o.resource(id), 24*time.Hour)
+	u, err := o.signer.presign(http.MethodGet, o.urlResource(id), o.signResource(id), 24*time.Hour)
 	if err != nil {
 		return "", err
 	}

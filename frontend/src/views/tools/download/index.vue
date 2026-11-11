@@ -114,6 +114,12 @@
                                 </a-tooltip>
                                 <a-button v-else-if="t.status === 'error' || t.status === 'canceled'" size="mini"
                                     @click.stop="retry(t)">重试</a-button>
+                                <!-- 预览：图片/文本等交给文件查看器按类型识别，与「打开所在目录」并列出现在完成态 -->
+                                <a-tooltip v-if="t.status === 'done' && t.savePath" content="预览">
+                                    <a-button size="mini" @click.stop="previewFile(t)">
+                                        <template #icon><icon-eye /></template>
+                                    </a-button>
+                                </a-tooltip>
                                 <a-tooltip v-if="t.status === 'done'" content="打开所在目录">
                                     <a-button size="mini" @click.stop="openLocation(t)">
                                         <template #icon><icon-folder /></template>
@@ -217,6 +223,7 @@ import { Events } from "@wailsio/runtime";
 import type { SourceStat, Task, Stats } from "bindings/Tools/tools/downloader/index";
 import AddTaskModal from "./components/AddTaskModal.vue";
 import { normalizeStatus } from "@/utils/taskProgress";
+import { useToolWindow } from "@/views/index/useToolWindow";
 import {
     CATEGORIES, CATEGORY_ICON, STATE_GROUPS, SPEED_PRESETS,
     fmtBytes, fmtSpeed, pctOf, progressText, etaOf, statusLabel, statusTagColor,
@@ -236,6 +243,7 @@ Linux 面板语义一致：下载到服务器本机 SaveDir，无原生目录框
 */
 
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
+const { openToolWindow } = useToolWindow();
 
 const tasks = ref<Task[]>([]);
 const stats = ref<Stats>({ speed: 0, running: 0, queued: 0, done: 0, total: 0, globalLimit: 0 });
@@ -345,6 +353,13 @@ function openLocation(t: Task) {
 function openFile(t: Task) {
     if (!t.savePath) return;
     call(() => GoTools.FileOpenSystem(t.savePath));
+}
+/** 预览：把落盘文件交给文件查看器（/tools/viewer），图片/文本等由查看器按类型识别渲染；
+ *  与云盘/文档空间同一通路：桌面开原生单例窗 / Web 走路由，已开着靠 viewer:open-path 事件导航。 */
+function previewFile(t: Task) {
+    if (!t.savePath) { Message.warning("该任务没有本机文件路径，无法预览"); return; }
+    openToolWindow(`/tools/viewer?path=${encodeURIComponent(t.savePath)}`, "文件查看器", { single: true });
+    try { Events.Emit("viewer:open-path", { path: t.savePath }); } catch { /* 非 Wails 环境忽略 */ }
 }
 
 // ---------- 批量 ----------

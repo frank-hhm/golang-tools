@@ -43,7 +43,7 @@
 
 "@arco-themes/vue-dev-frank-brank@^0.0.8":
   version "0.0.8"
-  resolved "https://registry.npmmirror.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.8.tgz#3c2639824905872b1e06950f427ebbc1cd320d9c"
+  resolved "https://registry.npmmirror.com/@arco-themes/vue-dev-frank-brank/-/vue-dev-frank-brank-0.0.8.tgz"
   integrity sha512-Ynp5/MztpVeLjRPjxbu4WvJ8dH6TO4SBiWbF4NG1D+OcTAz/wNx3/vxG0QfxPRAK+IQ+PgRKGIvVYOQ6w1z5UQ==
 
 "@babel/code-frame@^7.27.1", "@babel/code-frame@^7.29.7":
@@ -448,7 +448,7 @@
 
 "@codemirror/merge@^6.12.3":
   version "6.12.3"
-  resolved "https://registry.npmmirror.com/@codemirror/merge/-/merge-6.12.3.tgz#09ad9a6f24813dca7d580f0c315323be39358dd6"
+  resolved "https://registry.npmmirror.com/@codemirror/merge/-/merge-6.12.3.tgz"
   integrity sha512-Wq9wXrp41cW/nIpi1CQPyNwD+36kg8KIX676ym0Hyfn3Dpr+XQHNAIsZYVNlaivuVB4SAASbreG3V0VXinbqZA==
   dependencies:
     "@codemirror/language" "^6.0.0"
@@ -636,6 +636,11 @@
   resolved "https://registry.npmmirror.com/@marijn/find-cluster-break/-/find-cluster-break-1.0.4.tgz"
   integrity sha512-Wy0V7+SGUjnF9/TkiM1hKVDPj7jKXduPNboMVtHTA8dySMURWqfg/JZ9E2Sq8JgSJmkl7k7Qe9FLeMSrSraWmQ==
 
+"@mixmark-io/domino@^2.2.0":
+  version "2.2.0"
+  resolved "https://registry.npmmirror.com/@mixmark-io/domino/-/domino-2.2.0.tgz"
+  integrity sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==
+
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
   resolved "https://registry.npmjs.org/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz"
@@ -747,14 +752,14 @@
 
 "@pdf-lib/standard-fonts@^1.0.0":
   version "1.0.0"
-  resolved "https://registry.npmmirror.com/@pdf-lib/standard-fonts/-/standard-fonts-1.0.0.tgz#8ba691c4421f71662ed07c9a0294b44528af2d7f"
+  resolved "https://registry.npmmirror.com/@pdf-lib/standard-fonts/-/standard-fonts-1.0.0.tgz"
   integrity sha512-hU30BK9IUN/su0Mn9VdlVKsWBS6GyhVfqjwl1FjZN4TxP6cCw0jP2w7V3Hf5uX7M0AZJ16vey9yE0ny7Sa59ZA==
   dependencies:
     pako "^1.0.6"
 
 "@pdf-lib/upng@^1.0.1":
   version "1.0.1"
-  resolved "https://registry.npmmirror.com/@pdf-lib/upng/-/upng-1.0.1.tgz#7dc9c636271aca007a9df4deaf2dd7e7960280cb"
+  resolved "https://registry.npmmirror.com/@pdf-lib/upng/-/upng-1.0.1.tgz"
   integrity sha512-dQK2FUMQtowVP00mtIksrlZhdFXQZPC+taih1q4CvPZ5vqdxR/LKBaFg0oAfzd1GlHZXXSPdQfzQnt+ViGvEIQ==
   dependencies:
     pako "^1.0.10"
@@ -909,6 +914,11 @@
   version "2.0.7"
   resolved "https://registry.npmmirror.com/@types/trusted-types/-/trusted-types-2.0.7.tgz"
   integrity sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==
+
+"@types/turndown@^5.0.6":
+  version "5.0.6"
+  resolved "https://registry.npmmirror.com/@types/turndown/-/turndown-5.0.6.tgz"
+  integrity sha512-ru00MoyeeouE5BX4gRL+6m/BsDfbRayOskWqUvh7CLGW+UXxHQItqALa38kKnOiZPqJrtzJUgAC2+F0rL1S4Pg==
 
 "@uppy/companion-client@^2.2.2":
   version "2.2.2"
@@ -1306,6 +1316,11 @@
   version "0.8.15"
   resolved "https://registry.npmmirror.com/@xmldom/xmldom/-/xmldom-0.8.15.tgz"
   integrity sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==
+
+"@xterm/addon-canvas@^0.7.0":
+  version "0.7.0"
+  resolved "https://registry.npmmirror.com/@xterm/addon-canvas/-/addon-canvas-0.7.0.tgz"
+  integrity sha512-LF5LYcfvefJuJ7QotNRdRSPc9YASAVDeoT5uyXS/nZshZXjYplGXRECBGiznwvhNL2I8bq1Lf5MzRwstsYQ2Iw==
 
 "@xterm/addon-fit@^0.10.0":
   version "0.10.0"
@@ -2610,7 +2625,7 @@ pathe@^2.0.1, pathe@^2.0.3:
 
 pdf-lib@^1.17.1:
   version "1.17.1"
-  resolved "https://registry.npmmirror.com/pdf-lib/-/pdf-lib-1.17.1.tgz#9e7dd21261a0c1fb17992580885b39e7d08f451f"
+  resolved "https://registry.npmmirror.com/pdf-lib/-/pdf-lib-1.17.1.tgz"
   integrity sha512-V/mpyJAoTsN4cnP31vc0wfNA1+p20evqqnap0KLoRUN0Yk/p3wN52DOEsL4oBFcLdb76hlpKPtzJIgo67j/XLw==
   dependencies:
     "@pdf-lib/standard-fonts" "^1.0.0"
@@ -3034,7 +3049,7 @@ tslib@2.3.0:
 
 tslib@^1.11.1:
   version "1.14.1"
-  resolved "https://registry.npmmirror.com/tslib/-/tslib-1.14.1.tgz#cf2d38bdc34a134bcaf1091c41f6619e2f672d00"
+  resolved "https://registry.npmmirror.com/tslib/-/tslib-1.14.1.tgz"
   integrity sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==
 
 tsparticles-basic@^2.12.0:
@@ -3382,6 +3397,13 @@ tsparticles@^2.9.3:
     tsparticles-updater-tilt "^2.12.0"
     tsparticles-updater-twinkle "^2.12.0"
     tsparticles-updater-wobble "^2.12.0"
+
+turndown@^7.2.5:
+  version "7.2.5"
+  resolved "https://registry.npmmirror.com/turndown/-/turndown-7.2.5.tgz"
+  integrity sha512-EKZvCCFHh8sWttpAMs10U6niZFJ2cpz8LkCPlylxoG4JcHF50J7EHnnBW3AY1qXtUMu7kDjCp7dnggB1sIbqEQ==
+  dependencies:
+    "@mixmark-io/domino" "^2.2.0"
 
 type@^2.7.2:
   version "2.7.3"

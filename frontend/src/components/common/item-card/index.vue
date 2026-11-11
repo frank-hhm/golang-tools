@@ -45,7 +45,7 @@ withDefaults(defineProps<{
   border-radius: var(--base-radius-default);
   cursor: pointer;
   overflow: hidden;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
 }
 
 .item-card.is-static {
@@ -57,11 +57,22 @@ withDefaults(defineProps<{
   box-shadow: var(--shadow-1-center);
 }
 
-/* 选中：不改边框/背景，用按需的投影抬升 + 左侧短竖条表达 */
+/* 选中：不改边框，用按需的投影抬升 + 左侧短竖条 + 主色淡底背景表达（primary-light-1 随明暗翻面） */
 .item-card.is-active {
   box-shadow: var(--shadow-2-bottom);
+  background-color: var(--color-primary-light-1);
 }
-
+.item-card.is-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 15px;
+    border-radius: 0 3px 3px 0;
+    background: var(--color-text-1);
+}
 /* 错误态：只用 danger 描边标识，不铺背景（与选中/hover 一致：状态不改 background） */
 .item-card.is-error {
   border-color: rgba(var(--danger-6), 0.55);

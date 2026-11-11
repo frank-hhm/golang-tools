@@ -4,6 +4,7 @@ import (
 	"Tools/appdirs"
 	"Tools/services/applog"
 	"Tools/services/config"
+	"Tools/services/datastore"
 	"Tools/services/sysx"
 	"Tools/services/winui"
 	"Tools/tools/docker"
@@ -305,6 +306,9 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	if config.CurrentConfig().General.AutoStart {
 		a.applyAutoStart(true)
 	}
+	// 数据保存位置：起定时扫描与副本同步。启动期的硬活（远端优先回写）已经在 main
+	// 里做完了，这里只把常驻循环接上；emit 为 nil 引擎也能跑（只是不通知前端）。
+	datastore.Start(a.emit)
 	return nil
 }
 
@@ -325,6 +329,10 @@ func (a *App) ServiceShutdown() error {
 	a.unmountNavigateHost()
 	// 浏览器空间：销毁 controller 并释放 profile 锁（不然下次启动会报目录被占用）
 	a.BrowserCloseAll()
+	// 数据保存位置：最后一次把脏队列写完并关掉手上的连接。
+	// 必须排在下面的重启交棒之前：新进程起来时旧进程还扣着 MySQL 连接、副本也没写完，
+	// 两边会同时把同一批文档往远端写。
+	datastore.Stop()
 	// 托盘「重启应用」：上面刚把转交端点与浏览器 profile 锁全放掉，系统热键也已在
 	// 这一步之前由框架注销，此刻拉起新进程才不会出现两个实例抢同一个端点/热键。
 	// 放在尾部而不是点击当下，就是为了把这个「先清理干净再交棒」的顺序钉死。
@@ -662,6 +670,35 @@ func (a *App) OpenToolWindow(path string, title string, single bool, fullscreen 
 		})
 	}
 	return nil
+}
+
+// IsToolWindowOpen 报告某个工具操作页的原生单例窗口当前是否开着。
+// path 传逻辑路由（如 "/tools/php"），内部同时比对前端开窗实际使用的 /win 前缀名。
+// 供任务浮标「严格二选一」判定：来源操作页开着就在它上面提示，关掉才回落主页提示。
+// Web 运行模式（-tags server）没有独立窗口，恒返回 false——此时「来源页是否开着」
+// 由前端按当前路由判断（单窗口里你只会停在一处，天然二选一）。
+// 方法本身跨平台存在，不藏 build tag，避免 Linux 构建里整个消失导致前端调用报未知方法。
+func (a *App) IsToolWindowOpen(path string) bool {
+	if a.app == nil || !sysx.Caps().NativeWindows {
+		return false
+	}
+	clean := strings.TrimSpace(path)
+	if clean == "" {
+		return false
+	}
+	if qi := strings.Index(clean, "?"); qi >= 0 {
+		clean = clean[:qi]
+	}
+	if !strings.HasPrefix(clean, "/") {
+		clean = "/" + clean
+	}
+	// 前端统一以 /win 前缀开单例窗（窗口名 win:/win/tools/xxx），两种写法都探一下
+	for _, p := range []string{"/win" + clean, clean} {
+		if _, ok := a.app.Window.GetByName("win:" + p); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // OpenGlassDebugWindow 按 mode 开一个专用的原生调试窗，加载 /widget/glasswin?mode=<mode>，
@@ -1086,7 +1123,14 @@ func (a *App) RedisSrvSaveInstance(cfg redis.InstanceConfig) error { return redi
 func (a *App) RedisSrvRemoveInstance(id string) error { return redis.RemoveInstance(id) }
 
 // RedisSrvStart 启动实例（隐藏窗口拉起 redis-server，日志经 redis:serverlog 事件推送）
-func (a *App) RedisSrvStart(id string) error { return redis.StartInstance(id) }
+func (a *App) RedisSrvStart(id string) error {
+	if err := redis.StartInstance(id); err != nil {
+		return err
+	}
+	// 这个实例可能就是数据保存位置绑定的那一个：起来后主动推一下，不留用户等一个重试周期
+	datastore.InstanceStarted("redis")
+	return nil
+}
 
 // RedisSrvStop 停止实例（优雅 SHUTDOWN NOSAVE，兑底 Kill）
 func (a *App) RedisSrvStop(id string) error { return redis.StopInstance(id) }
@@ -1177,7 +1221,13 @@ func (a *App) MySQLSrvSaveInstance(cfg mysql.InstanceConfig) error { return mysq
 func (a *App) MySQLSrvRemoveInstance(id string) error { return mysql.RemoveInstance(id) }
 
 // MySQLSrvStart 启动实例
-func (a *App) MySQLSrvStart(id string) error { return mysql.StartInstance(id) }
+func (a *App) MySQLSrvStart(id string) error {
+	if err := mysql.StartInstance(id); err != nil {
+		return err
+	}
+	datastore.InstanceStarted("mysql")
+	return nil
+}
 
 // MySQLSrvStop 停止实例（SHUTDOWN + 兆底 Kill）
 func (a *App) MySQLSrvStop(id string) error { return mysql.StopInstance(id) }
@@ -2297,7 +2347,7 @@ func (a *App) VideoOpenWidget(mode string, fps int, fx, fy, fw, fh float64, anch
 	if fps <= 0 {
 		fps = 30
 	}
-	const widgetW, widgetH = 340, 76
+	const widgetW, widgetH = 340, 48
 	x := anchorX - widgetW - 12
 	y := anchorY - widgetH - 12
 	if x < 0 {
@@ -2773,6 +2823,17 @@ func (a *App) SetAppTheme(theme string) error {
 	return nil
 }
 
+// SaveToolsDefault 把传入的功能列表存为「恢复默认列表」的基线快照（用户自定义默认）。
+// 走 config.Update 增量落盘：只动 ToolsDefault 这一段，不触发日志/热键/浮动球等重配置。
+// 方法跨平台存在（不藏 build tag），Linux 面板同样可用；传 nil 视为清空自定义默认。
+func (a *App) SaveToolsDefault(tools []config.ToolConfig) error {
+	_, err := config.Update(func(cfg *config.AppConfig) { cfg.ToolsDefault = tools })
+	if err != nil {
+		applog.Errorf("config", "保存默认功能列表失败: %v", err)
+	}
+	return err
+}
+
 // SaveConfig 保存配置：写入用户配置目录 JSON + 重新初始化日志器 + 热键重载 + 浮动球显隐；返回日志目录。
 func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	// 浮动球位置由后端维护（拖动结束落盘），前端保存设置时沿用当前值，避免被零值覆盖。
@@ -2782,6 +2843,10 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	// 工具级设置由各工具页自行保存（如 MySQL 的 SQL 日志），设置页 payload 不含该字段，沿用当前值避免被清空。
 	if len(cfg.ToolSettings) == 0 {
 		cfg.ToolSettings = config.CurrentConfig().ToolSettings
+	}
+	// 「保存为默认」的快照不在设置页常规 payload 里（runSave 只带 tools），任何一次普通保存都不该把它抹掉。
+	if cfg.ToolsDefault == nil {
+		cfg.ToolsDefault = config.CurrentConfig().ToolsDefault
 	}
 	// 各列表拖拽顺序由各页面单独保存（SetListOrder），设置页 payload 不含 order 段，沿用当前值避免被清空。
 	if len(cfg.Order) == 0 {
@@ -2802,6 +2867,29 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	if cfg.Archive == nil {
 		cfg.Archive = config.CurrentConfig().Archive
 	}
+	// 下面几段同理，而且不止“其它页面保存”这一种情形：设置页的 payload 是一一屏一屏
+	// 拼的，只要某一次保存没把这一栏带全（未访问过的 tab 不参与），不保留就会把用户
+	// 配好的整段抹成默认值。指针段天生区分得出“没写”与“写了零值”，就按“没写”处理。
+	if cfg.Git == nil {
+		cfg.Git = config.CurrentConfig().Git
+	}
+	if cfg.DocSpace == nil {
+		cfg.DocSpace = config.CurrentConfig().DocSpace
+	}
+	if cfg.Cloud == nil {
+		cfg.Cloud = config.CurrentConfig().Cloud
+	}
+	if cfg.Download == nil {
+		cfg.Download = config.CurrentConfig().Download
+	}
+	if cfg.LanShare == nil {
+		cfg.LanShare = config.CurrentConfig().LanShare
+	}
+	// 数据保存位置段：这段里摆的是绑定了哪个 MySQL/Redis 实例与库名，
+	// 被一次不相干的设置保存抹掉相当于“用户的副本位置凭空消失”，必须保留。
+	if cfg.Storage == nil {
+		cfg.Storage = config.CurrentConfig().Storage
+	}
 	path, err := config.SaveAppConfig(cfg)
 	if err != nil {
 		applog.Errorf("config", "保存配置失败: %v", err)
@@ -2809,6 +2897,10 @@ func (a *App) SaveConfig(cfg config.AppConfig) (string, error) {
 	}
 	// 全局目录布局（paths）可能变更：重新应用并预建服务子目录，需在日志器与工具日志重配置之前
 	config.InitAppDirs(cfg)
+	// 数据保存位置可能随这一次整份保存被改掉（导入配置、旧版设置页全量保存）：
+	// 没变就是空转，变了才重建连接。放在 InitAppDirs 之后，因为受管文档清单落在哪
+	// 完全由 paths.data 决定，目录刚迁过时旧清单里的路径已经无效。
+	datastore.ApplyChanged(config.StorageSection(cfg))
 	logDir := applog.Init(config.ApplogConfig(cfg.Log))
 	// SQL 日志默认目录随日志基础目录变更重解析（配置了固定目录的不受影响）
 	ms := cfg.ToolSettings["mysql"]

@@ -56,7 +56,7 @@
         </div>
 
         <div class="ds-ops" @click.stop>
-          <a-button size="mini" type="primary" @click="$emit('action', 'preview', row)">预览</a-button>
+          <a-button size="mini" @click="$emit('action', 'preview', row)">预览</a-button>
           <a-dropdown trigger="hover" :popup-max-height="false" @select="(k: any) => $emit('action', String(k), row)">
             <a-button size="mini">更多</a-button>
             <template #content>
@@ -166,7 +166,6 @@ function toggle(id: string) {
 .ds-card {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border-2);
   border-radius: 8px;
   background: var(--color-bg-2);
   overflow: hidden;
@@ -230,8 +229,6 @@ function toggle(id: string) {
   left: 6px;
   z-index: 2;
   padding: 0 4px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.72);
   opacity: 0;
   transition: opacity 0.15s;
 }

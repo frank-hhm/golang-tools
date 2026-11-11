@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as config$0 from "../config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as datastore$0 from "../datastore/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sysinfo$0 from "../sysinfo/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -103,6 +106,10 @@ import * as usbserial$0 from "../../tools/usbserial/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as application$0 from "../../../github.com/wailsapp/wails/v3/pkg/application/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
 
 /**
  * AppDataDir 返回全局数据目录下的服务子目录（不存在则创建），如 "videos" → <数据目录>/videos；
@@ -656,9 +663,10 @@ export function CloudDelete(acctID: string, id: string): $CancellablePromise<voi
 }
 
 /**
- * CloudDownload 把云端文件流式下载到本地目录 dstDir 下并命名 name。
+ * CloudDownload 把云端文件投递进「下载管理器」引擎排队下载（M9 打通）。
  * dstDir 留空走 config.Cloud.SaveDir 或 appdirs.Data("clouddrive")/downloads。
- * 返回落盘的绝对路径。
+ * 返回的是下载器任务 id（不再是落盘路径）；进度经 download:progress 事件回流，
+ * 在「下载管理」页可暂停 / 续传（流不支持 Range，续传=整段重下）/ 限速。
  */
 export function CloudDownload(acctID: string, fileID: string, name: string, dstDir: string): $CancellablePromise<string> {
     return $Call.ByID(208582919, acctID, fileID, name, dstDir);
@@ -775,6 +783,15 @@ export function CloudTransfer(srcAcct: string, srcID: string, srcDir: string, ds
 }
 
 /**
+ * CloudUpdateObjectStore 编辑对象存储账号（阿里 OSS / 腾讯 COS / 通用 S3）：
+ * label/bucket/endpoint/region 按传入覆盖，akID/akSecret 留空表示沿用已保存的旧密钥
+ * （前端不回显密文，改密钥只能整对重填）。密钥只进加密账号表，绝不回前端。
+ */
+export function CloudUpdateObjectStore(id: string, label: string, bucket: string, endpoint: string, region: string, akID: string, akSecret: string): $CancellablePromise<void> {
+    return $Call.ByID(351382274, id, label, bucket, endpoint, region, akID, akSecret);
+}
+
+/**
  * CloudUpload 把本机文件 localPath 上传到 parentID 目录下，命名 name。
  */
 export function CloudUpload(acctID: string, parentID: string, name: string, localPath: string): $CancellablePromise<clouddrive$0.Entry> {
@@ -786,6 +803,99 @@ export function CloudUpload(acctID: string, parentID: string, name: string, loca
  */
 export function ConnectionStatus(): $CancellablePromise<usbserial$0.ConnStatus> {
     return $Call.ByID(4190563884);
+}
+
+/**
+ * DataStoreListDBOptions 列出库选择器的候选项：MySQL 是实例已有的库，Redis 是 0~15 序号。
+ * 实例没起来时 MySQL 这一项会返回错误，前端据此提示「先启动实例再选库」，同时保留手填库名。
+ */
+export function DataStoreListDBOptions(kind: string, instanceID: string): $CancellablePromise<datastore$0.DBOption[] | null> {
+    return $Call.ByID(1066598497, kind, instanceID);
+}
+
+/**
+ * DataStoreListDocs 受管文档清单（含没被纳入的那些，附"为什么不外存"的人话原因）。
+ */
+export function DataStoreListDocs(): $CancellablePromise<datastore$0.DocView[] | null> {
+    return $Call.ByID(3459705608);
+}
+
+/**
+ * DataStoreListInstances 列出某个位置可选的本机服务实例（下拉里带运行状态）。
+ * kind 取 "mysql" | "redis"。返回体不含任何凭据字段。
+ */
+export function DataStoreListInstances(kind: string): $CancellablePromise<datastore$0.InstanceItem[] | null> {
+    return $Call.ByID(3951768477, kind);
+}
+
+/**
+ * DataStoreOpenLocalDir 在系统文件管理器里打开本地数据目录——用户问"到底存在哪儿"，
+ * 这是最实在的一个出口（远端那两侧靠设置页的实例信息与「测试连接」看）。
+ */
+export function DataStoreOpenLocalDir(): $CancellablePromise<void> {
+    return $Call.ByID(3646381521);
+}
+
+/**
+ * DataStoreRestore 把远端副本拉回本地，返回实际覆盖的份数。
+ * 这里是用户主动点的，所以不看本地勾选——和启动那一次"远端优先"是两回事。
+ */
+export function DataStoreRestore(): $CancellablePromise<number> {
+    return $Call.ByID(4147586495);
+}
+
+/**
+ * DataStoreSaveSettings 保存保存位置设置并立即重建外存连接，随后后台补一轮同步。
+ * 
+ * 库名先校验再落盘：这是唯一会被拼进 DDL 的用户输入，等真去建表才发现不合法，
+ * 用户看到的就只是一句莫名的连接错误。
+ */
+export function DataStoreSaveSettings($in: $models.StorageSettings): $CancellablePromise<string> {
+    return $Call.ByID(591365319, $in);
+}
+
+/**
+ * DataStoreSetLocalOverride 记下主页弹窗里选的"本次使用默认数据"。只影响当前进程，
+ * 不改设置里的勾选：下次启动还得被提醒一次，而不是被自己的一次临时选择永久改掉配置。
+ */
+export function DataStoreSetLocalOverride(useLocal: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3339145248, useLocal);
+}
+
+/**
+ * DataStoreSettings 回填设置页控件。老配置没有 storage 段时给默认值（只勾本地）。
+ */
+export function DataStoreSettings(): $CancellablePromise<$models.StorageSettings> {
+    return $Call.ByID(2406022378);
+}
+
+/**
+ * DataStoreStartBound 启动这个位置绑定的服务实例（主页提示条上的「启动」按钮）。
+ */
+export function DataStoreStartBound(kind: string): $CancellablePromise<void> {
+    return $Call.ByID(140149651, kind);
+}
+
+/**
+ * DataStoreStatus 当前保存位置全貌（主页提示条与设置页共用这一份）。
+ */
+export function DataStoreStatus(): $CancellablePromise<datastore$0.View> {
+    return $Call.ByID(3858789345);
+}
+
+/**
+ * DataStoreSyncNow 立即把当前所有应外存的文档强制写一遍远端（设置页按钮）。
+ */
+export function DataStoreSyncNow(): $CancellablePromise<void> {
+    return $Call.ByID(588136456);
+}
+
+/**
+ * DataStoreTestSink 按当前已保存的绑定试连一次，回报一句人话。
+ * 只试不改：不动引擎里正在用的连接与重试时钟，用户看着按钮试就行。
+ */
+export function DataStoreTestSink(kind: string): $CancellablePromise<string> {
+    return $Call.ByID(2028950764, kind);
 }
 
 /**
@@ -1019,11 +1129,11 @@ export function DocSpaceMoveTrash(itemID: string): $CancellablePromise<void> {
 }
 
 /**
- * DocSpaceNewNote 在库内 notes/ 新建一篇 .md 笔记并归入「笔记」分类，
- * 返回已纳管的条目（前端拿 path 去查看器双栏编辑）。同名报错不覆盖。
+ * DocSpaceNewNote 在库内 notes/ 新建一篇笔记（format 取 md|html，空默认 md）并归入「笔记」分类，
+ * 返回已纳管的条目（前端拿 path 去笔记模块编辑）。同名报错不覆盖。
  */
-export function DocSpaceNewNote(name: string): $CancellablePromise<docspace$0.Item> {
-    return $Call.ByID(3249176068, name);
+export function DocSpaceNewNote(name: string, format: string): $CancellablePromise<docspace$0.Item> {
+    return $Call.ByID(3249176068, name, format);
 }
 
 /**
@@ -2655,6 +2765,18 @@ export function ImportConfig(): $CancellablePromise<string> {
  */
 export function ImportThemeBackground(): $CancellablePromise<string> {
     return $Call.ByID(3546970736);
+}
+
+/**
+ * IsToolWindowOpen 报告某个工具操作页的原生单例窗口当前是否开着。
+ * path 传逻辑路由（如 "/tools/php"），内部同时比对前端开窗实际使用的 /win 前缀名。
+ * 供任务浮标「严格二选一」判定：来源操作页开着就在它上面提示，关掉才回落主页提示。
+ * Web 运行模式（-tags server）没有独立窗口，恒返回 false——此时「来源页是否开着」
+ * 由前端按当前路由判断（单窗口里你只会停在一处，天然二选一）。
+ * 方法本身跨平台存在，不藏 build tag，避免 Linux 构建里整个消失导致前端调用报未知方法。
+ */
+export function IsToolWindowOpen(path: string): $CancellablePromise<boolean> {
+    return $Call.ByID(1679895936, path);
 }
 
 /**
@@ -4595,6 +4717,15 @@ export function SaveThemeBackgroundDataURI(dataURI: string): $CancellablePromise
 }
 
 /**
+ * SaveToolsDefault 把传入的功能列表存为「恢复默认列表」的基线快照（用户自定义默认）。
+ * 走 config.Update 增量落盘：只动 ToolsDefault 这一段，不触发日志/热键/浮动球等重配置。
+ * 方法跨平台存在（不藏 build tag），Linux 面板同样可用；传 nil 视为清空自定义默认。
+ */
+export function SaveToolsDefault(tools: config$0.ToolConfig[] | null): $CancellablePromise<void> {
+    return $Call.ByID(626046055, tools);
+}
+
+/**
  * SecStoreChangePassword 校验旧口令后重新加密（新盐新 nonce）。
  */
 export function SecStoreChangePassword(id: string, oldPw: string, newPw: string): $CancellablePromise<void> {
@@ -4985,6 +5116,14 @@ export function TermOpenDocker(containerID: string, title: string, cols: number,
  */
 export function TermOpenInSFTP(hostID: string): $CancellablePromise<string> {
     return $Call.ByID(904256622, hostID);
+}
+
+/**
+ * TermOpenLocal 按一条本地连接记录起交互式 shell（cmd / PowerShell）。
+ * 仅 Windows 经 ConPTY 提供真终端；Linux/macOS 返回「暂不支持」。
+ */
+export function TermOpenLocal(hostID: string, cols: number, rows: number): $CancellablePromise<term$0.SessionInfo> {
+    return $Call.ByID(1694036751, hostID, cols, rows);
 }
 
 /**

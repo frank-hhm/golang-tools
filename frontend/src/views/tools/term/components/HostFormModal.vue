@@ -1,8 +1,8 @@
 <template>
-  <a-modal :visible="visible" :title="form.id ? '编辑服务器' : '添加服务器'" :width="560" :mask-closable="false"
-    ok-text="保存并连接" cancel-text="取消" :ok-loading="busy" :on-before-ok="onBeforeOk"
-    @cancel="close" @update:visible="(v: boolean) => emit('update:visible', v)">
-    <a-form :model="form" layout="horizontal" :label-col-props="{ span: 5 }" :wrapper-col-props="{ span: 19 }">
+  <a-modal :visible="visible" :title="form.id ? '编辑服务器' : '添加服务器'" :width="560" :mask-closable="false" ok-text="保存并连接"
+    cancel-text="取消" :ok-loading="busy" :on-before-ok="onBeforeOk" @cancel="close"
+    @update:visible="(v: boolean) => emit('update:visible', v)">
+    <a-form :model="form" layout="vertical">
       <a-form-item label="系统">
         <a-radio-group v-model="form.system" type="button" size="medium" @change="onSystemChange">
           <a-radio value="linux">Linux系统</a-radio>
@@ -10,31 +10,36 @@
         </a-radio-group>
       </a-form-item>
 
-      <a-form-item label="服务器IP" required>
-        <div class="ip-row">
-          <a-input v-model="form.address" class="ip-input" placeholder="请输入服务器IP地址" allow-clear />
-          <a-typography-text type="secondary">端口</a-typography-text>
-          <a-input-number v-model="form.port" class="port-input" :min="1" :max="65535" />
-        </div>
-      </a-form-item>
-
-      <a-form-item label="凭据">
-        <div class="cred-row">
-          <a-select v-model="form.credID" placeholder="选择已保存的凭据（推荐）" allow-clear allow-search
-            @change="onCredChange">
-            <a-option v-for="c in credentials" :key="c.id" :value="c.id">
-              <a-space :size="6">
-                <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
-                  {{ c.auth === 'key' ? '密钥' : '密码' }}
-                </a-tag>
-                <span>{{ c.name }}</span>
-                <span v-if="c.user" class="cred-opt-user">{{ c.user }}</span>
-              </a-space>
-            </a-option>
-          </a-select>
-          <a-button size="small" @click="credVisible = true">管理</a-button>
-        </div>
-      </a-form-item>
+      <a-row :gutter="12">
+        <a-col :span="12">
+          <a-form-item label="服务器IP" required>
+            <div class="ip-row">
+              <a-input v-model="form.address" class="ip-input" placeholder="请输入服务器IP地址" allow-clear />
+              <a-typography-text type="secondary">端口</a-typography-text>
+              <a-input-number v-model="form.port" class="port-input" :min="1" :max="65535" />
+            </div>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="凭据">
+            <div class="cred-row">
+              <a-select v-model="form.credID" placeholder="选择已保存的凭据（推荐）" allow-clear allow-search
+                @change="onCredChange">
+                <a-option v-for="c in credentials" :key="c.id" :value="c.id">
+                  <a-space :size="6">
+                    <a-tag size="small" :color="c.auth === 'key' ? 'purple' : 'arcoblue'">
+                      {{ c.auth === 'key' ? '密钥' : '密码' }}
+                    </a-tag>
+                    <span>{{ c.name }}</span>
+                    <span v-if="c.user" class="cred-opt-user">{{ c.user }}</span>
+                  </a-space>
+                </a-option>
+              </a-select>
+              <a-button @click="credVisible = true">管理</a-button>
+            </div>
+          </a-form-item>
+        </a-col>
+      </a-row>
 
       <!-- 选了解锁主机：登录方式取自凭据，这里只作展示 -->
       <a-form-item v-if="form.credID" label="登录">
@@ -61,18 +66,24 @@
             <a-input v-model="form.keyPath" placeholder="请选择 OpenSSH 私钥文件" readonly class="key-input">
               <template #prefix><icon-file /></template>
             </a-input>
-            <a-button size="small" @click="chooseKey">选择</a-button>
-            <a-button size="small" @click="openSshGen">生成密钥</a-button>
+            <a-button @click="chooseKey">选择</a-button>
+            <a-button @click="openSshGen">生成密钥</a-button>
           </a-space>
         </a-form-item>
       </template>
+      <a-row :gutter="12">
+        <a-col :span="12">
+          <a-form-item label="分组">
+            <a-input v-model="form.group" placeholder="如：生产 / 测试（左栏按分组导航）" allow-clear />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
 
-      <a-form-item label="分组">
-        <a-input v-model="form.group" placeholder="如：生产 / 测试（左栏按分组导航）" allow-clear />
-      </a-form-item>
-      <a-form-item label="标签">
-        <a-input-tag v-model="form.tags" placeholder="回车添加，可多个" allow-clear :token-separators="[',', '，']" />
-      </a-form-item>
+          <a-form-item label="标签">
+            <a-input-tag v-model="form.tags" placeholder="回车添加，可多个" allow-clear :token-separators="[',', '，']" />
+          </a-form-item>
+        </a-col>
+      </a-row>
 
       <a-form-item label="备注">
         <a-input v-model="form.note" placeholder="如：测试服务器" allow-clear />
@@ -82,7 +93,8 @@
       <div class="conn-test-footer">
         <div class="conn-test-left">
           <a-button size="small" :loading="testing" @click="doTest">测试连接</a-button>
-          <span v-if="testResult" :class="['conn-test-msg', testStatus === 'ok' ? 'is-ok' : 'is-err']">{{ testResult }}</span>
+          <span v-if="testResult" :class="['conn-test-msg', testStatus === 'ok' ? 'is-ok' : 'is-err']">{{ testResult
+          }}</span>
         </div>
         <a-space>
           <a-button @click="close">取消</a-button>

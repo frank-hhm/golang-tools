@@ -3,25 +3,13 @@
     <!-- 左侧固定 30%：录制设置 + 录制状态 + 结果（与 Redis/抓包工具页布局一致） -->
     <a-col :span="6" class="side-col">
       <a-card class="side-card card-head-tool" size="small">
-        <template #title>录制设置</template>
+        <template #title>录制状态</template>
         <template #extra>
           <span class="com-state" :class="statusClass">
             <com-badge :status="statusStatus" :animated="st.status === 'recording'" />
             {{ statusText }}
           </span>
         </template>
-        <a-form :model="st" layout="vertical" size="small">
-          <a-form-item field="mode">
-            <template #label>录制模式</template>
-          </a-form-item>
-          <a-form-item field="fps">
-            <template #label>帧率</template>
-          </a-form-item>
-        </a-form>
-      </a-card>
-
-      <a-card class="side-card card-head-tool" size="small">
-        <template #title>录制状态</template>
         <div class="stat-cards">
           <div class="stat-card">
             <div class="stat-circle stat-circle-status"><icon-record /></div>
@@ -50,10 +38,10 @@
       <a-card v-if="st.status === 'stopped' && st.blobUrl" class="side-card card-head-tool" size="small">
         <template #title>结果</template>
         <a-space direction="vertical" fill :size="8">
-          <a-button size="small" long :loading="saving" @click="saveResult">
+          <a-button size="small" :loading="saving" @click="saveResult">
             <template #icon><icon-download /></template>另存为…
           </a-button>
-          <a-button size="small" long @click="discardResult">清空</a-button>
+          <a-button long @click="discardResult">清空</a-button>
         </a-space>
         <div v-if="st.savedPath" class="saved-box">
           <icon-check-circle-fill class="saved-ic" />
@@ -94,7 +82,7 @@
             </a-radio-group>
             <!-- 屏幕模式 -->
             <template v-if="st.mode === 'screen'">
-              <a-button size="small" v-if="st.status === 'idle'"@click="startScreen">
+              <a-button v-if="st.status === 'idle'"@click="startScreen">
                 <template #icon><icon-record /></template>开始录制
               </a-button>
             </template>
@@ -102,36 +90,36 @@
             <!-- 区域模式 -->
             <template v-else-if="st.mode === 'region'">
               <template v-if="st.status === 'idle'">
-                <a-button size="small" @click="beginRegion"><template
+                <a-button @click="beginRegion"><template
                     #icon><icon-camera /></template>框选区域开始录制</a-button>
               </template>
               <template v-else-if="st.status === 'selecting'">
-                <a-button size="small" type="outline" @click="reshoot"><template
+                <a-button @click="reshoot"><template
                     #icon><icon-refresh /></template>重新截屏</a-button>
-                <a-button size="small" status="success" :disabled="!st.rect" @click="startRegion">
+                <a-button status="success" :disabled="!st.rect" @click="startRegion">
                   确定
                 </a-button>
-                <a-button size="small" @click="cancelSelect">取消</a-button>
+                <a-button @click="cancelSelect">取消</a-button>
               </template>
             </template>
 
             <!-- 摄像头模式 -->
             <template v-else>
               <template v-if="st.status === 'idle' || st.status === 'stopped'">
-                <a-button size="small" @click="openCamera"><template
+                <a-button @click="openCamera"><template
                     #icon><icon-play-arrow /></template>打开摄像头</a-button>
               </template>
               <template v-else-if="st.status === 'ready'">
-                <a-button size="small" status="danger" @click="startCamera"><template
+                <a-button status="danger" @click="startCamera"><template
                     #icon><icon-record /></template>开始录制</a-button>
-                <a-button size="small" @click="stopSource"><template #icon><icon-close /></template>关闭摄像头</a-button>
+                <a-button @click="stopSource"><template #icon><icon-close /></template>关闭摄像头</a-button>
               </template>
               <template v-else>
-                <a-button size="small" v-if="st.status === 'recording'" type="outline" @click="pauseCamera"><template
+                <a-button v-if="st.status === 'recording'" @click="pauseCamera"><template
                     #icon><icon-pause /></template>暂停</a-button>
-                <a-button size="small" v-else type="outline" @click="resumeCamera"><template
+                <a-button v-else @click="resumeCamera"><template
                     #icon><icon-play-arrow /></template>继续</a-button>
-                <a-button size="small" status="danger" @click="stopCamera"><template
+                <a-button status="danger" @click="stopCamera"><template
                     #icon><icon-stop /></template>停止</a-button>
               </template>
             </template>

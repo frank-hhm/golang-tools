@@ -19,17 +19,26 @@
 
                     <div v-for="a in accounts" :key="a.id" class="acct" :class="{ active: a.id === cur?.id }"
                         @click="pick(a)">
+                        <!-- 授权状态收进左侧圆点（对齐下载页分类/状态列表的圆点语言），悬停给文字说明 -->
+                        <a-tooltip :content="a.hasToken ? '已授权' : '未授权'" position="left">
+                            <span class="acct-ico"><span class="acct-dot" :class="a.hasToken ? 'ok' : 'no'"></span></span>
+                        </a-tooltip>
                         <div class="acct-main">
-                            <div class="acct-name">{{ a.label }}</div>
+                            <!-- 连接地址（bucket @ region）不平铺，悬停账号名时 a-tooltip 展示 -->
+                            <a-tooltip v-if="acctSub(a)" :content="acctSub(a)" position="tl">
+                                <div class="acct-name">{{ a.label }}</div>
+                            </a-tooltip>
+                            <div v-else class="acct-name">{{ a.label }}</div>
                             <div class="acct-sub">
                                 <a-tag size="small">{{ kindName(a.kind) }}</a-tag>
-                                <a-tag size="small" :color="a.hasToken ? 'green' : 'orange'">
-                                    {{ a.hasToken ? '已授权' : '未授权' }}
-                                </a-tag>
                             </div>
-                            <div v-if="acctSub(a)" class="acct-sub2">{{ acctSub(a) }}</div>
                         </div>
-                        <a-space :size="2">
+                        <a-space :size="2" class="acct-ops">
+                            <a-tooltip content="编辑">
+                                <a-button size="mini" type="text" :disabled="!ready" @click.stop="openEdit(a)">
+                                    <icon-edit />
+                                </a-button>
+                            </a-tooltip>
                             <a-tooltip v-if="!isOSKind(a.kind)" content="授权">
                                 <a-button size="mini" type="text" :disabled="!ready" @click.stop="openAuth(a)">
                                     <icon-safe />
@@ -44,14 +53,6 @@
                         </a-space>
                     </div>
                     <a-empty v-if="!accounts.length" description="还没有账号，点上方「添加」" />
-
-                    <div v-if="quota && cur" class="quota">
-                        <div class="quota-txt">
-                            {{ fmtBytes(quota.used) }} / {{ quota.total > 0 ? fmtBytes(quota.total) : '未知' }}
-                        </div>
-                        <a-progress :percent="quotaPct" size="small" :show-text="false"
-                            :status="quotaPct > 0.9 ? 'warning' : 'normal'" />
-                    </div>
                 </div>
             </a-card>
         </a-col>
@@ -63,6 +64,13 @@
                     <a-space :size="8">
                         <span>{{ cur ? cur.label : '云盘浏览' }}</span>
                         <a-tag v-if="cur" size="small">{{ entries.length }} 项</a-tag>
+                        <!-- 容量占用信息从左侧账号栏底部移到右侧面板标题这里 -->
+                        <template v-if="quota && cur">
+                            <span class="quota-txt">{{ fmtBytes(quota.used) }} /
+                                {{ quota.total > 0 ? fmtBytes(quota.total) : '未知' }}</span>
+                            <a-progress class="quota-bar" :percent="quotaPct" size="small" :show-text="false"
+                                :status="quotaPct > 0.9 ? 'warning' : 'normal'" />
+                        </template>
                     </a-space>
                 </template>
                 <template #extra>
@@ -172,9 +180,20 @@
             </a-form>
         </a-modal>
 
-        <!-- 对象存储建账号（OSS / COS / S3 三 kind 共用） -->
+        <!-- 对象存储建/改账号（OSS / COS / S3 三 kind 共用；传 account 即编辑态） -->
         <AddObjectStoreModal v-model:visible="osModal.open" :kind="osModal.kind" :label="osModal.label"
-            @added="onOSAdded" />
+            :account="osModal.account" @added="onOSAdded" />
+
+        <!-- 网盘类账号编辑：仅改显示名（凭证走授权按钮，类型不可改） -->
+        <a-modal v-model:visible="editAcctModal.open" :title="`编辑 ${kindName(editAcctModal.kind)} 账号`"
+            :ok-loading="editAcctModal.saving" @ok="doEditAcct">
+            <a-form :model="editAcctModal" layout="vertical">
+                <a-form-item label="显示名" required>
+                    <a-input v-model="editAcctModal.label" placeholder="例如：我的百度盘" allow-clear />
+                </a-form-item>
+            </a-form>
+            <div class="auth-tip">网盘账号仅可修改显示名；登录凭证请点「授权」重新粘贴，类型创建后不可更改。</div>
+        </a-modal>
 
         <!-- 授权：Google 走粘贴回跳，阿里/百度走粘贴长期凭证 -->
         <a-modal v-model:visible="authModal.open" :title="authTitle" :width="560" :ok-loading="authModal.saving"
@@ -432,6 +451,7 @@ async function doAdd() {
     if (isOSKind(addModal.kind)) {
         osModal.kind = addModal.kind;
         osModal.label = addModal.label;
+        osModal.account = null; // 新增态：不回填任何旧账号
         addModal.open = false;
         osModal.open = true;
         return;
@@ -448,12 +468,37 @@ async function doAdd() {
     } finally { addModal.saving = false; }
 }
 
-// 对象存储建账号弹窗（三 kind 共用一个组件）
-const osModal = reactive({ open: false, kind: "aliyun_oss", label: "" });
+// 对象存储建/改账号弹窗（三 kind 共用一个组件；account 非空即编辑态）
+const osModal = reactive({ open: false, kind: "aliyun_oss", label: "", account: null as AccountView | null });
 async function onOSAdded() {
     await loadAccounts();
     const hit = accounts.value.find((a) => isOSKind(a.kind));
     if (hit && !cur.value) pick(hit);
+}
+
+// 编辑账号：对象存储走建/改共用弹窗（回填非敏感项）；网盘类只改显示名。
+const editAcctModal = reactive({ open: false, saving: false, id: "", kind: "", label: "" });
+function openEdit(a: AccountView) {
+    if (isOSKind(a.kind)) {
+        osModal.kind = a.kind;
+        osModal.label = a.label;
+        osModal.account = a;
+        osModal.open = true;
+        return;
+    }
+    Object.assign(editAcctModal, { open: true, saving: false, id: a.id, kind: a.kind, label: a.label });
+}
+async function doEditAcct() {
+    if (!editAcctModal.label.trim()) { Message.warning("名称不能为空"); return; }
+    editAcctModal.saving = true;
+    try {
+        await GoTools?.CloudRenameAccount(editAcctModal.id, editAcctModal.label.trim());
+        Message.success("已更新账号名称");
+        editAcctModal.open = false;
+        await loadAccounts();
+    } catch (e: any) {
+        Message.error(`保存失败：${errText(e)}`);
+    } finally { editAcctModal.saving = false; }
 }
 async function remove(a: AccountView) {
     try {
@@ -470,11 +515,11 @@ async function remove(a: AccountView) {
 const authModal = reactive({ open: false, saving: false, acctID: "", kind: "google", url: "", code: "" });
 const authTitle = computed(() => `授权 ${kindName(authModal.kind)}`);
 const credPlaceholder = computed(() =>
-    authModal.kind === "aliyun" ? "粘贴 refresh_token（以 Rt 开头的一长串）" : "粘贴 BDUSS 的值（392 位左右的长串）");
+    authModal.kind === "aliyun" ? "粘贴 refresh_token（以 Rt 开头的一长串）" : "粘贴 Cookie（浏览只需 BDUSS；下载请粘整串 BDUSS=..;STOKEN=..;BDCLND=..）");
 const credHint = computed(() =>
     authModal.kind === "aliyun"
         ? "刷新页登录 alipan.com 后从开发者请求里拿 refresh_token。属现网逆向，不保证真网长期可用。"
-        : "登录 pan.baidu.com 后从 Cookie 里复制 BDUSS 的值。属现网逆向，不保证真网长期可用。");
+        : "登录 pan.baidu.com 后从开发者工具 Cookie 里复制。浏览只需 BDUSS 的值；但下载会触发设备绑定校验（errno -6），需把 STOKEN、BDCLND 一起粘进来（整串 Cookie）。属现网逆向，不保证真网长期可用。");
 function openAuth(a: AccountView) {
     authModal.acctID = a.id; authModal.kind = a.kind; authModal.url = ""; authModal.code = ""; authModal.open = true;
 }
@@ -581,13 +626,19 @@ async function del(r: Entry) {
 
 async function download(r: Entry) {
     if (!cur.value || r.isDir) return;
-    loading.value = true;
     try {
-        const path = await GoTools?.CloudDownload(cur.value.id, r.id, r.name, "");
-        Message.success(`已下载：${path}`);
+        // CloudDownload 现在只做「投递进下载管理器引擎队列」，秒回任务 id；
+        // 真正的搬运 / 进度 / 暂停 / 限速都在「下载管理」页统一处理。
+        await GoTools?.CloudDownload(cur.value.id, r.id, r.name, "");
+        Modal.success({
+            title: "已加入下载队列",
+            content: `「${r.name}」已投递到下载管理器，可在「下载管理」查看进度、暂停或限速。`,
+            okText: "前往下载管理",
+            onOk: () => { void openToolWindow("/tools/download", "下载管理", { single: true }); },
+        });
     } catch (e: any) {
-        Message.error(`下载失败：${errText(e)}`);
-    } finally { loading.value = false; }
+        Message.error(`下载发起失败：${errText(e)}`);
+    }
 }
 
 /* ---------- 移动 ---------- */
@@ -793,52 +844,98 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
 }
 
 .acct {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 8px 10px;
-    border-radius: var(--base-radius-default);
+    gap: 8px;
+    padding: 7px 10px 7px 12px;
+    border-radius: 6px;
     cursor: pointer;
+    transition: background .15s ease;
 }
 
 .acct:hover {
     background: var(--color-fill-2);
 }
 
+/* 选中态对齐下载页分类列表：淡底 + 左侧短竖条（不再用主色底 + inset 描边） */
 .acct.active {
-    background: var(--color-primary-light-1);
-    box-shadow: inset 3px 0 0 var(--app-select-rail);
+    background: var(--color-fill-2);
+}
+
+.acct.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 16px;
+    border-radius: 0 3px 3px 0;
+    background: var(--color-text-1);
+}
+
+.acct-ico {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+}
+
+.acct-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.acct-dot.ok {
+    background: rgb(var(--success-6));
+}
+
+.acct-dot.no {
+    background: rgb(var(--orange-6));
+}
+
+.acct-main {
+    flex: 1;
+    min-width: 0;
 }
 
 .acct-name {
     font-weight: 600;
     color: var(--color-text-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .acct-sub {
     display: flex;
     gap: 6px;
-    margin-top: 4px;
-}
-
-.acct-sub2 {
     margin-top: 3px;
-    font-size: 12px;
-    color: var(--color-text-3);
-    word-break: break-all;
 }
 
-.quota {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--color-border-2);
+/* 操作钮默认压淡，悬停/选中才提亮，减少每行常驻图标的噪声（对齐图 1 的极简行） */
+.acct-ops {
+    flex: none;
+    opacity: .6;
+    transition: opacity .15s ease;
+}
+
+.acct:hover .acct-ops,
+.acct.active .acct-ops {
+    opacity: 1;
 }
 
 .quota-txt {
     font-size: var(--base-size-small);
     color: var(--color-text-2);
-    margin-bottom: 4px;
+}
+
+.quota-bar {
+    width: 120px;
 }
 
 .main-col {
@@ -910,11 +1007,18 @@ onBeforeUnmount(() => { try { offProgress?.(); } catch { /* ignore */ } });
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    /* 名称文本统一走正文色，避免省略号/tooltip 包裹后继承断链回落近黑 */
+    color: var(--color-text-1);
 }
 
 .fname.dir {
+    /* 目录只靠字重与指针区分，不用主色（暗主色预设下会与暗底糊在一起） */
     cursor: pointer;
-    color: rgb(var(--primary-6));
+    font-weight: 500;
+}
+
+.fname.dir:hover {
+    color: var(--color-text-1);
 }
 
 .move-list {

@@ -140,7 +140,7 @@ func TestSearchFilters(t *testing.T) {
 func TestNewNote(t *testing.T) {
 	s := newTestStore(t)
 
-	it, err := s.NewNote("周记：2026/10 复盘")
+	it, err := s.NewNote("周记：2026/10 复盘", "md")
 	if err != nil {
 		t.Fatalf("NewNote: %v", err)
 	}
@@ -172,13 +172,13 @@ func TestNewNote(t *testing.T) {
 		t.Fatalf("应挂到「笔记」分类: cat=%+v item.cat=%s", noteCat, it.Category)
 	}
 
-	// 同名再建必须报错且不覆盖
-	if _, err := s.NewNote("周记：2026/10 复盘"); err == nil {
+	// 同名再建（同格式）必须报错且不覆盖
+	if _, err := s.NewNote("周记：2026/10 复盘", "md"); err == nil {
 		t.Fatal("同名笔记应报错")
 	}
 
 	// 误带 .md 不产生 a.md.md
-	it2, err := s.NewNote("购物清单.md")
+	it2, err := s.NewNote("购物清单.md", "md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,8 +186,31 @@ func TestNewNote(t *testing.T) {
 		t.Fatalf("后缀归一失败: %s", it2.Name)
 	}
 
+	// html 格式：落 .html + 富文本骨架 + 标题转义（& 存活于清洗后，写入时被转义）
+	itHtml, err := s.NewNote("读书 & 笔记", "html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(itHtml.Name, ".html") {
+		t.Fatalf("html 格式应自动补 .html 后缀: %s", itHtml.Name)
+	}
+	hb, err := os.ReadFile(itHtml.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(hb), "<h1>") || !strings.Contains(string(hb), "&amp;") {
+		t.Fatalf("html 骨架不对或标题未转义: %q", string(hb))
+	}
+	// 同名同格式再建报错；同名异格式视为两篇，不冲突
+	if _, err := s.NewNote("读书 & 笔记", "html"); err == nil {
+		t.Fatal("同名同格式笔记应报错")
+	}
+	if _, err := s.NewNote("读书 & 笔记", "md"); err != nil {
+		t.Fatalf("同名异格式应各自独立: %v", err)
+	}
+
 	// 空名 → 时间戳兜底；且「笔记」分类不会重复建
-	if _, err := s.NewNote("  "); err != nil {
+	if _, err := s.NewNote("  ", "md"); err != nil {
 		t.Fatal(err)
 	}
 	cats, _ = s.Categories()

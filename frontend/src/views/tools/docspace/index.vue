@@ -278,14 +278,20 @@
         }}
       </div>
     </a-modal>
-    <!-- 新建笔记：库内 notes/ 建 .md 并归入「笔记」分类，建完直接进查看器双栏编辑 -->
+    <!-- 新建笔记：库内 notes/ 建 .md/.html 并归入「笔记」分类，建完直接进独立笔记模块（/tools/note）编辑 -->
     <a-modal v-model:visible="noteModal.open" title="新建笔记" :ok-loading="noteModal.saving" @ok="submitNote">
       <a-form :model="noteModal" layout="vertical">
         <a-form-item field="name" label="标题">
-          <a-input v-model="noteModal.name" placeholder="留空自动生成带时间戳的标题；无需 .md 后缀" />
+          <a-input v-model="noteModal.name" placeholder="留空自动生成带时间戳的标题；无需后缀" />
+        </a-form-item>
+        <a-form-item field="format" label="格式">
+          <a-radio-group v-model="noteModal.format" type="button">
+            <a-radio value="md">Markdown (.md)</a-radio>
+            <a-radio value="html">富文本 (.html)</a-radio>
+          </a-radio-group>
         </a-form-item>
       </a-form>
-      <div class="dim">笔记就是归类到「笔记」的 .md 文件，实体落在库内 notes/ 目录，在查看器里双栏编辑与预览。</div>
+      <div class="dim">笔记归类到「笔记」、实体落在库内 notes/ 目录，在独立笔记模块里用 wangeditor 所见即所得编辑。</div>
     </a-modal>
 
     <!-- 批量 / 单条改分类：ids 只有一个时也走这里，省得两套逻辑 -->
@@ -409,7 +415,7 @@ const searchOpen = ref(false);
 const shareModal = reactive<{ open: boolean; item: DocItem | null }>({ open: false, item: null });
 /** 高级搜索结果：null = 未启用（走本地 filteredItems）；数组 = 展示后端命中 */
 const advItems = ref<DocItem[] | null>(null);
-const noteModal = reactive({ open: false, saving: false, name: "" });
+const noteModal = reactive({ open: false, saving: false, name: "", format: "md" });
 const tagsModal = reactive<{ open: boolean; item: DocItem | null }>({ open: false, item: null });
 const versionsDrawer = reactive<{ open: boolean; item: DocItem | null }>({ open: false, item: null });
 const encModal = reactive<{ open: boolean; saving: boolean; item: DocItem | null; pw: string; pw2: string }>({
@@ -813,14 +819,15 @@ function openShare(r: DocItem) {
 async function submitNote() {
   noteModal.saving = true;
   try {
-    const it = (await GoTools?.DocSpaceNewNote(noteModal.name.trim())) as DocItem | undefined;
+    const it = (await GoTools?.DocSpaceNewNote(noteModal.name.trim(), noteModal.format)) as DocItem | undefined;
     noteModal.open = false;
     noteModal.name = "";
+    noteModal.format = "md";
     await reload();
     if (it?.path) {
-      // 建完直接进查看器双栏编辑：桌面开原生单例窗 / Web 走路由；已开着靠事件导航
-      openToolWindow(`/tools/viewer?path=${encodeURIComponent(it.path)}`, "文件查看器", { single: true });
-      try { Events.Emit("viewer:open-path", { path: it.path }); } catch { /* 非 Wails 环境忽略 */ }
+      // 建完直接进独立笔记模块：桌面开原生单例窗 / Web 走路由；已开着靠事件导航
+      openToolWindow(`/tools/note?path=${encodeURIComponent(it.path)}`, "笔记", { single: true });
+      try { Events.Emit("note:open-path", { path: it.path }); } catch { /* 非 Wails 环境忽略 */ }
     }
   } catch (e: any) {
     Message.error(`新建笔记失败：${errText(e)}`);
@@ -1180,7 +1187,8 @@ onUnmounted(() => window.removeEventListener("keydown", onCtxKeydown));
 .body {
   flex: 1;
   min-height: 0;
-  background: var(--color-bg-2);
+  /* 背景交给 tokens.scss 三档主题联动规则接管（默认/native → bg-2，纹理 → 透明让路，玻璃 → tint 组）：
+     scoped 里写死实色会盖掉联动，纹理/玻璃档下读作一块与主题脱节的实心板 */
   border: 1px solid var(--color-border-2);
   border-radius: var(--base-radius-default);
   overflow: hidden;

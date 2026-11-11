@@ -31,6 +31,7 @@ export const TOOLS = [
     { key: "Viewer", menu_name: "文件查看器", path: "tools/viewer", component: () => import('@/views/tools/viewer/index.vue') },
     { key: "Download", menu_name: "下载管理", path: "tools/download", component: () => import('@/views/tools/download/index.vue') },
     { key: "Docspace", menu_name: "文档中心", path: "tools/docspace", component: () => import('@/views/tools/docspace/index.vue') },
+    { key: "Note", menu_name: "笔记", path: "tools/note", component: () => import('@/views/tools/note/index.vue') },
     { key: "Lanshare", menu_name: "局域网互传", path: "tools/lanshare", component: () => import('@/views/tools/lanshare/index.vue') },
     { key: "Clouddrive", menu_name: "云盘管理", path: "tools/clouddrive", component: () => import('@/views/tools/clouddrive/index.vue') },
     { key: "Git", menu_name: "Git管理", path: "tools/git", component: () => import('@/views/tools/git/index.vue') },

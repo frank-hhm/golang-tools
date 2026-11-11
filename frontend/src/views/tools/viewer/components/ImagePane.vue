@@ -66,12 +66,13 @@
                         <a-radio value="image/png">PNG</a-radio>
                         <a-radio value="image/jpeg">JPEG</a-radio>
                         <a-radio value="image/webp">WebP</a-radio>
+                        <a-radio value="image/x-icon">ICO</a-radio>
                     </a-radio-group>
-                    <div v-if="fmt !== 'image/png'" class="ip-row">
+                    <div v-if="isLossy(fmt)" class="ip-row">
                         <a-slider v-model="quality" :min="30" :max="100" class="ip-slider" />
                         <span class="ip-pct">{{ quality }}</span>
                     </div>
-                    <div v-else class="ip-note">PNG 无损、保留透明；JPEG/WebP 会把透明底铺成白色。</div>
+                    <div v-else class="ip-note">PNG/ICO 无损、保留透明；JPEG/WebP 会把透明底铺成白色。ICO 上限 256×256，超出自动等比缩小。</div>
                 </div>
 
                 <div class="ip-block">
@@ -143,7 +144,7 @@ import { Message, Modal } from "@arco-design/web-vue";
 import SavePathModal from "./edit/SavePathModal.vue";
 import {
     MAX_EDIT_BYTES, fmtBytes, baseName, stripExt, parentDir, joinPath,
-    blobToDataURL, canvasToBlob, resizeCanvas, isLossy, fmtExt, writeBinary, downloadBlob, dataURLPayload,
+    blobToDataURL, canvasToBlob, canvasToIco, resizeCanvas, isLossy, fmtExt, writeBinary, downloadBlob, dataURLPayload,
 } from "./edit/editx";
 import { useCaps } from "@/utils/caps";
 
@@ -304,14 +305,23 @@ async function build(force = false): Promise<Blob | null> {
     if (pendingBlob && !force) return pendingBlob;
     const flat: HTMLCanvasElement | null = editorRef.value?.exportCanvas?.() ?? null;
     if (!flat) { Message.warning("还没有可编辑的图片"); return null; }
-    const { w, h } = targetSize();
+    const { w: rw, h: rh } = targetSize();
+    // ICO 容器上限 256×256：先把目标尺寸等比夹到 256 内，保证预览/报告尺寸与实际落盘一致
+    let w = rw, h = rh;
+    if (fmt.value === "image/x-icon") {
+        const k = Math.min(1, 256 / Math.max(w, h));
+        w = Math.max(1, Math.round(w * k));
+        h = Math.max(1, Math.round(h * k));
+    }
     if (!w || !h) return null;
     busy.value = true;
     try {
         const src = (flat.width !== w || flat.height !== h)
             ? resizeCanvas(flat, w, h, isLossy(fmt.value) ? "#FFFFFF" : "")
             : flat;
-        const blob = await canvasToBlob(src, fmt.value, isLossy(fmt.value) ? quality.value / 100 : undefined);
+        const blob = fmt.value === "image/x-icon"
+            ? await canvasToIco(src)
+            : await canvasToBlob(src, fmt.value, isLossy(fmt.value) ? quality.value / 100 : undefined);
         pendingBlob = blob;
         outW.value = w; outH.value = h; outBytes.value = blob.size;
         return blob;

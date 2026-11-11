@@ -10,6 +10,9 @@ import type { Events } from "@wailsio/runtime";
 import type * as app$0 from "../../../../../Tools/services/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as datastore$0 from "../../../../../Tools/services/datastore/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as tasks$0 from "../../../../../Tools/services/tasks/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -80,6 +83,8 @@ declare module "@wailsio/runtime" {
             "ball:action": string;
             "capture:newframe": screenshot$0.CaptureFrame | null;
             "cloud:progress": clouddrive$0.Progress;
+            "datastore:restored": number;
+            "datastore:status": datastore$0.View;
             "docker:pull": docker$0.PullProgress;
             "docker:serverlog": docker$0.ContainerLogLine;
             "docker:setup": docker$0.SetupProgress;

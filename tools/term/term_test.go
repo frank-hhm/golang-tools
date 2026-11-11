@@ -42,12 +42,21 @@ func TestMigrationPromotesLegacyHost(t *testing.T) {
 		t.Fatalf("保存后不应立刻有 credID，迁移在读时触发")
 	}
 
-	// 再读一次触发迁移
+	// 再读一次触发迁移（ListHosts 现会常驻两条本地默认项，按 id 命中迁移主机）
 	hosts, err := ListHosts()
 	if err != nil {
 		t.Fatalf("ListHosts 失败: %v", err)
 	}
-	if hosts[0].CredID == "" {
+	var migrated *Host
+	for i := range hosts {
+		if hosts[i].ID == hostID {
+			migrated = &hosts[i]
+		}
+	}
+	if migrated == nil {
+		t.Fatalf("未按 id 找到迁移主机 %q", hostID)
+	}
+	if migrated.CredID == "" {
 		t.Fatalf("迁移后 credID 应被回填")
 	}
 
@@ -150,7 +159,15 @@ func TestGroupAndTags(t *testing.T) {
 		t.Fatalf("SaveHost 失败: %v", err)
 	}
 	hosts, _ := ListHosts()
-	h := hosts[0]
+	var h Host
+	for _, x := range hosts {
+		if x.Name == "G" {
+			h = x
+		}
+	}
+	if h.ID == "" {
+		t.Fatal("未按名称找到刚保存的主机 G")
+	}
 	if h.Group != "生产" || h.Color != "#f60" {
 		t.Errorf("分组/颜色不对: %+v", h)
 	}

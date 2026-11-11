@@ -13,6 +13,7 @@ import (
 	appsvc "Tools/services/app"
 	"Tools/services/applog"
 	"Tools/services/config"
+	"Tools/services/datastore"
 	"Tools/services/sysx"
 	"Tools/services/tasks"
 	"Tools/tools/archive"
@@ -115,6 +116,9 @@ func init() {
 	application.RegisterEvent[gitcmd.Progress]("git:progress")
 	// 进程守护：守护列表与运行态（启动/退出/重启）的实时推送
 	application.RegisterEvent[guard.Snapshot]("guard:status")
+	// 数据保存位置：本地/MySQL/Redis 绑定状态与待同步队列的推送（主页提示条与设置页共用）
+	application.RegisterEvent[datastore.View]("datastore:status")
+	application.RegisterEvent[int]("datastore:restored")
 }
 
 func main() {
@@ -122,8 +126,20 @@ func main() {
 
 	// 加载全局配置（用户配置目录 config.json）并初始化可配置文件日志
 	startupCfg := config.LoadAppConfig()
+
+	// 数据保存位置：取消勾选本地时，这一步会把远端副本（含 config.json 本身）回写本地，
+	// 所以必须排在日志器与各服务读自己的配置之前——否则这次启动前半程读到的还是本机旧缓存。
+	// 只存设置、不碰网络的那一路（勾选了本地）在这里是空转，代价只有几次文件 stat。
+	dsChanged, dsNote := datastore.Startup(config.StorageSection(startupCfg))
+	if dsChanged {
+		startupCfg = config.LoadAppConfig()
+	}
+
 	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))
 	applog.Infof("app", "=== Tools 启动 === 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
+	if dsNote != "" {
+		applog.Infof("datastore", "启动阶段: %s", dsNote)
+	}
 
 	// 应用 MySQL 工具级设置（SQL 执行日志开关与目录）
 	mysqlSettings := startupCfg.ToolSettings["mysql"]

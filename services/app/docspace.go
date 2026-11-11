@@ -571,16 +571,16 @@ func (a *App) DocSpaceSearch(f docspace.SearchFilter) ([]docspace.Item, error) {
 	return s.Search(f)
 }
 
-// DocSpaceNewNote 在库内 notes/ 新建一篇 .md 笔记并归入「笔记」分类，
-// 返回已纳管的条目（前端拿 path 去查看器双栏编辑）。同名报错不覆盖。
-func (a *App) DocSpaceNewNote(name string) (docspace.Item, error) {
+// DocSpaceNewNote 在库内 notes/ 新建一篇笔记（format 取 md|html，空默认 md）并归入「笔记」分类，
+// 返回已纳管的条目（前端拿 path 去笔记模块编辑）。同名报错不覆盖。
+func (a *App) DocSpaceNewNote(name string, format string) (docspace.Item, error) {
 	s, err := docspace.Global()
 	if err != nil {
 		return docspace.Item{}, err
 	}
-	it, err := s.NewNote(name)
+	it, err := s.NewNote(name, format)
 	if err != nil {
-		applog.Warnf("docspace", "新建笔记失败 %q: %v", name, err)
+		applog.Warnf("docspace", "新建笔记失败 %q(%s): %v", name, format, err)
 		return docspace.Item{}, err
 	}
 	applog.Infof("docspace", "新建笔记: %s（id=%s）", it.Name, it.ID)

@@ -10,9 +10,11 @@ package clouddrive
 //   - s3Signer ：AWS Signature V4（HMAC-SHA256 派生密钥）—— 腾讯云 COS 与通用 S3 共用，
 //     只差 endpoint / region / service 默认值。
 //
-// 寻址约定：本包统一用**虚拟主机式**（https://<bucket>.<endpoint host>/<key>），
-// CanonicalizedResource / canonical URI 一律写成 /<bucket>/<key>（path-style 的 endpoint
-// 也按同一规则签，OSS 与 S3 都接受）。
+// 寻址约定：真实 OSS/COS/S3 域名走**虚拟主机式**（https://<bucket>.<endpoint host>/<key>），
+// path 不带 bucket；只有 IP endpoint（自建 MinIO 等）才退化到 path-style（/<bucket>/<key>）。
+// 签名用资源（CanonicalizedResource / canonical URI）则由 objectStore.signResource 按
+// 各家规则算：OSS V1 恒含 bucket（/<bucket>/<key>），SigV4 的 canonical URI 必须等于
+// 实际发出的 path。presign 因此分开收「URL 里发的 path」与「参与签名的 resource」。
 
 import (
 	"crypto/hmac"
@@ -31,12 +33,14 @@ import (
 )
 
 // signer 一次请求的签名与预签名 URL 生成。
-// resource 是 /<bucket>/<key> 形式的签名用资源路径（key 未转义）；
+// sign 的 resource 是参与签名的 canonical 资源（OSS /<bucket>/<key>；SigV4 = 实际 path）；
+// presign 另收一个 path——预签名 URL 里真正要写的路径（虚拟主机式不含 bucket），
+// 与 canonical resource 分开是因为 OSS 两者不同。
 // payload 是请求正文原字节（nil/空 表示无正文）——两家各自从中取自己需要的摘要：
 // OSS 取 MD5 作 Content-MD5，SigV4 取 SHA256 作 x-amz-content-sha256。
 type signer interface {
 	sign(req *http.Request, resource string, payload []byte) error
-	presign(method, resource string, expiry time.Duration) (string, error)
+	presign(method, path, resource string, expiry time.Duration) (string, error)
 }
 
 /* ============================ 公共小工具 ============================ */
@@ -244,8 +248,9 @@ func (s *ossSigner) sign(req *http.Request, resource string, payload []byte) err
 	return nil
 }
 
-// presign 生成带 OSSAccessKeyId / Expires / Signature 的临时下载 URL。
-func (s *ossSigner) presign(method, resource string, expiry time.Duration) (string, error) {
+// presign 生成带 OSSAccessKeyId / Expires / Signature 的临时下载 URL。签名走
+// resource（CanonicalizedResource，恒含 bucket），URL 路径走 path（虚拟主机式不含 bucket）。
+func (s *ossSigner) presign(method, path, resource string, expiry time.Duration) (string, error) {
 	if s.secret == "" || s.akID == "" {
 		return "", fmt.Errorf("对象存储凭证不完整（AccessKey 缺失）")
 	}
@@ -266,7 +271,7 @@ func (s *ossSigner) presign(method, resource string, expiry time.Duration) (stri
 	q.Set("OSSAccessKeyId", s.akID)
 	q.Set("Expires", fmt.Sprintf("%d", expires))
 	q.Set("Signature", base64.StdEncoding.EncodeToString(m.Sum(nil)))
-	return osBase(s.host) + uriPathFromResource(resource) + "?" + q.Encode(), nil
+	return osBase(s.host) + uriPathFromResource(path) + "?" + q.Encode(), nil
 }
 
 /* ============================ AWS Signature V4 ============================ */
@@ -400,8 +405,9 @@ func (s *s3Signer) sign(req *http.Request, resource string, payload []byte) erro
 	return nil
 }
 
-// presign 生成 X-Amz-* 系列查询参数签名的临时下载 URL。
-func (s *s3Signer) presign(method, resource string, expiry time.Duration) (string, error) {
+// presign 生成 X-Amz-* 系列查询参数签名的临时下载 URL。SigV4 的 canonical URI 必须等于
+// 实际发出的 path，故 path 与 resource 同值（objectStore.signResource 对 S3 就返回 urlResource）。
+func (s *s3Signer) presign(method, path, resource string, expiry time.Duration) (string, error) {
 	if s.secret == "" || s.akID == "" {
 		return "", fmt.Errorf("对象存储凭证不完整（AccessKey 缺失）")
 	}
@@ -438,13 +444,13 @@ func (s *s3Signer) presign(method, resource string, expiry time.Duration) (strin
 		q.Set(p[0], p[1]) // 存的是原始值，Encode 会按 SigV4 要求把 credential 的 `/` 转成 %2F
 	}
 	q.Set("X-Amz-Signature", sig)
-	return osBase(s.host) + uriPathFromResource(resource) + "?" + q.Encode(), nil
+	return osBase(s.host) + uriPathFromResource(path) + "?" + q.Encode(), nil
 }
 
 /* ============================ 共用辅助 ============================ */
 
-// uriPathFromResource 把 /<bucket>/<key> 转成 URL path（各段按 OSS/S3 习惯编码，
-// 保留 `/` 作为层级分隔，并保留目录 key 的尾斜杠）。
+// uriPathFromResource 把资源路径转成 URL path（各段按 OSS/S3 习惯编码，保留 `/` 作为
+// 层级分隔，并保留目录 key 的尾斜杠）。根路径（"/"）返回单个 "/"，不能拼成 "//"。
 func uriPathFromResource(resource string) string {
 	segs := strings.Split(resource, "/")
 	out := make([]string, 0, len(segs))
@@ -453,6 +459,9 @@ func uriPathFromResource(resource string) string {
 			continue
 		}
 		out = append(out, uriEncodeSegment(s))
+	}
+	if len(out) == 0 {
+		return "/"
 	}
 	p := "/" + strings.Join(out, "/")
 	if strings.HasSuffix(resource, "/") { // 目录占位对象靠尾斜杠区分，不能丢

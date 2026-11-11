@@ -248,6 +248,25 @@
         }
 
         /*
+          主页两张卡的栅格必须贴真实页面，否则骨架与挂载后的真页对不齐：
+          统计小卡真实是 a-col span=8 → 三等分铺满欢迎卡；服务实例卡是 svc-cards 的
+          auto-fill minmax(240px)。直接复用通用 .boot-cards（auto-fill minmax(150px) +
+          max-width:920）会排成四列，并在宽卡右侧留一大块空白（本次「骨架没对齐」的根因）。
+          只覆盖列数与去掉宽度上限，圆角/扫光/底色仍走 .boot-cards i 那套。
+        */
+        #boot.lay-home .boot-cards {
+            max-width: none;
+        }
+
+        #boot.lay-home .boot-stat {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        #boot.lay-home .boot-svc {
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        }
+
+        /*
           列表分栏模板（lay-list）：左窄卡是「行列表」（终端连接 / Git 仓库 / 服务实例 /
           抓包会话 / 网盘账号 / FTP 连接记录），右宽卡是「工具条 + 表格行」。
           与表单分栏（lay-form：左字段、右大舞台）区分：那些页的左栏是可输入的表单，
@@ -555,7 +574,7 @@
             <div class="boot-hrow boot-hrow-top">
                 <div class="boot-hcol-wide boot-card">
                     <i class="boot-card-hd"></i>
-                    <div class="boot-cards">
+                    <div class="boot-cards boot-stat">
                         <i class="boot-mini"></i><i class="boot-mini"></i><i class="boot-mini"></i>
                         <i class="boot-mini"></i><i class="boot-mini"></i><i class="boot-mini"></i>
                     </div>
@@ -565,7 +584,7 @@
             <div class="boot-hrow boot-hrow-bottom">
                 <div class="boot-hcol-wide boot-card">
                     <i class="boot-card-hd"></i>
-                    <div class="boot-cards">
+                    <div class="boot-cards boot-svc">
                         <i></i><i></i><i></i><i></i>
                     </div>
                 </div>

@@ -108,6 +108,9 @@ withDefaults(defineProps<{
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  /* #icon 插槽里的 Arco 原生图标靠 font-size 定尺寸，不设字号会继承正文 ~14px 在 44px 色块里显小；
+     给到 22px 与内置 common-stat-icon 默认 24px 观感对齐，内置 SVG 走显式 :size 不受影响。 */
+  font-size: 22px;
 }
 
 .tone-blue,

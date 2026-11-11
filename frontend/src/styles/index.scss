@@ -41,6 +41,12 @@
 
     --base-shadow: 0 5px 10px #dddddd;
 
+    /* Arco 阴影档位（对齐 @arco-design shadow1/shadow2，黑色基准，明暗通用）：
+       供 item-card / stat-card / DocGrid 等「hover 轻抬 / 选中抬升」引用，
+       此前全站 var 引用了但从未定义，box-shadow 被静默丢弃 */
+    --shadow-1-center: 0 0 1px 0 rgba(0, 0, 0, 0.3), 0 1px 4px 0 rgba(0, 0, 0, 0.12);
+    --shadow-2-bottom: 0 0 1px 0 rgba(0, 0, 0, 0.3), 0 4px 10px 0 rgba(0, 0, 0, 0.16);
+
     --base-grey-bg: #dcdcdc;
 
     --base-margin: 12px;

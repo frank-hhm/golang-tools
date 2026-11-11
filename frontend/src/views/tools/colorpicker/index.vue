@@ -37,23 +37,30 @@
                     <div class="cp-out">
                         <div class="cp-field">
                             <label>HTML:</label>
-                            <a-input :model-value="htmlHex" size="mini" readonly @click="copyText(htmlHex)" />
+                            <a-input :model-value="htmlHex" size="mini" readonly @click="copyText(htmlHex)" >
+                                <template #append>
+                                     <icon-copy />
+                                </template>
+                            </a-input>
                         </div>
                         <div class="cp-field">
                             <label>Hex:</label>
-                            <a-input :model-value="bgrHex" size="mini" readonly @click="copyText(bgrHex)" />
+                            <a-input :model-value="bgrHex" size="mini" readonly @click="copyText(bgrHex)" >
+                                <template #append>
+                                    <icon-copy />
+                                </template>
+                            </a-input>
                         </div>
                         <div class="cp-field">
                             <label>R,G,B:</label>
-                            <a-input :model-value="rgbStr" size="mini" readonly @click="copyText(rgbStr)" />
+                            <a-input :model-value="rgbStr" size="mini" readonly @click="copyText(rgbStr)">
+                                <template #append>
+                                     <icon-copy />
+                                </template>
+                            </a-input>
                         </div>
                     </div>
 
-                    <div class="cp-modes">
-                        <span class="cp-mode-active">
-                            H: {{ hsv.h }}°&nbsp;&nbsp;S: {{ hsv.s }}%&nbsp;&nbsp;V: {{ hsv.v }}%
-                        </span>
-                    </div>
                     <!-- <div class="cp-modes">
                         <span class="cp-mode-sub">
                             H: {{ hsl.h }}°&nbsp;&nbsp;S: {{ hsl.s }}%&nbsp;&nbsp;L: {{ hsl.l }}%
@@ -281,7 +288,7 @@ async function fitWindow() {
     // .win-content 的上下留白：卡片视口顶 = 标题栏高度 + 留白
     const titlebarH = document.querySelector<HTMLElement>(".win-titlebar")?.clientHeight ?? 40;
     const pad = Math.max(0, body.getBoundingClientRect().top - padT - titlebarH);
-    const innerH = Math.round(titlebarH + pad * 2 + cardNatural) + 2; // +2 容差，防面板出现滚动条
+    const innerH = Math.round(titlebarH + pad * 2 + cardNatural) + 20; // +2 容差，防面板出现滚动条
 
     try {
         const size = await Window.Size();
@@ -333,7 +340,9 @@ onMounted(() => {
     gap: var(--base-padding);
 }
 
-/* 主区：左取色方块 + 中色相条 + 右数值面板，高度弹性铺满 */
+/* 主区：左取色方块 + 中色相条 + 右数值面板。
+   三者都不写死高度，靠 align-items:stretch 拉到同一行高（由右侧面板内容自然高决定），
+   顶/底对齐，也消除旧版方块 128 / 色相 130 / 面板 ~114 三种高度互不齐平的错位。 */
 .cp-main {
     flex: 1;
     min-height: 0;
@@ -346,9 +355,7 @@ onMounted(() => {
     position: relative;
     flex: 1;
     min-width: 0;
-    height: 128px;
     border-radius: var(--base-radius-small);
-    border: 1px solid var(--color-border-1);
     cursor: crosshair;
     touch-action: none;
 }
@@ -367,9 +374,8 @@ onMounted(() => {
 .cp-hue {
     position: relative;
     width: 18px;
-    max-height: 130px;
     flex: none;
-    border-radius: var(--base-radius-small);
+    /* border-radius: var(--base-radius-default); */
     cursor: pointer;
     touch-action: none;
     background: linear-gradient(to bottom,
@@ -383,7 +389,6 @@ onMounted(() => {
     right: -3px;
     height: 4px;
     background: #fff;
-    border: 1px solid var(--color-border-2);
     border-radius: var(--base-radius-default);
     transform: translateY(-50%);
     pointer-events: none;
@@ -395,7 +400,7 @@ onMounted(() => {
     flex: none;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
     overflow-y: auto;
 }
 
@@ -403,10 +408,9 @@ onMounted(() => {
     flex: none;
     display: flex;
     gap: 0;
-    border: 1px solid var(--color-border-1);
     border-radius: var(--base-radius-small);
     overflow: hidden;
-    height: 16px;
+    height: 14px;
 }
 
 .cp-swatch {

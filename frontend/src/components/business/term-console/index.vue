@@ -19,6 +19,7 @@ import { getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Clipboard, Events } from '@wailsio/runtime';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { CanvasAddon } from '@xterm/addon-canvas';
 import '@xterm/xterm/css/xterm.css';
 
 /**
@@ -174,6 +175,16 @@ onMounted(async () => {
   fit = new FitAddon();
   term.loadAddon(fit);
   term.open(el);
+  // 优先切到 Canvas 渲染器：默认的 DOM 渲染器会把每个字符包成带 letter-spacing
+  // 的 span，而全站 `* { font-family: 比例UI字体 }` 会污染 xterm 宽度缓存的测量
+  // （WidthCache 只在容器上写内联字体，测量子元素被 * 直接命中成比例字体），
+  // 于是逐字 letter-spacing 把等宽文字拉散。Canvas 直接用 ctx.font 按网格画字形，
+  // 不产生 span/letter-spacing，从根上绕开该问题；不支持 2D 上下文时静默回退 DOM。
+  try {
+    term.loadAddon(new CanvasAddon());
+  } catch {
+    /* Canvas 不可用时保留 DOM 渲染器 */
+  }
   fit.fit();
 
   // 先挂事件再建会话：远端 banner / MOTD 可能在 TermOpenSSH 返回之前就推过来
@@ -285,5 +296,14 @@ onBeforeUnmount(() => {
 /* 内容内缩：padding 加在 .xterm 上，FitAddon 会把它减掉，行列不受影响 */
 .term-console :deep(.xterm) {
   padding: 6px 10px 10px;
+}
+
+/* 全站 index.scss 的 `* { font-family: 比例UI字体 }` 会直接命中 .xterm-rows 内的
+   span，压过 xterm 从容器继承来的等宽字体；比例字形宽度参差，DOM 渲染器就逐字补
+   letter-spacing 去对齐网格，导致文字被拉散。这里把终端整棵子树强制回等宽栈
+   （与 JS 侧 FONT_FAMILY、--code-font-family 同口径），特异性高于 * 故生效。 */
+.term-console :deep(.xterm),
+.term-console :deep(.xterm *) {
+  font-family: var(--code-font-family) !important;
 }
 </style>

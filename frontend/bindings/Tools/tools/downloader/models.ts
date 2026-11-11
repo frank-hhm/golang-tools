@@ -93,6 +93,17 @@ export interface Task {
      * 当前实际使用的源 URL（多镜像时）
      */
     "source": string;
+
+    /**
+     * SourceKind 非空 = 外部流源任务（字节来自注册的 SourceResolver 而非 HTTP URL）；
+     * 空 = 传统 HTTP 任务，行为逐字节不变。
+     */
+    "sourceKind"?: string;
+
+    /**
+     * SourceParams 交给对应 kind 解析器的不透明参数（如 {"acct":..,"file":..}），引擎自身不解读。
+     */
+    "sourceParams"?: { [_ in string]?: string } | null;
     "parts": Part[] | null;
     "err": string;
     "note": string;

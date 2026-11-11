@@ -372,6 +372,14 @@ func (f *fakeOS) handle(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(fmt.Sprintf(`<?xml version="1.0"?><BucketStat><Storage>%d</Storage></BucketStat>`, used)))
 		return
 	case r.Method == http.MethodGet && key == "" && (q.Has("prefix") || q.Has("delimiter") || q.Has("max-keys")):
+		// 真实 OSS/S3/COS 只认 encoding-type=url，其它值（如误写 utf-8）当场回 400
+		// InvalidEncodingMethod。假后端照此拒，否则这类参数错误在 mock 层永远测不出。
+		if et := q.Get("encoding-type"); et != "" && et != "url" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><Error><Code>InvalidEncodingMethod</Code>` +
+				`<Message>Invalid Encoding Method specified in Request</Message></Error>`))
+			return
+		}
 		esc := q.Get("encoding-type") != ""
 		maxKeys, _ := strconv.Atoi(q.Get("max-keys"))
 		f.list(w, q.Get("prefix"), q.Get("delimiter"), esc, q.Get("marker"), maxKeys)
@@ -700,7 +708,7 @@ func TestListClassifiesDirsAndFiles(t *testing.T) {
 		}
 	}
 	if plus != "报告 v1+2.pdf" {
-		t.Fatalf("encoding-type=utf-8 的 key 未正确还原: %q", plus)
+		t.Fatalf("encoding-type=url 的 key 未正确还原: %q", plus)
 	}
 }
 
@@ -924,6 +932,63 @@ func TestAddObjectStoreValidation(t *testing.T) {
 	}
 }
 
+func TestUpdateObjectStore(t *testing.T) {
+	f := newFakeOS(t, "edit-bucket")
+	v, err := AddObjectStore(KindAliyunOSS, "旧名", f.bucket, f.host(), "cn-hangzhou", "AKID-OLD", "SECRET-OLD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1) 只改非敏感项，AK 两处留空 => 沿用旧密钥，bucket/region/label 覆盖生效。
+	if err := UpdateObjectStore(v.ID, "新名", "new-bucket", "", "cn-heyuan", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	a, b, err := loadObjectStoreConfig(v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Label != "新名" || a.Bucket != "new-bucket" || a.Region != "cn-heyuan" {
+		t.Fatalf("非敏感项未更新: %+v", a)
+	}
+	if b.AkID != "AKID-OLD" || b.AkSecret != "SECRET-OLD" {
+		t.Fatalf("AK 留空应沿用旧密钥: %+v", b)
+	}
+
+	// 2) 整对重填 AK => 新密钥生效，落盘无明文。
+	if err := UpdateObjectStore(v.ID, "", "b2", "", "", "AKID-NEW", "SECRET-NEW"); err != nil {
+		t.Fatal(err)
+	}
+	_, b, err = loadObjectStoreConfig(v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.AkID != "AKID-NEW" || b.AkSecret != "SECRET-NEW" {
+		t.Fatalf("AK 整对重填未生效: %+v", b)
+	}
+	if a.Label != "新名" {
+		t.Fatalf("label 留空应沿用旧名: %s", a.Label)
+	}
+	bs, err := os.ReadFile(storePathOf(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bs), "SECRET-NEW") || strings.Contains(string(bs), "AKID-NEW") {
+		t.Fatal("编辑后账号文件出现明文凭证")
+	}
+
+	// 3) 账号不存在 / 非对象存储 kind 应被拒。
+	if err := UpdateObjectStore("c-nope", "x", "b", "", "", "", ""); err == nil {
+		t.Fatal("不存在的账号应报错")
+	}
+	cloud, err := AddAccount(KindBaidu, "百度")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateObjectStore(cloud.ID, "x", "b", "", "", "", ""); err == nil {
+		t.Fatal("非对象存储 kind 应被编辑接口拒绝")
+	}
+}
+
 func TestRegistryObjectStoreKinds(t *testing.T) {
 	for _, k := range []string{KindAliyunOSS, KindTencentCOS, KindS3} {
 		if !KindSupported(k) {
@@ -964,6 +1029,11 @@ func TestOSHostDerivation(t *testing.T) {
 	}{
 		{KindAliyunOSS, "myb", "", "cn-hangzhou", "myb.oss-cn-hangzhou.aliyuncs.com"},
 		{KindTencentCOS, "myb", "", "ap-guangzhou", "myb.cos.ap-guangzhou.myqcloud.com"},
+		// Region 框被误填成 Endpoint 形态：不能拼出 oss-oss- / cos.cos. 双前缀坏主机。
+		{KindAliyunOSS, "slot-games", "", "oss-cn-hangzhou", "slot-games.oss-cn-hangzhou.aliyuncs.com"},
+		{KindAliyunOSS, "myb", "", "oss-cn-hangzhou.aliyuncs.com", "myb.oss-cn-hangzhou.aliyuncs.com"},
+		{KindTencentCOS, "myb", "", "cos.ap-guangzhou", "myb.cos.ap-guangzhou.myqcloud.com"},
+		{KindTencentCOS, "myb", "", "cos.ap-guangzhou.myqcloud.com", "myb.cos.ap-guangzhou.myqcloud.com"},
 		{KindAliyunOSS, "myb", "https://oss-cn-beijing.aliyuncs.com", "oss-cn-beijing", "myb.oss-cn-beijing.aliyuncs.com"},
 		{KindS3, "myb", "127.0.0.1:9000", "", "127.0.0.1:9000"},
 		{KindS3, "myb", "myb.s3.example.com", "", "myb.s3.example.com"},
@@ -979,6 +1049,102 @@ func TestOSHostDerivation(t *testing.T) {
 	}
 	if _, err := osHost(KindS3, "b", "", ""); err == nil {
 		t.Fatal("S3 既无 endpoint 又无 region 时应报错")
+	}
+	// OSS/COS 只填 bucket、endpoint 与 region 都留空：不能拼出 bucket.oss-.aliyuncs.com 这种坏主机。
+	if _, err := osHost(KindAliyunOSS, "b", "", ""); err == nil {
+		t.Fatal("OSS endpoint 与 region 均空时应报错，而非拼 oss-.aliyuncs.com")
+	}
+	if _, err := osHost(KindTencentCOS, "b", "", ""); err == nil {
+		t.Fatal("COS endpoint 与 region 均空时应报错，而非拼 cos..myqcloud.com")
+	}
+}
+
+// TestObjectStoreVirtualHostAddressing 锁死虚拟主机式（真实 OSS/COS/S3 域名）的寻址：
+// bucket 已在 host 子域里，实际发出的 path 只到 /<key>，不能再拼一次 bucket——否则服务端
+// 会把整段 path 当 object key，重算的 CanonicalizedResource/canonical URI 与我们签的对不上，
+// 报 SignatureDoesNotMatch（真机踩过，path-style 的 httptest 假后端因为 bucket 本就在 path
+// 里，永远测不到这条分支）。同时验证 OSS canonical 恒含 bucket、SigV4 canonical == 实际 path。
+func TestObjectStoreVirtualHostAddressing(t *testing.T) {
+	newAcct := func(kind, bucket, endpoint, region string) *objectStore {
+		p, err := newObjectStoreAcct(kind, kind, "id",
+			Account{Bucket: bucket, Endpoint: endpoint, Region: region},
+			tokenBlob{AkID: "a", AkSecret: "b"})
+		if err != nil {
+			t.Fatalf("%s 构造失败: %v", kind, err)
+		}
+		return p.(*objectStore)
+	}
+
+	// OSS 虚拟主机式：path 去掉 bucket，CanonicalizedResource 却恒含 bucket。
+	oss := newAcct(KindAliyunOSS, "slot-games", "oss-cn-hongkong.aliyuncs.com", "cn-hongkong")
+	if !oss.virtualHost {
+		t.Fatal("OSS 域名 endpoint 应判为虚拟主机式")
+	}
+	if got, want := oss.urlFor("", "max-keys=1"), "https://slot-games.oss-cn-hongkong.aliyuncs.com/?max-keys=1"; got != want {
+		t.Fatalf("OSS vh 列表 URL path 不应含 bucket:\n got=%s\nwant=%s", got, want)
+	}
+	if got, want := oss.urlFor("dir/a.txt", ""), "https://slot-games.oss-cn-hongkong.aliyuncs.com/dir/a.txt"; got != want {
+		t.Fatalf("OSS vh 对象 URL:\n got=%s\nwant=%s", got, want)
+	}
+	if got, want := oss.signResource(""), "/slot-games/"; got != want {
+		t.Fatalf("OSS vh canonical 应恒含 bucket: got=%s want=%s", got, want)
+	}
+	if got, want := oss.signResource("dir/a.txt"), "/slot-games/dir/a.txt"; got != want {
+		t.Fatalf("OSS vh 对象 canonical: got=%s want=%s", got, want)
+	}
+	// 预签名 URL：path 不含 bucket，签名却按含 bucket 的 canonical。
+	u, err := oss.signer.presign(http.MethodGet, oss.urlResource("a.txt"), oss.signResource("a.txt"), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(u, "https://slot-games.oss-cn-hongkong.aliyuncs.com/a.txt?") {
+		t.Fatalf("OSS vh 预签名 URL path 不该带 bucket: %s", u)
+	}
+
+	// S3 虚拟主机式：SigV4 canonical URI == 实际 path，两者都不含 bucket。
+	s3 := newAcct(KindS3, "myb", "s3.us-west-2.amazonaws.com", "us-west-2")
+	if !s3.virtualHost {
+		t.Fatal("S3 域名 endpoint 应判为虚拟主机式")
+	}
+	if got, want := s3.urlFor("k.bin", ""), "https://myb.s3.us-west-2.amazonaws.com/k.bin"; got != want {
+		t.Fatalf("S3 vh 对象 URL:\n got=%s\nwant=%s", got, want)
+	}
+	if got, want := s3.signResource("k.bin"), "/k.bin"; got != want {
+		t.Fatalf("S3 vh canonical 应等于 path（不含 bucket）: got=%s want=%s", got, want)
+	}
+
+	// path-style（IP endpoint，MinIO 等）：bucket 留在 path，两条线一致。
+	ps := newAcct(KindS3, "myb", "127.0.0.1:9000", "us-east-1")
+	if ps.virtualHost {
+		t.Fatal("IP endpoint 应是 path-style")
+	}
+	if got, want := ps.urlFor("k.bin", ""), "https://127.0.0.1:9000/myb/k.bin"; got != want {
+		t.Fatalf("path-style 对象 URL:\n got=%s\nwant=%s", got, want)
+	}
+	if got, want := ps.signResource("k.bin"), "/myb/k.bin"; got != want {
+		t.Fatalf("path-style canonical 含 bucket: got=%s want=%s", got, want)
+	}
+}
+
+func TestOSErrMsgEndpointHint(t *testing.T) {
+	// OSS 用错地域 endpoint 访问桶：403 体里带 <Endpoint>，应翻成可操作提示（含正确地域名）。
+	bs := []byte(`<Error><Code>AccessDenied</Code>` +
+		`<Message>The bucket you are attempting to access must be addressed using the specified endpoint.</Message>` +
+		`<Endpoint>oss-cn-heyuan.aliyuncs.com</Endpoint></Error>`)
+	got := osErrMsg(bs)
+	if !strings.Contains(got, "cn-heyuan") || !strings.Contains(got, "oss-cn-heyuan.aliyuncs.com") {
+		t.Fatalf("OSS 错域提示应带出正确 region/endpoint，got=%q", got)
+	}
+	// COS 同理。
+	cos := []byte(`<Error><Code>AccessDenied</Code><Message>wrong region</Message>` +
+		`<Endpoint>cos.ap-shanghai.myqcloud.com</Endpoint></Error>`)
+	if g := osErrMsg(cos); !strings.Contains(g, "ap-shanghai") {
+		t.Fatalf("COS 错域提示应带出正确 region，got=%q", g)
+	}
+	// 无 <Endpoint> 的普通错误不应多拼提示（行为不变）。
+	plain := []byte(`<Error><Code>NoSuchBucket</Code><Message>not found</Message></Error>`)
+	if g := osErrMsg(plain); strings.Contains(g, "endpoint 与桶实际地域不符") {
+		t.Fatalf("无 Endpoint 字段不应拼错域提示，got=%q", g)
 	}
 }
 

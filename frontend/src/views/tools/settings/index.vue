@@ -35,6 +35,18 @@
         <!-- 右侧：主区域，所有设置项修改后自动保存 -->
         <a-col :span="19" class="main-col">
             <div class="main-panel">
+                <!-- 数据保存提醒条：搬自主页，在面板顶部占正常流一行（把卡片顶下去、不遮挡），跨分类常驻；
+                     绑定的实例未启动 / 连不上 / 副本待同步时说一句，动作就地给 -->
+                <div v-if="storageNotice" class="storage-notice" :class="'sn-' + storageNotice.tone">
+                    <icon-exclamation-circle-fill class="sn-icon" />
+                    <span class="sn-text">{{ storageNotice.text }}</span>
+                    <a-space :size="6" class="sn-acts">
+                        <a-button v-for="k in storageNotice.starts" :key="k" size="mini"
+                            @click="startBound(k)">启动{{ kindLabel(k) }}</a-button>
+                        <a-button v-if="storageNotice.pending" size="mini" :loading="storageSyncing"
+                            @click="syncNow">立即同步</a-button>
+                    </a-space>
+                </div>
                 <div class="tab-content">
                     <!-- 15 个分类共用一张卡片：标题=当前 tab 图标+heading，右侧=自动保存提示 + panel/tools/browser 三个特例的操作区；
                        每个分类的内容降级为普通 <div class="pane-body">，靠 v-show 互斥。tools 需要 body 不滚动+去内衬，故按 activeTab 动态挂 tools-card。 -->
@@ -60,8 +72,14 @@
                                 </template>
                                 <template v-if="activeTab === 'tools'">
                                     <span class="hint hint-inline">快捷键为系统全局热键</span>
-                                    <a-popconfirm content="恢复默认功能列表？自定义的增删与排序会被覆盖。" type="warning" position="lt"
-                                        @ok="resetTools">
+                                    <a-popconfirm content="把当前功能列表保存为默认？之后点「恢复默认列表」会还原到这一份。" type="warning" position="lt"
+                                        @ok="saveAsDefault">
+                                        <a-button size="small">
+                                            <template #icon><icon-save /></template>保存为默认
+                                        </a-button>
+                                    </a-popconfirm>
+                                    <a-popconfirm :content="savedDefault.length ? '恢复到你保存的默认功能列表？当前的增删与排序会被覆盖。' : '恢复内置默认功能列表？自定义的增删与排序会被覆盖。'"
+                                        type="warning" position="lt" @ok="resetTools">
                                         <a-button size="small">恢复默认列表</a-button>
                                     </a-popconfirm>
                                     <a-button size="small" @click="openAdd">
@@ -780,6 +798,159 @@
                             </a-form-item>
                         </a-form>
                     </div>
+                    <!-- ===================== 数据保存位置 ===================== -->
+                    <div v-show="activeTab === 'storage'" class="pane-body">
+                        <a-form :model="{}" :style="{ maxWidth: '880px' }" layout="vertical">
+                            <a-alert type="info" style="margin-bottom: 16px">
+                                本地文件永远是<strong>权威可读源</strong>（不改任何既有读写路径）：勾选 MySQL / Redis 是
+                                「再往那边写一份持久副本」，远端连不上只标记待同步，不影响程序运行。
+                                <strong>取消本地</strong>后本机文件降级为临时工作缓存，启动时改为<strong>远端优先</strong>回写本地；
+                                那种模式下远端不可达会弹窗请你「启动服务」或「本次使用默认数据」。
+                            </a-alert>
+                            <a-form-item label="保存位置（可多选）" data-skey="storage.locations">
+                                <a-space :size="18">
+                                    <a-checkbox v-model="storageForm.local">本地文件</a-checkbox>
+                                    <a-checkbox v-model="storageForm.mysql">MySQL 实例</a-checkbox>
+                                    <a-checkbox v-model="storageForm.redis">Redis 实例</a-checkbox>
+                                </a-space>
+                                <div class="hint">至少选一项。数据范围是 config.json 与数据目录下的服务配置缓存（实例登记、任务台账这一类），
+                                    截图/录像/下载产物那些二进制不入外存。</div>
+                            </a-form-item>
+
+                            <template v-if="storageForm.mysql">
+                                <a-form-item label="绑定 MySQL 实例" data-skey="storage.mysql.instance">
+                                    <a-space>
+                                        <a-select v-model="storageForm.mysqlInstance" style="width: 320px" allow-clear
+                                            placeholder="选择本机 MySQL 实例" :loading="mysqlInstLoading"
+                                            @change="onMySQLInstanceChange">
+                                            <a-option v-for="i in mysqlInstances" :key="i.id" :value="i.id">
+                                                {{ i.name }}（{{ i.mode === 'docker' ? '容器' : '本机' }} · 端口 {{ i.port }}{{ i.running ? ' · 运行中' : ' · 未运行' }}）
+                                            </a-option>
+                                        </a-select>
+                                        <a-button size="small" @click="loadMySQLInstances">刷新</a-button>
+                                        <a-button size="small" @click="openToolPage('mysql')">去新增</a-button>
+                                    </a-space>
+                                    <div v-if="!mysqlInstLoading && !mysqlInstances.length" class="hint s-warn">
+                                        这台机器上还没有 MySQL 实例：先点「去新增」在 MySQL 管理里建一个，再回来绑定。
+                                    </div>
+                                </a-form-item>
+                                <a-form-item label="外存库（自动建库建表）" data-skey="storage.mysql.database">
+                                    <a-space>
+                                        <a-select v-model="storageForm.mysqlDatabase" style="width: 260px" allow-create
+                                            :loading="mysqlDbLoading" placeholder="tools_data">
+                                            <a-option v-for="d in mysqlDatabases" :key="d.value" :value="d.value">{{ d.label }}</a-option>
+                                        </a-select>
+                                        <a-button size="small" :disabled="!storageForm.mysqlInstance" @click="loadMySQLDatabases">列出已有库</a-button>
+                                        <a-button size="small" :disabled="!storageForm.mysqlInstance" :loading="mysqlTesting"
+                                            @click="testSink('mysql')">测试连接</a-button>
+                                    </a-space>
+                                    <div class="hint">只接受字母/数字/下划线（不以数字开头）；库与表 tools_data_store 都会在首次写入前自动建好。{{ mysqlTestNote }}</div>
+                                </a-form-item>
+                            </template>
+
+                            <template v-if="storageForm.redis">
+                                <a-form-item label="绑定 Redis 实例" data-skey="storage.redis.instance">
+                                    <a-space>
+                                        <a-select v-model="storageForm.redisInstance" style="width: 320px" allow-clear
+                                            placeholder="选择本机 Redis 实例" :loading="redisInstLoading">
+                                            <a-option v-for="i in redisInstances" :key="i.id" :value="i.id">
+                                                {{ i.name }}（{{ i.mode === 'docker' ? '容器' : '本机' }} · 端口 {{ i.port }}{{ i.running ? ' · 运行中' : ' · 未运行' }}）
+                                            </a-option>
+                                        </a-select>
+                                        <a-button size="small" @click="loadRedisInstances">刷新</a-button>
+                                        <a-button size="small" @click="openToolPage('redis')">去新增</a-button>
+                                    </a-space>
+                                    <div v-if="!redisInstLoading && !redisInstances.length" class="hint s-warn">
+                                        这台机器上还没有 Redis 实例：先点「去新增」在 Redis 管理里建一个，再回来绑定。
+                                    </div>
+                                </a-form-item>
+                                <a-form-item label="库序号" data-skey="storage.redis.db">
+                                    <a-space>
+                                        <a-select v-model="storageForm.redisDb" style="width: 140px">
+                                            <a-option v-for="d in redisDatabases" :key="d.value" :value="Number(d.value)">{{ d.label }}</a-option>
+                                        </a-select>
+                                        <a-button size="small" :disabled="!storageForm.redisInstance" :loading="redisTesting"
+                                            @click="testSink('redis')">测试连接</a-button>
+                                    </a-space>
+                                    <div class="hint">副本写在 db n 的 Tools:data:* 键下（不设备过期限，它是副本不是缓存）。{{ redisTestNote }}</div>
+                                </a-form-item>
+                            </template>
+
+                            <a-form-item label="含凭据的文档" data-skey="storage.sensitive">
+                                <a-switch v-model="storageForm.includeSensitive" type="round" />
+                                <div class="hint">实例登记里的 RootPassword、终端/FTP/云盘凭据这一组默认<strong>不外存</strong>。
+                                    勾选后写入前走 AES-256-GCM 信封加密，但主密钥只存在本机（DPAPI / 0600 文件）：
+                                    换机器后远端那份密文解不开，跨机恢复从来不包括这一组。</div>
+                            </a-form-item>
+                            <a-form-item label="副本同步间隔（秒）" data-skey="storage.interval">
+                                <a-input-number v-model="storageForm.intervalSec" :min="2" :max="3600" :step="1" :precision="0"
+                                    style="width: 160px" />
+                                <span class="hint" style="margin-left: 10px">靠扫描发现变化，最多滞后一个间隔落远端；退出前与「立即同步」会强制补完。</span>
+                            </a-form-item>
+
+                            <a-form-item label="当前状态" data-skey="storage.status">
+                                <div class="ss-list">
+                                    <div v-for="s in storageStatus?.sinks ?? []" :key="s.kind" class="ss-row">
+                                        <span class="ss-kind">{{ kindLabel(s.kind) }}</span>
+                                        <a-tag size="small" :color="ssColor(s)">{{ ssText(s) }}</a-tag>
+                                        <span class="ss-meta">{{ s.instanceName || '未绑定' }} · {{ s.coords }} · 已存 {{ s.docs }} 份<span v-if="s.pending"> · 待同步 {{ s.pending }}</span></span>
+                                        <span v-if="s.lastSyncAt" class="ss-meta">上次 {{ s.lastSyncAt }}</span>
+                                        <a-button v-if="s.bound && !s.running" size="mini" @click="startBound(s.kind)">启动实例</a-button>
+                                        <div v-if="s.lastError" class="ss-err">{{ s.lastError }}</div>
+                                    </div>
+                                    <div v-if="!storageStatus" class="hint">状态读取中…</div>
+                                    <div v-else-if="!storageStatus.local" class="hint s-warn">
+                                        本地未勾选：本机文件只是临时工作缓存，启动时以远端为准；远端不可达会在主页弹窗。
+                                    </div>
+                                </div>
+                                <a-space style="margin-top: 8px">
+                                    <a-button size="small" :loading="storageSyncing" @click="syncNow">立即同步</a-button>
+                                    <a-popconfirm content="用远端副本覆盖本机对应配置文件？已在跑的服务不会自动重读，需要重启对应服务。"
+                                        type="warning" position="bottom" @ok="restoreFromRemote">
+                                        <a-button size="small" :loading="storageRestoring">从远端恢复</a-button>
+                                    </a-popconfirm>
+                                    <a-button size="small" @click="openDataDir">打开本地数据目录</a-button>
+                                </a-space>
+                            </a-form-item>
+
+                            <a-collapse v-if="storageDocs.length" class="storage-docs">
+                                <a-collapse-item :header="`受管文档清单（${storageDocs.length} 份，合计 ${fmtSize(storageTotal)}）`">
+                                    <a-table :data="storageDocs" size="small" row-key="key" :pagination="{ pageSize: 20, total: storageDocs.length }"
+                                        :scroll="{ y: 320 }">
+                                        <template #columns>
+                                            <a-table-column title="文档" dataIndex="label" :width="180" ellipsis tooltip />
+                                            <a-table-column title="键" dataIndex="key" :width="230" ellipsis tooltip />
+                                            <a-table-column title="体积" :width="90">
+                                                <template #cell="{ record }">{{ fmtSize(record.size) }}</template>
+                                            </a-table-column>
+                                            <a-table-column title="外存" :width="76">
+                                                <template #cell="{ record }">
+                                                    <a-checkbox :model-value="!isExcluded(record.key)" :disabled="!!record.reason && !record.included"
+                                                        @change="toggleExclude(record.key, $event as boolean)" />
+                                                </template>
+                                            </a-table-column>
+                                            <a-table-column title="状态">
+                                                <template #cell="{ record }">
+                                                    <span v-if="record.atRemote && record.atRemote.length" class="hint">
+                                                        已在 {{ record.atRemote.map(kindLabel).join(' / ') }}</span>
+                                                    <span v-else-if="!record.included" class="hint">{{ record.reason || '本次不外存' }}</span>
+                                                    <span v-else class="hint">待写入</span>
+                                                </template>
+                                            </a-table-column>
+                                        </template>
+                                    </a-table>
+                                    <div class="hint" style="margin-top: 6px">取消一行的「外存」就是把它加进排除名单，保存后生效；面板账号与密钥那一行永不外存，不给开关。</div>
+                                </a-collapse-item>
+                            </a-collapse>
+
+                            <a-form-item>
+                                <a-space>
+                                    <a-button type="primary" :loading="storageSaving" @click="saveStorage">保存设置</a-button>
+                                    <a-button @click="loadStorage">重载</a-button>
+                                </a-space>
+                            </a-form-item>
+                        </a-form>
+                    </div>
                     <div v-show="activeTab === 'tools'" class="pane-body tools-pane" data-skey="tools.list">
                             <div class="tools-table-wrap" ref="toolsTableRef" @dragover="onToolsWrapDragOver"
                                 @dragleave="onToolsWrapDragLeave" @drop="onToolsWrapDrop">
@@ -1089,6 +1260,8 @@ import {
 } from "@/utils/theme";
 import { useCaps } from "@/utils/caps";
 import { changePanelPassword, getPanelInfo, savePanelSettings, type PanelInfo } from "@/utils/panel";
+import { useToolWindow } from "@/views/index/useToolWindow";
+import { fmtSize } from "@/views/tools/disk/helpers";
 import PoolEditor, { type PoolRow } from "./PoolEditor.vue";
 import {
     arcoIconComp as iconComp,
@@ -1102,6 +1275,8 @@ const { proxy } = getCurrentInstance() as any;
 const GoTools = (getCurrentInstance() as any)?.appContext.config.globalProperties.$GoTools;
 /** 平台能力：决定哪些设置分类（浮动球、浏览器空间）给不给入口 */
 const caps = useCaps();
+/** 「去新增」要把用户带到 MySQL / Redis 服务页，与主页开工具窗走同一个入口 */
+const { openToolWindow } = useToolWindow();
 
 interface BuiltinDef {
     key: string;
@@ -1188,6 +1363,8 @@ const form = reactive<{
     },
 });
 const tools = ref<ToolRow[]>([]);
+/** 用户「保存为默认」的功能列表快照；空表示没存过，「恢复默认列表」回落到内置 DEFAULT_TOOLS。 */
+const savedDefault = ref<ToolRow[]>([]);
 
 const saving = ref(false);
 let saveTimer = 0;
@@ -1211,6 +1388,7 @@ const SETTING_TABS = computed(() =>
         { key: "cloud", label: "云盘管理", heading: "云盘管理", icon: "IconCloud", desktopOnly: false },
         { key: "download", label: "下载管理", heading: "下载管理", icon: "IconSave", desktopOnly: false },
         { key: "lanshare", label: "局域网互传", heading: "局域网互传", icon: "IconSend", desktopOnly: false },
+        { key: "storage", label: "数据保存", heading: "数据保存位置", icon: "IconSave", desktopOnly: false },
         { key: "browser", label: "浏览器", heading: "浏览器默认设置", icon: "IconCompass", desktopOnly: true },
         { key: "config", label: "配置", heading: "配置同步", icon: "IconSync", desktopOnly: false },
         { key: "tools", label: "工具", heading: "功能列表", icon: "IconApps", desktopOnly: false },
@@ -1288,6 +1466,14 @@ const SEARCH_INDEX: SettingSearchEntry[] = [
     { skey: "lanShare.host", label: "互传监听范围", hint: "全部网卡或仅本机回环", tab: "lanshare" },
     { skey: "lanShare.autoStopMin", label: "互传自动停止", hint: "到点自停，避免传完忘了关", tab: "lanshare" },
     { skey: "lanShare.pin", label: "互传访问 PIN", hint: "仅挡无意访问，不是访问控制", tab: "lanshare" },
+    { skey: "storage.locations", label: "数据保存位置", hint: "本地 / MySQL / Redis 多选，远端是持久副本", tab: "storage" },
+    { skey: "storage.mysql.instance", label: "绑定 MySQL 实例", hint: "从本机实例登记里选，没有就去新增", tab: "storage" },
+    { skey: "storage.mysql.database", label: "MySQL 外存库", hint: "库与表首次写入前自动建好", tab: "storage" },
+    { skey: "storage.redis.instance", label: "绑定 Redis 实例", hint: "副本写在 db n 的 Tools:data:* 键下", tab: "storage" },
+    { skey: "storage.redis.db", label: "Redis 库序号", hint: "0~15，不设过期", tab: "storage" },
+    { skey: "storage.sensitive", label: "含凭据的文档", hint: "默认不外存；开启走信封加密，主密钥只在本机", tab: "storage" },
+    { skey: "storage.interval", label: "副本同步间隔", hint: "靠扫描发现变化，最多滞后一个间隔", tab: "storage" },
+    { skey: "storage.status", label: "保存位置状态", hint: "连通 / 待同步 / 启动实例 / 立即同步 / 从远端恢复", tab: "storage" },
     { skey: "download.saveDir", label: "默认下载目录", hint: "新建任务未指定目录时落这里", tab: "download" },
     { skey: "download.maxRunningTasks", label: "同时下载任务数", hint: "超出的任务排队等额度", tab: "download" },
     { skey: "download.maxTotalParts", label: "全局并发块数上限", hint: "所有在跑任务合计的分块并发闸门", tab: "download" },
@@ -1511,6 +1697,321 @@ async function saveLanShare() {
     }
 }
 watch(activeTab, (k) => { if (k === "lanshare") void loadLanShare(); });
+
+/* ===================== 数据保存位置（本地 / MySQL / Redis 外存副本） =====================
+ * 引擎在 services/datastore：本地文件永远是权威可读源，勾 MySQL/Redis 只是「再往那边写一份
+ * 持久副本」。这一段不走 saveNow()：整份配置里只有 storage 段归它管，单独调
+ * DataStoreSaveSettings 落盘，免得一次整份回传把表单里没渲染的字段（exclude 这类）抹掉。
+ * 跨平台：配置段与绑定方法都没有 build tag，Linux 面板同样能开外存。 */
+const storageSaving = ref(false);
+const storageSyncing = ref(false);
+const storageRestoring = ref(false);
+const storageStatus = ref<any>(null);
+const storageForm = reactive({
+    local: true,
+    mysql: false,
+    redis: false,
+    mysqlInstance: "",
+    mysqlDatabase: "",
+    redisInstance: "",
+    redisDb: 0,
+    includeSensitive: false,
+    intervalSec: 5,
+});
+/** 排除名单：只在文档清单里逐行改，没有直接绑定的控件，所以不塞进 storageForm */
+const storageExclude = ref<string[]>([]);
+/** 后端读回的原始值：「测试连接」试的是已落盘的绑定，靠它判断表单是否已经改动过 */
+const storageSaved = ref<any>(null);
+
+const mysqlInstances = ref<any[]>([]);
+const redisInstances = ref<any[]>([]);
+const mysqlInstLoading = ref(false);
+const redisInstLoading = ref(false);
+const mysqlDatabases = ref<any[]>([]);
+const mysqlDbLoading = ref(false);
+const redisDatabases = ref<any[]>([]);
+const mysqlTesting = ref(false);
+const redisTesting = ref(false);
+const mysqlTestNote = ref("");
+const redisTestNote = ref("");
+/** 点「启动实例」后补看一次状态：实例起来要几秒，不能让用户盯着没动的标签等 */
+let storageProbeTimer = 0;
+
+const storageDocs = computed<any[]>(() => (storageStatus.value?.docs as any[]) ?? []);
+const storageTotal = computed<number>(() => Number(storageStatus.value?.totalBytes ?? 0));
+
+function kindLabel(kind: string): string {
+    if (kind === "mysql") return "MySQL";
+    if (kind === "redis") return "Redis";
+    return "本地";
+}
+
+/** 位置状态一句话：主页提示条用的是同一套口径，两头不能各编一套 */
+function ssText(s: any): string {
+    if (!s?.enabled) return "未启用";
+    if (!s.bound) return "未绑定实例";
+    if (s.instanceMissing) return "实例已不存在";
+    if (!s.running) return "实例未启动";
+    if (!s.ready) return "连不上";
+    return s.pending ? `已连通 · ${s.pending} 份待同步` : "已连通";
+}
+
+function ssColor(s: any): string {
+    if (!s?.enabled || !s.bound || s.instanceMissing) return "gray";
+    if (!s.running) return "orange";
+    if (!s.ready) return "red";
+    return s.pending ? "orange" : "green";
+}
+
+async function loadStorageStatus() {
+    try {
+        storageStatus.value = (await GoTools?.DataStoreStatus()) ?? null;
+    } catch {
+        /* 静默：后端未连时状态区留空 */
+    }
+}
+
+/** 顶部浮动提醒条：把「未绑定 / 实例已不存在 / 实例未启动 / 连不上 / 待同步」合成一句话，
+ *  口径与主页原提示条一致（同源 DataStoreStatus），只是位置搬进设置页头部，不占布局跨分类常驻。 */
+const storageNotice = computed(() => {
+    const v = storageStatus.value;
+    if (!v) return null;
+    const on: any[] = (v.sinks ?? []).filter((s: any) => s.enabled);
+    const parts: string[] = [];
+    const starts: string[] = [];
+    for (const s of on) {
+        if (!s.bound) parts.push(`${kindLabel(s.kind)} 还没选择实例`);
+        else if (s.instanceMissing) parts.push(`${kindLabel(s.kind)} 绑定的实例已不在登记表里`);
+        else if (!s.running) {
+            parts.push(`${kindLabel(s.kind)} 实例“${s.instanceName || s.instanceId}”未启动，副本写不进去`);
+            starts.push(s.kind);
+        } else if (!s.ready) parts.push(`${kindLabel(s.kind)} 连不上：${s.lastError || s.probeError || "原因未知"}`);
+    }
+    const pending = Number(v.pending ?? 0);
+    if (pending > 0) parts.push(`${pending} 份副本待同步`);
+    if (!parts.length) return null;
+    const blocking = !v.local && !on.some((s: any) => s.ready);
+    return { tone: blocking ? "error" : "warn", text: "数据保存：" + parts.join("；") + "。", starts, pending };
+});
+
+async function loadMySQLInstances() {
+    mysqlInstLoading.value = true;
+    try {
+        mysqlInstances.value = (await GoTools?.DataStoreListInstances("mysql")) ?? [];
+    } catch {
+        mysqlInstances.value = [];
+    } finally {
+        mysqlInstLoading.value = false;
+    }
+}
+
+async function loadRedisInstances() {
+    redisInstLoading.value = true;
+    try {
+        redisInstances.value = (await GoTools?.DataStoreListInstances("redis")) ?? [];
+    } catch {
+        redisInstances.value = [];
+    } finally {
+        redisInstLoading.value = false;
+    }
+}
+
+/** 换实例后能列出的库就变了：清掉上一次试连结论，顺手重新列一次 */
+function onMySQLInstanceChange() {
+    mysqlTestNote.value = "";
+    void loadMySQLDatabases();
+}
+
+async function loadMySQLDatabases() {
+    if (!storageForm.mysqlInstance) return;
+    mysqlDbLoading.value = true;
+    try {
+        mysqlDatabases.value = (await GoTools?.DataStoreListDBOptions("mysql", storageForm.mysqlInstance)) ?? [];
+    } catch (e: any) {
+        // 实例没起来时列不出库，这不是死路：库名仍可手填，首次写入会自动建库
+        mysqlDatabases.value = [];
+        Message.info(`列不出已有库（${String(e?.message ?? e ?? "实例可能未启动")}）；库名可以直接填，首次写入自动建库`);
+    } finally {
+        mysqlDbLoading.value = false;
+    }
+}
+
+/** Redis 的库是固定 0~15 序号，不需要实例配合，读一次就够 */
+async function loadRedisDatabases() {
+    if (redisDatabases.value.length) return;
+    try {
+        redisDatabases.value = (await GoTools?.DataStoreListDBOptions("redis", "")) ?? [];
+    } catch {
+        /* 留空时选择器仍可手填 */
+    }
+}
+
+function isExcluded(key: string): boolean {
+    return storageExclude.value.includes(key);
+}
+
+/** 文档清单里的「外存」勾选：取消 = 加进排除名单，保存后生效（引擎只认落盘的 exclude） */
+function toggleExclude(key: string, include: boolean) {
+    const set = new Set(storageExclude.value);
+    if (include) set.delete(key);
+    else set.add(key);
+    storageExclude.value = Array.from(set);
+}
+
+async function loadStorage() {
+    try {
+        const s = await GoTools?.DataStoreSettings();
+        if (s) {
+            storageSaved.value = s;
+            storageForm.local = !!s.local;
+            storageForm.mysql = !!s.mysql;
+            storageForm.redis = !!s.redis;
+            storageForm.mysqlInstance = String(s.mysqlInstance ?? "");
+            storageForm.mysqlDatabase = String(s.mysqlDatabase ?? "");
+            storageForm.redisInstance = String(s.redisInstance ?? "");
+            storageForm.redisDb = Number(s.redisDb ?? 0);
+            storageForm.includeSensitive = !!s.includeSensitive;
+            storageForm.intervalSec = Number(s.intervalSec ?? 5);
+            storageExclude.value = Array.isArray(s.exclude) ? (s.exclude as string[]).slice() : [];
+        }
+    } catch {
+        /* 静默：后端未连时保持默认（只勾本地） */
+    }
+    await loadStorageStatus();
+    void loadRedisDatabases();
+}
+
+async function saveStorage() {
+    if (!storageForm.local && !storageForm.mysql && !storageForm.redis) {
+        return void Message.warning("至少要选一个保存位置");
+    }
+    if (storageForm.mysql && !storageForm.mysqlInstance) return void Message.warning("勾选了 MySQL 但还没选择实例");
+    if (storageForm.redis && !storageForm.redisInstance) return void Message.warning("勾选了 Redis 但还没选择实例");
+    if (storageForm.mysql && storageForm.mysqlDatabase && !/^[A-Za-z0-9_]{1,64}$/.test(storageForm.mysqlDatabase)) {
+        return void Message.warning("MySQL 库名只允许字母、数字、下划线，且不能以数字开头");
+    }
+    storageSaving.value = true;
+    try {
+        await GoTools?.DataStoreSaveSettings({
+            local: storageForm.local,
+            mysql: storageForm.mysql,
+            redis: storageForm.redis,
+            mysqlInstance: storageForm.mysqlInstance,
+            mysqlDatabase: storageForm.mysqlDatabase,
+            redisInstance: storageForm.redisInstance,
+            redisDb: Number(storageForm.redisDb) || 0,
+            includeSensitive: storageForm.includeSensitive,
+            exclude: storageExclude.value,
+            intervalSec: Number(storageForm.intervalSec) || 5,
+        } as any);
+        Message.success("保存位置已更新，远端副本正在后台补齐");
+        await loadStorage();
+    } catch (e: any) {
+        Message.error(`保存失败：${String(e?.message ?? e ?? "操作失败")}`);
+    } finally {
+        storageSaving.value = false;
+    }
+}
+
+/**
+ * 试连一次：后端读的是已落盘的绑定，所以表单跟落盘值不一致时先提醒保存，
+ * 不给一句对不上号的结论（把「测的是什么」写清楚比替用户偷偷保存诚实）。
+ */
+async function testSink(kind: string) {
+    const saved = storageSaved.value;
+    if (!saved) return void Message.warning("设置还没读回来，稍后再试");
+    if (!saved[kind]) return void Message.warning(`还没有勾选 ${kindLabel(kind)} 保存位置`);
+    if (kind === "mysql" && (saved.mysqlInstance !== storageForm.mysqlInstance || (saved.mysqlDatabase ?? "") !== storageForm.mysqlDatabase)) {
+        return void Message.info("测试连接按已保存的绑定进行，先点「保存设置」再试");
+    }
+    if (kind === "redis" && (saved.redisInstance !== storageForm.redisInstance || Number(saved.redisDb ?? 0) !== Number(storageForm.redisDb))) {
+        return void Message.info("测试连接按已保存的绑定进行，先点「保存设置」再试");
+    }
+    const busy = kind === "mysql" ? mysqlTesting : redisTesting;
+    busy.value = true;
+    try {
+        const text = String((await GoTools?.DataStoreTestSink(kind)) ?? "");
+        if (kind === "mysql") mysqlTestNote.value = `（刚测试：${text}）`;
+        else redisTestNote.value = `（刚测试：${text}）`;
+        Message.success(`${kindLabel(kind)} 外存可用`);
+    } catch (e: any) {
+        const msg = String(e?.message ?? e ?? "连接失败");
+        if (kind === "mysql") mysqlTestNote.value = `（刚测试失败：${msg}）`;
+        else redisTestNote.value = `（刚测试失败：${msg}）`;
+        Message.error(`${kindLabel(kind)} 连不上：${msg}`);
+    } finally {
+        busy.value = false;
+        await loadStorageStatus();
+    }
+}
+
+async function syncNow() {
+    storageSyncing.value = true;
+    try {
+        await GoTools?.DataStoreSyncNow();
+        Message.success("已把当前应外存的文档写了一遍远端");
+    } catch (e: any) {
+        Message.error(`同步未完成：${String(e?.message ?? e ?? "失败")}`);
+    } finally {
+        storageSyncing.value = false;
+        await loadStorageStatus();
+    }
+}
+
+async function restoreFromRemote() {
+    storageRestoring.value = true;
+    try {
+        const n = Number((await GoTools?.DataStoreRestore()) ?? 0);
+        if (n > 0) Message.success(`已从远端恢复 ${n} 份文档；正在跑的服务要重启才会重读`);
+        else Message.info("远端没有可比对的副本，本机文件没动");
+    } catch (e: any) {
+        Message.error(`恢复失败：${String(e?.message ?? e ?? "失败")}`);
+    } finally {
+        storageRestoring.value = false;
+        await loadStorageStatus();
+    }
+}
+
+async function openDataDir() {
+    try {
+        await GoTools?.DataStoreOpenLocalDir();
+    } catch (e: any) {
+        Message.error(`打开目录失败：${String(e?.message ?? e ?? "失败")}`);
+    }
+}
+
+/** 提示条与状态行上的「启动实例」：只发启动请求，起来之后副本会自动补齐 */
+async function startBound(kind: string) {
+    try {
+        await GoTools?.DataStoreStartBound(kind);
+        Message.info(`已请求启动 ${kindLabel(kind)} 实例，起来后待同步的副本会自动补完`);
+    } catch (e: any) {
+        Message.error(`启动失败：${String(e?.message ?? e ?? "失败")}`);
+    }
+    // 实例起来要几秒，等一会儿再看一次；更长的链路靠 datastore:status 事件自己回来
+    clearTimeout(storageProbeTimer);
+    storageProbeTimer = window.setTimeout(() => {
+        void loadStorageStatus();
+        void loadMySQLInstances();
+        void loadRedisInstances();
+    }, 5000);
+}
+
+/** 「去新增」：实例登记表就在对应服务页里，把用户带过去而不是让他自己找 */
+function openToolPage(key: string) {
+    void openToolWindow(key === "mysql" ? "/tools/mysql" : "/tools/redis", key === "mysql" ? "MySQL 管理" : "Redis 管理", {
+        single: true,
+        fullscreen: true,
+    });
+}
+
+watch(activeTab, (k) => {
+    if (k !== "storage") return;
+    void loadStorage();
+    void loadMySQLInstances();
+    void loadRedisInstances();
+    void loadMySQLDatabases();
+});
 
 /* ===================== 面板访问（仅 Web / 服务模式） =====================
  * 这些配置存在服务端的 panel.json 里，桌面版没有这个文件，也没有登录概念，
@@ -1963,6 +2464,7 @@ async function load() {
                 browserForm.value = { ...cfg.browser, spaces: cfg.browser.spaces || [] };
             }
             tools.value = (cfg.tools || []).map(normTool);
+            savedDefault.value = (cfg.toolsDefault || []).map(normTool);
         }
         activePath.value = (await GoTools?.GetLogDir()) || "";
         // 加载 logo 预览
@@ -2111,8 +2613,22 @@ function onToolsWrapDrop(e: DragEvent) {
 }
 
 function resetTools() {
-    tools.value = DEFAULT_TOOLS.map(normTool);
+    // 优先还原到用户「保存为默认」的那份；没存过才回落内置基线。
+    const base = savedDefault.value.length ? savedDefault.value : DEFAULT_TOOLS;
+    tools.value = base.map(normTool);
     scheduleSave(0);
+}
+
+/** 把当前功能列表存为默认基线（后端 config.ToolsDefault）；之后「恢复默认列表」即还原到这一份。 */
+async function saveAsDefault() {
+    try {
+        const list = tools.value.map(normTool);
+        await GoTools?.SaveToolsDefault(list);
+        savedDefault.value = list;
+        Message.success("已把当前功能列表保存为默认，之后「恢复默认列表」会还原到这一份");
+    } catch (e: any) {
+        Message.error(`保存默认失败：${String(e?.message || e)}`);
+    }
 }
 
 /**
@@ -2696,9 +3212,12 @@ async function uninstallGitShell() {
 let offConfigSaved: (() => void) | null = null;
 let offLauncherIndex: (() => void) | null = null;
 let offSettingsTab: (() => void) | null = null;
+let offDatastoreStatus: (() => void) | null = null;
 
 onMounted(() => {
     load();
+    // 顶部提醒条跨分类常驻：不等切到「数据保存」分类就先读一次状态（之后靠 datastore:status 事件刷新）
+    void loadStorageStatus();
     // 托盘“切换主题”新开窗时带的 ?tab=：同为“挂载即落位”那一条路（与工具页 ?inst= 同构）
     gotoTab(route.query.tab);
     // 主页拖动快捷操作后同步工具表顺序（config:saved 由后端在配置落盘后广播）
@@ -2714,6 +3233,9 @@ onMounted(() => {
         // 设置页已开着时托盘再点“切换主题”：query 不会重新生效，靠这条事件切分类
         const ret3 = Events.On("settings:tab", (ev: any) => { gotoTab(ev?.data ?? ev); });
         if (typeof ret3 === "function") offSettingsTab = ret3 as () => void;
+        // 外存位置状态一变（连上 / 掉线 / 队列补完）就刷状态区：引擎只在真有变化时发
+        const ret4 = Events.On("datastore:status", (ev: any) => { storageStatus.value = ev?.data ?? ev ?? null; });
+        if (typeof ret4 === "function") offDatastoreStatus = ret4 as () => void;
     } catch { /* 非 Wails 环境没有事件总线 */ }
     window.addEventListener("resize", onWinResize);
     if (typeof ResizeObserver !== "undefined") {
@@ -2729,6 +3251,9 @@ onBeforeUnmount(() => {
     offLauncherIndex = null;
     if (offSettingsTab) offSettingsTab();
     offSettingsTab = null;
+    if (offDatastoreStatus) offDatastoreStatus();
+    offDatastoreStatus = null;
+    clearTimeout(storageProbeTimer);
     window.removeEventListener("resize", onWinResize);
     ro?.disconnect();
     ro = null;
@@ -2933,6 +3458,49 @@ onBeforeUnmount(() => {
     min-width: 0;
     display: flex;
     flex-direction: column;
+}
+
+/* 数据保存提醒条：搬自主页，在面板顶部占正常流一行（不遮挡卡片/不盖底部），
+   有存储异常时才出现，动作（启动 / 立即同步）就地给。 */
+.storage-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: var(--base-margin) var(--base-padding) 0;
+    padding: calc(var(--base-padding) / 2) var(--base-padding);
+    border-radius: var(--base-radius-default);
+    font-size: var(--base-size-small);
+    line-height: 1.5;
+}
+
+.storage-notice .sn-icon {
+    flex: none;
+    font-size: calc(var(--base-size-small) + 2px);
+}
+
+.storage-notice .sn-text {
+    color: var(--color-text-1);
+}
+
+.storage-notice .sn-acts {
+    margin-left: auto;
+}
+
+.sn-warn {
+    background: rgba(var(--danger-6), 0.12);
+}
+
+.sn-warn .sn-icon {
+    color: rgb(var(--danger-6));
+}
+
+.sn-error {
+    background: rgba(var(--danger-6), 0.12);
+}
+
+.sn-error .sn-icon {
+    color: rgb(var(--danger-6));
 }
 
 .panel-title {
@@ -3423,5 +3991,48 @@ body.card-flush .tab-content {
     justify-content: flex-end;
     gap: calc(var(--base-padding) * 2 / 3);
     margin-top: calc(var(--base-padding) * 2 / 3);
+}
+
+/* ---- 数据保存位置：状态行与提示色 ---- */
+.ss-list {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--base-padding) / 2);
+}
+
+.ss-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--base-padding) * 2 / 3);
+    padding: calc(var(--base-padding) / 2) calc(var(--base-padding) * 2 / 3);
+    border-radius: var(--base-radius-default);
+    background: var(--color-fill-1);
+}
+
+.ss-kind {
+    font-weight: 600;
+    color: var(--color-text-1);
+    min-width: 56px;
+}
+
+.ss-meta {
+    font-size: var(--base-size-small);
+    color: var(--color-text-3);
+}
+
+.ss-err {
+    flex: 0 0 100%;
+    font-size: var(--base-size-small);
+    color: rgb(var(--danger-6));
+    word-break: break-all;
+}
+
+.hint.s-warn {
+    color: rgb(var(--warning-6));
+}
+
+.storage-docs {
+    margin-bottom: calc(var(--base-padding) * 2 / 3);
 }
 </style>

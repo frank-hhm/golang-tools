@@ -37,6 +37,7 @@ import (
 	appsvc "Tools/services/app"
 	"Tools/services/applog"
 	"Tools/services/config"
+	"Tools/services/datastore"
 	"Tools/services/panel"
 	"Tools/services/tasks"
 	"Tools/tools/archive"
@@ -121,6 +122,9 @@ func init() {
 	application.RegisterEvent[sshgen.Progress]("sshgen:progress")
 	// Git 推送/拉取/抓取：长操作进度与终态（负载 gitcmd.Progress）
 	application.RegisterEvent[gitcmd.Progress]("git:progress")
+	// 数据保存位置：本地/MySQL/Redis 绑定状态与待同步队列的推送
+	application.RegisterEvent[datastore.View]("datastore:status")
+	application.RegisterEvent[int]("datastore:restored")
 }
 
 func main() {
@@ -134,8 +138,20 @@ func main() {
 
 	// 配置与日志初始化与桌面版走同一套逻辑，日志目录也一致
 	startupCfg := config.LoadAppConfig()
+
+	// 数据保存位置：与桌面版完全同一时序——取消本地时远端回写要排在日志器与各服务
+	// 读自己的配置之前。server 部署里这尤其有意义：容器本身可以随时重建，
+	// 数据留在同一台机器上的 MySQL/Redis 才拿得回来。
+	dsChanged, dsNote := datastore.Startup(config.StorageSection(startupCfg))
+	if dsChanged {
+		startupCfg = config.LoadAppConfig()
+	}
+
 	logDir := applog.Init(config.ApplogConfig(startupCfg.Log))
 	applog.Infof("app", "=== Tools 启动（server 模式）=== 日志目录: %s (enabled=%v level=%s)", logDir, startupCfg.Log.Enabled, startupCfg.Log.Level)
+	if dsNote != "" {
+		applog.Infof("datastore", "启动阶段: %s", dsNote)
+	}
 
 	mysqlSettings := startupCfg.ToolSettings["mysql"]
 	sqlLogDir := mysql.ConfigureSQLLog(mysqlSettings.SQLLogEnabled, mysqlSettings.SQLLogDir)

@@ -19,6 +19,7 @@ export type {
     MirrorItem,
     PathsConfig,
     ProxyItem,
+    StorageConfig,
     ThemeBackground,
     ThemeConfig,
     ThemeGlass,

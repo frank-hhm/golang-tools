@@ -83,13 +83,47 @@ export function canvasToBlob(c: HTMLCanvasElement, mime: string, quality?: numbe
     });
 }
 
-/** 目标格式：png 无损不带质量，jpeg/webp 有损 */
+/**
+ * 画布 → ICO（.ico）。浏览器 toBlob 不支持 icon 编码，这里按 Vista+ 的
+ * 「PNG 内嵌」图标约定手拼容器：ICONDIR(6) + ICONDIRENTRY(16) + PNG 字节。
+ * 经典 ICO 上限 256×256，超出等比缩到 256 内；PNG 保留透明通道（无损）。
+ */
+export async function canvasToIco(c: HTMLCanvasElement): Promise<Blob> {
+    const MAX = 256;
+    let src = c;
+    if (c.width > MAX || c.height > MAX) {
+        const k = MAX / Math.max(c.width, c.height);
+        src = resizeCanvas(c, Math.max(1, Math.round(c.width * k)), Math.max(1, Math.round(c.height * k)));
+    }
+    const png = await canvasToBlob(src, "image/png");
+    const pngBuf = await png.arrayBuffer();
+    const w = src.width, h = src.height;
+    const head = new ArrayBuffer(6 + 16);
+    const dv = new DataView(head);
+    dv.setUint16(0, 0, true);                       // idReserved
+    dv.setUint16(2, 1, true);                       // idType = 1（图标）
+    dv.setUint16(4, 1, true);                       // idCount = 1 帧
+    dv.setUint8(6, w >= 256 ? 0 : w);               // bWidth（256 记 0）
+    dv.setUint8(7, h >= 256 ? 0 : h);               // bHeight
+    dv.setUint8(8, 0);                              // bColorCount
+    dv.setUint8(9, 0);                              // bReserved
+    dv.setUint16(10, 1, true);                      // wPlanes
+    dv.setUint16(12, 32, true);                     // wBitCount
+    dv.setUint32(14, pngBuf.byteLength, true);      // dwBytesInRes
+    dv.setUint32(18, 6 + 16, true);                 // dwImageOffset
+    return new Blob([head, pngBuf], { type: "image/x-icon" });
+}
+
+/** 目标格式：png/ico 无损不带质量，jpeg/webp 有损（ico 走 PNG 内嵌，同样无损） */
 export function isLossy(fmt: string): boolean {
     return fmt === "image/jpeg" || fmt === "image/webp";
 }
 
 export function fmtExt(fmt: string): string {
-    return fmt === "image/jpeg" ? "jpg" : fmt === "image/webp" ? "webp" : "png";
+    return fmt === "image/jpeg" ? "jpg"
+        : fmt === "image/webp" ? "webp"
+            : fmt === "image/x-icon" ? "ico"
+                : "png";
 }
 
 /**
